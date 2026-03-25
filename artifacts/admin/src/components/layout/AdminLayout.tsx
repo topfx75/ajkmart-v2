@@ -15,20 +15,22 @@ import {
   Menu,
   X,
   ChevronRight,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Users", href: "/users", icon: Users },
-  { name: "Orders", href: "/orders", icon: ShoppingBag },
-  { name: "Rides", href: "/rides", icon: Car },
-  { name: "Pharmacy", href: "/pharmacy", icon: Pill },
-  { name: "Parcels", href: "/parcel", icon: Box },
-  { name: "Products", href: "/products", icon: PackageSearch },
-  { name: "Broadcast", href: "/broadcast", icon: Megaphone },
+  { name: "Dashboard",    href: "/dashboard",   icon: LayoutDashboard },
+  { name: "Users",        href: "/users",        icon: Users },
+  { name: "Orders",       href: "/orders",       icon: ShoppingBag },
+  { name: "Rides",        href: "/rides",        icon: Car },
+  { name: "Pharmacy",     href: "/pharmacy",     icon: Pill },
+  { name: "Parcels",      href: "/parcel",       icon: Box },
+  { name: "Products",     href: "/products",     icon: PackageSearch },
+  { name: "Flash Deals",  href: "/flash-deals",  icon: Zap },
+  { name: "Broadcast",    href: "/broadcast",    icon: Megaphone },
   { name: "Transactions", href: "/transactions", icon: Receipt },
-  { name: "Settings", href: "/settings", icon: Settings2 },
+  { name: "Settings",     href: "/settings",     icon: Settings2 },
 ];
 
 // Bottom nav items (most used pages for mobile)

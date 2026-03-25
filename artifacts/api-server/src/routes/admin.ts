@@ -10,8 +10,10 @@ import {
   walletTransactionsTable,
   notificationsTable,
   platformSettingsTable,
+  flashDealsTable,
+  promoCodesTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 
 /* ── Default Platform Settings ── */
@@ -721,6 +723,139 @@ router.get("/rides-enriched", async (_req, res) => {
     })),
     total: rides.length,
   });
+});
+
+/* ── Flash Deals ── */
+router.get("/flash-deals", async (_req, res) => {
+  const deals = await db.select().from(flashDealsTable).orderBy(desc(flashDealsTable.createdAt));
+  const products = await db.select({ id: productsTable.id, name: productsTable.name, price: productsTable.price, image: productsTable.image, category: productsTable.category }).from(productsTable);
+  const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+  const now = new Date();
+  res.json({
+    deals: deals.map(d => ({
+      ...d,
+      discountPct:  d.discountPct  ? parseFloat(String(d.discountPct))  : null,
+      discountFlat: d.discountFlat ? parseFloat(String(d.discountFlat)) : null,
+      startTime: d.startTime.toISOString(),
+      endTime:   d.endTime.toISOString(),
+      createdAt: d.createdAt.toISOString(),
+      product:   productMap[d.productId] ?? null,
+      status: !d.isActive ? "inactive"
+            : now < d.startTime ? "scheduled"
+            : now > d.endTime   ? "expired"
+            : d.dealStock !== null && d.soldCount >= d.dealStock ? "sold_out"
+            : "live",
+    })),
+  });
+});
+
+router.post("/flash-deals", async (req, res) => {
+  const body = req.body as any;
+  if (!body.productId || !body.startTime || !body.endTime) {
+    res.status(400).json({ error: "productId, startTime, endTime required" }); return;
+  }
+  const [deal] = await db.insert(flashDealsTable).values({
+    id:           generateId(),
+    productId:    body.productId,
+    title:        body.title    || null,
+    badge:        body.badge    || "FLASH",
+    discountPct:  body.discountPct  ? String(body.discountPct)  : null,
+    discountFlat: body.discountFlat ? String(body.discountFlat) : null,
+    startTime:    new Date(body.startTime),
+    endTime:      new Date(body.endTime),
+    dealStock:    body.dealStock  ? Number(body.dealStock)  : null,
+    isActive:     body.isActive !== false,
+  }).returning();
+  res.status(201).json(deal);
+});
+
+router.patch("/flash-deals/:id", async (req, res) => {
+  const body = req.body as any;
+  const updates: Record<string, any> = {};
+  if (body.title        !== undefined) updates.title        = body.title;
+  if (body.badge        !== undefined) updates.badge        = body.badge;
+  if (body.discountPct  !== undefined) updates.discountPct  = body.discountPct  ? String(body.discountPct)  : null;
+  if (body.discountFlat !== undefined) updates.discountFlat = body.discountFlat ? String(body.discountFlat) : null;
+  if (body.startTime    !== undefined) updates.startTime    = new Date(body.startTime);
+  if (body.endTime      !== undefined) updates.endTime      = new Date(body.endTime);
+  if (body.dealStock    !== undefined) updates.dealStock    = body.dealStock ? Number(body.dealStock) : null;
+  if (body.isActive     !== undefined) updates.isActive     = body.isActive;
+  const [deal] = await db.update(flashDealsTable).set(updates).where(eq(flashDealsTable.id, req.params["id"]!)).returning();
+  if (!deal) { res.status(404).json({ error: "Deal not found" }); return; }
+  res.json(deal);
+});
+
+router.delete("/flash-deals/:id", async (req, res) => {
+  await db.delete(flashDealsTable).where(eq(flashDealsTable.id, req.params["id"]!));
+  res.json({ success: true });
+});
+
+/* ── Promo Codes ── */
+router.get("/promo-codes", async (_req, res) => {
+  const codes = await db.select().from(promoCodesTable).orderBy(desc(promoCodesTable.createdAt));
+  const now = new Date();
+  res.json({
+    codes: codes.map(c => ({
+      ...c,
+      discountPct:    c.discountPct    ? parseFloat(String(c.discountPct))    : null,
+      discountFlat:   c.discountFlat   ? parseFloat(String(c.discountFlat))   : null,
+      minOrderAmount: c.minOrderAmount ? parseFloat(String(c.minOrderAmount)) : 0,
+      maxDiscount:    c.maxDiscount    ? parseFloat(String(c.maxDiscount))    : null,
+      expiresAt:  c.expiresAt  ? c.expiresAt.toISOString()  : null,
+      createdAt:  c.createdAt.toISOString(),
+      status: !c.isActive ? "inactive"
+            : c.expiresAt && now > c.expiresAt ? "expired"
+            : c.usageLimit !== null && c.usedCount >= c.usageLimit ? "exhausted"
+            : "active",
+    })),
+  });
+});
+
+router.post("/promo-codes", async (req, res) => {
+  const body = req.body as any;
+  if (!body.code) { res.status(400).json({ error: "code required" }); return; }
+  try {
+    const [code] = await db.insert(promoCodesTable).values({
+      id:             generateId(),
+      code:           String(body.code).toUpperCase().trim(),
+      description:    body.description    || null,
+      discountPct:    body.discountPct    ? String(body.discountPct)    : null,
+      discountFlat:   body.discountFlat   ? String(body.discountFlat)   : null,
+      minOrderAmount: body.minOrderAmount ? String(body.minOrderAmount) : "0",
+      maxDiscount:    body.maxDiscount    ? String(body.maxDiscount)    : null,
+      usageLimit:     body.usageLimit     ? Number(body.usageLimit)     : null,
+      appliesTo:      body.appliesTo      || "all",
+      expiresAt:      body.expiresAt      ? new Date(body.expiresAt)    : null,
+      isActive:       body.isActive !== false,
+    }).returning();
+    res.status(201).json(code);
+  } catch (e: any) {
+    if (e.code === "23505") { res.status(409).json({ error: "Promo code already exists" }); return; }
+    throw e;
+  }
+});
+
+router.patch("/promo-codes/:id", async (req, res) => {
+  const body = req.body as any;
+  const updates: Record<string, any> = {};
+  if (body.code           !== undefined) updates.code           = String(body.code).toUpperCase().trim();
+  if (body.description    !== undefined) updates.description    = body.description;
+  if (body.discountPct    !== undefined) updates.discountPct    = body.discountPct    ? String(body.discountPct)    : null;
+  if (body.discountFlat   !== undefined) updates.discountFlat   = body.discountFlat   ? String(body.discountFlat)   : null;
+  if (body.minOrderAmount !== undefined) updates.minOrderAmount = String(body.minOrderAmount);
+  if (body.maxDiscount    !== undefined) updates.maxDiscount    = body.maxDiscount    ? String(body.maxDiscount)    : null;
+  if (body.usageLimit     !== undefined) updates.usageLimit     = body.usageLimit     ? Number(body.usageLimit)     : null;
+  if (body.appliesTo      !== undefined) updates.appliesTo      = body.appliesTo;
+  if (body.expiresAt      !== undefined) updates.expiresAt      = body.expiresAt      ? new Date(body.expiresAt)    : null;
+  if (body.isActive       !== undefined) updates.isActive       = body.isActive;
+  const [code] = await db.update(promoCodesTable).set(updates).where(eq(promoCodesTable.id, req.params["id"]!)).returning();
+  if (!code) { res.status(404).json({ error: "Promo code not found" }); return; }
+  res.json(code);
+});
+
+router.delete("/promo-codes/:id", async (req, res) => {
+  await db.delete(promoCodesTable).where(eq(promoCodesTable.id, req.params["id"]!));
+  res.json({ success: true });
 });
 
 export default router;

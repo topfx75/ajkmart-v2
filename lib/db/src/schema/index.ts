@@ -10,3 +10,5 @@ export * from "./notifications";
 export * from "./saved_addresses";
 export * from "./user_settings";
 export * from "./platform_settings";
+export * from "./flash_deals";
+export * from "./promo_codes";
