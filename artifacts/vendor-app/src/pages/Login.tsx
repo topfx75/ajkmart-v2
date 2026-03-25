@@ -32,6 +32,7 @@ export default function Login() {
         setError("❌ Access denied. This portal is only for vendors. Contact admin to get vendor access.");
         setLoading(false); return;
       }
+      localStorage.setItem("vendor_token", res.token);
       const profile = await api.getMe();
       login(res.token, profile);
     } catch(e: any) { setError(e.message); }

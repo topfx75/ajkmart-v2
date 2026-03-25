@@ -32,6 +32,7 @@ export default function Login() {
         setError("❌ Access denied. This app is only for riders. Contact admin to be assigned as a rider.");
         setLoading(false); return;
       }
+      localStorage.setItem("rider_token", res.token);
       const profile = await api.getMe();
       login(res.token, profile);
     } catch(e: any) { setError(e.message); }
