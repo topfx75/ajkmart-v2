@@ -510,8 +510,9 @@ export default function ProfileScreen() {
           onPress: async () => {
             setSigningOut(true);
             try {
+              /* Just clear auth — the root AuthGuard watches user state
+                 and will automatically navigate to /auth when user is null. */
               await logout();
-              router.replace("/auth");
             } catch {
               setSigningOut(false);
             }
