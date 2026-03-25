@@ -16,21 +16,55 @@ import { generateId } from "../lib/id.js";
 
 /* ── Default Platform Settings ── */
 export const DEFAULT_PLATFORM_SETTINGS = [
+  /* Delivery */
   { key: "delivery_fee_mart",      value: "80",   label: "Mart Delivery Fee (Rs.)",       category: "delivery" },
   { key: "delivery_fee_food",      value: "60",   label: "Food Delivery Fee (Rs.)",        category: "delivery" },
   { key: "delivery_fee_pharmacy",  value: "50",   label: "Pharmacy Delivery Fee (Rs.)",    category: "delivery" },
   { key: "delivery_fee_parcel",    value: "100",  label: "Parcel Base Delivery Fee (Rs.)", category: "delivery" },
+  { key: "free_delivery_above",    value: "1000", label: "Free Delivery Above (Rs.)",      category: "delivery" },
+  /* Rides */
   { key: "ride_bike_base_fare",    value: "15",   label: "Bike Base Fare (Rs.)",           category: "rides" },
   { key: "ride_bike_per_km",       value: "8",    label: "Bike Per KM Rate (Rs.)",         category: "rides" },
   { key: "ride_car_base_fare",     value: "25",   label: "Car Base Fare (Rs.)",            category: "rides" },
   { key: "ride_car_per_km",        value: "12",   label: "Car Per KM Rate (Rs.)",          category: "rides" },
+  /* Finance */
   { key: "platform_commission_pct",value: "10",   label: "Platform Commission (%)",        category: "finance" },
+  /* Orders */
   { key: "min_order_amount",       value: "100",  label: "Minimum Order Amount (Rs.)",     category: "orders" },
   { key: "max_cod_amount",         value: "5000", label: "Max COD Order Amount (Rs.)",     category: "orders" },
-  { key: "free_delivery_above",    value: "1000", label: "Free Delivery Above (Rs.)",      category: "delivery" },
+  /* General */
   { key: "app_name",               value: "AJKMart", label: "App Name",                   category: "general" },
   { key: "support_phone",          value: "03001234567", label: "Support Phone Number",    category: "general" },
   { key: "app_status",             value: "active", label: "App Status (active/maintenance)", category: "general" },
+  /* Customer Role Settings */
+  { key: "customer_wallet_max",    value: "50000", label: "Max Wallet Balance (Rs.)",      category: "customer" },
+  { key: "customer_min_topup",     value: "100",   label: "Min Wallet Top-Up (Rs.)",       category: "customer" },
+  { key: "customer_min_withdrawal",value: "200",   label: "Min Wallet Withdrawal (Rs.)",   category: "customer" },
+  { key: "customer_referral_bonus",value: "100",   label: "Referral Bonus (Rs.)",          category: "customer" },
+  { key: "customer_loyalty_pts",   value: "5",     label: "Loyalty Points Per Rs.100",     category: "customer" },
+  { key: "customer_max_orders_day",value: "10",    label: "Max Orders Per Day",            category: "customer" },
+  /* Rider Role Settings */
+  { key: "rider_keep_pct",         value: "80",    label: "Rider Earnings % (of fare)",    category: "rider" },
+  { key: "rider_acceptance_km",    value: "5",     label: "Acceptance Radius (KM)",        category: "rider" },
+  { key: "rider_max_deliveries",   value: "3",     label: "Max Active Deliveries",         category: "rider" },
+  { key: "rider_bonus_per_trip",   value: "0",     label: "Bonus Per Trip (Rs.)",          category: "rider" },
+  { key: "rider_min_payout",       value: "500",   label: "Minimum Payout (Rs.)",          category: "rider" },
+  { key: "rider_cash_allowed",     value: "on",    label: "Allow Cash Payments",           category: "rider" },
+  /* Vendor Role Settings */
+  { key: "vendor_commission_pct",  value: "15",    label: "Vendor Platform Commission (%)",category: "vendor" },
+  { key: "vendor_min_order",       value: "100",   label: "Vendor Minimum Order (Rs.)",    category: "vendor" },
+  { key: "vendor_max_items",       value: "100",   label: "Max Menu Items Per Vendor",     category: "vendor" },
+  { key: "vendor_settlement_days", value: "7",     label: "Payout Settlement Days",        category: "vendor" },
+  { key: "vendor_auto_approve",    value: "off",   label: "Auto-Approve New Vendors",      category: "vendor" },
+  /* App Feature Toggles */
+  { key: "feature_mart",           value: "on",    label: "Mart (Grocery) Service",        category: "features" },
+  { key: "feature_food",           value: "on",    label: "Food Delivery Service",         category: "features" },
+  { key: "feature_rides",          value: "on",    label: "Taxi & Bike Booking",           category: "features" },
+  { key: "feature_pharmacy",       value: "on",    label: "Pharmacy Service",              category: "features" },
+  { key: "feature_parcel",         value: "on",    label: "Parcel Delivery Service",       category: "features" },
+  { key: "feature_wallet",         value: "on",    label: "Digital Wallet",                category: "features" },
+  { key: "feature_referral",       value: "on",    label: "Referral Program",              category: "features" },
+  { key: "feature_new_users",      value: "on",    label: "New User Registration",         category: "features" },
 ];
 
 export async function getPlatformSettings(): Promise<Record<string, string>> {
