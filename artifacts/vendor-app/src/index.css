@@ -228,3 +228,25 @@ input:focus, textarea:focus, select:focus {
 .tab-indicator {
   transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ── Custom spacing that Tailwind doesn't generate by default ── */
+@layer utilities {
+  .h-13  { height: 3.25rem; }   /* 52px — between h-12 and h-14 */
+  .pb-18 { padding-bottom: 4.5rem; }
+  .pb-22 { padding-bottom: 5.5rem; }
+  .min-h-13 { min-height: 3.25rem; }
+}
+
+/* ── Full-screen mobile app fix ── */
+body { background-color: #f3f4f6; }
+
+/* ── Prevent text input zoom on iOS/Android (zoom triggers when font-size < 16px) ── */
+input, textarea, select {
+  font-size: 16px; /* Tailwind class selectors (higher specificity) will override */
+}
+
+/* ── Consistent focus ring for inputs ── */
+input:focus, textarea:focus, select:focus {
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.3);
+  border-color: #f97316 !important;
+}

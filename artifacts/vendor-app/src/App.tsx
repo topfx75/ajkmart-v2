@@ -35,14 +35,12 @@ function AppRoutes() {
   if (!user) return <Login />;
 
   return (
-    <div className="max-w-md mx-auto relative bg-gray-50 min-h-screen flex flex-col">
-      {/* Main content - padded bottom for nav bar */}
+    <div className="relative bg-gray-100 min-h-screen flex flex-col"
+      style={{ maxWidth: "480px", margin: "0 auto" }}>
+      {/* Main content area — padded bottom for fixed BottomNav */}
       <div
-        className="flex-1 scroll-momentum"
-        style={{
-          paddingBottom: "calc(68px + max(8px, env(safe-area-inset-bottom, 8px)))",
-          overflowY: "auto",
-        }}
+        className="flex-1 scroll-momentum overflow-y-auto"
+        style={{ paddingBottom: "calc(64px + max(8px, env(safe-area-inset-bottom, 8px)))" }}
       >
         <Switch>
           <Route path="/" component={Dashboard} />
