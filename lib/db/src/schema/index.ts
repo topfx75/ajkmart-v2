@@ -6,3 +6,6 @@ export * from "./rides";
 export * from "./live_locations";
 export * from "./pharmacy_orders";
 export * from "./parcel_bookings";
+export * from "./notifications";
+export * from "./saved_addresses";
+export * from "./user_settings";

@@ -10,6 +10,9 @@ import locationsRouter from "./locations.js";
 import categoriesRouter from "./categories.js";
 import pharmacyRouter from "./pharmacy.js";
 import parcelRouter from "./parcel.js";
+import notificationsRouter from "./notifications.js";
+import addressesRouter from "./addresses.js";
+import settingsRouter from "./settings.js";
 
 const router: IRouter = Router();
 
@@ -24,5 +27,8 @@ router.use("/locations", locationsRouter);
 router.use("/categories", categoriesRouter);
 router.use("/pharmacy-orders", pharmacyRouter);
 router.use("/parcel-bookings", parcelRouter);
+router.use("/notifications", notificationsRouter);
+router.use("/addresses", addressesRouter);
+router.use("/settings", settingsRouter);
 
 export default router;
