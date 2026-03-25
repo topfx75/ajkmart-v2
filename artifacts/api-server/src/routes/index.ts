@@ -14,6 +14,7 @@ import notificationsRouter from "./notifications.js";
 import addressesRouter from "./addresses.js";
 import settingsRouter from "./settings.js";
 import seedRouter from "./seed.js";
+import adminRouter from "./admin.js";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use("/notifications", notificationsRouter);
 router.use("/addresses", addressesRouter);
 router.use("/settings", settingsRouter);
 router.use("/seed", seedRouter);
+router.use("/admin", adminRouter);
 
 export default router;
