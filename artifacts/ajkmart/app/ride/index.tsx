@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Dimensions,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -14,566 +17,704 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
-import { bookRide, estimateFare } from "@workspace/api-client-react";
 
-const C = Colors.light;
-type RideType  = "car" | "bike";
-type PayMethod = "cash" | "wallet";
+const C   = Colors.light;
+const W   = Dimensions.get("window").width;
+const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
-const POPULAR_LOCS = ["Muzaffarabad City", "Mirpur AJK", "Rawalakot", "Bagh", "Kotli", "Airport"];
+/* ─── AJK Locations with Coordinates ─── */
+const AJK_LOCS = [
+  { name: "Muzaffarabad Chowk",    lat: 34.3697, lng: 73.4716 },
+  { name: "Mirpur City Centre",    lat: 33.1413, lng: 73.7508 },
+  { name: "Rawalakot Bazar",       lat: 33.8572, lng: 73.7613 },
+  { name: "Bagh City",             lat: 33.9732, lng: 73.7729 },
+  { name: "Kotli Main Chowk",      lat: 33.5152, lng: 73.9019 },
+  { name: "Bhimber",               lat: 32.9755, lng: 74.0727 },
+  { name: "Poonch City",           lat: 33.7700, lng: 74.0954 },
+  { name: "Neelum Valley",         lat: 34.5689, lng: 73.8765 },
+  { name: "Hattian Bala",          lat: 34.0523, lng: 73.8265 },
+  { name: "Sudhnoti",              lat: 33.7457, lng: 73.6920 },
+  { name: "Haveli",                lat: 33.6667, lng: 73.9500 },
+  { name: "Airport Rawalakot",     lat: 33.8489, lng: 73.7978 },
+  { name: "AJK University",        lat: 34.3601, lng: 73.5088 },
+  { name: "CMH Muzaffarabad",      lat: 34.3660, lng: 73.4780 },
+  { name: "Pallandri",             lat: 33.7124, lng: 73.9294 },
+];
 
-/* ── Booked Confirmation Screen ── */
-function BookedScreen({ booked, onReset }: { booked: any; onReset: () => void }) {
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+/* ─── Driver Profiles ─── */
+const DRIVERS = [
+  { name: "Imran Khan",     plate: "AJK 2341", rating: 4.9, trips: 412, eta: "4 min",  type: "bike" as const },
+  { name: "Tariq Mahmood",  plate: "AJK 7892", rating: 4.8, trips: 287, eta: "5 min",  type: "bike" as const },
+  { name: "Shahid Ali",     plate: "AJK 5531", rating: 4.9, trips: 198, eta: "3 min",  type: "bike" as const },
+  { name: "Adnan Farooq",   plate: "AJK 4421", rating: 4.7, trips: 623, eta: "7 min",  type: "car"  as const },
+  { name: "Bilal Hussain",  plate: "AJK 8876", rating: 4.8, trips: 349, eta: "6 min",  type: "car"  as const },
+  { name: "Faisal Anwar",   plate: "AJK 3356", rating: 4.9, trips: 511, eta: "5 min",  type: "car"  as const },
+];
+
+function calcDist(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function calcFare(dist: number, type: "bike" | "car") {
+  return Math.round((type === "bike" ? 15 : 25) + dist * (type === "bike" ? 8 : 12));
+}
+
+/* ─── Searching Overlay ─── */
+function SearchingOverlay({ rideType, onFound, onCancel }: {
+  rideType: "bike" | "car"; onFound: (driver: typeof DRIVERS[0]) => void; onCancel: () => void;
+}) {
+  const pulse = useRef(new Animated.Value(1)).current;
+  const [dots, setDots] = useState(".");
+
+  useEffect(() => {
+    const anim = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1.18, duration: 600, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 1,    duration: 600, useNativeDriver: true }),
+    ]));
+    anim.start();
+
+    const dotTimer = setInterval(() => setDots(d => d.length >= 3 ? "." : d + "."), 400);
+    const foundTimer = setTimeout(() => {
+      const driverPool = DRIVERS.filter(d => d.type === rideType);
+      const driver = driverPool[Math.floor(Math.random() * driverPool.length)]!;
+      onFound(driver);
+    }, 3500);
+
+    return () => { anim.stop(); clearInterval(dotTimer); clearTimeout(foundTimer); };
+  }, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: C.background }]}>
-      {/* header */}
-      <LinearGradient colors={["#059669", "#10B981"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.bookedHeader, { paddingTop: topPad + 16 }]}>
-        <View style={[styles.bookedCircle, { width: 180, height: 180, top: -50, right: -50 }]} />
-        <View style={[styles.bookedCircle, { width: 90, height: 90, bottom: -20, left: 20 }]} />
-        <View style={styles.bookedCheckbox}>
-          <Ionicons name="checkmark" size={38} color="#fff" />
+    <View style={ov.root}>
+      <LinearGradient colors={["#0F3BA8", "#1A56DB"]} style={ov.bg} />
+      <View style={ov.content}>
+        <Animated.View style={[ov.pulseRing, { transform: [{ scale: pulse }] }]}>
+          <View style={ov.pulseInner}>
+            <Ionicons name={rideType === "bike" ? "bicycle" : "car"} size={48} color="#fff" />
+          </View>
+        </Animated.View>
+        <Text style={ov.title}>Driver Dhund Rahe Hain{dots}</Text>
+        <Text style={ov.sub}>AJK mein qareeb se qareeb driver assign ho raha hai</Text>
+        <View style={ov.statsRow}>
+          <View style={ov.statBox}>
+            <Text style={ov.statVal}>50+</Text>
+            <Text style={ov.statLbl}>Active Drivers</Text>
+          </View>
+          <View style={[ov.statBox, { borderLeftWidth: 1, borderLeftColor: "rgba(255,255,255,0.2)" }]}>
+            <Text style={ov.statVal}>2-5</Text>
+            <Text style={ov.statLbl}>Min ETA</Text>
+          </View>
         </View>
-        <Text style={styles.bookedHeaderTitle}>Ride Confirmed!</Text>
-        <Text style={styles.bookedHeaderSub}>Your {booked.type === "bike" ? "🏍️ bike" : "🚗 car"} is on the way</Text>
+        <Pressable onPress={onCancel} style={ov.cancelBtn}>
+          <Text style={ov.cancelTxt}>Cancel Ride</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+/* ─── Confirmed Ride Screen ─── */
+function ConfirmedScreen({ booked, driver, onReset }: { booked: any; driver: typeof DRIVERS[0]; onReset: () => void }) {
+  const insets = useSafeAreaInsets();
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const slideUp = useRef(new Animated.Value(40)).current;
+  const op = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(slideUp, { toValue: 0, useNativeDriver: true, bounciness: 8 }),
+      Animated.timing(op, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.background }}>
+      {/* Green header */}
+      <LinearGradient colors={["#065F46", "#059669"]} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={[cf.header, { paddingTop: topPad + 16 }]}>
+        <View style={cf.checkCircle}>
+          <Ionicons name="checkmark" size={34} color="#fff" />
+        </View>
+        <Text style={cf.headerTitle}>Ride Confirmed! 🎉</Text>
+        <Text style={cf.headerSub}>Driver aapki taraf aa raha hai</Text>
       </LinearGradient>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.bookedContent}>
-        {/* Driver Info */}
-        <View style={styles.driverCard}>
-          <View style={styles.driverAvatar}>
-            <Text style={styles.driverAvatarTxt}>{booked.type === "bike" ? "🏍" : "🚗"}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.driverName}>{booked.type === "bike" ? "Bike Rider" : "Car Driver"} Assigned</Text>
-            <View style={styles.driverMeta}>
-              <View style={styles.starRow}>
-                {[1,2,3,4,5].map(s => <Ionicons key={s} name="star" size={12} color="#F59E0B" />)}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 14 }}>
+        <Animated.View style={{ opacity: op, transform: [{ translateY: slideUp }] }}>
+
+          {/* Driver Card */}
+          <View style={cf.card}>
+            <View style={cf.driverRow}>
+              <View style={cf.driverAvatar}>
+                <Text style={{ fontSize: 28 }}>{booked.type === "bike" ? "🏍" : "🚗"}</Text>
               </View>
-              <Text style={styles.driverRating}>4.9 • 250+ trips</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={cf.driverName}>{driver.name}</Text>
+                <View style={cf.ratingRow}>
+                  {[1,2,3,4,5].map(i => (
+                    <Ionicons key={i} name={i <= Math.floor(driver.rating) ? "star" : "star-outline"} size={12} color="#F59E0B" />
+                  ))}
+                  <Text style={cf.ratingTxt}>{driver.rating} • {driver.trips} trips</Text>
+                </View>
+                <View style={cf.plateRow}>
+                  <Ionicons name="car-outline" size={13} color={C.textMuted} />
+                  <Text style={cf.plateTxt}>{driver.plate}</Text>
+                  <View style={cf.etaBadge}>
+                    <Ionicons name="time-outline" size={11} color="#059669" />
+                    <Text style={cf.etaTxt}>ETA: {driver.eta}</Text>
+                  </View>
+                </View>
+              </View>
+              <View style={{ gap: 8 }}>
+                <Pressable style={cf.actionBtn}>
+                  <Ionicons name="call-outline" size={20} color={C.primary} />
+                </Pressable>
+                <Pressable style={cf.actionBtn}>
+                  <Ionicons name="chatbubble-outline" size={19} color={C.primary} />
+                </Pressable>
+              </View>
             </View>
-            <Text style={styles.driverEta}>ETA: {booked.estimatedTime || "5–10 min"}</Text>
           </View>
-          <View style={styles.driverActions}>
-            <Pressable style={styles.driverActionBtn}>
-              <Ionicons name="call-outline" size={20} color={C.primary} />
+
+          {/* Route Card */}
+          <View style={cf.card}>
+            <Text style={cf.cardTitle}>Route Details</Text>
+            <View style={cf.routeRow}>
+              <View style={{ alignItems: "center", gap: 4 }}>
+                <View style={[cf.routeDot, { backgroundColor: "#10B981" }]} />
+                <View style={cf.routeLine} />
+                <View style={[cf.routeDot, { backgroundColor: "#EF4444" }]} />
+              </View>
+              <View style={{ flex: 1, gap: 12 }}>
+                <View>
+                  <Text style={cf.routeLabel}>Pickup</Text>
+                  <Text style={cf.routeVal}>{booked.pickupAddress}</Text>
+                </View>
+                <View>
+                  <Text style={cf.routeLabel}>Drop</Text>
+                  <Text style={cf.routeVal}>{booked.dropAddress}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Fare Card */}
+          <View style={cf.card}>
+            <Text style={cf.cardTitle}>Fare Breakdown</Text>
+            <View style={cf.fareRows}>
+              <View style={cf.fareRow}><Text style={cf.fareLbl}>Vehicle</Text><Text style={cf.fareVal}>{booked.type === "bike" ? "🏍️ Bike" : "🚗 Car"}</Text></View>
+              <View style={cf.fareRow}><Text style={cf.fareLbl}>Distance</Text><Text style={cf.fareVal}>{booked.distance} km</Text></View>
+              <View style={cf.fareRow}><Text style={cf.fareLbl}>Payment</Text><Text style={cf.fareVal}>{booked.paymentMethod === "wallet" ? "💳 Wallet" : "💵 Cash"}</Text></View>
+              <View style={[cf.fareRow, cf.fareTotalRow]}>
+                <Text style={cf.fareTotalLbl}>Total Fare</Text>
+                <Text style={cf.fareTotalVal}>Rs. {booked.fare}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Ride ID */}
+          <View style={cf.rideIdRow}>
+            <Ionicons name="receipt-outline" size={14} color={C.textMuted} />
+            <Text style={cf.rideIdTxt}>Ride ID: #{booked.id?.slice(-8).toUpperCase()}</Text>
+          </View>
+
+          {/* Safety */}
+          <View style={cf.safetyRow}>
+            <Ionicons name="shield-checkmark" size={14} color="#059669" />
+            <Text style={cf.safetyTxt}>Insured ride • Verified driver • GPS tracked</Text>
+          </View>
+
+          {/* Buttons */}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+            <Pressable onPress={() => router.push("/(tabs)")} style={cf.homeBtn}>
+              <Ionicons name="home-outline" size={17} color={C.primary} />
+              <Text style={cf.homeBtnTxt}>Home</Text>
             </Pressable>
-            <Pressable style={styles.driverActionBtn}>
-              <Ionicons name="chatbubble-outline" size={20} color={C.primary} />
+            <Pressable onPress={onReset} style={cf.newBtn}>
+              <Ionicons name="add" size={17} color="#fff" />
+              <Text style={cf.newBtnTxt}>New Ride</Text>
             </Pressable>
           </View>
-        </View>
-
-        {/* Route Card */}
-        <View style={styles.routeCard}>
-          <View style={styles.routeRow}>
-            <View style={[styles.routeDot, { backgroundColor: C.primary }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.routeLabel}>Pickup</Text>
-              <Text style={styles.routeVal}>{booked.pickupAddress}</Text>
-            </View>
-          </View>
-          <View style={styles.routeLine} />
-          <View style={styles.routeRow}>
-            <View style={[styles.routeDot, { backgroundColor: C.danger }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.routeLabel}>Drop</Text>
-              <Text style={styles.routeVal}>{booked.dropAddress}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Fare Summary */}
-        <View style={styles.fareCard}>
-          <Text style={styles.fareCardTitle}>Fare Summary</Text>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Vehicle</Text>
-            <Text style={styles.fareVal}>{booked.type === "bike" ? "🏍️ Bike" : "🚗 Car"}</Text>
-          </View>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Distance</Text>
-            <Text style={styles.fareVal}>{booked.distance} km</Text>
-          </View>
-          <View style={styles.fareRow}>
-            <Text style={styles.fareLabel}>Payment</Text>
-            <Text style={styles.fareVal}>{booked.paymentMethod === "wallet" ? "💳 Wallet" : "💵 Cash"}</Text>
-          </View>
-          <View style={[styles.fareRow, styles.fareTotalRow]}>
-            <Text style={styles.fareTotalLbl}>Total Fare</Text>
-            <Text style={styles.fareTotalVal}>Rs. {booked.fare}</Text>
-          </View>
-        </View>
-
-        {/* Ride ID */}
-        <View style={styles.rideIdCard}>
-          <Ionicons name="receipt-outline" size={16} color={C.textMuted} />
-          <Text style={styles.rideIdTxt}>Ride ID: #{booked.id?.slice(-8).toUpperCase()}</Text>
-        </View>
-
-        {/* Buttons */}
-        <View style={styles.bookedBtns}>
-          <Pressable onPress={() => router.push("/")} style={styles.homeBtn}>
-            <Ionicons name="home-outline" size={18} color={C.primary} />
-            <Text style={styles.homeBtnTxt}>Home</Text>
-          </Pressable>
-          <Pressable onPress={onReset} style={styles.newRideBtn}>
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={styles.newRideBtnTxt}>New Ride</Text>
-          </Pressable>
-        </View>
-
-        <View style={{ height: 40 }} />
+        </Animated.View>
+        <View style={{ height: 30 }} />
       </ScrollView>
     </View>
   );
 }
 
-/* ════════════════════════════════════ MAIN SCREEN ════════════════════════════════════ */
+/* ════════════════════ MAIN RIDE SCREEN ════════════════════ */
 export default function RideScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const [pickup, setPickup]     = useState("");
-  const [drop,   setDrop]       = useState("");
-  const [rideType, setRideType] = useState<RideType>("bike");
-  const [payMethod, setPayMethod] = useState<PayMethod>("cash");
-  const [estimate, setEstimate] = useState<{ fare: number; distance: number; duration: string } | null>(null);
-  const [loading,    setLoading]    = useState(false);
-  const [estimating, setEstimating] = useState(false);
-  const [booked, setBooked] = useState<any>(null);
-  const [showPickupSuggest, setShowPickupSuggest] = useState(false);
-  const [showDropSuggest,   setShowDropSuggest]   = useState(false);
+  const { user, updateUser } = useAuth();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  const handleEstimate = async () => {
-    if (!pickup || !drop) { Alert.alert("Required", "Enter both pickup and drop locations"); return; }
-    setEstimating(true);
-    setEstimate(null);
-    try {
-      const res = await estimateFare({ pickupLat: 33.7, pickupLng: 73.4, dropLat: 33.72, dropLng: 73.44, type: rideType });
-      setEstimate(res);
-    } catch { Alert.alert("Error", "Could not estimate fare. Please try again."); }
-    setEstimating(false);
-  };
+  const [pickup,     setPickup]    = useState("");
+  const [drop,       setDrop]      = useState("");
+  const [pickupObj,  setPickupObj] = useState<typeof AJK_LOCS[0] | null>(null);
+  const [dropObj,    setDropObj]   = useState<typeof AJK_LOCS[0] | null>(null);
+  const [rideType,   setRideType]  = useState<"bike" | "car">("bike");
+  const [payMethod,  setPayMethod] = useState<"cash" | "wallet">("cash");
+  const [estimate,   setEstimate]  = useState<{ fare: number; dist: number; dur: string } | null>(null);
+  const [booking,    setBooking]   = useState(false);
+  const [searching,  setSearching] = useState(false);
+  const [booked,     setBooked]    = useState<any>(null);
+  const [driver,     setDriver]    = useState<typeof DRIVERS[0] | null>(null);
+  const [showHistory,setShowHistory] = useState(false);
+  const [history,    setHistory]   = useState<any[]>([]);
+  const [histLoading,setHistLoading] = useState(false);
+
+  const [pickupFocus, setPickupFocus] = useState(false);
+  const [dropFocus,   setDropFocus]   = useState(false);
+
+  /* auto-estimate when both selected */
+  useEffect(() => {
+    if (pickupObj && dropObj) {
+      const dist = Math.round(calcDist(pickupObj, dropObj) * 10) / 10;
+      const fare = calcFare(dist, rideType);
+      const dur  = `${Math.round(dist * 3 + 5)} min`;
+      setEstimate({ fare, dist, dur });
+    } else {
+      setEstimate(null);
+    }
+  }, [pickupObj, dropObj, rideType]);
+
+  const pickupSugg = AJK_LOCS.filter(l => !pickup || l.name.toLowerCase().includes(pickup.toLowerCase()));
+  const dropSugg   = AJK_LOCS.filter(l => !drop   || l.name.toLowerCase().includes(drop.toLowerCase()));
 
   const handleBook = async () => {
-    if (!user) { Alert.alert("Login Required", "Please login to book a ride"); return; }
-    if (!pickup || !drop) { Alert.alert("Required", "Enter pickup and drop locations"); return; }
-    if (payMethod === "wallet" && estimate && user.walletBalance < estimate.fare) {
-      Alert.alert("Insufficient Balance", `Your wallet balance is Rs. ${user.walletBalance}. Please top up.`, [
+    if (!pickup || !drop) { Alert.alert("Required", "Pickup aur drop location select karein"); return; }
+    if (!user)            { Alert.alert("Login", "Please login to book a ride"); return; }
+    if (payMethod === "wallet" && estimate && (user.walletBalance ?? 0) < estimate.fare) {
+      Alert.alert("Insufficient Balance", `Wallet balance: Rs. ${user.walletBalance}\nFare: Rs. ${estimate.fare}`, [
         { text: "Cancel" },
         { text: "Top Up", onPress: () => router.push("/(tabs)/wallet") },
       ]);
       return;
     }
-    setLoading(true);
+    setBooking(true);
     try {
-      const res = await bookRide({
-        userId: user.id,
-        type: rideType,
-        pickupAddress: pickup,
-        dropAddress: drop,
-        pickupLat: 33.7,
-        pickupLng: 73.4,
-        dropLat: 33.72,
-        dropLng: 73.44,
-        paymentMethod: payMethod,
+      const res = await fetch(`${API}/rides`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id, type: rideType,
+          pickupAddress: pickup, dropAddress: drop,
+          pickupLat: pickupObj?.lat ?? 34.37, pickupLng: pickupObj?.lng ?? 73.47,
+          dropLat: dropObj?.lat ?? 33.14,     dropLng: dropObj?.lng ?? 73.75,
+          paymentMethod: payMethod,
+        }),
       });
-      setBooked(res);
-    } catch (e: any) {
-      Alert.alert("Booking Failed", e.message || "Could not book ride. Please try again.");
-    }
-    setLoading(false);
+      const data = await res.json();
+      if (!res.ok) { Alert.alert("Error", data.error || "Booking failed"); return; }
+      if (payMethod === "wallet") updateUser({ walletBalance: (user.walletBalance ?? 0) - data.fare });
+      setBooked(data);
+      setSearching(true);
+    } catch { Alert.alert("Error", "Network error. Please try again."); }
+    finally { setBooking(false); }
   };
 
-  if (booked) {
-    return <BookedScreen booked={booked} onReset={() => { setBooked(null); setPickup(""); setDrop(""); setEstimate(null); }} />;
+  const fetchHistory = async () => {
+    if (!user) return;
+    setHistLoading(true);
+    try {
+      const res = await fetch(`${API}/rides?userId=${user.id}`);
+      const data = await res.json();
+      setHistory(data.rides || []);
+    } catch { setHistory([]); }
+    finally { setHistLoading(false); }
+  };
+
+  const onDriverFound = (d: typeof DRIVERS[0]) => {
+    setSearching(false);
+    setDriver(d);
+  };
+
+  if (searching && booked) {
+    return <SearchingOverlay rideType={rideType} onFound={onDriverFound} onCancel={() => { setSearching(false); setBooked(null); }} />;
+  }
+  if (booked && driver) {
+    return <ConfirmedScreen booked={booked} driver={driver} onReset={() => { setBooked(null); setDriver(null); setPickup(""); setDrop(""); setPickupObj(null); setDropObj(null); setEstimate(null); }} />;
   }
 
-  const bikeFeatures = ["Rs.15 base + Rs.8/km", "Helmet included", "Fastest route", "Live tracking"];
-  const carFeatures  = ["Rs.25 base + Rs.12/km", "AC available", "Up to 4 passengers", "Live tracking"];
+  const bikeFeatures = ["Rs. 15 base + Rs. 8/km", "Helmet included", "Fastest route", "GPS tracked"];
+  const carFeatures  = ["Rs. 25 base + Rs. 12/km", "AC available", "4 passengers", "GPS tracked"];
 
   return (
-    <View style={[styles.container, { backgroundColor: C.background }]}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       {/* HEADER */}
-      <LinearGradient
-        colors={["#065F46", "#059669", "#10B981"]}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={[styles.header, { paddingTop: topPad + 10 }]}
-      >
-        <View style={[styles.blob2, { width: 160, height: 160, top: -50, right: -40 }]} />
-        <View style={styles.hdrRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+      <LinearGradient colors={["#065F46","#059669","#10B981"]} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={[rs.header, { paddingTop: topPad + 12 }]}>
+        <View style={[rs.blob, { width:180, height:180, top:-50, right:-40 }]} />
+        <View style={rs.hdrRow}>
+          <Pressable onPress={() => router.back()} style={rs.backBtn}>
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.hdrTitle}>Book a Ride</Text>
-            <Text style={styles.hdrSub}>AJK mein kahin bhi, kabhi bhi</Text>
+          <View style={{ flex:1, marginLeft:10 }}>
+            <Text style={rs.hdrTitle}>🚗 Book a Ride</Text>
+            <Text style={rs.hdrSub}>AJK mein kahin bhi, kabhi bhi</Text>
           </View>
-          <View style={styles.hdrIcon}>
-            <Ionicons name="car" size={22} color="#fff" />
-          </View>
+          <Pressable onPress={() => { setShowHistory(true); fetchHistory(); }} style={rs.histBtn}>
+            <Ionicons name="time-outline" size={18} color="#fff" />
+          </Pressable>
         </View>
 
-        {/* Location Inputs */}
-        <View style={styles.locCard}>
+        {/* Location Card */}
+        <View style={rs.locCard}>
           {/* Pickup */}
-          <View style={styles.locRow}>
-            <View style={styles.locGreen} />
+          <View style={rs.locRow}>
+            <View style={rs.dotGreen} />
             <TextInput
-              style={styles.locInput}
               value={pickup}
-              onChangeText={v => { setPickup(v); setShowPickupSuggest(v.length > 0); setEstimate(null); }}
+              onChangeText={v => { setPickup(v); setPickupObj(null); }}
+              onFocus={() => setPickupFocus(true)}
+              onBlur={() => setTimeout(() => setPickupFocus(false), 200)}
               placeholder="Pickup location"
               placeholderTextColor={C.textMuted}
-              onFocus={() => setShowPickupSuggest(true)}
-              onBlur={() => setTimeout(() => setShowPickupSuggest(false), 150)}
+              style={rs.locInput}
             />
             {pickup.length > 0 && (
-              <Pressable onPress={() => { setPickup(""); setEstimate(null); }}>
+              <Pressable onPress={() => { setPickup(""); setPickupObj(null); }}>
                 <Ionicons name="close-circle" size={16} color={C.textMuted} />
               </Pressable>
             )}
           </View>
 
-          {showPickupSuggest && (
-            <View style={styles.suggestBox}>
-              {POPULAR_LOCS.filter(l => !pickup || l.toLowerCase().includes(pickup.toLowerCase())).map(loc => (
-                <Pressable key={loc} onPress={() => { setPickup(loc); setShowPickupSuggest(false); }} style={styles.suggestRow}>
-                  <Ionicons name="location-outline" size={14} color={C.primary} />
-                  <Text style={styles.suggestTxt}>{loc}</Text>
-                </Pressable>
-              ))}
+          {pickupFocus && pickupSugg.length > 0 && (
+            <View style={rs.sugg}>
+              <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always">
+                {pickupSugg.slice(0, 6).map(loc => (
+                  <Pressable key={loc.name} onPress={() => { setPickup(loc.name); setPickupObj(loc); setPickupFocus(false); }} style={rs.suggRow}>
+                    <Ionicons name="location-outline" size={14} color="#10B981" />
+                    <Text style={rs.suggTxt}>{loc.name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </View>
           )}
 
-          <View style={styles.locSep}>
-            <View style={styles.locSepLine} />
-            <Pressable onPress={() => { const t = pickup; setPickup(drop); setDrop(t); setEstimate(null); }} style={styles.swapBtn}>
+          <View style={rs.sep}>
+            <View style={rs.sepLine} />
+            <Pressable onPress={() => { const t = pickup; const to = pickupObj; setPickup(drop); setPickupObj(dropObj); setDrop(t); setDropObj(to); }} style={rs.swapBtn}>
               <Ionicons name="swap-vertical" size={14} color={C.primary} />
             </Pressable>
-            <View style={styles.locSepLine} />
+            <View style={rs.sepLine} />
           </View>
 
           {/* Drop */}
-          <View style={styles.locRow}>
-            <View style={styles.locRed} />
+          <View style={rs.locRow}>
+            <View style={rs.dotRed} />
             <TextInput
-              style={styles.locInput}
               value={drop}
-              onChangeText={v => { setDrop(v); setShowDropSuggest(v.length > 0); setEstimate(null); }}
+              onChangeText={v => { setDrop(v); setDropObj(null); }}
+              onFocus={() => setDropFocus(true)}
+              onBlur={() => setTimeout(() => setDropFocus(false), 200)}
               placeholder="Drop location"
               placeholderTextColor={C.textMuted}
-              onFocus={() => setShowDropSuggest(true)}
-              onBlur={() => setTimeout(() => setShowDropSuggest(false), 150)}
+              style={rs.locInput}
             />
             {drop.length > 0 && (
-              <Pressable onPress={() => { setDrop(""); setEstimate(null); }}>
+              <Pressable onPress={() => { setDrop(""); setDropObj(null); }}>
                 <Ionicons name="close-circle" size={16} color={C.textMuted} />
               </Pressable>
             )}
           </View>
 
-          {showDropSuggest && (
-            <View style={styles.suggestBox}>
-              {POPULAR_LOCS.filter(l => !drop || l.toLowerCase().includes(drop.toLowerCase())).map(loc => (
-                <Pressable key={loc} onPress={() => { setDrop(loc); setShowDropSuggest(false); }} style={styles.suggestRow}>
-                  <Ionicons name="location-outline" size={14} color={C.danger} />
-                  <Text style={styles.suggestTxt}>{loc}</Text>
-                </Pressable>
-              ))}
+          {dropFocus && dropSugg.length > 0 && (
+            <View style={rs.sugg}>
+              <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always">
+                {dropSugg.slice(0, 6).map(loc => (
+                  <Pressable key={loc.name} onPress={() => { setDrop(loc.name); setDropObj(loc); setDropFocus(false); }} style={rs.suggRow}>
+                    <Ionicons name="location-outline" size={14} color="#EF4444" />
+                    <Text style={rs.suggTxt}>{loc.name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </View>
           )}
         </View>
       </LinearGradient>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={rs.scroll}>
         {/* Popular Locations */}
-        <View style={styles.secRow}>
-          <Text style={styles.secTitle}>Popular Locations</Text>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.popRow}>
-          {POPULAR_LOCS.map(loc => (
-            <Pressable key={loc} onPress={() => { if (!pickup) setPickup(loc); else if (!drop) setDrop(loc); setEstimate(null); }} style={styles.popChip}>
-              <Ionicons name="location-outline" size={13} color={C.primary} />
-              <Text style={styles.popChipTxt}>{loc}</Text>
+        <View style={rs.secRow}><Text style={rs.secTitle}>Popular Locations</Text></View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={rs.chips}>
+          {AJK_LOCS.slice(0, 8).map(loc => (
+            <Pressable key={loc.name} onPress={() => { if (!pickup) { setPickup(loc.name); setPickupObj(loc); } else if (!drop) { setDrop(loc.name); setDropObj(loc); } }} style={rs.chip}>
+              <Ionicons name="location-outline" size={12} color="#059669" />
+              <Text style={rs.chipTxt}>{loc.name}</Text>
             </Pressable>
           ))}
         </ScrollView>
 
-        {/* Vehicle Selection */}
-        <View style={styles.secRow}>
-          <Text style={styles.secTitle}>Choose Vehicle</Text>
-          {estimate && (
-            <View style={styles.estimateBadge}>
-              <Ionicons name="pricetag-outline" size={12} color={C.success} />
-              <Text style={styles.estimateBadgeTxt}>Fare estimated</Text>
-            </View>
-          )}
+        {/* Vehicle Cards */}
+        <View style={rs.secRow}><Text style={rs.secTitle}>Vehicle Type</Text></View>
+        <View style={rs.vehicleRow}>
+          {(["bike", "car"] as const).map(type => {
+            const active = rideType === type;
+            const feats = type === "bike" ? bikeFeatures : carFeatures;
+            const fromPrice = type === "bike" ? "Rs. 50" : "Rs. 100";
+            return (
+              <Pressable key={type} onPress={() => setRideType(type)} style={[rs.vCard, active && rs.vCardActive]}>
+                {active && <LinearGradient colors={["#059669","#10B981"]} style={rs.vGrad} />}
+                <View style={[rs.vIconBox, { backgroundColor: active ? "rgba(255,255,255,0.2)" : "#D1FAE5" }]}>
+                  <Ionicons name={type === "bike" ? "bicycle" : "car"} size={32} color={active ? "#fff" : "#059669"} />
+                </View>
+                <Text style={[rs.vTitle, active && { color: "#fff" }]}>{type === "bike" ? "Bike" : "Car"}</Text>
+                <Text style={[rs.vFrom, active && { color: "rgba(255,255,255,0.85)" }]}>From {fromPrice}</Text>
+                <View style={{ gap: 5, marginTop: 8 }}>
+                  {feats.map(f => (
+                    <View key={f} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                      <Ionicons name="checkmark-circle" size={11} color={active ? "rgba(255,255,255,0.8)" : "#059669"} />
+                      <Text style={[rs.vFeat, active && { color: "rgba(255,255,255,0.85)" }]}>{f}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <View style={styles.vehicleRow}>
-          {/* BIKE */}
-          <Pressable onPress={() => { setRideType("bike"); setEstimate(null); }} style={[styles.vehicleCard, rideType === "bike" && styles.vehicleCardActive]}>
-            {rideType === "bike" && (
-              <LinearGradient colors={["#059669", "#10B981"]} style={styles.vehicleActiveBg} />
-            )}
-            <View style={[styles.vehicleIcon, { backgroundColor: rideType === "bike" ? "rgba(255,255,255,0.2)" : "#DCFCE7" }]}>
-              <Ionicons name="bicycle" size={30} color={rideType === "bike" ? "#fff" : "#059669"} />
-            </View>
-            <Text style={[styles.vehicleTitle, rideType === "bike" && { color: "#fff" }]}>Bike</Text>
-            <Text style={[styles.vehicleSub, rideType === "bike" && { color: "rgba(255,255,255,0.8)" }]}>From Rs. 50</Text>
-            <View style={styles.vehicleFeatures}>
-              {bikeFeatures.map(f => (
-                <View key={f} style={styles.vehicleFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={12} color={rideType === "bike" ? "rgba(255,255,255,0.8)" : C.success} />
-                  <Text style={[styles.vehicleFeatureTxt, rideType === "bike" && { color: "rgba(255,255,255,0.85)" }]}>{f}</Text>
-                </View>
-              ))}
-            </View>
-          </Pressable>
-
-          {/* CAR */}
-          <Pressable onPress={() => { setRideType("car"); setEstimate(null); }} style={[styles.vehicleCard, rideType === "car" && styles.vehicleCardActive]}>
-            {rideType === "car" && (
-              <LinearGradient colors={["#059669", "#10B981"]} style={styles.vehicleActiveBg} />
-            )}
-            <View style={[styles.vehicleIcon, { backgroundColor: rideType === "car" ? "rgba(255,255,255,0.2)" : "#DCFCE7" }]}>
-              <Ionicons name="car" size={30} color={rideType === "car" ? "#fff" : "#059669"} />
-            </View>
-            <Text style={[styles.vehicleTitle, rideType === "car" && { color: "#fff" }]}>Car</Text>
-            <Text style={[styles.vehicleSub, rideType === "car" && { color: "rgba(255,255,255,0.8)" }]}>From Rs. 100</Text>
-            <View style={styles.vehicleFeatures}>
-              {carFeatures.map(f => (
-                <View key={f} style={styles.vehicleFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={12} color={rideType === "car" ? "rgba(255,255,255,0.8)" : C.success} />
-                  <Text style={[styles.vehicleFeatureTxt, rideType === "car" && { color: "rgba(255,255,255,0.85)" }]}>{f}</Text>
-                </View>
-              ))}
-            </View>
-          </Pressable>
-        </View>
-
-        {/* Fare Estimate Card */}
+        {/* Fare Estimate */}
         {estimate && (
-          <View style={styles.fareEstCard}>
-            <LinearGradient colors={["#F0FDF4", "#DCFCE7"]} style={styles.fareEstInner}>
-              <View style={styles.fareEstHeader}>
-                <Ionicons name="pricetag" size={18} color="#059669" />
-                <Text style={styles.fareEstTitle}>Fare Estimate</Text>
-              </View>
-              <View style={styles.fareEstRow}>
-                <View style={styles.fareEstItem}>
-                  <Text style={styles.fareEstLbl}>Distance</Text>
-                  <Text style={styles.fareEstVal}>{estimate.distance} km</Text>
+          <View style={rs.fareCard}>
+            <LinearGradient colors={["#F0FDF4","#DCFCE7"]} style={rs.fareInner}>
+              <Text style={rs.fareTitle}>📍 Fare Estimate</Text>
+              <View style={rs.fareGrid}>
+                <View style={rs.fareItem}>
+                  <Text style={rs.fareItemLbl}>Distance</Text>
+                  <Text style={rs.fareItemVal}>{estimate.dist} km</Text>
                 </View>
-                <View style={styles.fareEstDivider} />
-                <View style={styles.fareEstItem}>
-                  <Text style={styles.fareEstLbl}>Duration</Text>
-                  <Text style={styles.fareEstVal}>{estimate.duration}</Text>
+                <View style={rs.fareDivider} />
+                <View style={rs.fareItem}>
+                  <Text style={rs.fareItemLbl}>Duration</Text>
+                  <Text style={rs.fareItemVal}>{estimate.dur}</Text>
                 </View>
-                <View style={styles.fareEstDivider} />
-                <View style={styles.fareEstItem}>
-                  <Text style={styles.fareEstLbl}>Total Fare</Text>
-                  <Text style={[styles.fareEstVal, { color: "#059669", fontSize: 18 }]}>Rs. {estimate.fare}</Text>
+                <View style={rs.fareDivider} />
+                <View style={rs.fareItem}>
+                  <Text style={rs.fareItemLbl}>Total Fare</Text>
+                  <Text style={[rs.fareItemVal, { color: "#059669", fontSize: 20 }]}>Rs. {estimate.fare}</Text>
                 </View>
               </View>
             </LinearGradient>
           </View>
         )}
 
-        {/* Payment Method */}
-        <View style={styles.secRow}>
-          <Text style={styles.secTitle}>Payment</Text>
-        </View>
-        <View style={styles.payRow}>
-          <Pressable onPress={() => setPayMethod("cash")} style={[styles.payCard, payMethod === "cash" && styles.payCardActive]}>
-            <View style={[styles.payIconBox, { backgroundColor: payMethod === "cash" ? "#D1FAE5" : C.surfaceSecondary }]}>
-              <Ionicons name="cash-outline" size={22} color={payMethod === "cash" ? C.success : C.textSecondary} />
-            </View>
-            <Text style={[styles.payLbl, payMethod === "cash" && styles.payLblActive]}>Cash</Text>
-            <Text style={styles.paySub}>Pay on arrival</Text>
-            {payMethod === "cash" && <View style={styles.payCheck}><Ionicons name="checkmark" size={12} color="#fff" /></View>}
-          </Pressable>
-
-          <Pressable onPress={() => setPayMethod("wallet")} style={[styles.payCard, payMethod === "wallet" && styles.payCardActive]}>
-            <View style={[styles.payIconBox, { backgroundColor: payMethod === "wallet" ? "#DBEAFE" : C.surfaceSecondary }]}>
-              <Ionicons name="wallet-outline" size={22} color={payMethod === "wallet" ? C.primary : C.textSecondary} />
-            </View>
-            <Text style={[styles.payLbl, payMethod === "wallet" && styles.payLblActive]}>Wallet</Text>
-            <Text style={[styles.paySub, (user?.walletBalance || 0) < (estimate?.fare || 0) && { color: C.danger }]}>
-              Rs. {user?.walletBalance?.toLocaleString() || 0}
-            </Text>
-            {payMethod === "wallet" && <View style={[styles.payCheck, { backgroundColor: C.primary }]}><Ionicons name="checkmark" size={12} color="#fff" /></View>}
-          </Pressable>
+        {/* Payment */}
+        <View style={rs.secRow}><Text style={rs.secTitle}>Payment Method</Text></View>
+        <View style={rs.payRow}>
+          {(["cash", "wallet"] as const).map(pm => {
+            const active = payMethod === pm;
+            const insufficient = pm === "wallet" && estimate && (user?.walletBalance ?? 0) < estimate.fare;
+            return (
+              <Pressable key={pm} onPress={() => setPayMethod(pm)} style={[rs.payCard, active && rs.payCardActive]}>
+                <View style={[rs.payIcon, { backgroundColor: active ? (pm === "wallet" ? "#DBEAFE" : "#D1FAE5") : "#F1F5F9" }]}>
+                  <Ionicons name={pm === "cash" ? "cash-outline" : "wallet-outline"} size={22} color={active ? (pm === "wallet" ? C.primary : C.success) : C.textSecondary} />
+                </View>
+                <Text style={[rs.payLbl, active && { color: C.text, fontFamily: "Inter_700Bold" }]}>{pm === "cash" ? "Cash" : "Wallet"}</Text>
+                <Text style={[rs.paySub, insufficient && { color: C.danger }]}>
+                  {pm === "cash" ? "Pay on arrival" : `Rs. ${(user?.walletBalance ?? 0).toLocaleString()}`}
+                </Text>
+                {active && <View style={[rs.payCheck, { backgroundColor: pm === "wallet" ? C.primary : C.success }]}><Ionicons name="checkmark" size={11} color="#fff" /></View>}
+              </Pressable>
+            );
+          })}
         </View>
 
-        {/* Safety info */}
-        <View style={styles.safetyCard}>
-          <Ionicons name="shield-checkmark-outline" size={16} color={C.success} />
-          <Text style={styles.safetyTxt}>All rides are insured • Drivers are verified • GPS tracked</Text>
+        {/* Safety */}
+        <View style={rs.safetyRow}>
+          <Ionicons name="shield-checkmark-outline" size={15} color="#059669" />
+          <Text style={rs.safetyTxt}>All rides insured • Verified drivers • GPS tracked</Text>
         </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionRow}>
-          <Pressable onPress={handleEstimate} disabled={estimating} style={styles.estimateBtn}>
-            {estimating ? (
-              <ActivityIndicator color={C.primary} size="small" />
-            ) : (
-              <>
-                <Ionicons name="calculator-outline" size={17} color={C.primary} />
-                <Text style={styles.estimateBtnTxt}>Get Estimate</Text>
-              </>
-            )}
-          </Pressable>
-          <Pressable onPress={handleBook} disabled={loading} style={[styles.bookBtn, loading && { opacity: 0.7 }]}>
-            {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Ionicons name="car-outline" size={18} color="#fff" />
-                <Text style={styles.bookBtnTxt}>Book Now</Text>
-              </>
-            )}
-          </Pressable>
-        </View>
+        {/* Book Button */}
+        <Pressable onPress={handleBook} disabled={booking} style={[rs.bookBtn, booking && { opacity: 0.7 }]}>
+          {booking ? <ActivityIndicator color="#fff" /> : (
+            <>
+              <Ionicons name={rideType === "bike" ? "bicycle" : "car"} size={20} color="#fff" />
+              <Text style={rs.bookBtnTxt}>Book {rideType === "bike" ? "Bike" : "Car"} Now{estimate ? ` • Rs. ${estimate.fare}` : ""}</Text>
+            </>
+          )}
+        </Pressable>
 
-        <View style={{ height: Platform.OS === "web" ? 34 : 40 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Ride History Modal */}
+      <Modal visible={showHistory} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowHistory(false)}>
+        <View style={rs.histModal}>
+          <View style={rs.histHeader}>
+            <Text style={rs.histTitle}>My Ride History</Text>
+            <Pressable onPress={() => setShowHistory(false)}>
+              <Ionicons name="close" size={22} color={C.text} />
+            </Pressable>
+          </View>
+          {histLoading ? (
+            <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
+          ) : history.length === 0 ? (
+            <View style={rs.histEmpty}>
+              <Text style={{ fontSize: 48 }}>🚗</Text>
+              <Text style={rs.histEmptyTxt}>Abhi tak koi ride book nahi hui</Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8 }}>
+              {history.map((ride, i) => (
+                <View key={ride.id || i} style={rs.histItem}>
+                  <View style={[rs.histIcon, { backgroundColor: ride.type === "bike" ? "#D1FAE5" : "#DBEAFE" }]}>
+                    <Ionicons name={ride.type === "bike" ? "bicycle" : "car"} size={20} color={ride.type === "bike" ? "#059669" : C.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={rs.histRoute}>{ride.pickupAddress} → {ride.dropAddress}</Text>
+                    <Text style={rs.histMeta}>{ride.distance} km • {new Date(ride.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    <Text style={rs.histFare}>Rs. {ride.fare}</Text>
+                    <View style={[rs.histStatus, { backgroundColor: ride.status === "completed" ? "#D1FAE5" : "#FEF3C7" }]}>
+                      <Text style={[rs.histStatusTxt, { color: ride.status === "completed" ? "#059669" : "#D97706" }]}>{ride.status}</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+              <View style={{ height: 30 }} />
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
+/* ── Searching Overlay Styles ── */
+const ov = StyleSheet.create({
+  root: { flex: 1 },
+  bg: { ...StyleSheet.absoluteFillObject },
+  content: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 20 },
+  pulseRing: { width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
+  pulseInner: { width: 100, height: 100, borderRadius: 50, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  title: { fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff", textAlign: "center" },
+  sub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.8)", textAlign: "center", lineHeight: 19 },
+  statsRow: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, overflow: "hidden" },
+  statBox: { flex: 1, alignItems: "center", padding: 14, gap: 3 },
+  statVal: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff" },
+  statLbl: { fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.75)" },
+  cancelBtn: { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 14, paddingHorizontal: 24, paddingVertical: 13, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)" },
+  cancelTxt: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#fff" },
+});
 
-  /* header */
+/* ── Confirmed Screen Styles ── */
+const cf = StyleSheet.create({
+  header: { paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", gap: 8 },
+  checkCircle: { width: 72, height: 72, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff" },
+  headerSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.85)" },
+  card: { backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border },
+  driverRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  driverAvatar: { width: 56, height: 56, borderRadius: 16, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center" },
+  driverName: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, marginBottom: 3 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 5 },
+  ratingTxt: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginLeft: 4 },
+  plateRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  plateTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textSecondary },
+  etaBadge: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#D1FAE5", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
+  etaTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#059669" },
+  actionBtn: { width: 38, height: 38, borderRadius: 11, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
+  cardTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, marginBottom: 12 },
+  routeRow: { flexDirection: "row", gap: 12, alignItems: "stretch" },
+  routeDot: { width: 12, height: 12, borderRadius: 6 },
+  routeLine: { flex: 1, width: 2, backgroundColor: C.border, alignSelf: "center" },
+  routeLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
+  routeVal: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 },
+  fareRows: { gap: 8 },
+  fareRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  fareLbl: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted },
+  fareVal: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text },
+  fareTotalRow: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
+  fareTotalLbl: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text },
+  fareTotalVal: { fontFamily: "Inter_700Bold", fontSize: 18, color: "#059669" },
+  rideIdRow: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "center" },
+  rideIdTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
+  safetyRow: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "center", backgroundColor: "#D1FAE5", padding: 10, borderRadius: 12 },
+  safetyTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#065F46" },
+  homeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 14, borderRadius: 14, backgroundColor: "#EFF6FF" },
+  homeBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.primary },
+  newBtn: { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 14, borderRadius: 14, backgroundColor: "#059669" },
+  newBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+});
+
+/* ── Main Screen Styles ── */
+const rs = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 16, overflow: "hidden" },
-  hdrRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
-  backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+  blob: { position: "absolute", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.08)" },
+  hdrRow: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
   hdrTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff" },
   hdrSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.8)" },
-  hdrIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
-  blob2: { position: "absolute", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.08)" },
+  histBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
 
-  /* location card */
-  locCard: { backgroundColor: "#fff", borderRadius: 16, padding: 14, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 },
+  locCard: { backgroundColor: "#fff", borderRadius: 16, padding: 14, elevation: 4 },
   locRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  locGreen: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#10B981", borderWidth: 2, borderColor: "#D1FAE5" },
-  locRed:   { width: 12, height: 12, borderRadius: 6, backgroundColor: C.danger,   borderWidth: 2, borderColor: "#FEE2E2" },
-  locInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, color: C.text, paddingVertical: 8 },
-  locSep: { flexDirection: "row", alignItems: "center", marginVertical: 4, marginLeft: 5, gap: 8 },
-  locSepLine: { flex: 1, height: 1, backgroundColor: C.borderLight },
+  dotGreen: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#10B981", borderWidth: 2, borderColor: "#D1FAE5" },
+  dotRed:   { width: 12, height: 12, borderRadius: 6, backgroundColor: "#EF4444", borderWidth: 2, borderColor: "#FEE2E2" },
+  locInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, color: C.text, paddingVertical: 9 },
+  sep: { flexDirection: "row", alignItems: "center", marginVertical: 4, gap: 8 },
+  sepLine: { flex: 1, height: 1, backgroundColor: C.borderLight },
   swapBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
+  sugg: { backgroundColor: "#F8FAFC", borderRadius: 10, marginTop: 4, borderWidth: 1, borderColor: C.borderLight, maxHeight: 180 },
+  suggRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.borderLight },
+  suggTxt: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.text },
 
-  /* suggestions */
-  suggestBox: { backgroundColor: "#F8FAFC", borderRadius: 10, marginTop: 4, borderWidth: 1, borderColor: C.borderLight, overflow: "hidden" },
-  suggestRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.borderLight },
-  suggestTxt: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.text },
-
-  /* section */
-  secRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 20, marginBottom: 12 },
+  scroll: { padding: 16 },
+  secRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 16, marginBottom: 10 },
   secTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text },
-  estimateBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#D1FAE5", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  estimateBadgeTxt: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.success },
 
-  /* popular locations */
-  popRow: { paddingHorizontal: 16, gap: 8 },
-  popChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#DBEAFE" },
-  popChipTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.primary },
+  chips: { gap: 8 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#DCFCE7", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
+  chipTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: "#065F46" },
 
-  /* vehicle selection */
-  vehicleRow: { flexDirection: "row", paddingHorizontal: 16, gap: 12 },
-  vehicleCard: {
-    flex: 1, borderRadius: 18, borderWidth: 1.5, borderColor: C.border,
-    backgroundColor: C.surface, padding: 16, alignItems: "center", gap: 6, overflow: "hidden",
-  },
-  vehicleCardActive: { borderColor: "#10B981" },
-  vehicleActiveBg: { ...StyleSheet.absoluteFillObject, borderRadius: 16 },
-  vehicleIcon: { width: 60, height: 60, borderRadius: 18, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  vehicleTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text },
-  vehicleSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginBottom: 8 },
-  vehicleFeatures: { width: "100%", gap: 5 },
-  vehicleFeatureRow: { flexDirection: "row", alignItems: "center", gap: 5 },
-  vehicleFeatureTxt: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textSecondary, flex: 1 },
+  vehicleRow: { flexDirection: "row", gap: 12 },
+  vCard: { flex: 1, borderRadius: 16, padding: 14, borderWidth: 1.5, borderColor: C.border, backgroundColor: "#fff", overflow: "hidden" },
+  vCardActive: { borderColor: "#059669" },
+  vGrad: { ...StyleSheet.absoluteFillObject, borderRadius: 16 },
+  vIconBox: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  vTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
+  vFrom: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginBottom: 4 },
+  vFeat: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textSecondary },
 
-  /* fare estimate */
-  fareEstCard: { marginHorizontal: 16, marginTop: 8, borderRadius: 16, overflow: "hidden", borderWidth: 1.5, borderColor: "#A7F3D0" },
-  fareEstInner: { borderRadius: 16, padding: 16 },
-  fareEstHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
-  fareEstTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#065F46" },
-  fareEstRow: { flexDirection: "row", justifyContent: "space-between" },
-  fareEstItem: { flex: 1, alignItems: "center", gap: 4 },
-  fareEstDivider: { width: 1, backgroundColor: "#A7F3D0" },
-  fareEstLbl: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#047857" },
-  fareEstVal: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#065F46" },
+  fareCard: { borderRadius: 14, overflow: "hidden", marginTop: 12 },
+  fareInner: { padding: 16 },
+  fareTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#065F46", marginBottom: 12 },
+  fareGrid: { flexDirection: "row", alignItems: "center" },
+  fareItem: { flex: 1, alignItems: "center" },
+  fareItemLbl: { fontFamily: "Inter_400Regular", fontSize: 11, color: "#065F46", opacity: 0.7 },
+  fareItemVal: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#059669", marginTop: 3 },
+  fareDivider: { width: 1, height: 36, backgroundColor: "rgba(5,150,105,0.2)" },
 
-  /* payment */
-  payRow: { flexDirection: "row", paddingHorizontal: 16, gap: 12 },
-  payCard: {
-    flex: 1, borderRadius: 16, borderWidth: 1.5, borderColor: C.border,
-    backgroundColor: C.surface, padding: 14, alignItems: "center", gap: 6, position: "relative",
-  },
-  payCardActive: { borderColor: C.primary, backgroundColor: "#F0F7FF" },
-  payIconBox: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center", marginBottom: 2 },
-  payLbl: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textSecondary },
-  payLblActive: { color: C.text },
+  payRow: { flexDirection: "row", gap: 10 },
+  payCard: { flex: 1, alignItems: "center", padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: C.border, backgroundColor: "#fff", gap: 5, position: "relative" },
+  payCardActive: { borderColor: C.success },
+  payIcon: { width: 46, height: 46, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  payLbl: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textSecondary },
   paySub: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
-  payCheck: { position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: C.success, alignItems: "center", justifyContent: "center" },
+  payCheck: { position: "absolute", top: 8, right: 8, width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
 
-  /* safety */
-  safetyCard: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 16, marginTop: 16, backgroundColor: "#F0FDF4", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#A7F3D0" },
-  safetyTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#047857", flex: 1 },
+  safetyRow: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#D1FAE5", padding: 10, borderRadius: 12, marginTop: 12 },
+  safetyTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#065F46", flex: 1 },
 
-  /* action buttons */
-  scrollContent: { paddingBottom: 20 },
-  actionRow: { flexDirection: "row", paddingHorizontal: 16, gap: 12, marginTop: 20 },
-  estimateBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: C.primary, borderRadius: 16, paddingVertical: 15, backgroundColor: "#EFF6FF" },
-  estimateBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.primary },
-  bookBtn: { flex: 1.5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#059669", borderRadius: 16, paddingVertical: 15 },
-  bookBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
+  bookBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: "#059669", borderRadius: 16, paddingVertical: 16, marginTop: 16 },
+  bookBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" },
 
-  /* booked confirmation */
-  bookedHeader: { paddingHorizontal: 24, paddingBottom: 32, alignItems: "center", overflow: "hidden" },
-  bookedCircle: { position: "absolute", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.1)" },
-  bookedCheckbox: { width: 80, height: 80, borderRadius: 24, backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center", borderWidth: 2.5, borderColor: "rgba(255,255,255,0.5)", marginBottom: 14 },
-  bookedHeaderTitle: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#fff", marginBottom: 6 },
-  bookedHeaderSub: { fontFamily: "Inter_400Regular", fontSize: 15, color: "rgba(255,255,255,0.88)" },
-  bookedContent: { paddingHorizontal: 16, paddingTop: 16 },
-  driverCard: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: C.surface, borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },
-  driverAvatar: { width: 54, height: 54, borderRadius: 16, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center" },
-  driverAvatarTxt: { fontSize: 28 },
-  driverName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text, marginBottom: 4 },
-  driverMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 3 },
-  starRow: { flexDirection: "row" },
-  driverRating: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
-  driverEta: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#059669" },
-  driverActions: { gap: 8 },
-  driverActionBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
-  routeCard: { backgroundColor: C.surface, borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
-  routeRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  routeDot: { width: 14, height: 14, borderRadius: 7, marginTop: 3 },
-  routeLine: { width: 2, height: 20, backgroundColor: C.borderLight, marginLeft: 6, marginVertical: 5 },
-  routeLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginBottom: 2 },
-  routeVal: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.text },
-  fareCard: { backgroundColor: C.surface, borderRadius: 18, padding: 16, marginBottom: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
-  fareCardTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text, marginBottom: 14 },
-  fareRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.borderLight },
-  fareTotalRow: { borderBottomWidth: 0, marginTop: 6, paddingTop: 12, borderTopWidth: 2, borderTopColor: C.border },
-  fareLabel: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary },
-  fareVal: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
-  fareTotalLbl: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text },
-  fareTotalVal: { fontFamily: "Inter_700Bold", fontSize: 22, color: "#059669" },
-  rideIdCard: { flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center", marginBottom: 20 },
-  rideIdTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
-  bookedBtns: { flexDirection: "row", gap: 12 },
-  homeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: C.primary, borderRadius: 16, paddingVertical: 15, backgroundColor: "#EFF6FF" },
-  homeBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.primary },
-  newRideBtn: { flex: 1.5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#059669", borderRadius: 16, paddingVertical: 15 },
-  newRideBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
+  histModal: { flex: 1, backgroundColor: "#fff" },
+  histHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
+  histTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
+  histEmpty: { alignItems: "center", justifyContent: "center", flex: 1, gap: 12 },
+  histEmptyTxt: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.textMuted },
+  histItem: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.borderLight },
+  histIcon: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  histRoute: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, flex: 1 },
+  histMeta: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginTop: 3 },
+  histFare: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text },
+  histStatus: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  histStatusTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10 },
 });

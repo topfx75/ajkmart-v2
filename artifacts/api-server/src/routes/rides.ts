@@ -71,6 +71,21 @@ router.post("/", async (req, res) => {
   });
 });
 
+router.get("/", async (req, res) => {
+  const userId = req.query["userId"] as string;
+  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+  const rides = await db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(ridesTable.createdAt);
+  res.json({
+    rides: rides.map(r => ({
+      ...r,
+      fare: parseFloat(r.fare),
+      distance: parseFloat(r.distance),
+      createdAt: r.createdAt.toISOString(),
+    })).reverse(),
+    total: rides.length,
+  });
+});
+
 router.get("/:id", async (req, res) => {
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, req.params["id"]!)).limit(1);
   if (!ride) {
