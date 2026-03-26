@@ -107,10 +107,11 @@ router.post("/send", async (req, res) => {
   // Platform settings validation
   const s = await getPlatformSettings();
   const walletEnabled  = (s["feature_wallet"]      ?? "on") === "on";
-  const p2pEnabled     = (s["wallet_p2p_enabled"]  ?? "on") === "on";
-  const minWithdrawal  = parseFloat(s["wallet_min_withdrawal"] ?? "200");
+  const p2pEnabled     = (s["wallet_p2p_enabled"]   ?? "on") === "on";
+  const minWithdrawal  = parseFloat(s["wallet_min_withdrawal"]   ?? "200");
   const maxWithdrawal  = parseFloat(s["wallet_max_withdrawal"]   ?? "10000");
   const dailyLimit     = parseFloat(s["wallet_daily_limit"]      ?? "20000");
+  const p2pDailyLimit  = parseFloat(s["wallet_p2p_daily_limit"]  ?? "10000");
 
   if (!p2pEnabled) {
     res.status(403).json({ error: "P2P money transfers are currently disabled by admin." }); return;
@@ -134,7 +135,8 @@ router.post("/send", async (req, res) => {
 
       const senderBalance = parseFloat(sender.walletBalance ?? "0");
       if (senderBalance < sendAmt) throw new Error("Insufficient wallet balance");
-      if (sendAmt > dailyLimit) throw new Error(`Daily transfer limit is Rs. ${dailyLimit}`);
+      if (sendAmt > dailyLimit) throw new Error(`Daily wallet limit is Rs. ${dailyLimit}`);
+      if (sendAmt > p2pDailyLimit) throw new Error(`Daily P2P transfer limit is Rs. ${p2pDailyLimit}`);
 
       const [receiver] = await tx.select().from(usersTable).where(eq(usersTable.phone, receiverPhone)).limit(1);
       if (!receiver) throw new Error("Receiver not found. Phone number check karein.");

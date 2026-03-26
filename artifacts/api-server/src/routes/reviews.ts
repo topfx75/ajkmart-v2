@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { reviewsTable } from "@workspace/db/schema";
+import { ordersTable, reviewsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -26,6 +26,22 @@ router.post("/", async (req, res) => {
   if (!reviewsEnabled) {
     res.status(503).json({ error: "Customer reviews are currently disabled." });
     return;
+  }
+
+  /* ── Rating window enforcement: order must be recent enough ── */
+  const ratingWindowHours = parseFloat(s["order_rating_window_hours"] ?? "48");
+  const [orderRow] = await db.select({ createdAt: ordersTable.createdAt })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId))
+    .limit(1);
+  if (orderRow) {
+    const ageHours = (Date.now() - new Date(orderRow.createdAt).getTime()) / (3_600_000);
+    if (ageHours > ratingWindowHours) {
+      res.status(400).json({
+        error: `Reviews can only be submitted within ${ratingWindowHours} hours of order completion.`,
+      });
+      return;
+    }
   }
 
   const existing = await db

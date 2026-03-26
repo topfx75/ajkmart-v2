@@ -53,7 +53,23 @@ function Tap({ children, onPress, style, delay = 0 }: {
 }
 
 /* ─────────────────────────── HERO card ─────────────────────────── */
-function HeroCard({ onPress, appName = "AJKMart" }: { onPress: () => void; appName?: string }) {
+function HeroCard({ onPress, appName = "AJKMart", disabled = false }: { onPress: () => void; appName?: string; disabled?: boolean }) {
+  if (disabled) {
+    return (
+      <View style={styles.heroWrap}>
+        <View style={[styles.heroCard, { backgroundColor: "#F3F4F6" }]}>
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 24 }}>
+            <Ionicons name="storefront-outline" size={40} color="#9CA3AF" />
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#9CA3AF" }}>Grocery Mart</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#E5E7EB", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 }}>
+              <Ionicons name="close-circle-outline" size={12} color="#6B7280" />
+              <Text style={{ fontSize: 11, color: "#6B7280", fontWeight: "600" }}>Unavailable</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
   return (
     <Tap onPress={onPress} style={styles.heroWrap} delay={80}>
       <LinearGradient colors={["#0D47C0","#1A56DB","#2563EB"]} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={styles.heroCard}>
@@ -422,7 +438,7 @@ export default function HomeScreen() {
         ) : null}
 
         <View style={styles.grid}>
-          <HeroCard onPress={() => features.mart ? router.push("/mart") : undefined} appName={appName} />
+          <HeroCard onPress={() => router.push("/mart")} appName={appName} disabled={!features.mart} />
 
           <View style={styles.halfRow}>
             <SvcCard

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
+import { usersTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -44,10 +44,8 @@ router.post("/send-otp", async (req, res) => {
     return;
   }
 
-  /* ── Check if phone verify is required (must have a registered account) ── */
-  if (existingUser.length === 0 && settings["security_phone_verify"] === "on") {
-    /* Allow registration — phone verify just means OTP cannot be bypassed */
-  }
+  /* ── Phone verify flag: when ON, OTP bypass is disabled globally ──
+     Enforcement happens in verify-otp; nothing to gate at send-otp. ── */
 
   /* ── Check lockout before generating new OTP ── */
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
@@ -135,7 +133,6 @@ router.post("/verify-otp", async (req, res) => {
 
   const maxAttempts    = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"]    ?? "30", 10);
-  const sessionDays    = parseInt(settings["security_session_days"]       ?? "30", 10);
 
   /* ── Lockout check ── */
   const lockoutStatus = checkLockout(phone, maxAttempts, lockoutMinutes);
@@ -173,8 +170,10 @@ router.post("/verify-otp", async (req, res) => {
     return;
   }
 
-  /* ── OTP Bypass Mode (dev/testing only) ── */
-  const otpBypass = settings["security_otp_bypass"] === "on";
+  /* ── OTP Bypass Mode (dev/testing only) ──
+     security_phone_verify=on overrides the bypass, enforcing real OTP for all users. ── */
+  const phoneVerifyRequired = settings["security_phone_verify"] === "on";
+  const otpBypass = settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
 
   /* ── OTP code check ── */
   if (!otpBypass && user.otpCode !== otp) {
@@ -212,6 +211,28 @@ router.post("/verify-otp", async (req, res) => {
        any pending OTP which signals last-login is this session. */
   }
 
+  /* ── Signup bonus on first login ── */
+  const isFirstLogin = !user.lastLoginAt;
+  if (isFirstLogin) {
+    const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
+    if (signupBonus > 0) {
+      await db.update(usersTable)
+        .set({ walletBalance: (parseFloat(user.walletBalance ?? "0") + signupBonus).toFixed(2) })
+        .where(eq(usersTable.id, user.id))
+        .catch(() => {});
+      await db.insert(walletTransactionsTable).values({
+        id: generateId(), userId: user.id, type: "bonus",
+        amount: signupBonus.toFixed(2),
+        description: `Welcome bonus — Thanks for joining AJKMart!`,
+      }).catch(() => {});
+      await db.insert(notificationsTable).values({
+        id: generateId(), userId: user.id,
+        title: "Welcome Bonus! 🎁", body: `Rs. ${signupBonus} has been added to your wallet as a welcome bonus!`,
+        type: "wallet", icon: "gift-outline",
+      }).catch(() => {});
+    }
+  }
+
   /* ── Success: clear OTP + update last login ── */
   await db
     .update(usersTable)
@@ -221,6 +242,11 @@ router.post("/verify-otp", async (req, res) => {
   resetAttempts(phone);
 
   addAuditEntry({ action: "user_login", ip, details: `Successful login for phone: ${phone} (role: ${user.role})`, result: "success" });
+
+  /* ── Role-specific session duration ── */
+  const sessionDays = user.role === "rider"
+    ? parseInt(settings["security_rider_token_days"] ?? "7",  10)
+    : parseInt(settings["security_session_days"]     ?? "30", 10);
 
   /* ── Build token: userId:phone:issuedAt ── */
   const issuedAt = Date.now();
@@ -265,19 +291,22 @@ router.post("/validate-token", async (req, res) => {
     const issuedAt = parseInt(parts[parts.length - 1]!, 10);
     if (isNaN(issuedAt)) { res.status(401).json({ valid: false, error: "Invalid token" }); return; }
 
-    const settings   = await getCachedSettings();
-    const sessionDays = parseInt(settings["security_session_days"] ?? "30", 10);
-    const expiryMs   = sessionDays * 24 * 60 * 60 * 1000;
-
-    if (Date.now() - issuedAt > expiryMs) {
-      res.status(401).json({ valid: false, error: "Session expired. Please log in again." });
-      return;
-    }
+    const settings = await getCachedSettings();
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (!user) { res.status(401).json({ valid: false, error: "User not found" }); return; }
     if (user.isBanned) { res.status(403).json({ valid: false, error: "Account suspended" }); return; }
     if (!user.isActive) { res.status(403).json({ valid: false, error: "Account inactive" }); return; }
+
+    const sessionDays = user.role === "rider"
+      ? parseInt(settings["security_rider_token_days"] ?? "7",  10)
+      : parseInt(settings["security_session_days"]     ?? "30", 10);
+    const expiryMs = sessionDays * 24 * 60 * 60 * 1000;
+
+    if (Date.now() - issuedAt > expiryMs) {
+      res.status(401).json({ valid: false, error: "Session expired. Please log in again." });
+      return;
+    }
 
     const expiresAt = new Date(issuedAt + expiryMs).toISOString();
     res.json({ valid: true, expiresAt, userId: user.id, role: user.role });

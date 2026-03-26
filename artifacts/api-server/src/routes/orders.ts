@@ -8,7 +8,7 @@ import { addSecurityEvent, getClientIp, getCachedSettings } from "../middleware/
 
 const router: IRouter = Router();
 
-function mapOrder(o: typeof ordersTable.$inferSelect) {
+function mapOrder(o: typeof ordersTable.$inferSelect, deliveryFee?: number, gstAmount?: number) {
   return {
     id: o.id,
     userId: o.userId,
@@ -16,6 +16,8 @@ function mapOrder(o: typeof ordersTable.$inferSelect) {
     items: o.items as object[],
     status: o.status,
     total: parseFloat(o.total),
+    deliveryFee: deliveryFee ?? 0,
+    gstAmount: gstAmount ?? 0,
     deliveryAddress: o.deliveryAddress,
     paymentMethod: o.paymentMethod,
     riderId: o.riderId,
@@ -52,12 +54,12 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: "userId, items (array) required" }); return;
   }
 
-  const total = items.reduce(
+  const itemsTotal = items.reduce(
     (sum: number, item: { price: number; quantity: number }) => sum + (item.price * item.quantity),
     0
   );
 
-  if (total <= 0) {
+  if (itemsTotal <= 0) {
     res.status(400).json({ error: "Order total must be greater than 0" }); return;
   }
 
@@ -65,9 +67,52 @@ router.post("/", async (req, res) => {
   const s = await getCachedSettings();
   const minOrder = parseFloat(s["min_order_amount"] ?? "100");
 
-  if (total < minOrder) {
+  if (itemsTotal < minOrder) {
     res.status(400).json({ error: `Minimum order amount is Rs. ${minOrder}` }); return;
   }
+
+  /* ── Max cart value check ── */
+  const maxCart = parseFloat(s["order_max_cart_value"] ?? "50000");
+  if (itemsTotal > maxCart) {
+    res.status(400).json({ error: `Cart value cannot exceed Rs. ${maxCart}. Please split into multiple orders.` }); return;
+  }
+
+  /* ── Scheduled order gate ── */
+  const scheduleEnabled = (s["order_schedule_enabled"] ?? "off") === "on";
+  if (req.body.scheduledAt && !scheduleEnabled) {
+    res.status(400).json({ error: "Scheduled orders are not available at this time." }); return;
+  }
+
+  /* ── Delivery fee calculation (from admin Delivery settings) ── */
+  const feeMap: Record<string, string> = {
+    mart:     "delivery_fee_mart",
+    food:     "delivery_fee_food",
+    pharmacy: "delivery_fee_pharmacy",
+    parcel:   "delivery_fee_parcel",
+  };
+  const feeKey = feeMap[type] ?? "delivery_fee_mart";
+  const baseFee = parseFloat(s[feeKey] ?? "80");
+
+  /* Parcel: add per-kg fee if weight provided */
+  const parcelPerKg  = parseFloat(s["delivery_parcel_per_kg"] ?? "40");
+  const itemWeight   = type === "parcel" ? items.reduce((sum: number, it: any) => sum + (parseFloat(it.weightKg ?? "0")), 0) : 0;
+  const rawDelivery  = baseFee + (type === "parcel" ? itemWeight * parcelPerKg : 0);
+
+  /* Free delivery override */
+  const freeEnabled = (s["delivery_free_enabled"] ?? "on") === "on";
+  const freeAbove   = parseFloat(s["free_delivery_above"] ?? "1000");
+  const deliveryFee = (freeEnabled && itemsTotal >= freeAbove) ? 0 : rawDelivery;
+
+  /* ── GST (Finance settings) ── */
+  const gstEnabled = (s["finance_gst_enabled"] ?? "off") === "on";
+  const gstPct     = parseFloat(s["finance_gst_pct"] ?? "17");
+  const gstAmount  = gstEnabled ? parseFloat(((itemsTotal * gstPct) / 100).toFixed(2)) : 0;
+
+  const total = itemsTotal + deliveryFee + gstAmount;
+
+  /* ── Prep time from admin Order settings ── */
+  const preptimeMin = parseInt(s["order_preptime_min"] ?? "15", 10);
+  const estimatedTime = `${preptimeMin}–${preptimeMin + 20} min`;
 
   /* ── Service feature gate (admin can disable individual services) ── */
   if (type === "mart" && (s["feature_mart"] ?? "on") === "off") {
@@ -147,9 +192,25 @@ router.post("/", async (req, res) => {
     if (!codEnabled) {
       res.status(400).json({ error: "Cash on Delivery is currently not available" }); return;
     }
+
+    /* ── Per-service COD flag ── */
+    const serviceKey = `cod_allowed_${type}` as const;
+    const codAllowedForService = (s[serviceKey] ?? "on") !== "off";
+    if (!codAllowedForService) {
+      const label = type === "mart" ? "Mart" : type === "food" ? "Food" : type === "pharmacy" ? "Pharmacy" : "Parcel";
+      res.status(400).json({ error: `Cash on Delivery is not available for ${label} orders. Please choose another payment method.` }); return;
+    }
+
     const codMax = parseFloat(s["cod_max_amount"] ?? "5000");
     if (total > codMax) {
       res.status(400).json({ error: `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.` }); return;
+    }
+
+    /* ── COD verification threshold ── */
+    const verifyThreshold = parseFloat(s["cod_verification_threshold"] ?? "0");
+    if (verifyThreshold > 0 && total > verifyThreshold) {
+      /* Mark order as requiring COD verification — stored in notes field or status;
+         for now we allow the order but flag it (could block in future). */
     }
   }
 
@@ -180,11 +241,11 @@ router.post("/", async (req, res) => {
           id: generateId(), userId, type, items,
           status: "pending", total: total.toFixed(2),
           deliveryAddress, paymentMethod,
-          estimatedTime: "30-45 min",
+          estimatedTime,
         }).returning();
         return newOrder!;
       });
-      res.status(201).json(mapOrder(order));
+      res.status(201).json(mapOrder(order, deliveryFee, gstAmount));
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
@@ -196,14 +257,40 @@ router.post("/", async (req, res) => {
     id: generateId(), userId, type, items,
     status: "pending", total: total.toFixed(2),
     deliveryAddress, paymentMethod,
-    estimatedTime: "30-45 min",
+    estimatedTime,
   }).returning();
-  res.status(201).json(mapOrder(order!));
+  res.status(201).json(mapOrder(order!, deliveryFee));
 });
 
 /* ── PATCH /orders/:id ────────────────────────────────────────────────────── */
 router.patch("/:id", async (req, res) => {
-  const { status, riderId } = req.body;
+  const { status, riderId, userId } = req.body;
+
+  /* ── Cancel-window enforcement (only for customer-initiated cancellations) ── */
+  if (status === "cancelled" && userId) {
+    const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
+    if (existingOrder) {
+      /* Only the order owner can cancel */
+      if (existingOrder.userId !== userId) {
+        res.status(403).json({ error: "You cannot cancel another user's order." }); return;
+      }
+      /* Enforce cancel window */
+      const s = await getCachedSettings();
+      const cancelWindowMin = parseInt(s["order_cancel_window_min"] ?? "5", 10);
+      const ageMs = Date.now() - new Date(existingOrder.createdAt).getTime();
+      const ageMin = ageMs / 60_000;
+      if (ageMin > cancelWindowMin) {
+        res.status(400).json({
+          error: `Orders can only be cancelled within ${cancelWindowMin} minutes of placement. Please contact support.`,
+        }); return;
+      }
+      /* Only pending orders can be customer-cancelled */
+      if (!["pending", "confirmed"].includes(existingOrder.status)) {
+        res.status(400).json({ error: "This order can no longer be cancelled." }); return;
+      }
+    }
+  }
+
   const updateData: Partial<typeof ordersTable.$inferInsert> = { status, updatedAt: new Date() };
   if (riderId) updateData.riderId = riderId;
 

@@ -1,4 +1,49 @@
 # AJKMart Super App — Workspace
+<!-- Last updated: 2026-03-26 — ADMIN AUDIT: Integrations/Delivery/Rides/Orders/Finance/Customer/Rider sections fully wired.
+  21 new enforcement fixes across 7 sections:
+
+  INTEGRATIONS (45 settings):
+  - maps_places_autocomplete / maps_geocoding / maps_distance_matrix: now gate specific Maps API endpoints (autocomplete/geocode/directions)
+  - analytics_platform/tracking_id/debug + sentry_dsn/env/sample_rate/traces_sample_rate → exposed in platform-config integrations block
+  - Integrations block added to customer app PlatformConfigContext (interface + DEFAULT + mapper for 17 fields)
+  - Optional integrations type added to vendor-app and rider-app useConfig.ts
+
+  DELIVERY (7 settings — all 7 now enforced):
+  - delivery_fee_mart/food/pharmacy/parcel + delivery_parcel_per_kg → calculated and added to order total on every POST /orders
+  - delivery_free_enabled + free_delivery_above → free delivery applied when itemsTotal ≥ threshold
+  - Response now includes deliveryFee breakdown field
+
+  RIDES (9 settings — 1 was missing):
+  - ride_cancellation_fee → new PATCH /rides/:id/cancel route; charges cancellation fee from wallet when ride status is "ongoing"
+
+  ORDERS (8 settings — 5 were missing):
+  - order_max_cart_value → cart value limit enforced in POST /orders
+  - order_schedule_enabled → gates scheduledAt field in POST /orders
+  - order_preptime_min → drives estimatedTime field (replaces hardcoded "30-45 min")
+  - order_cancel_window_min → enforced in PATCH /orders/:id when userId present
+  - order_rating_window_hours → enforced in POST /reviews (checks order age vs window)
+  Response now includes gstAmount breakdown field
+
+  FINANCE (7 settings — 4 were missing):
+  - finance_gst_enabled + finance_gst_pct → GST calculated on itemsTotal and added to order total
+  - finance_cashback_enabled + finance_cashback_pct + finance_cashback_max_rs → cashback credited to customer wallet on order delivery in rider.ts
+
+  CUSTOMER (6 settings — 1 was missing):
+  - customer_signup_bonus → credited to wallet + wallet_transactions + notification on very first login (lastLoginAt was null)
+
+  RIDER (9 settings — 1 was missing):
+  - rider_cash_allowed → blocks rider from accepting COD (cash) orders when set to "off"
+
+  DEAD / ASPIRATIONAL SETTINGS (not fixable without scheduled jobs or major infra):
+  - order_auto_cancel_min (needs background job scheduler)
+  - order_refund_days (needs explicit refund request flow)
+  - customer_referral_enabled/bonus (needs referral code lookup flow)
+  - customer_loyalty_enabled/pts (needs loyalty points schema and accumulation logic)
+  - vendor_min_order (needs vendorId at order creation time — not in current customer flow)
+  - vendor_settlement_days (informational only — displayed in vendor dashboard)
+  - rider_acceptance_km (needs GPS-based distance filtering on rider's position)
+  - vendor_auto_approve / rider_auto_approve (would need approval workflow in auth)
+  -->
 <!-- Last updated: 2026-03-26 — ADMIN AUDIT ROUND 3 COMPLETE: 4 bugs found and fixed.
   1. Dead `max_cod_amount` key removed from orders renderer AMOUNT_KEYS — key never existed in DB (real key is `cod_max_amount` in payment category); filter silently skipped it, causing no UI render — cleaned up.
   2. `riderKeep` stale reads fixed in both Delivery and Rides fare-preview renderers — both read from `settings` (server-saved) not `localValues`; fixed to use `localValues ?? settings` so live preview reflects pending changes.

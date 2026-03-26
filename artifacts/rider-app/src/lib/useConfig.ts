@@ -101,6 +101,32 @@ export interface PlatformConfig {
     vendorSettleDays: number;
     referralBonus: number;
   };
+  security?: {
+    gpsTracking: boolean;
+    gpsInterval: number;
+    otpBypass: boolean;
+    sessionDays: number;
+    riderTokenDays: number;
+  };
+  integrations?: {
+    pushNotif: boolean;
+    analytics: boolean;
+    analyticsPlatform: string;
+    analyticsTrackingId: string;
+    analyticsDebug: boolean;
+    sentry: boolean;
+    sentryDsn: string;
+    sentryEnvironment: string;
+    sentrySampleRate: number;
+    sentryTracesSampleRate: number;
+    maps: boolean;
+    mapsAutocomplete: boolean;
+    mapsGeocoding: boolean;
+    mapsDistanceMatrix: boolean;
+    whatsapp: boolean;
+    sms: boolean;
+    email: boolean;
+  };
 }
 
 const DEFAULT_CONFIG: PlatformConfig = {
@@ -125,6 +151,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
   deliveryFee: { mart: 80, food: 60, pharmacy: 50, parcel: 100, parcelPerKg: 40, freeEnabled: true, freeDeliveryAbove: 1000 },
   rides: { bikeBaseFare: 15, bikePerKm: 8, bikeMinFare: 50, carBaseFare: 25, carPerKm: 12, carMinFare: 80, surgeEnabled: false, surgeMultiplier: 1.5, cancellationFee: 30, riderEarningPct: 80 },
   finance: { gstEnabled: false, gstPct: 17, cashbackEnabled: false, cashbackPct: 2, cashbackMaxRs: 100, invoiceEnabled: false, platformCommissionPct: 10, vendorCommissionPct: 15, riderEarningPct: 80, minVendorPayout: 500, minRiderPayout: 500, vendorSettleDays: 7, referralBonus: 100 },
+  security: { gpsTracking: true, gpsInterval: 30, otpBypass: false, sessionDays: 30, riderTokenDays: 7 },
 };
 
 export function usePlatformConfig() {

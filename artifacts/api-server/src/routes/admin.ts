@@ -1709,6 +1709,7 @@ router.get("/security-dashboard", adminAuth, async (_req, res) => {
       rateLimitVendor:  parseInt(settings["security_rate_vendor"] ?? "150", 10),
       sessionDays:      parseInt(settings["security_session_days"]      ?? "30", 10),
       adminTokenHrs:    parseInt(settings["security_admin_token_hrs"]   ?? "24", 10),
+      riderTokenDays:   parseInt(settings["security_rider_token_days"]  ?? "7",  10),
       maxLoginAttempts: parseInt(settings["security_login_max_attempts"]?? "5",  10),
       lockoutMinutes:   parseInt(settings["security_lockout_minutes"]   ?? "30", 10),
       maxDailyOrders:   parseInt(settings["security_max_daily_orders"]  ?? "20", 10),

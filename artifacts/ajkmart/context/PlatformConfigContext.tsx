@@ -93,7 +93,14 @@ export interface PlatformConfig {
   customer: {
     walletMax: number;
     minTopup: number;
+    maxTopup: number;
     minTransfer: number;
+    maxTransfer: number;
+    dailyLimit: number;
+    p2pDailyLimit: number;
+    withdrawalProcessingDays: number;
+    kycRequired: boolean;
+    topupMethods: string;
     referralEnabled: boolean;
     referralBonus: number;
     loyaltyEnabled: boolean;
@@ -105,6 +112,25 @@ export interface PlatformConfig {
     walletCashbackOrders: boolean;
     walletCashbackRides: boolean;
     walletCashbackPharm: boolean;
+  };
+  integrations: {
+    pushNotif: boolean;
+    analytics: boolean;
+    analyticsPlatform: string;
+    analyticsTrackingId: string;
+    analyticsDebug: boolean;
+    sentry: boolean;
+    sentryDsn: string;
+    sentryEnvironment: string;
+    sentrySampleRate: number;
+    sentryTracesSampleRate: number;
+    maps: boolean;
+    mapsAutocomplete: boolean;
+    mapsGeocoding: boolean;
+    mapsDistanceMatrix: boolean;
+    whatsapp: boolean;
+    sms: boolean;
+    email: boolean;
   };
 }
 
@@ -162,11 +188,19 @@ const DEFAULT: PlatformConfig = {
     minVendorPayout: 500, minRiderPayout: 500, vendorSettleDays: 7, referralBonus: 100,
   },
   customer: {
-    walletMax: 50000, minTopup: 100, minTransfer: 200,
+    walletMax: 50000, minTopup: 100, maxTopup: 25000, minTransfer: 200, maxTransfer: 10000,
+    dailyLimit: 20000, p2pDailyLimit: 10000, withdrawalProcessingDays: 2, kycRequired: false,
+    topupMethods: "jazzcash,easypaisa,bank",
     referralEnabled: true, referralBonus: 100,
     loyaltyEnabled: true, loyaltyPtsPerRs100: 5,
     maxOrdersDay: 10, signupBonus: 0, p2pEnabled: true,
     walletCashbackPct: 0, walletCashbackOrders: true, walletCashbackRides: false, walletCashbackPharm: false,
+  },
+  integrations: {
+    pushNotif: false, analytics: false, analyticsPlatform: "ga4", analyticsTrackingId: "", analyticsDebug: false,
+    sentry: false, sentryDsn: "", sentryEnvironment: "production", sentrySampleRate: 1.0, sentryTracesSampleRate: 0.1,
+    maps: false, mapsAutocomplete: true, mapsGeocoding: true, mapsDistanceMatrix: true,
+    whatsapp: false, sms: false, email: false,
   },
 };
 
@@ -290,20 +324,46 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           referralBonus:        raw.finance?.referralBonus        ?? DEFAULT.finance.referralBonus,
         },
         customer: {
-          walletMax:          raw.customer?.walletMax          ?? DEFAULT.customer.walletMax,
-          minTopup:           raw.customer?.minTopup           ?? DEFAULT.customer.minTopup,
-          minTransfer:        raw.customer?.minTransfer        ?? DEFAULT.customer.minTransfer,
-          referralEnabled:    raw.customer?.referralEnabled    ?? DEFAULT.customer.referralEnabled,
-          referralBonus:      raw.customer?.referralBonus      ?? DEFAULT.customer.referralBonus,
-          loyaltyEnabled:     raw.customer?.loyaltyEnabled     ?? DEFAULT.customer.loyaltyEnabled,
-          loyaltyPtsPerRs100: raw.customer?.loyaltyPtsPerRs100 ?? DEFAULT.customer.loyaltyPtsPerRs100,
-          maxOrdersDay:         raw.customer?.maxOrdersDay           ?? DEFAULT.customer.maxOrdersDay,
-          signupBonus:          raw.customer?.signupBonus            ?? DEFAULT.customer.signupBonus,
-          p2pEnabled:           raw.customer?.p2pEnabled             ?? DEFAULT.customer.p2pEnabled,
-          walletCashbackPct:    raw.payment?.walletCashbackPct       ?? DEFAULT.customer.walletCashbackPct,
-          walletCashbackOrders: raw.payment?.walletCashbackOrders    ?? DEFAULT.customer.walletCashbackOrders,
-          walletCashbackRides:  raw.payment?.walletCashbackRides     ?? DEFAULT.customer.walletCashbackRides,
-          walletCashbackPharm:  raw.payment?.walletCashbackPharm     ?? DEFAULT.customer.walletCashbackPharm,
+          walletMax:                raw.customer?.walletMax                ?? DEFAULT.customer.walletMax,
+          minTopup:                 raw.customer?.minTopup                 ?? DEFAULT.customer.minTopup,
+          maxTopup:                 raw.customer?.maxTopup                 ?? DEFAULT.customer.maxTopup,
+          minTransfer:              raw.customer?.minTransfer              ?? DEFAULT.customer.minTransfer,
+          maxTransfer:              raw.customer?.maxTransfer              ?? DEFAULT.customer.maxTransfer,
+          dailyLimit:               raw.customer?.dailyLimit               ?? DEFAULT.customer.dailyLimit,
+          p2pDailyLimit:            raw.customer?.p2pDailyLimit            ?? DEFAULT.customer.p2pDailyLimit,
+          withdrawalProcessingDays: raw.customer?.withdrawalProcessingDays ?? DEFAULT.customer.withdrawalProcessingDays,
+          kycRequired:              raw.customer?.kycRequired              ?? DEFAULT.customer.kycRequired,
+          topupMethods:             raw.customer?.topupMethods             ?? DEFAULT.customer.topupMethods,
+          referralEnabled:          raw.customer?.referralEnabled          ?? DEFAULT.customer.referralEnabled,
+          referralBonus:            raw.customer?.referralBonus            ?? DEFAULT.customer.referralBonus,
+          loyaltyEnabled:           raw.customer?.loyaltyEnabled           ?? DEFAULT.customer.loyaltyEnabled,
+          loyaltyPtsPerRs100:       raw.customer?.loyaltyPtsPerRs100       ?? DEFAULT.customer.loyaltyPtsPerRs100,
+          maxOrdersDay:             raw.customer?.maxOrdersDay             ?? DEFAULT.customer.maxOrdersDay,
+          signupBonus:              raw.customer?.signupBonus              ?? DEFAULT.customer.signupBonus,
+          p2pEnabled:               raw.customer?.p2pEnabled               ?? DEFAULT.customer.p2pEnabled,
+          walletCashbackPct:        raw.payment?.walletCashbackPct         ?? DEFAULT.customer.walletCashbackPct,
+          walletCashbackOrders:     raw.payment?.walletCashbackOrders      ?? DEFAULT.customer.walletCashbackOrders,
+          walletCashbackRides:      raw.payment?.walletCashbackRides       ?? DEFAULT.customer.walletCashbackRides,
+          walletCashbackPharm:      raw.payment?.walletCashbackPharm       ?? DEFAULT.customer.walletCashbackPharm,
+        },
+        integrations: {
+          pushNotif:             raw.integrations?.pushNotif             ?? DEFAULT.integrations.pushNotif,
+          analytics:             raw.integrations?.analytics             ?? DEFAULT.integrations.analytics,
+          analyticsPlatform:     raw.integrations?.analyticsPlatform     ?? DEFAULT.integrations.analyticsPlatform,
+          analyticsTrackingId:   raw.integrations?.analyticsTrackingId   ?? DEFAULT.integrations.analyticsTrackingId,
+          analyticsDebug:        raw.integrations?.analyticsDebug        ?? DEFAULT.integrations.analyticsDebug,
+          sentry:                raw.integrations?.sentry                ?? DEFAULT.integrations.sentry,
+          sentryDsn:             raw.integrations?.sentryDsn             ?? DEFAULT.integrations.sentryDsn,
+          sentryEnvironment:     raw.integrations?.sentryEnvironment     ?? DEFAULT.integrations.sentryEnvironment,
+          sentrySampleRate:      raw.integrations?.sentrySampleRate      ?? DEFAULT.integrations.sentrySampleRate,
+          sentryTracesSampleRate:raw.integrations?.sentryTracesSampleRate?? DEFAULT.integrations.sentryTracesSampleRate,
+          maps:                  raw.integrations?.maps                  ?? DEFAULT.integrations.maps,
+          mapsAutocomplete:      raw.integrations?.mapsAutocomplete      ?? DEFAULT.integrations.mapsAutocomplete,
+          mapsGeocoding:         raw.integrations?.mapsGeocoding         ?? DEFAULT.integrations.mapsGeocoding,
+          mapsDistanceMatrix:    raw.integrations?.mapsDistanceMatrix     ?? DEFAULT.integrations.mapsDistanceMatrix,
+          whatsapp:              raw.integrations?.whatsapp              ?? DEFAULT.integrations.whatsapp,
+          sms:                   raw.integrations?.sms                  ?? DEFAULT.integrations.sms,
+          email:                 raw.integrations?.email                 ?? DEFAULT.integrations.email,
         },
       };
       _cached = parsed;

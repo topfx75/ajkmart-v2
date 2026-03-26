@@ -6,11 +6,23 @@ const router: IRouter = Router();
 const GOOGLE_BASE = "https://maps.googleapis.com/maps/api";
 
 /* ─── Helper: resolve API key + check feature gate ─── */
-async function getKey(): Promise<{ key: string | null; enabled: boolean }> {
+async function getKey(): Promise<{
+  key: string | null;
+  enabled: boolean;
+  autocomplete: boolean;
+  geocoding: boolean;
+  distanceMatrix: boolean;
+}> {
   const s = await getPlatformSettings();
   const enabled = (s["integration_maps"] ?? "off") === "on";
   const key     = s["maps_api_key"] ?? "";
-  return { key: key.trim() || null, enabled };
+  return {
+    key:            key.trim() || null,
+    enabled,
+    autocomplete:   (s["maps_places_autocomplete"] ?? "on") === "on",
+    geocoding:      (s["maps_geocoding"]           ?? "on") === "on",
+    distanceMatrix: (s["maps_distance_matrix"]     ?? "on") === "on",
+  };
 }
 
 /* ─── AJK Fallback locations (used when Maps key not configured) ─── */
@@ -49,9 +61,9 @@ router.get("/autocomplete", async (req, res) => {
   const input = String(req.query.input ?? "").trim();
   if (!input) { res.json({ predictions: AJK_FALLBACK, source: "fallback" }); return; }
 
-  const { key, enabled } = await getKey();
+  const { key, enabled, autocomplete } = await getKey();
 
-  if (!enabled || !key) {
+  if (!enabled || !key || !autocomplete) {
     const filtered = input
       ? AJK_FALLBACK.filter(l => l.description.toLowerCase().includes(input.toLowerCase()))
       : AJK_FALLBACK;
@@ -100,9 +112,9 @@ router.get("/geocode", async (req, res) => {
     if (loc) { res.json({ lat: loc.lat, lng: loc.lng, formattedAddress: loc.description, source: "fallback" }); return; }
   }
 
-  const { key, enabled } = await getKey();
+  const { key, enabled, geocoding } = await getKey();
 
-  if (!enabled || !key) {
+  if (!enabled || !key || !geocoding) {
     /* Best-effort text match from fallback */
     const query = (placeId || address).toLowerCase();
     const loc = AJK_FALLBACK.find(l =>
@@ -155,9 +167,9 @@ router.get("/directions", async (req, res) => {
     return;
   }
 
-  const { key, enabled } = await getKey();
+  const { key, enabled, distanceMatrix } = await getKey();
 
-  if (!enabled || !key) {
+  if (!enabled || !key || !distanceMatrix) {
     const km  = Math.round(haversineKm(oLat, oLng, dLat, dLng) * 10) / 10;
     const avg = mode === "bicycling" ? 25 : 45;
     const min = Math.round((km / avg) * 60);

@@ -116,6 +116,7 @@ export function getClientIp(req: Request): string {
    AUDIT LOG
 ══════════════════════════════════════════════════════════════ */
 export function addAuditEntry(entry: Omit<AuditEntry, "timestamp">) {
+  if (settingsCache["security_audit_log"] === "off") return;
   auditLog.unshift({ ...entry, timestamp: new Date().toISOString() });
   if (auditLog.length > 2000) auditLog.splice(2000);
 }

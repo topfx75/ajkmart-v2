@@ -142,8 +142,19 @@ router.post("/orders/:id/accept", async (req, res) => {
   const riderId   = (req as any).riderId;
   const orderId   = req.params["id"]!;
 
-  // Check max simultaneous deliveries limit
   const s = await getPlatformSettings();
+
+  /* ── Cash-order gate: admin can restrict riders from taking cash orders ── */
+  const cashAllowed = (s["rider_cash_allowed"] ?? "on") === "on";
+  if (!cashAllowed) {
+    const [targetOrder] = await db.select({ paymentMethod: ordersTable.paymentMethod })
+      .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+    if (targetOrder?.paymentMethod === "cash") {
+      res.status(403).json({ error: "Cash-on-delivery orders are currently not available for riders." }); return;
+    }
+  }
+
+  // Check max simultaneous deliveries limit
   const maxDeliveries = parseInt(s["rider_max_deliveries"] ?? "3");
   const [activeOrders, activeRides] = await Promise.all([
     db.select({ c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), or(eq(ordersTable.status, "out_for_delivery"), eq(ordersTable.status, "picked_up")))),
@@ -221,6 +232,32 @@ router.patch("/orders/:id/status", async (req, res) => {
       title: "Delivery Earning Credited 💰", body: `Rs. ${earnings} wallet mein add ho gaya!`,
       type: "wallet", icon: "wallet-outline",
     }).catch(() => {});
+
+    /* ── Finance cashback credit to customer ── */
+    const cashbackEnabled = (s["finance_cashback_enabled"] ?? "off") === "on";
+    if (cashbackEnabled && order.userId) {
+      const cashbackPct    = parseFloat(s["finance_cashback_pct"]    ?? "2") / 100;
+      const cashbackMaxRs  = parseFloat(s["finance_cashback_max_rs"] ?? "100");
+      const orderTotal     = safeNum(order.total);
+      const rawCashback    = parseFloat((orderTotal * cashbackPct).toFixed(2));
+      const cashbackAmt    = Math.min(rawCashback, cashbackMaxRs);
+      if (cashbackAmt > 0) {
+        await db.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance + ${cashbackAmt}`, updatedAt: new Date() })
+          .where(eq(usersTable.id, order.userId))
+          .catch(() => {});
+        await db.insert(walletTransactionsTable).values({
+          id: generateId(), userId: order.userId, type: "cashback",
+          amount: cashbackAmt.toFixed(2),
+          description: `Cashback ${Math.round(cashbackPct * 100)}% — Order #${order.id.slice(-6).toUpperCase()}`,
+        }).catch(() => {});
+        await db.insert(notificationsTable).values({
+          id: generateId(), userId: order.userId,
+          title: "Cashback Credited! 🎁", body: `Rs. ${cashbackAmt} cashback added to your wallet!`,
+          type: "wallet", icon: "wallet-outline",
+        }).catch(() => {});
+      }
+    }
   }
 
   res.json({ ...updated, total: safeNum(updated.total) });

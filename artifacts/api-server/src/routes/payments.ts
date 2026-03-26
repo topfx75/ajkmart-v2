@@ -109,13 +109,16 @@ router.get("/methods", async (_req, res) => {
   if (jcEnabled) {
     const jcType = s["jazzcash_type"] ?? "manual";
     const entry: Record<string, unknown> = {
-      id:          "jazzcash",
-      label:       "JazzCash",
-      logo:        "🔴",
-      available:   true,
-      mode:        jcType === "api" ? (s["jazzcash_mode"] ?? "sandbox") : "manual",
-      type:        jcType,
-      description: "JazzCash mobile wallet",
+      id:           "jazzcash",
+      label:        "JazzCash",
+      logo:         "🔴",
+      available:    true,
+      mode:         jcType === "api" ? (s["jazzcash_mode"] ?? "sandbox") : "manual",
+      type:         jcType,
+      description:  "JazzCash mobile wallet",
+      proofRequired:(s["jazzcash_proof_required"] ?? "off") === "on",
+      minAmount:    parseFloat(s["jazzcash_min_amount"] ?? "10"),
+      maxAmount:    parseFloat(s["jazzcash_max_amount"] ?? "100000"),
     };
     if (jcType === "manual") {
       entry["manualName"]         = s["jazzcash_manual_name"]         ?? "";
@@ -129,13 +132,16 @@ router.get("/methods", async (_req, res) => {
   if (epEnabled) {
     const epType = s["easypaisa_type"] ?? "manual";
     const entry: Record<string, unknown> = {
-      id:          "easypaisa",
-      label:       "EasyPaisa",
-      logo:        "🟢",
-      available:   true,
-      mode:        epType === "api" ? (s["easypaisa_mode"] ?? "sandbox") : "manual",
-      type:        epType,
-      description: "EasyPaisa mobile wallet",
+      id:           "easypaisa",
+      label:        "EasyPaisa",
+      logo:         "🟢",
+      available:    true,
+      mode:         epType === "api" ? (s["easypaisa_mode"] ?? "sandbox") : "manual",
+      type:         epType,
+      description:  "EasyPaisa mobile wallet",
+      proofRequired:(s["easypaisa_proof_required"] ?? "off") === "on",
+      minAmount:    parseFloat(s["easypaisa_min_amount"] ?? "10"),
+      maxAmount:    parseFloat(s["easypaisa_max_amount"] ?? "100000"),
     };
     if (epType === "manual") {
       entry["manualName"]         = s["easypaisa_manual_name"]         ?? "";
@@ -148,27 +154,34 @@ router.get("/methods", async (_req, res) => {
   /* ── Bank Transfer ── */
   if (bankEnabled) {
     methods.push({
-      id:           "bank",
-      label:        "Bank Transfer",
-      logo:         "🏦",
-      available:    true,
-      mode:         "manual",
-      type:         "manual",
-      description:  "Direct bank account transfer",
-      bankName:     s["bank_name"]           ?? "",
-      accountTitle: s["bank_account_title"]  ?? "",
-      accountNumber:s["bank_account_number"] ?? "",
-      iban:         s["bank_iban"]           ?? "",
-      instructions: s["bank_instructions"]   ?? "Bank account mein transfer karein aur receipt hum se share karein.",
+      id:              "bank",
+      label:           "Bank Transfer",
+      logo:            "🏦",
+      available:       true,
+      mode:            "manual",
+      type:            "manual",
+      description:     "Direct bank account transfer",
+      bankName:        s["bank_name"]            ?? "",
+      accountTitle:    s["bank_account_title"]   ?? "",
+      accountNumber:   s["bank_account_number"]  ?? "",
+      iban:            s["bank_iban"]             ?? "",
+      branchCode:      s["bank_branch_code"]      ?? "",
+      swiftCode:       s["bank_swift_code"]       ?? "",
+      instructions:    s["bank_instructions"]     ?? "Bank account mein transfer karein aur receipt hum se share karein.",
+      proofRequired:   (s["bank_proof_required"]  ?? "on") === "on",
+      minAmount:       parseFloat(s["bank_min_amount"]       ?? "0"),
+      processingHours: parseInt(s["bank_processing_hours"]   ?? "24"),
     });
   }
 
   res.json({
     methods,
-    currency:     "PKR",
-    minAmount:    parseFloat(s["payment_min_online"] ?? "50"),
-    maxAmount:    parseFloat(s["payment_max_online"] ?? "100000"),
-    timeoutMins:  parseInt(s["payment_timeout_mins"] ?? "15"),
+    currency:          "PKR",
+    minAmount:         parseFloat(s["payment_min_online"]          ?? "50"),
+    maxAmount:         parseFloat(s["payment_max_online"]          ?? "100000"),
+    timeoutMins:       parseInt(s["payment_timeout_mins"]          ?? "15"),
+    receiptRequired:   (s["payment_receipt_required"]              ?? "off") === "on",
+    verifyWindowHours: parseInt(s["payment_verify_window_hours"]   ?? "24"),
   });
 });
 
@@ -248,6 +261,14 @@ router.post("/initiate", async (req, res) => {
     if ((s["jazzcash_enabled"] ?? "off") !== "on") {
       res.status(503).json({ error: "JazzCash is currently disabled" }); return;
     }
+    const jcMin = parseFloat(s["jazzcash_min_amount"] ?? "10");
+    const jcMax = parseFloat(s["jazzcash_max_amount"] ?? "100000");
+    if (parseFloat(amount) < jcMin) {
+      res.status(400).json({ error: `Minimum JazzCash payment is Rs. ${jcMin}` }); return;
+    }
+    if (parseFloat(amount) > jcMax) {
+      res.status(400).json({ error: `Maximum JazzCash payment is Rs. ${jcMax}` }); return;
+    }
     const jcType = s["jazzcash_type"] ?? "manual";
 
     if (jcType === "manual") {
@@ -318,6 +339,14 @@ router.post("/initiate", async (req, res) => {
   if (gateway === "easypaisa") {
     if ((s["easypaisa_enabled"] ?? "off") !== "on") {
       res.status(503).json({ error: "EasyPaisa is currently disabled" }); return;
+    }
+    const epMin = parseFloat(s["easypaisa_min_amount"] ?? "10");
+    const epMax = parseFloat(s["easypaisa_max_amount"] ?? "100000");
+    if (parseFloat(amount) < epMin) {
+      res.status(400).json({ error: `Minimum EasyPaisa payment is Rs. ${epMin}` }); return;
+    }
+    if (parseFloat(amount) > epMax) {
+      res.status(400).json({ error: `Maximum EasyPaisa payment is Rs. ${epMax}` }); return;
     }
     const epType = s["easypaisa_type"] ?? "manual";
 

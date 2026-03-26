@@ -90,6 +90,25 @@ export interface PlatformConfig {
     vendorSettleDays: number;
     referralBonus: number;
   };
+  integrations?: {
+    pushNotif: boolean;
+    analytics: boolean;
+    analyticsPlatform: string;
+    analyticsTrackingId: string;
+    analyticsDebug: boolean;
+    sentry: boolean;
+    sentryDsn: string;
+    sentryEnvironment: string;
+    sentrySampleRate: number;
+    sentryTracesSampleRate: number;
+    maps: boolean;
+    mapsAutocomplete: boolean;
+    mapsGeocoding: boolean;
+    mapsDistanceMatrix: boolean;
+    whatsapp: boolean;
+    sms: boolean;
+    email: boolean;
+  };
 }
 
 const DEFAULT_CONFIG: PlatformConfig = {

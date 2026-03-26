@@ -707,7 +707,7 @@ export default function ProfileScreen() {
         </Pressable>
 
         {/* ── Referral Program Card ── */}
-        {platformConfig.customer.referralEnabled && (
+        {platformConfig.features.referral && platformConfig.customer.referralEnabled && (
           <View style={rc.wrap}>
             <View style={rc.left}>
               <View style={rc.iconBox}>

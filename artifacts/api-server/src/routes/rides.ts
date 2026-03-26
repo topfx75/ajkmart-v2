@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { notificationsTable, platformSettingsTable, ridesTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
+import { notificationsTable, ridesTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -157,6 +157,59 @@ router.post("/", async (req, res) => {
     fare: parseFloat(ride!.fare),
     distance: parseFloat(ride!.distance),
     createdAt: ride!.createdAt.toISOString(),
+  });
+});
+
+/* ── PATCH /rides/:id/cancel — Customer cancels a ride ── */
+router.patch("/:id/cancel", async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+
+  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, req.params["id"]!)).limit(1);
+  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
+  if (!["searching", "ongoing"].includes(ride.status)) {
+    res.status(400).json({ error: "Ride cannot be cancelled at this stage" }); return;
+  }
+
+  const s = await getPlatformSettings();
+  const cancelFee = parseFloat(s["ride_cancellation_fee"] ?? "30");
+
+  /* Charge cancellation fee only if driver already assigned (ongoing) */
+  if (ride.status === "ongoing" && cancelFee > 0) {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (user) {
+      const balance = parseFloat(user.walletBalance ?? "0");
+      const deduct = Math.min(cancelFee, balance);
+      if (deduct > 0) {
+        await db.update(usersTable)
+          .set({ walletBalance: (balance - deduct).toFixed(2) })
+          .where(eq(usersTable.id, userId));
+        await db.insert(walletTransactionsTable).values({
+          id: generateId(), userId, type: "debit",
+          amount: deduct.toFixed(2),
+          description: `Ride cancellation fee — #${ride.id.slice(-6).toUpperCase()}`,
+        }).catch(() => {});
+      }
+    }
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId,
+      title: "Ride Cancelled",
+      body: `A cancellation fee of Rs. ${cancelFee} has been applied.`,
+      type: "ride", icon: "close-circle-outline",
+    }).catch(() => {});
+  }
+
+  const [updated] = await db.update(ridesTable)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(eq(ridesTable.id, req.params["id"]!))
+    .returning();
+
+  res.json({
+    ...updated,
+    fare: parseFloat(updated!.fare),
+    distance: parseFloat(updated!.distance),
+    cancellationFee: ride.status === "ongoing" ? cancelFee : 0,
   });
 });
 

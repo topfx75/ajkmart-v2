@@ -4,7 +4,7 @@ import { getPlatformSettings } from "./admin.js";
 const router: IRouter = Router();
 
 // Public endpoint — all client apps fetch this for config + feature flags
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   const s = await getPlatformSettings();
 
   const jazzcashEnabled  = (s["jazzcash_enabled"]  ?? "off") === "on";
@@ -85,7 +85,13 @@ router.get("/", async (_req, res) => {
       appName:              s["app_name"]           ?? "AJKMart",
       appTagline:           s["app_tagline"]        ?? "Your super app for everything",
       appVersion:           s["app_version"]        ?? "1.0.0",
-      appStatus:            s["app_status"]         ?? "active",
+      appStatus:            (() => {
+        const base = s["app_status"] ?? "active";
+        if (base !== "maintenance") return base;
+        const key = (s["security_maintenance_key"] ?? "").trim();
+        const bypass = ((req.headers["x-maintenance-key"] as string) ?? "").trim();
+        return (key && bypass === key) ? "active" : "maintenance";
+      })(),
       supportPhone:         s["support_phone"]      ?? "03001234567",
       supportEmail:         s["support_email"]      ?? "",
       supportHours:         s["support_hours"]      ?? "Mon–Sat, 8AM–10PM",
@@ -147,16 +153,23 @@ router.get("/", async (_req, res) => {
       referralBonus:         parseFloat(s["customer_referral_bonus"] ?? "100"),
     },
     customer: {
-      walletMax:          parseFloat(s["wallet_max_balance"]        ?? "50000"),
-      minTopup:           parseFloat(s["wallet_min_topup"]          ?? "100"),
-      minTransfer:        parseFloat(s["wallet_min_withdrawal"]     ?? "200"),
-      referralEnabled:    (s["customer_referral_enabled"]           ?? "on") === "on",
-      referralBonus:      parseFloat(s["customer_referral_bonus"]   ?? "100"),
-      loyaltyEnabled:     (s["customer_loyalty_enabled"]            ?? "on") === "on",
-      loyaltyPtsPerRs100: parseFloat(s["customer_loyalty_pts"]      ?? "5"),
-      maxOrdersDay:       parseInt(s["customer_max_orders_day"]     ?? "10"),
-      signupBonus:        parseFloat(s["customer_signup_bonus"]     ?? "0"),
-      p2pEnabled:         (s["wallet_p2p_enabled"]                  ?? "on") === "on",
+      walletMax:                parseFloat(s["wallet_max_balance"]          ?? "50000"),
+      minTopup:                 parseFloat(s["wallet_min_topup"]            ?? "100"),
+      maxTopup:                 parseFloat(s["wallet_max_topup"]            ?? "25000"),
+      minTransfer:              parseFloat(s["wallet_min_withdrawal"]       ?? "200"),
+      maxTransfer:              parseFloat(s["wallet_max_withdrawal"]       ?? "10000"),
+      dailyLimit:               parseFloat(s["wallet_daily_limit"]          ?? "20000"),
+      p2pDailyLimit:            parseFloat(s["wallet_p2p_daily_limit"]      ?? "10000"),
+      withdrawalProcessingDays: parseInt(s["wallet_withdrawal_processing"]  ?? "2"),
+      kycRequired:              (s["wallet_kyc_required"]                   ?? "off") === "on",
+      topupMethods:             (s["wallet_topup_methods"]                  ?? "jazzcash,easypaisa,bank"),
+      referralEnabled:          (s["customer_referral_enabled"]             ?? "on") === "on",
+      referralBonus:            parseFloat(s["customer_referral_bonus"]     ?? "100"),
+      loyaltyEnabled:           (s["customer_loyalty_enabled"]              ?? "on") === "on",
+      loyaltyPtsPerRs100:       parseFloat(s["customer_loyalty_pts"]        ?? "5"),
+      maxOrdersDay:             parseInt(s["customer_max_orders_day"]       ?? "10"),
+      signupBonus:              parseFloat(s["customer_signup_bonus"]       ?? "0"),
+      p2pEnabled:               (s["wallet_p2p_enabled"]                    ?? "on") === "on",
     },
     rider: {
       keepPct:            parseFloat(s["rider_keep_pct"]            ?? "80"),
@@ -180,13 +193,15 @@ router.get("/", async (_req, res) => {
       withdrawalEnabled:  (s["vendor_withdrawal_enabled"]            ?? "on")  === "on",
     },
     security: {
-      gpsTracking: (s["security_gps_tracking"] ?? "on")  === "on",
-      otpBypass:   (s["security_otp_bypass"]   ?? "off") === "on",
-      sessionDays: parseInt(s["security_session_days"] ?? "30"),
-      rateLimit:   parseInt(s["security_rate_limit"]   ?? "100"),
-      smsGateway:  s["sms_provider"]   ?? "console",
-      mapKeySet:   (s["maps_api_key"]  ?? "") !== "",
-      firebaseSet: (s["fcm_server_key"] ?? "") !== "",
+      gpsTracking:  (s["security_gps_tracking"] ?? "on")  === "on",
+      gpsInterval:  parseInt(s["security_gps_interval"]  ?? "30"),
+      otpBypass:    (s["security_otp_bypass"]   ?? "off") === "on",
+      sessionDays:  parseInt(s["security_session_days"]  ?? "30"),
+      riderTokenDays: parseInt(s["security_rider_token_days"] ?? "7"),
+      rateLimit:    parseInt(s["security_rate_limit"]    ?? "100"),
+      smsGateway:   s["sms_provider"]   ?? "console",
+      mapKeySet:    (s["maps_api_key"]  ?? "") !== "",
+      firebaseSet:  (s["fcm_server_key"] ?? "") !== "",
     },
     integrations: {
       jazzcash:  jazzcashEnabled,
@@ -198,6 +213,16 @@ router.get("/", async (_req, res) => {
       whatsapp:  (s["integration_whatsapp"]   ?? "off") === "on",
       sms:       (s["integration_sms"]        ?? "off") === "on",
       maps:      (s["integration_maps"]       ?? "off") === "on",
+      analyticsPlatform:    s["analytics_platform"]      ?? "ga4",
+      analyticsTrackingId:  s["analytics_tracking_id"]  ?? "",
+      analyticsDebug:       (s["analytics_debug_mode"]  ?? "off") === "on",
+      sentryDsn:            s["sentry_dsn"]              ?? "",
+      sentryEnvironment:    s["sentry_environment"]      ?? "production",
+      sentrySampleRate:     parseFloat(s["sentry_sample_rate"]        ?? "1.0"),
+      sentryTracesSampleRate: parseFloat(s["sentry_traces_sample_rate"] ?? "0.1"),
+      mapsAutocomplete:     (s["maps_places_autocomplete"] ?? "on") === "on",
+      mapsGeocoding:        (s["maps_geocoding"]           ?? "on") === "on",
+      mapsDistanceMatrix:   (s["maps_distance_matrix"]     ?? "on") === "on",
     },
     payment: {
       methods:              paymentMethods,
