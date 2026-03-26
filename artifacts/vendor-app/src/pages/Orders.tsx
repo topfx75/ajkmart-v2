@@ -61,7 +61,7 @@ export default function Orders() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+    <div className="bg-gray-50 md:bg-transparent">
       <PageHeader title="Orders" subtitle={`${orders.length} ${tab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
 
       {/* ── Tabs ── */}

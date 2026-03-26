@@ -1167,4 +1167,40 @@ router.post("/riders/:id/bonus", async (req, res) => {
   res.json({ success: true, amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
 });
 
+/* ── GET /admin/withdrawal-requests ─────────── */
+router.get("/withdrawal-requests", async (_req, res) => {
+  const txns = await db.select().from(walletTransactionsTable)
+    .where(sql`description LIKE 'Withdrawal —%' AND type = 'debit'`)
+    .orderBy(desc(walletTransactionsTable.createdAt))
+    .limit(200);
+  const enriched = await Promise.all(txns.map(async t => {
+    const [user] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, role: usersTable.role })
+      .from(usersTable).where(eq(usersTable.id, t.userId)).limit(1);
+    return { ...t, amount: parseFloat(String(t.amount)), user: user || null };
+  }));
+  res.json({ withdrawals: enriched });
+});
+
+/* ── GET /admin/all-notifications ─────────── */
+router.get("/all-notifications", async (req, res) => {
+  const role = req.query["role"] as string | undefined;
+  const limit = Math.min(parseInt(String(req.query["limit"] || "100")), 300);
+  let userIds: string[] = [];
+  if (role) {
+    const users = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role as any, role));
+    userIds = users.map(u => u.id);
+    if (userIds.length === 0) { res.json({ notifications: [] }); return; }
+  }
+  const notifs = await db.select().from(notificationsTable)
+    .orderBy(desc(notificationsTable.createdAt))
+    .limit(limit);
+  const filtered = role ? notifs.filter(n => userIds.includes(n.userId)) : notifs;
+  const enriched = await Promise.all(filtered.slice(0, 200).map(async n => {
+    const [user] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, role: usersTable.role })
+      .from(usersTable).where(eq(usersTable.id, n.userId)).limit(1);
+    return { ...n, user: user || null };
+  }));
+  res.json({ notifications: enriched });
+});
+
 export default router;

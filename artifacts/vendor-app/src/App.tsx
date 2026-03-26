@@ -36,7 +36,7 @@ function AppRoutes() {
   if (!user) return <Login />;
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <div className="h-screen bg-gray-100 flex overflow-hidden">
       {/* ── Desktop Sidebar (hidden on mobile) ── */}
       <div className="hidden md:flex md:w-64 md:flex-shrink-0">
         <SideNav />

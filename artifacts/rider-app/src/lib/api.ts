@@ -34,4 +34,13 @@ export const api = {
   updateRide:  (id: string, status: string) => apiFetch(`/rider/rides/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
   getHistory:  () => apiFetch("/rider/history"),
   getEarnings: () => apiFetch("/rider/earnings"),
+
+  // Wallet
+  getWallet:      () => apiFetch("/rider/wallet/transactions"),
+  withdrawWallet: (data: { amount: number; bankName: string; accountNumber: string; accountTitle: string; note?: string }) =>
+    apiFetch("/rider/wallet/withdraw", { method: "POST", body: JSON.stringify(data) }),
+
+  // Notifications
+  getNotifications:  () => apiFetch("/rider/notifications"),
+  markAllRead:       () => apiFetch("/rider/notifications/read-all", { method: "PATCH", body: "{}" }),
 };

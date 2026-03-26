@@ -148,7 +148,7 @@ export default function Wallet() {
   const weekEarned  = transactions.filter(t => t.type === "credit" && new Date(t.createdAt) >= weekAgo).reduce((s, t) => s + Number(t.amount), 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+    <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
         title="My Wallet"
         subtitle="Earnings & withdrawals"

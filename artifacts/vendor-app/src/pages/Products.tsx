@@ -122,7 +122,7 @@ export default function Products() {
 
   /* ── Add/Edit Form ── */
   if (showAdd) return (
-    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+    <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
         title={editProd ? "Edit Product" : "Add Product"}
         subtitle="Fill in product details"
@@ -196,7 +196,7 @@ export default function Products() {
   const validRows = bulkRows.filter(r => r.name.trim() && r.price);
 
   if (view === "bulk") return (
-    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+    <div className="bg-gray-50 md:bg-transparent">
       <PageHeader title="Bulk Add Products" subtitle={`${validRows.length} ready to add`}
         actions={<button onClick={() => setView("list")} className="h-10 px-4 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white font-bold rounded-xl text-sm android-press min-h-0">← Back</button>}
       />
@@ -373,7 +373,7 @@ export default function Products() {
 
   /* ── Product List ── */
   return (
-    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+    <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
         title="Products"
         subtitle={`${products.length} item${products.length !== 1 ? "s" : ""}`}

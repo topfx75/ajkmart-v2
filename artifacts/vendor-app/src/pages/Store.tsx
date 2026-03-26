@@ -78,7 +78,7 @@ export default function Store() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+    <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
         title="My Store"
         subtitle={user?.storeName || "Store settings"}

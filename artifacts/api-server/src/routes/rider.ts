@@ -218,4 +218,63 @@ router.get("/earnings", async (req, res) => {
   });
 });
 
+/* ── GET /rider/wallet/transactions ── */
+router.get("/wallet/transactions", async (req, res) => {
+  const riderId = (req as any).riderId;
+  const user = (req as any).riderUser;
+  const limit = Math.min(parseInt(String(req.query["limit"] || "50")), 100);
+  const txns = await db.select().from(walletTransactionsTable)
+    .where(eq(walletTransactionsTable.userId, riderId))
+    .orderBy(desc(walletTransactionsTable.createdAt))
+    .limit(limit);
+  const safeNum = (v: any) => v ? parseFloat(String(v)) : 0;
+  res.json({
+    balance: safeNum(user.walletBalance),
+    transactions: txns.map(t => ({ ...t, amount: safeNum(t.amount) })),
+  });
+});
+
+/* ── POST /rider/wallet/withdraw ── */
+router.post("/wallet/withdraw", async (req, res) => {
+  const riderId = (req as any).riderId;
+  const user = (req as any).riderUser;
+  const { amount, accountTitle, accountNumber, bankName, note } = req.body;
+  const safeNum = (v: any) => v ? parseFloat(String(v)) : 0;
+  const amt = safeNum(amount);
+  if (!amt || amt <= 0)  { res.status(400).json({ error: "Valid amount required" }); return; }
+  if (amt < 500)         { res.status(400).json({ error: "Minimum withdrawal is Rs. 500" }); return; }
+  const balance = safeNum(user.walletBalance);
+  if (amt > balance)     { res.status(400).json({ error: `Insufficient balance. Available: Rs. ${balance}` }); return; }
+  if (!accountTitle || !accountNumber || !bankName) {
+    res.status(400).json({ error: "Account title, number and bank name are required" }); return;
+  }
+  await db.update(usersTable).set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
+  await db.insert(walletTransactionsTable).values({
+    id: generateId(), userId: riderId, type: "debit", amount: String(amt.toFixed(2)),
+    description: `Withdrawal — ${bankName} · ${accountNumber} · ${accountTitle}${note ? ` · ${note}` : ""}`,
+  });
+  await db.insert(notificationsTable).values({
+    id: generateId(), userId: riderId, title: "Withdrawal Requested ✅",
+    body: `Rs. ${amt} withdrawal submitted. Admin will process within 24-48 hours.`, type: "wallet", icon: "cash-outline",
+  }).catch(() => {});
+  res.json({ success: true, newBalance: balance - amt, amount: amt });
+});
+
+/* ── GET /rider/notifications ── */
+router.get("/notifications", async (req, res) => {
+  const riderId = (req as any).riderId;
+  const notifs = await db.select().from(notificationsTable)
+    .where(eq(notificationsTable.userId, riderId))
+    .orderBy(desc(notificationsTable.createdAt))
+    .limit(30);
+  res.json({ notifications: notifs, unread: notifs.filter((n: any) => !n.isRead).length });
+});
+
+/* ── PATCH /rider/notifications/read-all ── */
+router.patch("/notifications/read-all", async (req, res) => {
+  const riderId = (req as any).riderId;
+  await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.userId, riderId));
+  res.json({ success: true });
+});
+
 export default router;

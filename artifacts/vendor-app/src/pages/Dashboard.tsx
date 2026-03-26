@@ -38,7 +38,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+    <div className="bg-gray-50 md:bg-transparent">
       {/* ── Header ── */}
       <PageHeader
         title={user?.storeName || "Dashboard"}

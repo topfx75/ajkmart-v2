@@ -8,6 +8,8 @@ import Active from "./pages/Active";
 import History from "./pages/History";
 import Earnings from "./pages/Earnings";
 import Profile from "./pages/Profile";
+import Wallet from "./pages/Wallet";
+import Notifications from "./pages/Notifications";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
 
@@ -34,6 +36,8 @@ function AppRoutes() {
           <Route path="/active" component={Active} />
           <Route path="/history" component={History} />
           <Route path="/earnings" component={Earnings} />
+          <Route path="/wallet" component={Wallet} />
+          <Route path="/notifications" component={Notifications} />
           <Route path="/profile" component={Profile} />
         </Switch>
       </div>

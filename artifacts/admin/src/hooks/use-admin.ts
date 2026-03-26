@@ -376,3 +376,21 @@ export const useDeletePromoCode = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-promo-codes"] }),
   });
 };
+
+// Withdrawal Requests
+export const useWithdrawalRequests = () => {
+  return useQuery({
+    queryKey: ["admin-withdrawals"],
+    queryFn: () => fetcher("/withdrawal-requests"),
+    refetchInterval: REFETCH_INTERVAL,
+  });
+};
+
+// All Notifications
+export const useAllNotifications = (role?: string) => {
+  return useQuery({
+    queryKey: ["admin-all-notifications", role],
+    queryFn: () => fetcher(`/all-notifications${role ? `?role=${role}` : ""}`),
+    refetchInterval: REFETCH_INTERVAL,
+  });
+};
