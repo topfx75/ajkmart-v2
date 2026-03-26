@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { Header } from "../components/Header";
-import { fc, fd, CARD, PAGE, SECTION } from "../lib/ui";
+import { PageHeader } from "../components/PageHeader";
+import { fc, fd, CARD } from "../lib/ui";
 
 const TABS = [
   { key: "new",       label: "New",      icon: "🔔" },
@@ -30,9 +30,9 @@ const ORDER_ICON: Record<string, string> = { food: "🍔", mart: "🛒", pharmac
 
 export default function Orders() {
   const qc = useQueryClient();
-  const [tab, setTab]         = useState("new");
+  const [tab, setTab]           = useState("new");
   const [expanded, setExpanded] = useState<string|null>(null);
-  const [toast, setToast]     = useState("");
+  const [toast, setToast]       = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
 
   const { data, isLoading, refetch } = useQuery({ queryKey: ["vendor-orders", tab], queryFn: () => api.getOrders(tab), refetchInterval: 15000 });
@@ -53,24 +53,22 @@ export default function Orders() {
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
+  const RefreshBtn = (
+    <button onClick={() => refetch()}
+      className="w-10 h-10 bg-white/20 md:bg-gray-100 md:text-gray-600 rounded-xl flex items-center justify-center text-white text-lg android-press min-h-0">
+      ↻
+    </button>
+  );
+
   return (
-    <div className={PAGE}>
-      {/* ── Header ── */}
-      <Header pb="pb-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-extrabold text-white">Orders</h1>
-            <p className="text-orange-100 text-sm mt-0.5">{orders.length} {tab === "all" ? "total" : tab} orders</p>
-          </div>
-          <button onClick={() => refetch()} className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center text-white text-lg android-press min-h-0">↻</button>
-        </div>
-      </Header>
+    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
+      <PageHeader title="Orders" subtitle={`${orders.length} ${tab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
 
       {/* ── Tabs ── */}
-      <div className="bg-white border-b border-gray-100 flex sticky top-0 z-10" style={{ boxShadow: "0 2px 4px rgba(0,0,0,0.06)" }}>
+      <div className="bg-white border-b border-gray-200 flex sticky top-0 z-10 md:mx-0">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex-1 flex flex-col items-center py-2.5 text-[11px] font-bold border-b-2 transition-colors android-press min-h-0 relative
+            className={`flex-1 flex flex-col items-center py-3 text-[11px] font-bold border-b-2 transition-colors android-press min-h-0 relative
               ${tab === t.key ? "border-orange-500 text-orange-600" : "border-transparent text-gray-400"}`}>
             <span className="text-lg mb-0.5">{t.icon}</span>
             {t.label}
@@ -84,99 +82,101 @@ export default function Orders() {
       </div>
 
       {/* ── Order List ── */}
-      <div className={SECTION}>
+      <div className="px-4 py-4 space-y-3 md:px-0 md:py-4">
         {isLoading ? (
           [1,2,3].map(i => <div key={i} className="h-20 skeleton rounded-2xl"/>)
         ) : orders.length === 0 ? (
-          <div className={CARD + " px-4 py-16 text-center"}>
+          <div className={`${CARD} px-4 py-16 text-center`}>
             <p className="text-5xl mb-3">{TABS.find(t => t.key === tab)?.icon}</p>
             <p className="font-bold text-gray-700 text-base">No {tab === "all" ? "" : tab + " "}orders</p>
             <p className="text-sm text-gray-400 mt-1">They'll appear here automatically</p>
           </div>
         ) : (
-          orders.map((o: any) => {
-            const next = NEXT[o.status];
-            const items = Array.isArray(o.items) ? o.items : [];
-            const isExp = expanded === o.id;
-            return (
-              <div key={o.id} className={CARD + (o.status === "pending" ? " border-l-4 border-orange-400" : "")}>
-                {/* Order Row */}
-                <button className="w-full px-4 py-3.5 flex items-center gap-3 text-left android-press min-h-0"
-                  onClick={() => setExpanded(isExp ? null : o.id)}>
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${o.type === "food" ? "bg-red-50" : "bg-blue-50"}`}>
-                    {ORDER_ICON[o.type] || "📦"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_BADGE[o.status] || "bg-gray-100 text-gray-600"}`}>
-                        {o.status.replace(/_/g," ").toUpperCase()}
-                      </span>
-                      <span className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()}</span>
+          <div className="md:grid md:grid-cols-2 md:gap-4 space-y-3 md:space-y-0">
+            {orders.map((o: any) => {
+              const next = NEXT[o.status];
+              const items = Array.isArray(o.items) ? o.items : [];
+              const isExp = expanded === o.id;
+              return (
+                <div key={o.id} className={`${CARD}${o.status === "pending" ? " border-l-4 border-orange-400" : ""}`}>
+                  {/* Order Row */}
+                  <button className="w-full px-4 py-3.5 flex items-center gap-3 text-left android-press min-h-0"
+                    onClick={() => setExpanded(isExp ? null : o.id)}>
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${o.type === "food" ? "bg-red-50" : "bg-blue-50"}`}>
+                      {ORDER_ICON[o.type] || "📦"}
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">{fd(o.createdAt)} · {items.length} items</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="font-extrabold text-gray-800 text-base">{fc(o.total)}</p>
-                    <p className="text-xs text-green-600 font-semibold">+{fc(o.total * 0.85)}</p>
-                    <span className="text-gray-300 text-xs">{isExp ? "▲" : "▼"}</span>
-                  </div>
-                </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_BADGE[o.status] || "bg-gray-100 text-gray-600"}`}>
+                          {o.status.replace(/_/g," ").toUpperCase()}
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()}</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{fd(o.createdAt)} · {items.length} items</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-extrabold text-gray-800 text-base">{fc(o.total)}</p>
+                      <p className="text-xs text-green-600 font-semibold">+{fc(o.total * 0.85)}</p>
+                      <span className="text-gray-300 text-xs">{isExp ? "▲" : "▼"}</span>
+                    </div>
+                  </button>
 
-                {/* Quick Accept */}
-                {!isExp && o.status === "pending" && (
-                  <div className="px-4 pb-3 flex gap-2">
-                    <button onClick={() => updateMut.mutate({ id: o.id, status: "confirmed" })} disabled={updateMut.isPending}
-                      className="flex-1 h-10 bg-green-500 text-white font-bold rounded-xl text-sm android-press disabled:opacity-60">✓ Accept</button>
-                    <button onClick={() => updateMut.mutate({ id: o.id, status: "cancelled" })} disabled={updateMut.isPending}
-                      className="h-10 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ Reject</button>
-                  </div>
-                )}
+                  {/* Quick Accept */}
+                  {!isExp && o.status === "pending" && (
+                    <div className="px-4 pb-3 flex gap-2">
+                      <button onClick={() => updateMut.mutate({ id: o.id, status: "confirmed" })} disabled={updateMut.isPending}
+                        className="flex-1 h-10 bg-green-500 text-white font-bold rounded-xl text-sm android-press disabled:opacity-60">✓ Accept</button>
+                      <button onClick={() => updateMut.mutate({ id: o.id, status: "cancelled" })} disabled={updateMut.isPending}
+                        className="h-10 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ Reject</button>
+                    </div>
+                  )}
 
-                {/* Expanded Detail */}
-                {isExp && (
-                  <div className="border-t border-gray-50 slide-up">
-                    {items.length > 0 && (
-                      <div className="px-4 py-3 bg-gray-50 space-y-2">
-                        <p className="text-[10px] font-extrabold text-gray-400 tracking-widest">ORDER ITEMS</p>
-                        {items.map((item: any, i: number) => (
-                          <div key={i} className="flex justify-between text-sm">
-                            <span className="text-gray-700">{item.name} <span className="text-gray-400">×{item.quantity}</span></span>
-                            <span className="font-semibold text-gray-800">{fc((item.price||0) * (item.quantity||1))}</span>
+                  {/* Expanded Detail */}
+                  {isExp && (
+                    <div className="border-t border-gray-50 slide-up">
+                      {items.length > 0 && (
+                        <div className="px-4 py-3 bg-gray-50 space-y-2">
+                          <p className="text-[10px] font-extrabold text-gray-400 tracking-widest">ORDER ITEMS</p>
+                          {items.map((item: any, i: number) => (
+                            <div key={i} className="flex justify-between text-sm">
+                              <span className="text-gray-700">{item.name} <span className="text-gray-400">×{item.quantity}</span></span>
+                              <span className="font-semibold text-gray-800">{fc((item.price||0) * (item.quantity||1))}</span>
+                            </div>
+                          ))}
+                          <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-sm">
+                            <span className="text-gray-600">Total</span>
+                            <span className="text-orange-600">{fc(o.total)}</span>
                           </div>
-                        ))}
-                        <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-sm">
-                          <span className="text-gray-600">Total</span>
-                          <span className="text-orange-600">{fc(o.total)}</span>
                         </div>
+                      )}
+                      {o.deliveryAddress && (
+                        <div className="px-4 py-3 flex items-start gap-2 border-t border-gray-50">
+                          <span className="text-base mt-0.5">📍</span>
+                          <p className="text-sm text-gray-600 leading-relaxed">{o.deliveryAddress}</p>
+                        </div>
+                      )}
+                      <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-50">
+                        <span className="text-base">💳</span>
+                        <p className="text-sm text-gray-600 capitalize font-medium">{o.paymentMethod || "Cash on Delivery"}</p>
                       </div>
-                    )}
-                    {o.deliveryAddress && (
-                      <div className="px-4 py-3 flex items-start gap-2 border-t border-gray-50">
-                        <span className="text-base mt-0.5">📍</span>
-                        <p className="text-sm text-gray-600 leading-relaxed">{o.deliveryAddress}</p>
-                      </div>
-                    )}
-                    <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-50">
-                      <span className="text-base">💳</span>
-                      <p className="text-sm text-gray-600 capitalize font-medium">{o.paymentMethod || "Cash on Delivery"}</p>
+                      {next && (
+                        <div className="px-4 pb-4 pt-2 flex gap-2">
+                          <button onClick={() => updateMut.mutate({ id: o.id, status: next.next })} disabled={updateMut.isPending}
+                            className={`flex-1 h-11 ${next.bg} font-bold rounded-xl text-sm android-press disabled:opacity-60`}>
+                            {next.label}
+                          </button>
+                          {o.status === "pending" && (
+                            <button onClick={() => updateMut.mutate({ id: o.id, status: "cancelled" })} disabled={updateMut.isPending}
+                              className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ Reject</button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {next && (
-                      <div className="px-4 pb-4 pt-2 flex gap-2">
-                        <button onClick={() => updateMut.mutate({ id: o.id, status: next.next })} disabled={updateMut.isPending}
-                          className={`flex-1 h-11 ${next.bg} font-bold rounded-xl text-sm android-press disabled:opacity-60`}>
-                          {next.label}
-                        </button>
-                        {o.status === "pending" && (
-                          <button onClick={() => updateMut.mutate({ id: o.id, status: "cancelled" })} disabled={updateMut.isPending}
-                            className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ Reject</button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

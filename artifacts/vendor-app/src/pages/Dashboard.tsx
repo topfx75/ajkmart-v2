@@ -2,8 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { useState } from "react";
-import { Header } from "../components/Header";
-import { fc, CARD, CARD_HEADER, STAT_VAL, STAT_LBL, BTN_XS, PAGE, SECTION } from "../lib/ui";
+import { PageHeader } from "../components/PageHeader";
+import { fc, CARD, STAT_VAL, STAT_LBL } from "../lib/ui";
 
 export default function Dashboard() {
   const { user, refreshUser } = useAuth();
@@ -31,64 +31,82 @@ export default function Dashboard() {
   const activeOrders  = allOrders.filter((o: any) => ["confirmed","preparing","ready"].includes(o.status));
 
   const statItems = [
-    { label: "Today Orders",   value: isLoading ? "—" : String(stats?.today?.orders ?? 0),   color: "text-orange-500" },
-    { label: "Today Revenue",  value: isLoading ? "—" : fc(stats?.today?.revenue ?? 0),       color: "text-amber-600" },
-    { label: "This Week",      value: isLoading ? "—" : fc(stats?.week?.revenue ?? 0),        color: "text-blue-600"  },
-    { label: "This Month",     value: isLoading ? "—" : fc(stats?.month?.revenue ?? 0),       color: "text-purple-600"},
+    { label: "Today's Orders",  value: isLoading ? "—" : String(stats?.today?.orders ?? 0),  color: "text-orange-500", bg: "bg-orange-50",  icon: "📦" },
+    { label: "Today's Revenue", value: isLoading ? "—" : fc(stats?.today?.revenue ?? 0),      color: "text-amber-600",  bg: "bg-amber-50",   icon: "💰" },
+    { label: "Weekly Revenue",  value: isLoading ? "—" : fc(stats?.week?.revenue ?? 0),       color: "text-blue-600",   bg: "bg-blue-50",    icon: "📅" },
+    { label: "Monthly Revenue", value: isLoading ? "—" : fc(stats?.month?.revenue ?? 0),      color: "text-purple-600", bg: "bg-purple-50",  icon: "📈" },
   ];
 
   return (
-    <div className={PAGE}>
+    <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
       {/* ── Header ── */}
-      <Header pb="pb-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-orange-100 text-sm font-medium">Welcome back,</p>
-            <h1 className="text-2xl font-extrabold text-white mt-0.5 leading-tight">{user?.storeName || "My Store"}</h1>
-            {user?.storeCategory && (
-              <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full mt-2 inline-block capitalize font-semibold">
-                {user.storeCategory}
-              </span>
-            )}
-          </div>
-          <div className="text-right">
-            <p className="text-orange-100 text-xs font-medium">Wallet</p>
-            <p className="text-2xl font-extrabold text-white">{fc(user?.walletBalance || 0)}</p>
-          </div>
-        </div>
-      </Header>
-
-      <div className={SECTION}>
-        {/* ── Store Toggle ── */}
-        <div className={CARD}>
-          <div className="px-4 py-4 flex items-center justify-between">
-            <div>
-              <p className="font-bold text-gray-800 text-base">{user?.storeIsOpen ? "🟢 Store is Open" : "🔴 Store is Closed"}</p>
-              <p className="text-sm text-gray-500 mt-0.5">{user?.storeIsOpen ? "Accepting new orders" : "Tap to open your store"}</p>
-            </div>
+      <PageHeader
+        title={user?.storeName || "Dashboard"}
+        subtitle={user?.storeCategory ? `${user.storeCategory} · AJKMart Partner` : "AJKMart Vendor Portal"}
+        actions={
+          <div className="flex items-center gap-2">
+            <span className="hidden md:block text-sm text-gray-500 font-medium">Store:</span>
             <button
               onClick={() => toggleMut.mutate(!user?.storeIsOpen)}
               disabled={toggleMut.isPending}
-              className={`w-14 h-8 rounded-full relative transition-all duration-300 flex-shrink-0 ${user?.storeIsOpen ? "bg-green-400" : "bg-gray-300"}`}
+              className={`relative h-8 w-14 rounded-full transition-all duration-300 flex-shrink-0 focus:outline-none
+                ${user?.storeIsOpen ? "bg-green-400" : "bg-gray-300"}`}
             >
               <div className={`w-6 h-6 bg-white rounded-full absolute top-1 shadow-md transition-all duration-300 ${user?.storeIsOpen ? "left-7" : "left-1"}`} />
             </button>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${user?.storeIsOpen ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+              {user?.storeIsOpen ? "Open" : "Closed"}
+            </span>
+          </div>
+        }
+        mobileContent={
+          <div className="flex items-center justify-between bg-white/20 rounded-2xl px-4 py-2.5">
+            <div>
+              <p className="text-orange-100 text-xs font-medium">Wallet Balance</p>
+              <p className="text-2xl font-extrabold text-white">{fc(user?.walletBalance || 0)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-orange-100 text-xs font-medium">Store Status</p>
+              <button onClick={() => toggleMut.mutate(!user?.storeIsOpen)} disabled={toggleMut.isPending}
+                className={`w-14 h-7 rounded-full relative transition-all duration-300 block mt-1 ${user?.storeIsOpen ? "bg-green-400" : "bg-white/30"}`}>
+                <div className={`w-5 h-5 bg-white rounded-full absolute top-1 shadow transition-all duration-300 ${user?.storeIsOpen ? "left-8" : "left-1"}`} />
+              </button>
+            </div>
+          </div>
+        }
+      />
+
+      <div className="px-4 py-4 space-y-4 md:px-0 md:py-0 md:space-y-0">
+        {/* Desktop wallet bar */}
+        <div className="hidden md:flex items-center gap-4 px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl text-white shadow-sm mb-6">
+          <div className="flex-1">
+            <p className="text-orange-100 text-xs font-medium">Wallet Balance</p>
+            <p className="text-3xl font-extrabold">{fc(user?.walletBalance || 0)}</p>
+          </div>
+          <div className="text-center border-l border-white/20 pl-4">
+            <p className="text-orange-100 text-xs font-medium">Commission</p>
+            <p className="text-3xl font-extrabold">85%</p>
+          </div>
+          <div className="text-right border-l border-white/20 pl-4">
+            <p className="text-orange-100 text-xs font-medium">All-Time Earned</p>
+            <p className="text-xl font-extrabold">{fc(user?.stats?.totalRevenue || 0)}</p>
           </div>
         </div>
 
-        {/* ── Stats Grid ── */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* ── Stats ── */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:mb-6">
           {statItems.map(s => (
-            <div key={s.label} className={CARD + " p-4"}>
-              <p className={STAT_LBL + " text-gray-400"}>{s.label}</p>
-              <p className={`${STAT_VAL} ${s.color} mt-1`}>{s.value}</p>
+            <div key={s.label} className={`${CARD} p-4 md:p-5`}>
+              <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center text-xl mb-3`}>{s.icon}</div>
+              <p className={`${STAT_VAL} ${s.color} text-xl md:text-2xl`}>{s.value}</p>
+              <p className={`${STAT_LBL}`}>{s.label}</p>
             </div>
           ))}
         </div>
 
-        {/* ── Low Stock Alert ── */}
+        {/* Low Stock Alert */}
         {(stats?.lowStock ?? 0) > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3 md:mb-6">
             <span className="text-2xl">⚠️</span>
             <div>
               <p className="font-bold text-red-700 text-sm">{stats.lowStock} Products Low on Stock</p>
@@ -97,81 +115,86 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── Pending Orders ── */}
-        {pendingOrders.length > 0 && (
-          <div className={CARD}>
-            <div className={CARD_HEADER + " bg-orange-50 border-b border-orange-100"}>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🔔</span>
-                <div>
-                  <p className="font-bold text-orange-800 text-sm">{pendingOrders.length} New Order{pendingOrders.length > 1 ? "s" : ""}!</p>
-                  <p className="text-orange-500 text-xs">Accept within 5 minutes</p>
+        {/* ── Desktop: 2-column layout for orders ── */}
+        <div className="md:grid md:grid-cols-2 md:gap-6 space-y-4 md:space-y-0">
+          {/* Pending Orders */}
+          <div>
+            {pendingOrders.length > 0 ? (
+              <div className={CARD}>
+                <div className="px-4 py-3.5 border-b border-orange-100 bg-orange-50 flex items-center gap-2">
+                  <span className="text-lg">🔔</span>
+                  <div>
+                    <p className="font-bold text-orange-800 text-sm">{pendingOrders.length} New Order{pendingOrders.length > 1 ? "s" : ""}!</p>
+                    <p className="text-orange-500 text-xs">Accept within 5 minutes</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {pendingOrders.map((o: any) => (
+                    <div key={o.id} className="px-4 py-3 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-xl flex-shrink-0">
+                        {o.type === "food" ? "🍔" : "🛒"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-gray-800 capitalize">{o.type} Order</p>
+                        <p className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()} · {fc(o.total)}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button onClick={() => acceptMut.mutate(o.id)} disabled={acceptMut.isPending}
+                          className="h-9 px-4 bg-green-500 text-white text-xs font-bold rounded-xl android-press min-h-0">✓ Accept</button>
+                        <button onClick={() => api.updateOrder(o.id, "cancelled").then(() => qc.invalidateQueries({ queryKey: ["vendor-orders"] }))}
+                          className="h-9 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">✕</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {pendingOrders.slice(0, 3).map((o: any) => (
-                <div key={o.id} className="px-4 py-3 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-lg flex-shrink-0">
-                    {o.type === "food" ? "🍔" : "🛒"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-gray-800 capitalize">{o.type} Order</p>
-                    <p className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()} · {fc(o.total)}</p>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => acceptMut.mutate(o.id)} disabled={acceptMut.isPending}
-                      className="h-9 px-4 bg-green-500 text-white text-xs font-bold rounded-xl android-press min-h-0">
-                      ✓ Accept
-                    </button>
-                    <button onClick={() => api.updateOrder(o.id, "cancelled").then(() => qc.invalidateQueries({ queryKey: ["vendor-orders"] }))}
-                      className="h-9 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">
-                      ✕
-                    </button>
-                  </div>
+            ) : (
+              <div className={`${CARD} px-4 py-10 text-center`}>
+                <p className="text-4xl mb-2">📋</p>
+                <p className="font-bold text-gray-500 text-sm">No pending orders</p>
+                <p className="text-xs text-gray-400 mt-1">New orders appear here instantly</p>
+              </div>
+            )}
+          </div>
+
+          {/* Active Orders */}
+          <div>
+            {activeOrders.length > 0 ? (
+              <div className={CARD}>
+                <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between">
+                  <p className="font-bold text-gray-800 text-sm">{activeOrders.length} Active Order{activeOrders.length > 1 ? "s" : ""}</p>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">In Progress</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Active Orders ── */}
-        {activeOrders.length > 0 && (
-          <div className={CARD}>
-            <div className={CARD_HEADER}>
-              <p className="font-bold text-gray-800 text-sm">{activeOrders.length} Active Order{activeOrders.length > 1 ? "s" : ""}</p>
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">In Progress</span>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {activeOrders.slice(0, 3).map((o: any) => (
-                <div key={o.id} className="px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-sm text-gray-800 capitalize">{o.type} Order</p>
-                    <p className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-gray-800">{fc(o.total)}</p>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      o.status === "preparing" ? "bg-purple-100 text-purple-700" :
-                      o.status === "ready" ? "bg-indigo-100 text-indigo-700" : "bg-blue-100 text-blue-700"
-                    }`}>{o.status.toUpperCase()}</span>
-                  </div>
+                <div className="divide-y divide-gray-50">
+                  {activeOrders.map((o: any) => (
+                    <div key={o.id} className="px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-sm text-gray-800 capitalize">{o.type} Order</p>
+                        <p className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-sm text-gray-800">{fc(o.total)}</p>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          o.status === "preparing" ? "bg-purple-100 text-purple-700" :
+                          o.status === "ready" ? "bg-indigo-100 text-indigo-700" : "bg-blue-100 text-blue-700"
+                        }`}>{o.status.toUpperCase()}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className={`${CARD} px-4 py-10 text-center`}>
+                <p className="text-4xl mb-2">🍳</p>
+                <p className="font-bold text-gray-500 text-sm">No active orders</p>
+                <p className="text-xs text-gray-400 mt-1">Accepted orders show here</p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
-        {pendingOrders.length === 0 && activeOrders.length === 0 && (
-          <div className={CARD + " px-4 py-12 text-center"}>
-            <p className="text-5xl mb-3">📋</p>
-            <p className="font-bold text-gray-600 text-base">No new orders</p>
-            <p className="text-sm text-gray-400 mt-1">New orders will appear here instantly</p>
-          </div>
-        )}
-
-        {/* ── Commission Banner ── */}
-        <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 text-white shadow-sm">
+        {/* Commission Banner — mobile only (desktop shows in header) */}
+        <div className="md:hidden bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 text-white shadow-sm">
           <div className="flex justify-between items-center">
             <div>
               <p className="text-sm text-orange-100 font-medium">Your Commission</p>
@@ -186,7 +209,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Toast ── */}
       {toast && (
         <div className="fixed top-0 left-0 right-0 z-50 flex justify-center toast-in"
           style={{ paddingTop: "calc(env(safe-area-inset-top,0px) + 8px)", paddingLeft: "16px", paddingRight: "16px" }}>

@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { BottomNav } from "./components/BottomNav";
+import { SideNav } from "./components/SideNav";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Orders from "./pages/Orders";
@@ -17,10 +18,7 @@ function AppRoutes() {
   const { user, loading } = useAuth();
 
   if (loading) return (
-    <div
-      className="min-h-screen bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center"
-      style={{ paddingTop: "env(safe-area-inset-top,0px)", paddingBottom: "env(safe-area-inset-bottom,0px)" }}
-    >
+    <div className="min-h-screen bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center">
       <div className="text-center">
         <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-2xl">
           <span className="text-4xl">🏪</span>
@@ -35,22 +33,35 @@ function AppRoutes() {
   if (!user) return <Login />;
 
   return (
-    <div className="relative bg-gray-100 min-h-screen flex flex-col"
-      style={{ maxWidth: "480px", margin: "0 auto" }}>
-      {/* Main content area — padded bottom for fixed BottomNav */}
-      <div
-        className="flex-1 scroll-momentum overflow-y-auto"
-        style={{ paddingBottom: "calc(64px + max(8px, env(safe-area-inset-bottom, 8px)))" }}
-      >
-        <Switch>
-          <Route path="/" component={Dashboard} />
-          <Route path="/orders" component={Orders} />
-          <Route path="/products" component={Products} />
-          <Route path="/store" component={Store} />
-          <Route path="/profile" component={Profile} />
-        </Switch>
+    <div className="min-h-screen bg-gray-100 flex">
+      {/* ── Desktop Sidebar (hidden on mobile) ── */}
+      <div className="hidden md:flex md:w-64 md:flex-shrink-0">
+        <SideNav />
       </div>
-      <BottomNav />
+
+      {/* ── Main Content ── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile: scrollable content with bottom nav padding */}
+        <div
+          className="flex-1 overflow-y-auto scroll-momentum"
+          style={{ paddingBottom: "calc(64px + max(8px, env(safe-area-inset-bottom, 8px)))" }}
+          id="main-scroll"
+        >
+          {/* Desktop: max-width content */}
+          <div className="md:max-w-5xl md:mx-auto md:px-6 md:pb-8">
+            <Switch>
+              <Route path="/" component={Dashboard} />
+              <Route path="/orders" component={Orders} />
+              <Route path="/products" component={Products} />
+              <Route path="/store" component={Store} />
+              <Route path="/profile" component={Profile} />
+            </Switch>
+          </div>
+        </div>
+
+        {/* Mobile Bottom Nav */}
+        <BottomNav />
+      </div>
     </div>
   );
 }
