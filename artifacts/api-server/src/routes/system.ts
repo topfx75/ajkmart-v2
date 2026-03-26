@@ -17,16 +17,38 @@ import {
   savedAddressesTable,
   userSettingsTable,
   liveLocationsTable,
+  systemSnapshotsTable,
 } from "@workspace/db/schema";
-import { count } from "drizzle-orm";
+import { count, lt, eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { invalidateSettingsCache } from "../middleware/security.js";
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "ajkmart-admin-2025";
+const ADMIN_SECRET       = process.env.ADMIN_SECRET || "ajkmart-admin-2025";
+const DEMO_WALLET_BALANCE = "1000";
+const UNDO_WINDOW_MS      = 30 * 60 * 1000; // 30 minutes
+
+/* ── Table registry — maps snapshot key → drizzle table ref ── */
+const TABLE_MAP: Record<string, any> = {
+  users:                usersTable,
+  orders:               ordersTable,
+  rides:                ridesTable,
+  pharmacy_orders:      pharmacyOrdersTable,
+  parcel_bookings:      parcelBookingsTable,
+  products:             productsTable,
+  wallet_transactions:  walletTransactionsTable,
+  notifications:        notificationsTable,
+  reviews:              reviewsTable,
+  promo_codes:          promoCodesTable,
+  flash_deals:          flashDealsTable,
+  platform_settings:    platformSettingsTable,
+  saved_addresses:      savedAddressesTable,
+  user_settings:        userSettingsTable,
+  live_locations:       liveLocationsTable,
+};
 
 const router: IRouter = Router();
 
-/* ── Admin auth guard — all system routes require the admin secret ── */
+/* ── Admin auth guard ── */
 router.use((req: Request, res: Response, next: NextFunction) => {
   const auth = String(req.headers["x-admin-secret"] || req.query["secret"] || "");
   if (auth !== ADMIN_SECRET) {
@@ -36,8 +58,69 @@ router.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+/* ── Auto-purge expired snapshots on every request ── */
+router.use(async (_req, _res, next) => {
+  try { await db.delete(systemSnapshotsTable).where(lt(systemSnapshotsTable.expiresAt, new Date())); } catch {}
+  next();
+});
+
 /* ─────────────────────────────────────────────────────────────────────────────
-   DEMO PRODUCT DATA (same as seed.ts — used for reseed on demo reset)
+   SNAPSHOT HELPER — serializes specified table rows to a DB snapshot row
+───────────────────────────────────────────────────────────────────────────── */
+async function snapshotBefore(label: string, actionId: string, tableKeys: string[]) {
+  const tables: Record<string, any[]> = {};
+  for (const key of tableKeys) {
+    const ref = TABLE_MAP[key];
+    if (ref) tables[key] = await db.select().from(ref);
+  }
+  const id        = generateId();
+  const expiresAt = new Date(Date.now() + UNDO_WINDOW_MS);
+  await db.insert(systemSnapshotsTable).values({
+    id,
+    label,
+    actionId,
+    tablesJson: JSON.stringify(tables),
+    expiresAt,
+  });
+  return { snapshotId: id, expiresAt: expiresAt.toISOString() };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RESTORE HELPER — restores rows from a tables map into the DB
+───────────────────────────────────────────────────────────────────────────── */
+async function restoreTables(tables: Record<string, any[]>) {
+  const restored: Record<string, number> = {};
+  const errors: string[] = [];
+
+  for (const [key, rows] of Object.entries(tables)) {
+    const ref = TABLE_MAP[key];
+    if (!ref || !Array.isArray(rows)) continue;
+    try {
+      await db.delete(ref);
+      if (rows.length > 0) {
+        const cleaned = rows.map((r: any) => {
+          const out: any = { ...r };
+          if (out.createdAt) out.createdAt = new Date(out.createdAt);
+          if (out.updatedAt) out.updatedAt = new Date(out.updatedAt);
+          if (out.expiresAt) out.expiresAt = new Date(out.expiresAt);
+          if (out.otpExpiry) out.otpExpiry = new Date(out.otpExpiry);
+          if (out.scheduledFor) out.scheduledFor = new Date(out.scheduledFor);
+          return out;
+        });
+        for (const row of cleaned) {
+          try { await db.insert(ref).values(row); } catch {}
+        }
+      }
+      restored[key] = rows.length;
+    } catch (e: any) {
+      errors.push(`${key}: ${e.message}`);
+    }
+  }
+  return { restored, errors };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DEMO PRODUCT DATA
 ───────────────────────────────────────────────────────────────────────────── */
 const MART_PRODUCTS = [
   { name: "Basmati Rice 5kg",        price: 980,  originalPrice: 1200, category: "fruits",    unit: "5kg bag",    inStock: true,  description: "Premium long-grain basmati rice" },
@@ -48,63 +131,50 @@ const MART_PRODUCTS = [
   { name: "Cooking Oil 5L",          price: 1650, originalPrice: 1900, category: "household", unit: "5 litre",    inStock: true,  description: "Refined sunflower oil" },
   { name: "Pyaz (Onion) 1kg",        price: 80,   originalPrice: 100,  category: "fruits",    unit: "1kg",        inStock: true,  description: "Fresh onions" },
   { name: "Tamatar (Tomato) 1kg",    price: 120,  originalPrice: 150,  category: "fruits",    unit: "1kg",        inStock: true,  description: "Fresh red tomatoes" },
-  { name: "Aloo (Potato) 1kg",       price: 60,   originalPrice: 80,   category: "fruits",    unit: "1kg",        inStock: true,  description: "Fresh potatoes" },
-  { name: "Sabz Mirch 250g",         price: 45,   originalPrice: null, category: "fruits",    unit: "250g",       inStock: true,  description: "Fresh green chillies" },
-  { name: "Chicken 1kg",             price: 420,  originalPrice: 480,  category: "meat",      unit: "1kg",        inStock: true,  description: "Fresh broiler chicken" },
-  { name: "Gosht (Beef) 500g",       price: 650,  originalPrice: null, category: "meat",      unit: "500g",       inStock: true,  description: "Fresh beef meat" },
-  { name: "Dahi (Yoghurt) 500g",     price: 120,  originalPrice: null, category: "dairy",     unit: "500g",       inStock: true,  description: "Fresh yoghurt" },
-  { name: "Makkhan (Butter) 200g",   price: 280,  originalPrice: 320,  category: "dairy",     unit: "200g pack",  inStock: true,  description: "Salted butter" },
-  { name: "Naan (Fresh) 6pc",        price: 80,   originalPrice: null, category: "bakery",    unit: "6 pieces",   inStock: true,  description: "Fresh baked naan" },
-  { name: "Double Roti",             price: 90,   originalPrice: null, category: "bakery",    unit: "1 loaf",     inStock: true,  description: "Sliced bread" },
-  { name: "Pepsi 1.5L",              price: 130,  originalPrice: null, category: "beverages", unit: "1.5 litre",  inStock: true,  description: "Chilled Pepsi" },
-  { name: "Nestle Water 1.5L",       price: 65,   originalPrice: null, category: "beverages", unit: "1.5 litre",  inStock: true,  description: "Pure mineral water" },
-  { name: "Tapal Danedar Tea 200g",  price: 280,  originalPrice: 320,  category: "beverages", unit: "200g pack",  inStock: true,  description: "Strong black tea" },
-  { name: "Surf Excel 1kg",          price: 420,  originalPrice: 480,  category: "household", unit: "1kg box",    inStock: true,  description: "Washing powder" },
-  { name: "Dettol Soap 3pc",         price: 180,  originalPrice: 210,  category: "personal",  unit: "3 bars",     inStock: true,  description: "Antibacterial soap" },
-  { name: "Colgate Toothpaste",      price: 140,  originalPrice: null, category: "personal",  unit: "100g tube",  inStock: true,  description: "Cavity protection" },
-  { name: "Mango 1kg",               price: 180,  originalPrice: null, category: "fruits",    unit: "1kg",        inStock: true,  description: "Fresh sweet mangoes" },
-  { name: "Kela (Banana) 12pc",      price: 90,   originalPrice: null, category: "fruits",    unit: "12 pieces",  inStock: true,  description: "Fresh bananas" },
-  { name: "Seb (Apple) 500g",        price: 140,  originalPrice: null, category: "fruits",    unit: "500g",       inStock: true,  description: "Fresh apples" },
+  { name: "Aaloo (Potato) 5kg",      price: 350,  originalPrice: 400,  category: "fruits",    unit: "5kg bag",    inStock: true,  description: "Fresh potatoes" },
+  { name: "Zeera (Cumin) 100g",      price: 180,  originalPrice: 220,  category: "spices",    unit: "100g",       inStock: true,  description: "Whole cumin seeds" },
+  { name: "Haldi (Turmeric) 200g",   price: 120,  originalPrice: 150,  category: "spices",    unit: "200g",       inStock: true,  description: "Pure turmeric powder" },
+  { name: "Dahi (Yogurt) 500g",      price: 130,  originalPrice: null, category: "dairy",     unit: "500g",       inStock: true,  description: "Fresh plain yogurt" },
+  { name: "Murgh (Chicken) 1kg",     price: 520,  originalPrice: 600,  category: "meat",      unit: "1kg",        inStock: true,  description: "Fresh broiler chicken" },
+  { name: "Gosht (Beef) 1kg",        price: 1100, originalPrice: 1250, category: "meat",      unit: "1kg",        inStock: true,  description: "Fresh beef" },
+  { name: "Ketchup Sauce 500g",      price: 180,  originalPrice: 220,  category: "packaged",  unit: "500g",       inStock: true,  description: "Tomato ketchup" },
+  { name: "Surf Excel 1kg",          price: 280,  originalPrice: 320,  category: "household", unit: "1kg",        inStock: true,  description: "Washing powder" },
+  { name: "Soap Lifebuoy 6pc",       price: 280,  originalPrice: null, category: "household", unit: "6 bars",     inStock: true,  description: "Antibacterial soap" },
+  { name: "Tea Tapal 450g",          price: 360,  originalPrice: 420,  category: "beverages", unit: "450g",       inStock: true,  description: "Premium tea dust" },
+  { name: "Pepsi 1.5L",             price: 150,  originalPrice: null, category: "beverages", unit: "1.5 litre",  inStock: true,  description: "Cold drink" },
+  { name: "Biscuits Parle-G 800g",   price: 220,  originalPrice: 260,  category: "packaged",  unit: "800g",       inStock: true,  description: "Glucose biscuits" },
+  { name: "Bread Bran 400g",         price: 90,   originalPrice: null, category: "bakery",    unit: "400g loaf",  inStock: true,  description: "Fresh bran bread" },
+  { name: "Shampoo Head&Shoulders",  price: 380,  originalPrice: 450,  category: "household", unit: "200ml",      inStock: true,  description: "Anti-dandruff shampoo" },
+  { name: "Lemon 1kg",               price: 160,  originalPrice: 200,  category: "fruits",    unit: "1kg",        inStock: true,  description: "Fresh lemons" },
+  { name: "Palak (Spinach) 500g",    price: 60,   originalPrice: null, category: "fruits",    unit: "500g",       inStock: true,  description: "Fresh spinach" },
+  { name: "Sugar 1kg",               price: 130,  originalPrice: 155,  category: "bakery",    unit: "1kg",        inStock: true,  description: "Refined white sugar" },
 ];
 
 const FOOD_PRODUCTS = [
-  { name: "Chicken Biryani",      price: 280, originalPrice: null,  category: "desi",       unit: "1 plate",    inStock: true,  description: "Aromatic spiced biryani with raita",              rating: 4.8, deliveryTime: "25-35 min", vendorName: "Biryani House AJK" },
-  { name: "Beef Nihari",          price: 320, originalPrice: null,  category: "desi",       unit: "1 portion",  inStock: true,  description: "Slow-cooked beef with rich gravy + naan",         rating: 4.9, deliveryTime: "30-40 min", vendorName: "Desi Dhaba" },
-  { name: "Chicken Karahi",       price: 450, originalPrice: 500,   category: "desi",       unit: "2 portions", inStock: true,  description: "Wok-cooked chicken with tomatoes & spices",       rating: 4.7, deliveryTime: "25-35 min", vendorName: "Desi Dhaba" },
-  { name: "Dal Makhani",          price: 180, originalPrice: null,  category: "desi",       unit: "1 portion",  inStock: true,  description: "Creamy black lentil dal + naan",                 rating: 4.6, deliveryTime: "20-30 min", vendorName: "Biryani House AJK" },
-  { name: "Lamb Sajji",           price: 550, originalPrice: 600,   category: "desi",       unit: "half leg",   inStock: true,  description: "Balochi-style whole roasted lamb",                rating: 4.9, deliveryTime: "45-60 min", vendorName: "Sajji Palace" },
-  { name: "Chicken Tikka",        price: 380, originalPrice: null,  category: "restaurants",unit: "6 pieces",   inStock: true,  description: "Tandoor-grilled marinated chicken",               rating: 4.8, deliveryTime: "30-40 min", vendorName: "Grill House Muzaffarabad" },
-  { name: "Zinger Burger",        price: 220, originalPrice: 250,   category: "fast-food",  unit: "1 burger",   inStock: true,  description: "Crispy chicken fillet burger with special sauce", rating: 4.5, deliveryTime: "15-25 min", vendorName: "Burger Point AJK" },
-  { name: "Chicken Shawarma",     price: 160, originalPrice: null,  category: "restaurants",unit: "1 roll",     inStock: true,  description: "Lebanese-style chicken wrap with garlic sauce",   rating: 4.7, deliveryTime: "15-20 min", vendorName: "Shawarma House" },
-  { name: "Chicken Pizza 8''",    price: 450, originalPrice: 500,   category: "pizza",      unit: "8 inch",     inStock: true,  description: "Thin crust with chicken tikka & cheese",         rating: 4.6, deliveryTime: "30-45 min", vendorName: "Pizza Palace AJK" },
-  { name: "Beef Pepperoni Pizza", price: 520, originalPrice: null,  category: "pizza",      unit: "8 inch",     inStock: true,  description: "Classic pepperoni pizza with extra cheese",       rating: 4.7, deliveryTime: "30-45 min", vendorName: "Pizza Palace AJK" },
-  { name: "Chinese Chow Mein",    price: 200, originalPrice: null,  category: "chinese",    unit: "1 plate",    inStock: true,  description: "Stir-fried noodles with vegetables & chicken",   rating: 4.5, deliveryTime: "25-35 min", vendorName: "China Town AJK" },
-  { name: "Gulab Jamun 6pc",      price: 120, originalPrice: null,  category: "desserts",   unit: "6 pieces",   inStock: true,  description: "Soft milk-solid dumplings in sugar syrup",        rating: 4.9, deliveryTime: "15-25 min", vendorName: "Mithai House" },
-  { name: "Halwa Puri (Breakfast)",price: 180,originalPrice: null,  category: "desi",       unit: "1 set",      inStock: true,  description: "Sooji halwa + 2 puri + chana + achar",           rating: 4.8, deliveryTime: "20-30 min", vendorName: "Biryani House AJK" },
+  { name: "Biryani (Full)",        price: 850,  originalPrice: 1000, category: "biryani",  unit: "serves 4",   inStock: true,  description: "Aromatic basmati biryani",          vendorName: "Biryani House AJK",  deliveryTime: "30-40 min", rating: 4.8 },
+  { name: "Chicken Karahi",        price: 750,  originalPrice: 900,  category: "desi",     unit: "serves 3-4", inStock: true,  description: "Spicy chicken karahi",               vendorName: "Desi Dhaba",         deliveryTime: "25-35 min", rating: 4.7 },
+  { name: "Seekh Kebab Plate",     price: 350,  originalPrice: 450,  category: "bbq",      unit: "6 pieces",   inStock: true,  description: "Juicy seekh kebabs with naan",       vendorName: "BBQ Tonight",        deliveryTime: "20-30 min", rating: 4.6 },
+  { name: "Pizza (Large)",         price: 1200, originalPrice: 1450, category: "pizza",    unit: "12 inch",    inStock: true,  description: "Loaded cheese pizza",                vendorName: "Pizza Point",        deliveryTime: "30-45 min", rating: 4.5 },
+  { name: "Burger Meal",           price: 480,  originalPrice: 600,  category: "burger",   unit: "meal + fries",inStock: true, description: "Crispy chicken burger with fries",   vendorName: "Burger Palace",      deliveryTime: "20-25 min", rating: 4.4 },
+  { name: "Chowmein Noodles",      price: 280,  originalPrice: null, category: "chinese",  unit: "1 plate",    inStock: true,  description: "Stir-fried noodles with veggies",    vendorName: "Golden Dragon",      deliveryTime: "15-25 min", rating: 4.3 },
+  { name: "Paratha (4pcs)",        price: 140,  originalPrice: null, category: "breakfast",unit: "4 pieces",   inStock: true,  description: "Crispy aloo paratha with achar",     vendorName: "Breakfast Corner",   deliveryTime: "15-20 min", rating: 4.5 },
+  { name: "Halwa Puri",            price: 220,  originalPrice: 280,  category: "breakfast",unit: "1 plate",    inStock: true,  description: "Traditional halwa puri breakfast",   vendorName: "Breakfast Corner",   deliveryTime: "20-30 min", rating: 4.7 },
+  { name: "Daal Makhani",          price: 320,  originalPrice: 400,  category: "desi",     unit: "serves 2",   inStock: true,  description: "Slow-cooked black lentils",          vendorName: "Desi Dhaba",         deliveryTime: "25-30 min", rating: 4.6 },
+  { name: "Nihari",                price: 650,  originalPrice: 800,  category: "desi",     unit: "serves 2",   inStock: true,  description: "Slow-cooked beef nihari",            vendorName: "Nihari Lovers",      deliveryTime: "30-40 min", rating: 4.9 },
+  { name: "Zinger Burger",         price: 380,  originalPrice: 450,  category: "burger",   unit: "1 burger",   inStock: true,  description: "Spicy zinger burger",                vendorName: "Burger Palace",      deliveryTime: "20-25 min", rating: 4.4 },
+  { name: "Fruit Chaat",           price: 180,  originalPrice: null, category: "snacks",   unit: "1 bowl",     inStock: true,  description: "Fresh fruit chaat with masala",      vendorName: "Fresh Bites",        deliveryTime: "10-15 min", rating: 4.3 },
+  { name: "Lassi (Meethi)",        price: 120,  originalPrice: 150,  category: "beverages",unit: "400ml",      inStock: true,  description: "Sweet mango lassi",                  vendorName: "Fresh Bites",        deliveryTime: "10-15 min", rating: 4.5 },
 ];
 
-const DEMO_WALLET_BALANCE = "1000.00";
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   HELPER: reseed products
-───────────────────────────────────────────────────────────────────────────── */
 async function reseedProducts(): Promise<{ mart: number; food: number }> {
   await db.delete(productsTable);
-  let mart = 0;
-  let food = 0;
+  let mart = 0, food = 0;
   for (const p of MART_PRODUCTS) {
     await db.insert(productsTable).values({
-      id: generateId(),
-      name: p.name,
-      description: p.description,
-      price: p.price.toString(),
-      originalPrice: p.originalPrice ? p.originalPrice.toString() : null,
-      category: p.category,
-      type: "mart",
-      vendorId: "ajkmart_system",
-      vendorName: "AJKMart Store",
-      unit: p.unit,
-      inStock: p.inStock,
+      id: generateId(), name: p.name, description: p.description,
+      price: p.price.toString(), originalPrice: p.originalPrice ? p.originalPrice.toString() : null,
+      category: p.category, type: "mart", vendorId: "ajkmart_system", vendorName: "AJKMart Store",
+      unit: p.unit, inStock: p.inStock,
       rating: (3.8 + Math.random() * 1.1).toFixed(1),
       reviewCount: Math.floor(Math.random() * 200) + 10,
     });
@@ -112,17 +182,10 @@ async function reseedProducts(): Promise<{ mart: number; food: number }> {
   }
   for (const p of FOOD_PRODUCTS) {
     await db.insert(productsTable).values({
-      id: generateId(),
-      name: p.name,
-      description: p.description,
-      price: p.price.toString(),
-      originalPrice: p.originalPrice ? p.originalPrice.toString() : null,
-      category: p.category,
-      type: "food",
-      vendorId: "ajkmart_system",
-      unit: p.unit,
-      inStock: p.inStock,
-      rating: (p.rating || 4.5).toString(),
+      id: generateId(), name: p.name, description: p.description,
+      price: p.price.toString(), originalPrice: p.originalPrice ? p.originalPrice.toString() : null,
+      category: p.category, type: "food", vendorId: "ajkmart_system", unit: p.unit,
+      inStock: p.inStock, rating: (p.rating || 4.5).toString(),
       reviewCount: Math.floor(Math.random() * 500) + 50,
       vendorName: p.vendorName || "Restaurant AJK",
       deliveryTime: p.deliveryTime || "25-35 min",
@@ -132,51 +195,79 @@ async function reseedProducts(): Promise<{ mart: number; food: number }> {
   return { mart, food };
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   GET /admin/system/stats — Live DB table counts
-───────────────────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   READ ENDPOINTS
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* GET /admin/system/stats */
 router.get("/stats", async (_req, res) => {
-  const [users]          = await db.select({ c: count() }).from(usersTable);
-  const [orders]         = await db.select({ c: count() }).from(ordersTable);
-  const [rides]          = await db.select({ c: count() }).from(ridesTable);
-  const [pharmacy]       = await db.select({ c: count() }).from(pharmacyOrdersTable);
-  const [parcel]         = await db.select({ c: count() }).from(parcelBookingsTable);
-  const [products]       = await db.select({ c: count() }).from(productsTable);
-  const [walletTx]       = await db.select({ c: count() }).from(walletTransactionsTable);
-  const [notifications]  = await db.select({ c: count() }).from(notificationsTable);
-  const [reviews]        = await db.select({ c: count() }).from(reviewsTable);
-  const [promos]         = await db.select({ c: count() }).from(promoCodesTable);
-  const [flashDeals]     = await db.select({ c: count() }).from(flashDealsTable);
-  const [adminAccounts]  = await db.select({ c: count() }).from(adminAccountsTable);
-  const [settings]       = await db.select({ c: count() }).from(platformSettingsTable);
-  const [savedAddr]      = await db.select({ c: count() }).from(savedAddressesTable);
+  const [users]         = await db.select({ c: count() }).from(usersTable);
+  const [orders]        = await db.select({ c: count() }).from(ordersTable);
+  const [rides]         = await db.select({ c: count() }).from(ridesTable);
+  const [pharmacy]      = await db.select({ c: count() }).from(pharmacyOrdersTable);
+  const [parcel]        = await db.select({ c: count() }).from(parcelBookingsTable);
+  const [products]      = await db.select({ c: count() }).from(productsTable);
+  const [walletTx]      = await db.select({ c: count() }).from(walletTransactionsTable);
+  const [notifications] = await db.select({ c: count() }).from(notificationsTable);
+  const [reviews]       = await db.select({ c: count() }).from(reviewsTable);
+  const [promos]        = await db.select({ c: count() }).from(promoCodesTable);
+  const [flashDeals]    = await db.select({ c: count() }).from(flashDealsTable);
+  const [adminAccounts] = await db.select({ c: count() }).from(adminAccountsTable);
+  const [settings]      = await db.select({ c: count() }).from(platformSettingsTable);
+  const [savedAddr]     = await db.select({ c: count() }).from(savedAddressesTable);
 
   res.json({
     stats: {
-      users:          Number(users?.c ?? 0),
+      users:          Number(users?.c  ?? 0),
       orders:         Number(orders?.c ?? 0),
-      rides:          Number(rides?.c ?? 0),
-      pharmacy:       Number(pharmacy?.c ?? 0),
-      parcel:         Number(parcel?.c ?? 0),
-      products:       Number(products?.c ?? 0),
-      walletTx:       Number(walletTx?.c ?? 0),
+      rides:          Number(rides?.c  ?? 0),
+      pharmacy:       Number(pharmacy?.c  ?? 0),
+      parcel:         Number(parcel?.c    ?? 0),
+      products:       Number(products?.c  ?? 0),
+      walletTx:       Number(walletTx?.c  ?? 0),
       notifications:  Number(notifications?.c ?? 0),
-      reviews:        Number(reviews?.c ?? 0),
-      promos:         Number(promos?.c ?? 0),
+      reviews:        Number(reviews?.c   ?? 0),
+      promos:         Number(promos?.c    ?? 0),
       flashDeals:     Number(flashDeals?.c ?? 0),
       adminAccounts:  Number(adminAccounts?.c ?? 0),
-      settings:       Number(settings?.c ?? 0),
+      settings:       Number(settings?.c  ?? 0),
       savedAddresses: Number(savedAddr?.c ?? 0),
     },
     generatedAt: new Date().toISOString(),
   });
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   POST /admin/system/reset-demo
-   Clears all transactional data, reseeds demo products + resets wallet balances
-───────────────────────────────────────────────────────────────────────────── */
+/* GET /admin/system/snapshots — list active (non-expired) snapshots */
+router.get("/snapshots", async (_req, res) => {
+  const rows = await db.select({
+    id:        systemSnapshotsTable.id,
+    label:     systemSnapshotsTable.label,
+    actionId:  systemSnapshotsTable.actionId,
+    createdAt: systemSnapshotsTable.createdAt,
+    expiresAt: systemSnapshotsTable.expiresAt,
+  }).from(systemSnapshotsTable);
+
+  res.json({
+    snapshots: rows.map(r => ({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+      expiresAt: r.expiresAt.toISOString(),
+    })),
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTION ENDPOINTS — each snapshots first, then executes
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* POST /admin/system/reset-demo */
 router.post("/reset-demo", async (_req, res) => {
+  const snap = await snapshotBefore("Reset Demo Content", "reset-demo", [
+    "orders", "rides", "pharmacy_orders", "parcel_bookings",
+    "wallet_transactions", "reviews", "notifications", "flash_deals",
+    "products", "users",
+  ]);
+
   await db.delete(ordersTable);
   await db.delete(ridesTable);
   await db.delete(pharmacyOrdersTable);
@@ -186,25 +277,25 @@ router.post("/reset-demo", async (_req, res) => {
   await db.delete(notificationsTable);
   await db.delete(liveLocationsTable);
   await db.delete(flashDealsTable);
-
   await db.update(usersTable).set({ walletBalance: DEMO_WALLET_BALANCE });
-
   const { mart, food } = await reseedProducts();
 
   res.json({
     success: true,
-    message: "Demo content reset. All transactional data cleared and demo products reseeded.",
-    cleared: ["orders", "rides", "pharmacy_orders", "parcel_bookings", "wallet_transactions", "reviews", "notifications", "live_locations", "flash_deals"],
+    message: "Demo content reset. Transactional data cleared, products reseeded.",
     reseeded: { mart_products: mart, food_products: food },
-    walletReset: `All user wallets reset to Rs. ${DEMO_WALLET_BALANCE}`,
+    walletReset: `All wallets reset to Rs. ${DEMO_WALLET_BALANCE}`,
+    ...snap,
   });
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   POST /admin/system/reset-transactional
-   Clears only transactional tables (orders, rides, wallet history) — keeps users & products
-───────────────────────────────────────────────────────────────────────────── */
+/* POST /admin/system/reset-transactional */
 router.post("/reset-transactional", async (_req, res) => {
+  const snap = await snapshotBefore("Clear Transactional Data", "reset-transactional", [
+    "orders", "rides", "pharmacy_orders", "parcel_bookings",
+    "wallet_transactions", "reviews", "notifications", "flash_deals",
+  ]);
+
   await db.delete(ordersTable);
   await db.delete(ridesTable);
   await db.delete(pharmacyOrdersTable);
@@ -218,29 +309,29 @@ router.post("/reset-transactional", async (_req, res) => {
   res.json({
     success: true,
     message: "All transactional data cleared. Users, products and settings preserved.",
-    cleared: ["orders", "rides", "pharmacy_orders", "parcel_bookings", "wallet_transactions", "reviews", "notifications", "live_locations", "flash_deals"],
+    ...snap,
   });
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   POST /admin/system/reset-products
-   Deletes all products and reseeds fresh demo mart + food products
-───────────────────────────────────────────────────────────────────────────── */
+/* POST /admin/system/reset-products */
 router.post("/reset-products", async (_req, res) => {
+  const snap = await snapshotBefore("Reseed Products", "reset-products", ["products"]);
   const { mart, food } = await reseedProducts();
   res.json({
     success: true,
     message: `Products reseeded: ${mart} mart + ${food} food items.`,
     seeded: { mart, food },
+    ...snap,
   });
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   POST /admin/system/reset-all
-   Nuclear reset: wipes ALL data except platform settings and admin accounts
-───────────────────────────────────────────────────────────────────────────── */
+/* POST /admin/system/reset-all */
 router.post("/reset-all", async (_req, res) => {
-  const { confirm } = (await Promise.resolve({})) as any;
+  const snap = await snapshotBefore("Full Database Reset", "reset-all", [
+    "users", "orders", "rides", "pharmacy_orders", "parcel_bookings",
+    "wallet_transactions", "reviews", "notifications", "flash_deals",
+    "promo_codes", "saved_addresses", "user_settings", "products",
+  ]);
 
   await db.delete(ordersTable);
   await db.delete(ridesTable);
@@ -255,34 +346,86 @@ router.post("/reset-all", async (_req, res) => {
   await db.delete(savedAddressesTable);
   await db.delete(userSettingsTable);
   await db.delete(usersTable);
-
   const { mart, food } = await reseedProducts();
 
   res.json({
     success: true,
     message: "Full database reset complete. Platform settings and admin accounts preserved.",
-    cleared: ["users", "orders", "rides", "pharmacy_orders", "parcel_bookings", "wallet_transactions", "reviews", "notifications", "live_locations", "flash_deals", "promo_codes", "saved_addresses", "user_settings"],
-    reseeded: { mart_products: mart, food_products: food },
     preserved: ["platform_settings", "admin_accounts"],
+    reseeded: { mart_products: mart, food_products: food },
+    ...snap,
   });
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   POST /admin/system/reset-settings
-   Deletes all platform settings — they will be reseeded on next admin page load
-───────────────────────────────────────────────────────────────────────────── */
+/* POST /admin/system/reset-settings */
 router.post("/reset-settings", async (_req, res) => {
+  const snap = await snapshotBefore("Reset Platform Settings", "reset-settings", ["platform_settings"]);
   await db.delete(platformSettingsTable);
   invalidateSettingsCache();
   res.json({
     success: true,
     message: "All platform settings deleted. Settings will be reseeded to defaults on next admin panel visit.",
+    ...snap,
   });
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   GET /admin/system/backup — Download full DB backup as JSON
-───────────────────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   UNDO ENDPOINT
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* POST /admin/system/undo/:id */
+router.post("/undo/:id", async (req, res) => {
+  const { id } = req.params;
+  const [snapshot] = await db.select().from(systemSnapshotsTable).where(eq(systemSnapshotsTable.id, id));
+
+  if (!snapshot) {
+    res.status(404).json({ error: "Snapshot not found. It may have already expired or been dismissed." });
+    return;
+  }
+  if (new Date() > snapshot.expiresAt) {
+    await db.delete(systemSnapshotsTable).where(eq(systemSnapshotsTable.id, id));
+    res.status(410).json({ error: "Undo window has expired. This action is now permanent." });
+    return;
+  }
+
+  let tables: Record<string, any[]>;
+  try {
+    tables = JSON.parse(snapshot.tablesJson);
+  } catch {
+    res.status(500).json({ error: "Snapshot data is corrupted." });
+    return;
+  }
+
+  const { restored, errors } = await restoreTables(tables);
+
+  if (snapshot.actionId === "reset-settings") {
+    invalidateSettingsCache();
+  }
+
+  await db.delete(systemSnapshotsTable).where(eq(systemSnapshotsTable.id, id));
+
+  res.json({
+    success: errors.length === 0,
+    message: errors.length === 0
+      ? `Undo complete. "${snapshot.label}" has been reversed.`
+      : `Undo completed with ${errors.length} error(s).`,
+    restored,
+    errors: errors.length > 0 ? errors : undefined,
+  });
+});
+
+/* DELETE /admin/system/snapshots/:id — dismiss (discard undo without restoring) */
+router.delete("/snapshots/:id", async (req, res) => {
+  const { id } = req.params;
+  await db.delete(systemSnapshotsTable).where(eq(systemSnapshotsTable.id, id));
+  res.json({ success: true, message: "Snapshot dismissed. The action is now permanent." });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BACKUP / RESTORE
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* GET /admin/system/backup */
 router.get("/backup", async (_req, res) => {
   const [
     users, orders, rides, pharmacy, parcel, products,
@@ -310,20 +453,18 @@ router.get("/backup", async (_req, res) => {
     exportedAt: new Date().toISOString(),
     platform: "AJKMart",
     tables: {
-      users:                users.map(u => ({ ...u, otpCode: undefined, otpExpiry: undefined })),
-      orders,
-      rides,
-      pharmacy_orders:      pharmacy,
-      parcel_bookings:      parcel,
+      users:               users.map(u => ({ ...u, otpCode: undefined, otpExpiry: undefined })),
+      orders,              rides,
+      pharmacy_orders:     pharmacy,
+      parcel_bookings:     parcel,
       products,
-      wallet_transactions:  walletTx,
-      notifications,
-      reviews,
-      promo_codes:          promos,
-      flash_deals:          flashDeals,
-      platform_settings:    settings,
-      saved_addresses:      savedAddr,
-      user_settings:        userSettings,
+      wallet_transactions: walletTx,
+      notifications,       reviews,
+      promo_codes:         promos,
+      flash_deals:         flashDeals,
+      platform_settings:   settings,
+      saved_addresses:     savedAddr,
+      user_settings:       userSettings,
     },
     counts: {
       users: users.length, orders: orders.length, rides: rides.length,
@@ -342,11 +483,7 @@ router.get("/backup", async (_req, res) => {
   res.json(backup);
 });
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   POST /admin/system/restore — Restore DB from backup JSON
-   Accepts: { tables: { orders: [...], rides: [...], ... } }
-   Restores only transactional tables + products (never overwrites settings/admins)
-───────────────────────────────────────────────────────────────────────────── */
+/* POST /admin/system/restore */
 router.post("/restore", async (req, res) => {
   const body = req.body as any;
   if (!body?.tables) {
@@ -354,44 +491,8 @@ router.post("/restore", async (req, res) => {
     return;
   }
 
-  const { tables } = body;
-  const restored: Record<string, number> = {};
-  const errors: string[] = [];
-
-  const safeRestore = async (tableName: string, tableRef: any, rows: any[]) => {
-    if (!Array.isArray(rows) || rows.length === 0) return;
-    try {
-      await db.delete(tableRef);
-      const cleaned = rows.map(r => {
-        const { createdAt, updatedAt, ...rest } = r;
-        return {
-          ...rest,
-          createdAt: createdAt ? new Date(createdAt) : new Date(),
-          updatedAt: updatedAt ? new Date(updatedAt) : new Date(),
-        };
-      });
-      for (const row of cleaned) {
-        try { await db.insert(tableRef).values(row); } catch {}
-      }
-      restored[tableName] = rows.length;
-    } catch (e: any) {
-      errors.push(`${tableName}: ${e.message}`);
-    }
-  };
-
-  if (tables.users)               await safeRestore("users",               usersTable,               tables.users);
-  if (tables.orders)              await safeRestore("orders",              ordersTable,              tables.orders);
-  if (tables.rides)               await safeRestore("rides",               ridesTable,               tables.rides);
-  if (tables.pharmacy_orders)     await safeRestore("pharmacy_orders",     pharmacyOrdersTable,      tables.pharmacy_orders);
-  if (tables.parcel_bookings)     await safeRestore("parcel_bookings",     parcelBookingsTable,      tables.parcel_bookings);
-  if (tables.products)            await safeRestore("products",            productsTable,            tables.products);
-  if (tables.wallet_transactions) await safeRestore("wallet_transactions", walletTransactionsTable,  tables.wallet_transactions);
-  if (tables.notifications)       await safeRestore("notifications",       notificationsTable,       tables.notifications);
-  if (tables.reviews)             await safeRestore("reviews",             reviewsTable,             tables.reviews);
-  if (tables.promo_codes)         await safeRestore("promo_codes",         promoCodesTable,          tables.promo_codes);
-  if (tables.flash_deals)         await safeRestore("flash_deals",         flashDealsTable,          tables.flash_deals);
-  if (tables.saved_addresses)     await safeRestore("saved_addresses",     savedAddressesTable,      tables.saved_addresses);
-  if (tables.user_settings)       await safeRestore("user_settings",       userSettingsTable,        tables.user_settings);
+  const snap = await snapshotBefore("Import Restore", "restore", Object.keys(TABLE_MAP));
+  const { restored, errors } = await restoreTables(body.tables);
 
   res.json({
     success: errors.length === 0,
@@ -400,6 +501,7 @@ router.post("/restore", async (req, res) => {
       : `Restore completed with ${errors.length} error(s).`,
     restored,
     errors: errors.length > 0 ? errors : undefined,
+    ...snap,
   });
 });
 

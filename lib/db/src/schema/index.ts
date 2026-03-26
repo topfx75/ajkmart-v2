@@ -14,3 +14,4 @@ export * from "./flash_deals";
 export * from "./promo_codes";
 export * from "./admin_accounts";
 export * from "./reviews";
+export * from "./system_snapshots";

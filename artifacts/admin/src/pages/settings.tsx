@@ -9,6 +9,7 @@ import {
   ToggleRight, Settings, RotateCcw, Package,
   Gift, Star, Percent, ShieldCheck, UserPlus, Server,
   Database, Download, Upload, Trash2, HardDrive, RefreshCcw, FlaskConical,
+  Clock, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
@@ -4090,6 +4091,18 @@ function renderSection(
 /* ═══════════════════════════════════════════════════════════════════════════
    SystemSection — Database & System Management
 ═══════════════════════════════════════════════════════════════════════════ */
+/* ── type for pending undo items ── */
+type PendingUndo = { id: string; label: string; expiresAt: string; actionId: string };
+
+function fmtCountdown(expiresAt: string, now: number): string {
+  const ms = new Date(expiresAt).getTime() - now;
+  if (ms <= 0) return "00:00";
+  const totalSec = Math.ceil(ms / 1000);
+  const m = Math.floor(totalSec / 60).toString().padStart(2, "0");
+  const s = (totalSec % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
 function SystemSection() {
   const { toast } = useToast();
   const adminSecret = localStorage.getItem("ajkmart_admin_token") || "";
@@ -4100,6 +4113,19 @@ function SystemSection() {
   const [confirm, setConfirm] = useState<{ id: string; label: string; description: string; endpoint: string; danger: boolean } | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [pendingUndos, setPendingUndos] = useState<PendingUndo[]>([]);
+  const [undoLoading, setUndoLoading] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  /* Live countdown tick */
+  useEffect(() => {
+    const t = setInterval(() => {
+      const ts = Date.now();
+      setNow(ts);
+      setPendingUndos(prev => prev.filter(u => new Date(u.expiresAt).getTime() > ts));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const apiFetch = async (path: string, opts?: RequestInit) => {
     const res = await fetch(`/api/admin/system${path}`, {
@@ -4122,20 +4148,56 @@ function SystemSection() {
     setStatsLoading(false);
   };
 
-  useEffect(() => { loadStats(); }, []);
+  /* Load existing snapshots on mount (e.g. user navigated away and came back) */
+  useEffect(() => {
+    loadStats();
+    apiFetch("/snapshots").then(data => {
+      if (data?.snapshots?.length) {
+        setPendingUndos(data.snapshots.map((s: any) => ({
+          id: s.id, label: s.label, expiresAt: s.expiresAt, actionId: s.actionId,
+        })));
+      }
+    }).catch(() => {});
+  }, []);
 
-  const runAction = async (endpoint: string, label: string) => {
+  const runAction = async (endpoint: string, label: string, actionId: string) => {
     setActionLoading(endpoint);
     try {
       const data = await apiFetch(endpoint, { method: "POST" });
-      toast({ title: `${label} complete ✅`, description: data.message });
+      toast({ title: `${label} — done`, description: "You have 30 minutes to undo this action." });
       setConfirm(null);
       setConfirmText("");
+      if (data.snapshotId) {
+        setPendingUndos(prev => [
+          { id: data.snapshotId, label, expiresAt: data.expiresAt, actionId },
+          ...prev,
+        ]);
+      }
       await loadStats();
     } catch (e: any) {
       toast({ title: `${label} failed`, description: e.message, variant: "destructive" });
     }
     setActionLoading(null);
+  };
+
+  const handleUndo = async (undo: PendingUndo) => {
+    setUndoLoading(undo.id);
+    try {
+      const data = await apiFetch(`/undo/${undo.id}`, { method: "POST" });
+      toast({ title: "Undo complete ✅", description: data.message });
+      setPendingUndos(prev => prev.filter(u => u.id !== undo.id));
+      await loadStats();
+    } catch (e: any) {
+      toast({ title: "Undo failed", description: e.message, variant: "destructive" });
+      setPendingUndos(prev => prev.filter(u => u.id !== undo.id));
+    }
+    setUndoLoading(null);
+  };
+
+  const handleDismissUndo = async (id: string) => {
+    try { await apiFetch(`/snapshots/${id}`, { method: "DELETE" }); } catch {}
+    setPendingUndos(prev => prev.filter(u => u.id !== id));
+    toast({ title: "Action confirmed permanent", description: "Undo snapshot discarded." });
   };
 
   const handleBackup = async () => {
@@ -4164,7 +4226,13 @@ function SystemSection() {
       const json = JSON.parse(text);
       if (!json.tables) throw new Error("Invalid backup file — missing 'tables' key");
       const data = await apiFetch("/restore", { method: "POST", body: JSON.stringify(json) });
-      toast({ title: "Restore complete ✅", description: data.message });
+      toast({ title: "Restore complete ✅", description: "You have 30 minutes to undo this." });
+      if (data.snapshotId) {
+        setPendingUndos(prev => [
+          { id: data.snapshotId, label: "Import Restore", expiresAt: data.expiresAt, actionId: "restore" },
+          ...prev,
+        ]);
+      }
       await loadStats();
     } catch (e: any) {
       setRestoreError(e.message);
@@ -4195,7 +4263,7 @@ function SystemSection() {
       id: "reset-demo",
       label: "Reset Demo Content",
       icon: <FlaskConical size={18} />,
-      description: "Clears all orders, rides, wallet history, reviews and notifications. Reseeds all demo products (mart + food). Resets all user wallets to Rs. 1,000.",
+      description: "Clears all orders, rides, wallet history, reviews and notifications. Reseeds demo products. Resets all user wallets to Rs. 1,000.",
       endpoint: "/reset-demo",
       color: "border-amber-200 bg-amber-50",
       btnColor: "bg-amber-500 hover:bg-amber-600",
@@ -4217,7 +4285,7 @@ function SystemSection() {
       id: "reset-products",
       label: "Reseed Products",
       icon: <RefreshCcw size={18} />,
-      description: "Deletes all current products and inserts fresh demo mart (25 items) and food (13 items) products. Existing orders referencing these products are unaffected.",
+      description: "Deletes all current products and inserts fresh demo mart (25 items) and food (13 items) products.",
       endpoint: "/reset-products",
       color: "border-violet-200 bg-violet-50",
       btnColor: "bg-violet-500 hover:bg-violet-600",
@@ -4228,7 +4296,7 @@ function SystemSection() {
       id: "reset-settings",
       label: "Reset Platform Settings",
       icon: <Settings size={18} />,
-      description: "Deletes all platform settings from the database. Settings will be automatically reseeded to factory defaults on your next admin panel visit.",
+      description: "Deletes all platform settings. They will be reseeded to factory defaults on your next admin panel visit.",
       endpoint: "/reset-settings",
       color: "border-red-200 bg-red-50",
       btnColor: "bg-red-500 hover:bg-red-600",
@@ -4239,7 +4307,7 @@ function SystemSection() {
       id: "reset-all",
       label: "Full Database Reset",
       icon: <Trash2 size={18} />,
-      description: "NUCLEAR RESET: Deletes ALL users, orders, rides, wallet data, reviews and all content. Platform settings and admin accounts are preserved. This cannot be undone.",
+      description: "NUCLEAR RESET: Deletes ALL users, orders, rides, wallet data, reviews and all content. Platform settings and admin accounts are preserved.",
       endpoint: "/reset-all",
       color: "border-red-300 bg-red-50",
       btnColor: "bg-red-700 hover:bg-red-800",
@@ -4250,6 +4318,65 @@ function SystemSection() {
 
   return (
     <div className="space-y-6">
+
+      {/* ══════════════════════════════════════════════════════
+          UNDO BANNERS — shown after each action for 30 min
+      ══════════════════════════════════════════════════════ */}
+      {pendingUndos.length > 0 && (
+        <div className="space-y-2">
+          {pendingUndos.map(undo => {
+            const countdown = fmtCountdown(undo.expiresAt, now);
+            const urgentMs  = new Date(undo.expiresAt).getTime() - now;
+            const isUrgent  = urgentMs < 5 * 60 * 1000; // last 5 min
+            return (
+              <div key={undo.id}
+                className={`rounded-xl border-2 p-3 flex items-center gap-3 transition-all
+                  ${isUrgent
+                    ? "bg-red-50 border-red-300 animate-pulse"
+                    : "bg-amber-50 border-amber-300"}`}>
+
+                {/* Clock + countdown */}
+                <div className={`flex items-center gap-1.5 shrink-0 font-mono text-sm font-bold tabular-nums
+                  ${isUrgent ? "text-red-600" : "text-amber-700"}`}>
+                  <Clock size={14} className={isUrgent ? "text-red-500" : "text-amber-500"} />
+                  {countdown}
+                </div>
+
+                {/* Label */}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-semibold truncate ${isUrgent ? "text-red-800" : "text-amber-800"}`}>
+                    "{undo.label}" — undo available
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Snapshot saved before this action. Tap Undo to reverse it completely.
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleUndo(undo)}
+                    disabled={undoLoading === undo.id || !!actionLoading}
+                    className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all">
+                    {undoLoading === undo.id
+                      ? <Loader2 size={11} className="animate-spin" />
+                      : <RotateCcw size={11} />}
+                    Undo
+                  </button>
+                  <button
+                    onClick={() => handleDismissUndo(undo.id)}
+                    disabled={undoLoading === undo.id}
+                    title="Dismiss — make this action permanent"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white/60 transition-all">
+                    <X size={13} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── DB Stats ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -4316,7 +4443,7 @@ function SystemSection() {
               <Upload size={16} className="text-blue-700" />
               <p className="font-semibold text-sm text-blue-800">Import Restore</p>
             </div>
-            <p className="text-[11px] text-blue-700 mb-3">Upload a previously exported backup JSON file. Platform settings and admin accounts are never overwritten.</p>
+            <p className="text-[11px] text-blue-700 mb-3">Upload a previously exported backup JSON file. Platform settings and admin accounts are never overwritten. A snapshot is taken first — restore can be undone within 30 minutes.</p>
             {restoreError && (
               <div className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg p-2 mb-2 flex items-start gap-1.5">
                 <AlertTriangle size={11} className="shrink-0 mt-0.5" />
@@ -4334,12 +4461,15 @@ function SystemSection() {
         </div>
       </div>
 
-      {/* ── Actions ── */}
+      {/* ── Data Management Actions ── */}
       <div>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-1">
           <Database size={15} className="text-slate-500" />
           <p className="font-semibold text-sm text-slate-700">Data Management</p>
         </div>
+        <p className="text-[11px] text-slate-400 mb-3 flex items-center gap-1">
+          <Clock size={10} /> All actions create a snapshot first — you can undo within 30 minutes.
+        </p>
         <div className="space-y-3">
           {ACTIONS.map(action => (
             <div key={action.id} className={`rounded-xl border p-4 ${action.color}`}>
@@ -4380,6 +4510,16 @@ function SystemSection() {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-sm text-slate-600">{confirm.description}</p>
+
+              {/* Undo notice */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+                <Clock size={13} className="text-blue-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-blue-700">
+                  A full snapshot will be taken before this action runs.
+                  You will have <strong>30 minutes</strong> to undo it from the undo banner at the top of this section.
+                </p>
+              </div>
+
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                 <p className="text-xs text-slate-500 mb-2">
                   Type <span className="font-mono font-bold text-slate-800">
@@ -4400,11 +4540,14 @@ function SystemSection() {
                 </button>
                 <button
                   disabled={confirmText !== ACTIONS.find(a => a.id === confirm.id)?.confirmPhrase || !!actionLoading}
-                  onClick={() => runAction(confirm.endpoint, confirm.label)}
+                  onClick={() => {
+                    const a = ACTIONS.find(ac => ac.id === confirm.id)!;
+                    runAction(confirm.endpoint, confirm.label, a.id);
+                  }}
                   className={`flex-1 py-2 rounded-xl text-white text-sm font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2
                     ${confirm.danger ? "bg-red-600 hover:bg-red-700" : "bg-amber-500 hover:bg-amber-600"}`}>
                   {actionLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {actionLoading ? "Processing..." : "Confirm"}
+                  {actionLoading ? "Processing..." : "Confirm & Snapshot"}
                 </button>
               </div>
             </div>
