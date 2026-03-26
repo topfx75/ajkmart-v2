@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { notificationsTable, pharmacyOrdersTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
+import { getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
 
@@ -55,41 +56,94 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
+
+  const s = await getPlatformSettings();
+
+  // Feature flag check
+  const pharmacyEnabled = (s["feature_pharmacy"] ?? "on") === "on";
+  if (!pharmacyEnabled) {
+    res.status(503).json({ error: "Pharmacy service is currently disabled" }); return;
+  }
+
   const total = (items as { price: number; quantity: number }[]).reduce(
     (sum, item) => sum + item.price * item.quantity,
     0
   );
-  if (paymentMethod === "wallet") {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user || parseFloat(user.walletBalance ?? "0") < total) {
-      res.status(400).json({ error: "Insufficient wallet balance" });
-      return;
-    }
-    const newBalance = (parseFloat(user.walletBalance ?? "0") - total).toString();
-    await db.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
-    await db.insert(walletTransactionsTable).values({
-      id: generateId(),
-      userId,
-      type: "debit",
-      amount: total.toString(),
-      description: "Pharmacy order payment",
-    });
+
+  if (total <= 0) {
+    res.status(400).json({ error: "Order total must be greater than 0" }); return;
   }
-  const [order] = await db
-    .insert(pharmacyOrdersTable)
-    .values({
-      id: generateId(),
-      userId,
-      items,
-      prescriptionNote: prescriptionNote || null,
-      deliveryAddress,
-      contactPhone,
-      total: total.toString(),
-      paymentMethod,
-      status: "pending",
-      estimatedTime: "25-40 min",
-    })
-    .returning();
+
+  // Wallet payment → atomic DB transaction (prevents race condition / double-spend)
+  if (paymentMethod === "wallet") {
+    const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
+    if (!walletEnabled) {
+      res.status(400).json({ error: "Wallet payments are currently disabled" }); return;
+    }
+
+    try {
+      const order = await db.transaction(async (tx) => {
+        const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        if (!user) throw new Error("User not found");
+
+        const balance = parseFloat(user.walletBalance ?? "0");
+        if (balance < total) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${total.toFixed(0)}`);
+
+        const newBalance = (balance - total).toFixed(2);
+        await tx.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
+        await tx.insert(walletTransactionsTable).values({
+          id: generateId(),
+          userId,
+          type: "debit",
+          amount: total.toFixed(2),
+          description: "Pharmacy order payment",
+        });
+
+        const [newOrder] = await tx.insert(pharmacyOrdersTable).values({
+          id: generateId(),
+          userId,
+          items,
+          prescriptionNote: prescriptionNote || null,
+          deliveryAddress,
+          contactPhone,
+          total: total.toFixed(2),
+          paymentMethod,
+          status: "pending",
+          estimatedTime: "25-40 min",
+        }).returning();
+        return newOrder!;
+      });
+
+      await db.insert(notificationsTable).values({
+        id: generateId(),
+        userId,
+        title: "Pharmacy Order Placed",
+        body: `Aapka pharmacy order place ho gaya. Rs. ${total} — Estimated: 25-40 min`,
+        type: "pharmacy",
+        icon: "medical-outline",
+        link: `/(tabs)/orders`,
+      }).catch(() => {});
+
+      res.status(201).json(mapOrder(order));
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+    return;
+  }
+
+  // Cash / other payments
+  const [order] = await db.insert(pharmacyOrdersTable).values({
+    id: generateId(),
+    userId,
+    items,
+    prescriptionNote: prescriptionNote || null,
+    deliveryAddress,
+    contactPhone,
+    total: total.toFixed(2),
+    paymentMethod,
+    status: "pending",
+    estimatedTime: "25-40 min",
+  }).returning();
 
   await db.insert(notificationsTable).values({
     id: generateId(),

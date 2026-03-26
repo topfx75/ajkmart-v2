@@ -520,6 +520,16 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
     await sendUserNotification(order.userId, notif.title, notif.body, "pharmacy", notif.icon);
   }
 
+  // Wallet refund on cancellation (atomic)
+  if (status === "cancelled" && order.paymentMethod === "wallet") {
+    const refundAmt = parseFloat(order.total);
+    await db.transaction(async (tx) => {
+      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, order.userId));
+      await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Pharmacy Order #${order.id.slice(-6).toUpperCase()} cancelled` });
+    }).catch(() => {});
+    await sendUserNotification(order.userId, "Pharmacy Refund 💊💰", `Rs. ${refundAmt} refunded to your wallet.`, "pharmacy", "wallet-outline");
+  }
+
   res.json({ ...order, total: parseFloat(order.total) });
 });
 
@@ -553,6 +563,16 @@ router.patch("/parcel-bookings/:id/status", async (req, res) => {
   const notif = PARCEL_NOTIFICATIONS[status];
   if (notif) {
     await sendUserNotification(booking.userId, notif.title, notif.body, "parcel", notif.icon);
+  }
+
+  // Wallet refund on cancellation (atomic)
+  if (status === "cancelled" && booking.paymentMethod === "wallet") {
+    const refundAmt = parseFloat(booking.fare);
+    await db.transaction(async (tx) => {
+      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, booking.userId));
+      await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: booking.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Parcel Booking #${booking.id.slice(-6).toUpperCase()} cancelled` });
+    }).catch(() => {});
+    await sendUserNotification(booking.userId, "Parcel Refund 📦💰", `Rs. ${refundAmt} refunded to your wallet.`, "parcel", "wallet-outline");
   }
 
   res.json({ ...booking, fare: parseFloat(booking.fare) });

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
+import { getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
 
@@ -60,6 +61,10 @@ router.get("/me", async (req, res) => {
   const user = (req as any).vendorUser;
   const vendorId = user.id;
   const today = new Date(); today.setHours(0,0,0,0);
+
+  const s = await getPlatformSettings();
+  const vendorShare = 1 - (parseFloat(s["vendor_commission_pct"] ?? "15") / 100);
+
   const [todayOrders, todayRev, totalOrders, totalRev] = await Promise.all([
     db.select({ c: count() }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, today))),
     db.select({ s: sum(ordersTable.total) }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, today), or(eq(ordersTable.status, "delivered"), eq(ordersTable.status, "completed")))),
@@ -70,9 +75,9 @@ router.get("/me", async (req, res) => {
     ...formatUser(user),
     stats: {
       todayOrders:  todayOrders[0]?.c ?? 0,
-      todayRevenue: safeNum(todayRev[0]?.s) * 0.85,
+      todayRevenue: parseFloat((safeNum(todayRev[0]?.s) * vendorShare).toFixed(2)),
       totalOrders:  totalOrders[0]?.c ?? 0,
-      totalRevenue: safeNum(totalRev[0]?.s) * 0.85,
+      totalRevenue: parseFloat((safeNum(totalRev[0]?.s) * vendorShare).toFixed(2)),
     },
   });
 });
@@ -121,6 +126,10 @@ router.get("/stats", async (req, res) => {
   const today = new Date(); today.setHours(0,0,0,0);
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate() - 30);
+
+  const s = await getPlatformSettings();
+  const vendorShare = 1 - (parseFloat(s["vendor_commission_pct"] ?? "15") / 100);
+
   const [tData, wData, mData, pending, lowStock] = await Promise.all([
     db.select({ c: count(), s: sum(ordersTable.total) }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, today))),
     db.select({ c: count(), s: sum(ordersTable.total) }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, weekAgo))),
@@ -129,9 +138,9 @@ router.get("/stats", async (req, res) => {
     db.select({ c: count() }).from(productsTable).where(and(eq(productsTable.vendorId, vendorId), sql`stock IS NOT NULL AND stock < 10 AND stock > 0`)),
   ]);
   res.json({
-    today:    { orders: tData[0]?.c??0, revenue: safeNum(tData[0]?.s)*0.85 },
-    week:     { orders: wData[0]?.c??0, revenue: safeNum(wData[0]?.s)*0.85 },
-    month:    { orders: mData[0]?.c??0, revenue: safeNum(mData[0]?.s)*0.85 },
+    today:    { orders: tData[0]?.c??0, revenue: parseFloat((safeNum(tData[0]?.s)*vendorShare).toFixed(2)) },
+    week:     { orders: wData[0]?.c??0, revenue: parseFloat((safeNum(wData[0]?.s)*vendorShare).toFixed(2)) },
+    month:    { orders: mData[0]?.c??0, revenue: parseFloat((safeNum(mData[0]?.s)*vendorShare).toFixed(2)) },
     pending:  pending[0]?.c ?? 0,
     lowStock: lowStock[0]?.c ?? 0,
   });
@@ -169,10 +178,14 @@ router.patch("/orders/:id/status", async (req, res) => {
   if (msgs[status]) {
     await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: msgs[status]!.title, body: msgs[status]!.body, type: "order", icon: "bag-outline" }).catch(()=>{});
   }
+  // Wallet refund for cancellations — wrapped in transaction (atomic)
   if (status === "cancelled" && order.paymentMethod === "wallet") {
     const refundAmt = safeNum(order.total);
-    await db.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, order.userId));
-    await db.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: String(refundAmt), description: `Refund — Order #${order.id.slice(-6).toUpperCase()} cancelled by store` }).catch(()=>{});
+    await db.transaction(async (tx) => {
+      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, order.userId));
+      await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Order #${order.id.slice(-6).toUpperCase()} cancelled by store` });
+    }).catch(() => {});
+    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: "Refund Processed 💰", body: `Rs. ${refundAmt} refunded to your wallet — Order #${order.id.slice(-6).toUpperCase()}`, type: "wallet", icon: "wallet-outline" }).catch(() => {});
   }
   res.json({ ...updated, total: safeNum(updated.total) });
 });
@@ -320,32 +333,45 @@ router.get("/wallet/transactions", async (req, res) => {
   });
 });
 
-/* ── POST /vendor/wallet/withdraw ── Withdrawal Request ── */
+/* ── POST /vendor/wallet/withdraw ── Atomic Withdrawal Request ── */
 router.post("/wallet/withdraw", async (req, res) => {
   const vendorId = (req as any).vendorId;
-  const user = (req as any).vendorUser;
   const { amount, accountTitle, accountNumber, bankName, note } = req.body;
   const amt = safeNum(amount);
+
   if (!amt || amt <= 0) { res.status(400).json({ error: "Valid amount required" }); return; }
   if (amt < 500) { res.status(400).json({ error: "Minimum withdrawal is Rs. 500" }); return; }
-  const balance = safeNum(user.walletBalance);
-  if (amt > balance) { res.status(400).json({ error: `Insufficient balance. Available: Rs. ${balance}` }); return; }
   if (!accountTitle || !accountNumber || !bankName) {
     res.status(400).json({ error: "Account title, number, and bank name are required" }); return;
   }
-  // Deduct wallet + create transaction record (pending withdrawal)
-  await db.update(usersTable).set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, vendorId));
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(), userId: vendorId, type: "debit",
-    amount: String(amt.toFixed(2)),
-    description: `Withdrawal request — ${bankName} · ${accountNumber} · ${accountTitle}${note ? ` · Note: ${note}` : ""}`,
-  });
-  // Notify admin (via user notification to self as placeholder)
-  await db.insert(notificationsTable).values({
-    id: generateId(), userId: vendorId, title: "Withdrawal Requested ✅",
-    body: `Rs. ${amt} withdrawal requested. Admin will process within 24-48 hours.`, type: "wallet", icon: "cash-outline",
-  }).catch(() => {});
-  res.json({ success: true, newBalance: balance - amt, amount: amt });
+
+  // Atomic transaction — prevents race condition / overdraw
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
+      if (!user) throw new Error("User not found");
+
+      const balance = safeNum(user.walletBalance);
+      if (amt > balance) throw new Error(`Insufficient balance. Available: Rs. ${balance}`);
+
+      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, vendorId));
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId: vendorId, type: "debit",
+        amount: amt.toFixed(2),
+        description: `Withdrawal request — ${bankName} · ${accountNumber} · ${accountTitle}${note ? ` · Note: ${note}` : ""}`,
+      });
+      return balance - amt;
+    });
+
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: vendorId, title: "Withdrawal Requested ✅",
+      body: `Rs. ${amt} withdrawal requested. Admin will process within 24-48 hours.`, type: "wallet", icon: "cash-outline",
+    }).catch(() => {});
+
+    res.json({ success: true, newBalance: parseFloat(result.toFixed(2)), amount: amt });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 /* ── GET /vendor/notifications ── */

@@ -1,5 +1,5 @@
 # AJKMart Super App — Workspace
-<!-- Last updated: 2026-03-26 — Admin Settings: 12 categories (Content, Security, Integrations added), feature flags in customer app, OTP bypass + new_users check in auth -->
+<!-- Last updated: 2026-03-26 — Deep Audit: 14 critical bugs fixed (race conditions, refund logic, hardcoded commission %, rider/vendor earnings, missing transactions, accept race, feature flags) -->
 
 ## Project Overview
 
@@ -20,13 +20,13 @@
 ### Rider App Key Info
 - Auth: phone OTP → token stored in `localStorage` as `rider_token`
 - Token format: `Buffer.from(userId:phone:timestamp).toString("base64")`
-- Rider earns **80%** of each order/ride total
+- Rider earns `rider_keep_pct`% (default 80%) of each order/ride total — from platform settings
 - API routes: `/api/rider/*` (auth middleware checks `roles` includes "rider")
 - Pages: Login, Home (online toggle), Active delivery, History, Earnings, Profile
 
 ### Vendor App Key Info
 - Auth: phone OTP → token stored in `localStorage` as `vendor_token`
-- Vendor earns **85%** of order revenue (15% platform fee)
+- Vendor earns `100% - vendor_commission_pct`% of revenue (default 15% platform fee) — from platform settings
 - API routes: `/api/vendor/*` (auth middleware checks `roles` includes "vendor")
 - Pages: Login, Dashboard, Orders, Products (CRUD + enhanced bulk add with description/image/paste support), Wallet (balance, history, withdrawal modal), Analytics (revenue/order charts, top products), Store (banner, hours, announcement, promos), Notifications, Profile (quick links, security)
 - BottomNav: 5 tabs — Dashboard, Orders, Products, Wallet, Account

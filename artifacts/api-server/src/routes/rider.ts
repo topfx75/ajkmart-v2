@@ -1,10 +1,13 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { usersTable, ordersTable, ridesTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, desc, and, or, sql, count, sum, gte } from "drizzle-orm";
+import { eq, desc, and, or, sql, count, sum, gte, isNull } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
+import { getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
+
+const safeNum = (v: any, def = 0) => { const n = parseFloat(String(v ?? def)); return isNaN(n) ? def : n; };
 
 /* ── Auth Middleware ── */
 async function riderAuth(req: Request, res: Response, next: NextFunction) {
@@ -40,6 +43,9 @@ router.get("/me", async (req, res) => {
   const riderId = user.id;
   const today = new Date(); today.setHours(0,0,0,0);
 
+  const s = await getPlatformSettings();
+  const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
+
   const [deliveriesToday, earningsToday, totalDeliveries, totalEarnings] = await Promise.all([
     db.select({ c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.createdAt, today))),
     db.select({ s: sum(ordersTable.total) }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.createdAt, today))),
@@ -50,8 +56,7 @@ router.get("/me", async (req, res) => {
   res.json({
     id: user.id, phone: user.phone, name: user.name, email: user.email,
     avatar: user.avatar, isOnline: user.isOnline,
-    walletBalance: parseFloat(user.walletBalance ?? "0"),
-    // Extended profile
+    walletBalance: safeNum(user.walletBalance),
     cnic: user.cnic, address: user.address, city: user.city,
     emergencyContact: user.emergencyContact,
     vehicleType: user.vehicleType, vehiclePlate: user.vehiclePlate,
@@ -59,9 +64,9 @@ router.get("/me", async (req, res) => {
     lastLoginAt: user.lastLoginAt, createdAt: user.createdAt,
     stats: {
       deliveriesToday: deliveriesToday[0]?.c ?? 0,
-      earningsToday: parseFloat(String(earningsToday[0]?.s ?? "0")) * 0.8,
+      earningsToday:   safeNum(earningsToday[0]?.s)  * riderKeepPct,
       totalDeliveries: totalDeliveries[0]?.c ?? 0,
-      totalEarnings: parseFloat(String(totalEarnings[0]?.s ?? "0")) * 0.8,
+      totalEarnings:   safeNum(totalEarnings[0]?.s)  * riderKeepPct,
     },
   });
 });
@@ -91,13 +96,19 @@ router.patch("/profile", async (req, res) => {
   if (bankAccount      !== undefined) updates.bankAccount      = bankAccount;
   if (bankAccountTitle !== undefined) updates.bankAccountTitle = bankAccountTitle;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, riderId)).returning();
-  const safeNum = (v: any) => v ? parseFloat(String(v)) : 0;
-  res.json({ id: user.id, name: user.name, phone: user.phone, email: user.email, role: user.role, isOnline: user.isOnline, walletBalance: safeNum(user.walletBalance), cnic: user.cnic, address: user.address, city: user.city, emergencyContact: user.emergencyContact, vehicleType: user.vehicleType, vehiclePlate: user.vehiclePlate, bankName: user.bankName, bankAccount: user.bankAccount, bankAccountTitle: user.bankAccountTitle, createdAt: user.createdAt, lastLoginAt: user.lastLoginAt });
+  res.json({
+    id: user.id, name: user.name, phone: user.phone, email: user.email,
+    role: user.role, isOnline: user.isOnline, walletBalance: safeNum(user.walletBalance),
+    cnic: user.cnic, address: user.address, city: user.city,
+    emergencyContact: user.emergencyContact,
+    vehicleType: user.vehicleType, vehiclePlate: user.vehiclePlate,
+    bankName: user.bankName, bankAccount: user.bankAccount, bankAccountTitle: user.bankAccountTitle,
+    createdAt: user.createdAt, lastLoginAt: user.lastLoginAt,
+  });
 });
 
 /* ── GET /rider/requests — Available orders to pick up ── */
 router.get("/requests", async (req, res) => {
-  const riderId = (req as any).riderId;
   const [orders, rides] = await Promise.all([
     db.select().from(ordersTable)
       .where(or(eq(ordersTable.status, "confirmed"), eq(ordersTable.status, "preparing")))
@@ -107,8 +118,8 @@ router.get("/requests", async (req, res) => {
       .orderBy(desc(ridesTable.createdAt)).limit(20),
   ]);
   res.json({
-    orders: orders.map(o => ({ ...o, total: parseFloat(String(o.total)) })),
-    rides: rides.map(r => ({ ...r, fare: parseFloat(String(r.fare)), distance: parseFloat(String(r.distance)) })),
+    orders: orders.map(o => ({ ...o, total: safeNum(o.total) })),
+    rides:  rides.map(r => ({ ...r, fare: safeNum(r.fare), distance: safeNum(r.distance) })),
   });
 });
 
@@ -120,89 +131,161 @@ router.get("/active", async (req, res) => {
     db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "ongoing"))).orderBy(desc(ridesTable.updatedAt)).limit(1),
   ]);
   res.json({
-    order: order[0] ? { ...order[0], total: parseFloat(String(order[0].total)) } : null,
-    ride:  ride[0]  ? { ...ride[0], fare: parseFloat(String(ride[0].fare)), distance: parseFloat(String(ride[0].distance)) } : null,
+    order: order[0] ? { ...order[0], total: safeNum(order[0].total) } : null,
+    ride:  ride[0]  ? { ...ride[0], fare: safeNum(ride[0].fare), distance: safeNum(ride[0].distance) } : null,
   });
 });
 
-/* ── POST /rider/orders/:id/accept — Accept an order ── */
+/* ── POST /rider/orders/:id/accept — Accept an order ──
+   Uses WHERE riderId IS NULL to prevent two riders accepting the same order (race condition) */
 router.post("/orders/:id/accept", async (req, res) => {
-  const riderId = (req as any).riderId;
-  const riderUser = (req as any).riderUser;
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  if (order.riderId) { res.status(409).json({ error: "Order already taken by another rider" }); return; }
-  const [updated] = await db.update(ordersTable).set({
-    riderId, status: "out_for_delivery", updatedAt: new Date(),
-  }).where(eq(ordersTable.id, req.params["id"]!)).returning();
-  await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: "Rider on the Way! 🚴", body: "Your order has been picked up. Rider is on the way!", type: "order", icon: "bicycle-outline" }).catch(() => {});
-  res.json({ ...updated, total: parseFloat(String(updated.total)) });
+  const riderId   = (req as any).riderId;
+  const orderId   = req.params["id"]!;
+
+  // Atomic accept: only succeeds if riderId is still NULL in DB
+  const [updated] = await db
+    .update(ordersTable)
+    .set({ riderId, status: "out_for_delivery", updatedAt: new Date() })
+    .where(and(eq(ordersTable.id, orderId), isNull(ordersTable.riderId)))
+    .returning();
+
+  if (!updated) {
+    // Either not found OR already taken by another rider
+    const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Order not found" }); return; }
+    res.status(409).json({ error: "Order already taken by another rider" }); return;
+  }
+
+  await db.insert(notificationsTable).values({
+    id: generateId(), userId: updated.userId,
+    title: "Rider on the Way! 🚴",
+    body: "Your order has been picked up. Rider is on the way!",
+    type: "order", icon: "bicycle-outline",
+  }).catch(() => {});
+
+  res.json({ ...updated, total: safeNum(updated.total) });
 });
 
-/* ── PATCH /rider/orders/:id/status — Update order status ── */
+/* ── PATCH /rider/orders/:id/status — Update order status (delivered) ── */
 router.patch("/orders/:id/status", async (req, res) => {
   const riderId = (req as any).riderId;
   const { status } = req.body;
   const validStatuses = ["out_for_delivery", "delivered"];
   if (!validStatuses.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
+
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found or not yours" }); return; }
+
   const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(eq(ordersTable.id, req.params["id"]!)).returning();
+
   if (status === "delivered") {
-    const earnings = parseFloat(String(order.total)) * 0.8;
+    const s = await getPlatformSettings();
+    const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
+    const earnings = parseFloat((safeNum(order.total) * riderKeepPct).toFixed(2));
+
+    // Credit rider earnings
     await db.update(usersTable).set({ walletBalance: sql`wallet_balance + ${earnings}`, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
-    await db.insert(walletTransactionsTable).values({ id: generateId(), userId: riderId, type: "credit", amount: String(earnings.toFixed(2)), description: `Delivery earnings — Order #${order.id.slice(-6).toUpperCase()}` }).catch(() => {});
-    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: "Order Delivered! 🎉", body: "Your order has been delivered. Enjoy!", type: "order", icon: "bag-check-outline" }).catch(() => {});
+    await db.insert(walletTransactionsTable).values({
+      id: generateId(), userId: riderId, type: "credit",
+      amount: earnings.toFixed(2),
+      description: `Delivery earnings — Order #${order.id.slice(-6).toUpperCase()} (${Math.round(riderKeepPct * 100)}%)`,
+    }).catch(() => {});
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: order.userId,
+      title: "Order Delivered! 🎉", body: "Your order has been delivered. Enjoy!",
+      type: "order", icon: "bag-check-outline",
+    }).catch(() => {});
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: riderId,
+      title: "Delivery Earning Credited 💰", body: `Rs. ${earnings} wallet mein add ho gaya!`,
+      type: "wallet", icon: "wallet-outline",
+    }).catch(() => {});
   }
-  res.json({ ...updated, total: parseFloat(String(updated.total)) });
+
+  res.json({ ...updated, total: safeNum(updated.total) });
 });
 
-/* ── POST /rider/rides/:id/accept — Accept a ride ── */
+/* ── POST /rider/rides/:id/accept — Accept a ride ──
+   Uses WHERE riderId IS NULL to prevent two riders accepting same ride (race condition) */
 router.post("/rides/:id/accept", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId   = (req as any).riderId;
   const riderUser = (req as any).riderUser;
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, req.params["id"]!)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.riderId) { res.status(409).json({ error: "Ride already taken" }); return; }
-  const [updated] = await db.update(ridesTable).set({
-    riderId, riderName: riderUser.name || "Rider", riderPhone: riderUser.phone, status: "ongoing", updatedAt: new Date(),
-  }).where(eq(ridesTable.id, req.params["id"]!)).returning();
-  await db.insert(notificationsTable).values({ id: generateId(), userId: ride.userId, title: "Rider Assigned! 🚗", body: `${riderUser.name || "Your rider"} is coming to pick you up.`, type: "ride", icon: "car-outline" }).catch(() => {});
-  res.json({ ...updated, fare: parseFloat(String(updated.fare)), distance: parseFloat(String(updated.distance)) });
+  const rideId    = req.params["id"]!;
+
+  // Atomic accept: only succeeds if riderId is still NULL
+  const [updated] = await db
+    .update(ridesTable)
+    .set({ riderId, riderName: riderUser.name || "Rider", riderPhone: riderUser.phone, status: "ongoing", updatedAt: new Date() })
+    .where(and(eq(ridesTable.id, rideId), isNull(ridesTable.riderId)))
+    .returning();
+
+  if (!updated) {
+    const [existing] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Ride not found" }); return; }
+    res.status(409).json({ error: "Ride already taken by another rider" }); return;
+  }
+
+  await db.insert(notificationsTable).values({
+    id: generateId(), userId: updated.userId,
+    title: "Rider Assigned! 🚗",
+    body: `${riderUser.name || "Your rider"} is coming to pick you up.`,
+    type: "ride", icon: "car-outline",
+  }).catch(() => {});
+
+  res.json({ ...updated, fare: safeNum(updated.fare), distance: safeNum(updated.distance) });
 });
 
-/* ── PATCH /rider/rides/:id/status — Update ride status ── */
+/* ── PATCH /rider/rides/:id/status — Update ride status (completed/cancelled) ── */
 router.patch("/rides/:id/status", async (req, res) => {
   const riderId = (req as any).riderId;
   const { status } = req.body;
   if (!["ongoing", "completed", "cancelled"].includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
+
   const [ride] = await db.select().from(ridesTable).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found or not yours" }); return; }
+
   const [updated] = await db.update(ridesTable).set({ status, updatedAt: new Date() }).where(eq(ridesTable.id, req.params["id"]!)).returning();
+
   if (status === "completed") {
-    const earnings = parseFloat(String(ride.fare)) * 0.8;
+    const s = await getPlatformSettings();
+    const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
+    const earnings = parseFloat((safeNum(ride.fare) * riderKeepPct).toFixed(2));
+
     await db.update(usersTable).set({ walletBalance: sql`wallet_balance + ${earnings}`, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
-    await db.insert(walletTransactionsTable).values({ id: generateId(), userId: riderId, type: "credit", amount: String(earnings.toFixed(2)), description: `Ride earnings — #${ride.id.slice(-6).toUpperCase()}` }).catch(() => {});
-    await db.insert(notificationsTable).values({ id: generateId(), userId: ride.userId, title: "Ride Completed! ✅", body: "Thanks for riding with AJKMart. Rate your experience!", type: "ride", icon: "checkmark-circle-outline" }).catch(() => {});
+    await db.insert(walletTransactionsTable).values({
+      id: generateId(), userId: riderId, type: "credit",
+      amount: earnings.toFixed(2),
+      description: `Ride earnings — #${ride.id.slice(-6).toUpperCase()} (${Math.round(riderKeepPct * 100)}%)`,
+    }).catch(() => {});
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: ride.userId,
+      title: "Ride Completed! ✅", body: "Thanks for riding with AJKMart. Rate your experience!",
+      type: "ride", icon: "checkmark-circle-outline",
+    }).catch(() => {});
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: riderId,
+      title: "Ride Earning Credited 💰", body: `Rs. ${earnings} wallet mein add ho gaya!`,
+      type: "wallet", icon: "wallet-outline",
+    }).catch(() => {});
   }
-  res.json({ ...updated, fare: parseFloat(String(updated.fare)), distance: parseFloat(String(updated.distance)) });
+
+  res.json({ ...updated, fare: safeNum(updated.fare), distance: safeNum(updated.distance) });
 });
 
 /* ── GET /rider/history — Delivery history ── */
 router.get("/history", async (req, res) => {
   const riderId = (req as any).riderId;
-  const page = parseInt(String(req.query["page"] || "1"));
-  const limit = 20;
-  const offset = (page - 1) * limit;
+  const s = await getPlatformSettings();
+  const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
 
   const [orders, rides] = await Promise.all([
-    db.select().from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"))).orderBy(desc(ordersTable.updatedAt)).limit(limit / 2),
-    db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "completed"), eq(ridesTable.status, "cancelled")))).orderBy(desc(ridesTable.updatedAt)).limit(limit / 2),
+    db.select().from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"))).orderBy(desc(ordersTable.updatedAt)).limit(10),
+    db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "completed"), eq(ridesTable.status, "cancelled")))).orderBy(desc(ridesTable.updatedAt)).limit(10),
   ]);
 
   const combined = [
-    ...orders.map(o => ({ kind: "order" as const, id: o.id, status: o.status, amount: parseFloat(String(o.total)), earnings: parseFloat(String(o.total)) * 0.8, address: o.deliveryAddress, type: o.type, createdAt: o.createdAt })),
-    ...rides.map(r => ({ kind: "ride" as const, id: r.id, status: r.status, amount: parseFloat(String(r.fare)), earnings: parseFloat(String(r.fare)) * 0.8, address: r.dropAddress, type: r.type, createdAt: r.createdAt })),
+    ...orders.map(o => ({ kind: "order" as const, id: o.id, status: o.status, amount: safeNum(o.total), earnings: parseFloat((safeNum(o.total) * riderKeepPct).toFixed(2)), address: o.deliveryAddress, type: o.type, createdAt: o.createdAt })),
+    ...rides.map(r => ({ kind: "ride" as const, id: r.id, status: r.status, amount: safeNum(r.fare), earnings: parseFloat((safeNum(r.fare) * riderKeepPct).toFixed(2)), address: r.dropAddress, type: r.type, createdAt: r.createdAt })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   res.json({ history: combined });
@@ -215,6 +298,9 @@ router.get("/earnings", async (req, res) => {
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate() - 30);
 
+  const s = await getPlatformSettings();
+  const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
+
   const [todayOrders, weekOrders, monthOrders, todayRides, weekRides] = await Promise.all([
     db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.updatedAt, today))),
     db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.updatedAt, weekAgo))),
@@ -223,14 +309,14 @@ router.get("/earnings", async (req, res) => {
     db.select({ s: sum(ridesTable.fare), c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "completed"), gte(ridesTable.updatedAt, weekAgo))),
   ]);
 
-  const todayTotal = (parseFloat(String(todayOrders[0]?.s??0)) + parseFloat(String(todayRides[0]?.s??0))) * 0.8;
-  const weekTotal  = (parseFloat(String(weekOrders[0]?.s??0)) + parseFloat(String(weekRides[0]?.s??0))) * 0.8;
-  const monthTotal = parseFloat(String(monthOrders[0]?.s??0)) * 0.8;
+  const todayTotal = (safeNum(todayOrders[0]?.s) + safeNum(todayRides[0]?.s)) * riderKeepPct;
+  const weekTotal  = (safeNum(weekOrders[0]?.s)  + safeNum(weekRides[0]?.s))  * riderKeepPct;
+  const monthTotal =  safeNum(monthOrders[0]?.s)                               * riderKeepPct;
 
   res.json({
-    today:  { earnings: todayTotal, deliveries: (todayOrders[0]?.c??0) + (todayRides[0]?.c??0) },
-    week:   { earnings: weekTotal,  deliveries: (weekOrders[0]?.c??0) + (weekRides[0]?.c??0) },
-    month:  { earnings: monthTotal, deliveries: monthOrders[0]?.c??0 },
+    today:  { earnings: parseFloat(todayTotal.toFixed(2)), deliveries: (todayOrders[0]?.c ?? 0) + (todayRides[0]?.c ?? 0) },
+    week:   { earnings: parseFloat(weekTotal.toFixed(2)),  deliveries: (weekOrders[0]?.c  ?? 0) + (weekRides[0]?.c  ?? 0) },
+    month:  { earnings: parseFloat(monthTotal.toFixed(2)), deliveries: monthOrders[0]?.c ?? 0 },
   });
 });
 
@@ -243,37 +329,52 @@ router.get("/wallet/transactions", async (req, res) => {
     .where(eq(walletTransactionsTable.userId, riderId))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(limit);
-  const safeNum = (v: any) => v ? parseFloat(String(v)) : 0;
   res.json({
     balance: safeNum(user.walletBalance),
     transactions: txns.map(t => ({ ...t, amount: safeNum(t.amount) })),
   });
 });
 
-/* ── POST /rider/wallet/withdraw ── */
+/* ── POST /rider/wallet/withdraw — Atomic withdrawal (prevents race condition) ── */
 router.post("/wallet/withdraw", async (req, res) => {
   const riderId = (req as any).riderId;
-  const user = (req as any).riderUser;
   const { amount, accountTitle, accountNumber, bankName, note } = req.body;
-  const safeNum = (v: any) => v ? parseFloat(String(v)) : 0;
   const amt = safeNum(amount);
+
   if (!amt || amt <= 0)  { res.status(400).json({ error: "Valid amount required" }); return; }
   if (amt < 500)         { res.status(400).json({ error: "Minimum withdrawal is Rs. 500" }); return; }
-  const balance = safeNum(user.walletBalance);
-  if (amt > balance)     { res.status(400).json({ error: `Insufficient balance. Available: Rs. ${balance}` }); return; }
   if (!accountTitle || !accountNumber || !bankName) {
     res.status(400).json({ error: "Account title, number and bank name are required" }); return;
   }
-  await db.update(usersTable).set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(), userId: riderId, type: "debit", amount: String(amt.toFixed(2)),
-    description: `Withdrawal — ${bankName} · ${accountNumber} · ${accountTitle}${note ? ` · ${note}` : ""}`,
-  });
-  await db.insert(notificationsTable).values({
-    id: generateId(), userId: riderId, title: "Withdrawal Requested ✅",
-    body: `Rs. ${amt} withdrawal submitted. Admin will process within 24-48 hours.`, type: "wallet", icon: "cash-outline",
-  }).catch(() => {});
-  res.json({ success: true, newBalance: balance - amt, amount: amt });
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
+      if (!user) throw new Error("User not found");
+
+      const balance = safeNum(user.walletBalance);
+      if (amt > balance) throw new Error(`Insufficient balance. Available: Rs. ${balance}`);
+
+      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId: riderId, type: "debit",
+        amount: amt.toFixed(2),
+        description: `Withdrawal — ${bankName} · ${accountNumber} · ${accountTitle}${note ? ` · ${note}` : ""}`,
+      });
+      return balance - amt;
+    });
+
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: riderId,
+      title: "Withdrawal Requested ✅",
+      body: `Rs. ${amt} withdrawal submitted. Admin will process within 24-48 hours.`,
+      type: "wallet", icon: "cash-outline",
+    }).catch(() => {});
+
+    res.json({ success: true, newBalance: parseFloat(result.toFixed(2)), amount: amt });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 /* ── GET /rider/notifications ── */

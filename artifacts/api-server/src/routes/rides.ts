@@ -36,27 +36,90 @@ router.post("/estimate", async (req, res) => {
 
 router.post("/", async (req, res) => {
   const { userId, type, pickupAddress, dropAddress, pickupLat, pickupLng, dropLat, dropLng, paymentMethod } = req.body;
+
+  if (!userId || !type || !paymentMethod) {
+    res.status(400).json({ error: "userId, type, and paymentMethod are required" }); return;
+  }
+
+  const s = await getPlatformSettings();
+
+  // Feature flag check
+  const ridesEnabled = (s["feature_rides"] ?? "on") === "on";
+  if (!ridesEnabled) {
+    res.status(503).json({ error: "Ride booking is currently disabled" }); return;
+  }
+
   const distance = pickupLat && dropLat ? calcDistance(pickupLat, pickupLng, dropLat, dropLng) : 5;
   const fare = await calcFare(distance, type);
+
+  // Wallet payment → deduct atomically inside DB transaction (prevents race condition)
   if (paymentMethod === "wallet") {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user || parseFloat(user.walletBalance ?? "0") < fare) {
-      res.status(400).json({ error: "Insufficient wallet balance" });
-      return;
+    const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
+    if (!walletEnabled) {
+      res.status(400).json({ error: "Wallet payments are currently disabled" }); return;
     }
-    const newBalance = (parseFloat(user.walletBalance ?? "0") - fare).toString();
-    await db.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
-    await db.insert(walletTransactionsTable).values({
-      id: generateId(),
-      userId,
-      type: "debit",
-      amount: fare.toString(),
-      description: `${type === "bike" ? "Bike" : "Car"} ride payment`,
-    });
+
+    try {
+      const rideResult = await db.transaction(async (tx) => {
+        const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        if (!user) throw new Error("User not found");
+
+        const balance = parseFloat(user.walletBalance ?? "0");
+        if (balance < fare) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${fare}`);
+
+        const newBalance = (balance - fare).toFixed(2);
+        await tx.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
+        await tx.insert(walletTransactionsTable).values({
+          id: generateId(),
+          userId,
+          type: "debit",
+          amount: fare.toFixed(2),
+          description: `${type === "bike" ? "Bike" : "Car"} ride payment`,
+        });
+
+        const [ride] = await tx.insert(ridesTable).values({
+          id: generateId(),
+          userId,
+          type,
+          status: "searching",
+          pickupAddress,
+          dropAddress,
+          pickupLat: pickupLat?.toString(),
+          pickupLng: pickupLng?.toString(),
+          dropLat: dropLat?.toString(),
+          dropLng: dropLng?.toString(),
+          fare: fare.toString(),
+          distance: Math.round(distance * 10 / 10).toString(),
+          paymentMethod,
+        }).returning();
+        return ride!;
+      });
+
+      await db.insert(notificationsTable).values({
+        id: generateId(),
+        userId,
+        title: `${type === "bike" ? "Bike" : "Car"} Ride Booked`,
+        body: `Aapki ride book ho gayi. Rider dhundha ja raha hai. Fare: Rs. ${fare}`,
+        type: "ride",
+        icon: type === "bike" ? "bicycle-outline" : "car-outline",
+        link: `/ride`,
+      }).catch(() => {});
+
+      res.status(201).json({
+        ...rideResult,
+        fare: parseFloat(rideResult.fare),
+        distance: parseFloat(rideResult.distance),
+        createdAt: rideResult.createdAt.toISOString(),
+      });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+    return;
   }
-  const rideId = generateId();
+
+  // Cash payment — no wallet deduction
   const [ride] = await db.insert(ridesTable).values({
-    id: rideId,
+    id: generateId(),
     userId,
     type,
     status: "searching",

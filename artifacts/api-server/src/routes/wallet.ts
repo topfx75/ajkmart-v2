@@ -49,10 +49,10 @@ router.post("/topup", async (req, res) => {
 
   // Fetch platform settings for validation
   const s = await getPlatformSettings();
-  const walletEnabled   = (s["feature_wallet"] ?? "on") === "on";
-  const minTopup        = parseFloat(s["wallet_min_topup"]  ?? "100");
-  const maxTopup        = parseFloat(s["wallet_max_topup"]  ?? "25000");
-  const maxBalance      = parseFloat(s["wallet_max_balance"] ?? "50000");
+  const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
+  const minTopup      = parseFloat(s["wallet_min_topup"]   ?? "100");
+  const maxTopup      = parseFloat(s["wallet_max_topup"]   ?? "25000");
+  const maxBalance    = parseFloat(s["wallet_max_balance"]  ?? "50000");
 
   if (!walletEnabled) {
     res.status(503).json({ error: "Wallet service is currently disabled" }); return;
@@ -64,24 +64,32 @@ router.post("/topup", async (req, res) => {
     res.status(400).json({ error: `Maximum single top-up is Rs. ${maxTopup}` }); return;
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  // Atomic transaction: read balance → check limit → credit (prevents race condition)
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (!user) throw new Error("User not found");
 
-  const currentBalance = parseFloat(user.walletBalance ?? "0");
-  if (currentBalance + topupAmt > maxBalance) {
-    res.status(400).json({ error: `Wallet balance limit is Rs. ${maxBalance}. Current: Rs. ${currentBalance}` }); return;
+      const currentBalance = parseFloat(user.walletBalance ?? "0");
+      if (currentBalance + topupAmt > maxBalance) {
+        throw new Error(`Wallet balance limit is Rs. ${maxBalance}. Current: Rs. ${currentBalance}`);
+      }
+
+      const newBalance = (currentBalance + topupAmt).toFixed(2);
+      await tx.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId, type: "credit",
+        amount: topupAmt.toFixed(2),
+        description: method ? `Wallet top-up via ${method}` : "Wallet top-up",
+      });
+      return parseFloat(newBalance);
+    });
+
+    const transactions = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId));
+    res.json({ balance: result, transactions: transactions.map(mapTx) });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
   }
-
-  const newBalance = (currentBalance + topupAmt).toFixed(2);
-  await db.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(), userId, type: "credit",
-    amount: topupAmt.toFixed(2),
-    description: method ? `Wallet top-up via ${method}` : "Wallet top-up",
-  });
-
-  const transactions = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId));
-  res.json({ balance: parseFloat(newBalance), transactions: transactions.map(mapTx) });
 });
 
 /* ── POST /wallet/send ───────────────────────────────────────────────────── */
@@ -101,7 +109,7 @@ router.post("/send", async (req, res) => {
   const walletEnabled  = (s["feature_wallet"] ?? "on") === "on";
   const minWithdrawal  = parseFloat(s["wallet_min_withdrawal"] ?? "200");
   const maxWithdrawal  = parseFloat(s["wallet_max_withdrawal"] ?? "10000");
-  const dailyLimit     = parseFloat(s["wallet_daily_limit"]   ?? "20000");
+  const dailyLimit     = parseFloat(s["wallet_daily_limit"]    ?? "20000");
 
   if (!walletEnabled) {
     res.status(503).json({ error: "Wallet service is currently disabled" }); return;
