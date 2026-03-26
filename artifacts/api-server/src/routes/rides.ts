@@ -154,7 +154,14 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  // Cash payment — no wallet deduction
+  // Cash payment — validate rider_cash_allowed then insert
+  if (paymentMethod === "cash") {
+    const riderCashAllowed = (s["rider_cash_allowed"] ?? "on") === "on";
+    if (!riderCashAllowed) {
+      res.status(400).json({ error: "Cash payment is currently not available for rides. Please use wallet." }); return;
+    }
+  }
+
   const [ride] = await db.insert(ridesTable).values({
     id: generateId(),
     userId,

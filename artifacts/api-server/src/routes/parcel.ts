@@ -118,6 +118,22 @@ router.post("/", async (req, res) => {
   const preptimeMin   = parseInt(s["order_preptime_min"] ?? "15", 10);
   const estimatedTime = `${preptimeMin + 30}–${preptimeMin + 60} min`;
 
+  /* ── COD validation (mirrors orders.ts pattern) ── */
+  if (paymentMethod === "cash") {
+    const codEnabled = (s["cod_enabled"] ?? "on") === "on";
+    if (!codEnabled) {
+      res.status(400).json({ error: "Cash on Delivery is currently not available" }); return;
+    }
+    const codAllowedForParcel = (s["cod_allowed_parcel"] ?? "on") !== "off";
+    if (!codAllowedForParcel) {
+      res.status(400).json({ error: "Cash on Delivery is not available for Parcel orders. Please choose another payment method." }); return;
+    }
+    const codMax = parseFloat(s["cod_max_amount"] ?? "5000");
+    if (totalFare > codMax) {
+      res.status(400).json({ error: `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.` }); return;
+    }
+  }
+
   // Wallet payment → atomic DB transaction (prevents race condition / double-spend)
   if (paymentMethod === "wallet") {
     const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
