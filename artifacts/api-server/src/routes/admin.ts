@@ -61,7 +61,6 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "finance_min_vendor_payout",value:"500", label: "Minimum Vendor Payout Request (Rs.)",     category: "finance" },
   /* Orders */
   { key: "min_order_amount",          value: "100",   label: "Minimum Order Amount (Rs.)",              category: "orders" },
-  { key: "max_cod_amount",            value: "5000",  label: "Max COD Order Amount (Rs.)",              category: "orders" },
   { key: "order_max_cart_value",      value: "50000", label: "Max Cart Value / Hard Cap (Rs.)",         category: "orders" },
   { key: "order_cancel_window_min",   value: "5",     label: "Customer Cancel Window (minutes)",        category: "orders" },
   { key: "order_auto_cancel_min",     value: "15",    label: "Auto-Cancel if Unaccepted (minutes)",     category: "orders" },
@@ -81,9 +80,6 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "social_facebook",        value: "",                               label: "Facebook Page URL",           category: "general" },
   { key: "social_instagram",       value: "",                               label: "Instagram Profile URL",       category: "general" },
   /* Customer Role Settings */
-  { key: "customer_wallet_max",       value: "50000", label: "Max Wallet Balance (Rs.)",        category: "customer" },
-  { key: "customer_min_topup",        value: "100",   label: "Min Wallet Top-Up (Rs.)",         category: "customer" },
-  { key: "customer_min_withdrawal",   value: "200",   label: "Min Transfer Amount (Rs.)",       category: "customer" },
   { key: "customer_referral_bonus",   value: "100",   label: "Referral Bonus (Rs.)",            category: "customer" },
   { key: "customer_loyalty_pts",      value: "5",     label: "Loyalty Points Per Rs.100",       category: "customer" },
   { key: "customer_max_orders_day",   value: "10",    label: "Max Orders Per Day",              category: "customer" },
@@ -132,9 +128,9 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "content_refund_policy_url", value: "",   label: "Refund Policy URL",                    category: "content" },
   { key: "content_faq_url",        value: "",      label: "FAQ / Help Center URL",                category: "content" },
   { key: "content_about_url",      value: "",      label: "About Us URL",                         category: "content" },
-  { key: "feature_chat",           value: "off",   label: "In-App Chat / WhatsApp Support",       category: "content" },
-  { key: "feature_live_tracking",  value: "on",    label: "Live Order GPS Tracking",              category: "content" },
-  { key: "feature_reviews",        value: "on",    label: "Customer Reviews & Ratings",           category: "content" },
+  { key: "feature_chat",           value: "off",   label: "In-App Chat / WhatsApp Support",       category: "features" },
+  { key: "feature_live_tracking",  value: "on",    label: "Live Order GPS Tracking",              category: "features" },
+  { key: "feature_reviews",        value: "on",    label: "Customer Reviews & Ratings",           category: "features" },
   /* Security & API Keys */
   /* ═══════════════════  Security & API  ═══════════════════ */
   /* Auth & Sessions */
@@ -185,10 +181,6 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "security_audit_log",         value: "on",     label: "Admin Action Audit Log",                      category: "security" },
   { key: "security_admin_ip_whitelist",value: "",        label: "Admin IP Whitelist (comma-separated, blank=any)", category: "security" },
   { key: "security_maintenance_key",   value: "",        label: "Maintenance Mode Access Key",                category: "security" },
-  /* Legacy — moved to Integrations (kept for backward compat) */
-  { key: "api_map_key",                value: "",        label: "Google Maps API Key (→ use Integrations tab)", category: "security" },
-  { key: "api_sms_gateway",            value: "console", label: "SMS Provider (→ use Integrations tab)",       category: "security" },
-  { key: "api_firebase_key",           value: "",        label: "Firebase Key (→ use Integrations tab)",        category: "security" },
   /* ═══════════════════  Platform Integrations  ═══════════════════ */
   /* Firebase FCM — Push Notifications */
   { key: "integration_push_notif",    value: "off",      label: "Firebase Push Notifications",            category: "integrations" },

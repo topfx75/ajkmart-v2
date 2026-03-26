@@ -2563,19 +2563,27 @@ function renderSection(
       { fkey: "feature_referral",  label: "Referral Program",       icon: "🎁", desc: "Refer & Earn card visibility + referral bonus tracking in app",    apps: "📱 Customer only",                        enforcement: "client" as const },
       { fkey: "feature_new_users", label: "New User Registration",  icon: "👤", desc: "Blocks all new sign-ups at auth API — existing users unaffected",  apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
     ];
+    const experienceFeatures = [
+      { fkey: "feature_chat",          label: "In-App Chat / WhatsApp",  icon: "💬", desc: "Chat icon in customer app — routes to WhatsApp support",          apps: "📱 Customer only",                        enforcement: "client" as const },
+      { fkey: "feature_live_tracking", label: "Live GPS Order Tracking",  icon: "📍", desc: "Customer can see rider's real-time location on map while en-route", apps: "📱 Customer  •  🏍️ Rider",             enforcement: "both" as const },
+      { fkey: "feature_reviews",       label: "Reviews & Star Ratings",   icon: "⭐", desc: "Star ratings + written reviews on orders and rides",               apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider", enforcement: "api" as const },
+    ];
 
-    const allOn  = [...coreServices, ...accountFeatures].every(f => fv(f.fkey));
-    const anyOff = [...coreServices, ...accountFeatures].some(f => !fv(f.fkey));
+    const allOn  = [...coreServices, ...accountFeatures, ...experienceFeatures].every(f => fv(f.fkey));
+    const anyOff = [...coreServices, ...accountFeatures, ...experienceFeatures].some(f => !fv(f.fkey));
 
     const enforcementRows = [
-      { label: "Mart orders",         key: "feature_mart",     enforced: "✅ API" },
-      { label: "Food orders",         key: "feature_food",     enforced: "✅ API" },
-      { label: "Ride bookings",       key: "feature_rides",    enforced: "✅ API" },
-      { label: "Pharmacy orders",     key: "feature_pharmacy", enforced: "✅ API" },
-      { label: "Parcel shipments",    key: "feature_parcel",   enforced: "✅ API" },
-      { label: "Wallet (all ops)",    key: "feature_wallet",   enforced: "✅ API" },
-      { label: "Referral card/bonus", key: "feature_referral", enforced: "📱 Client" },
-      { label: "New user sign-up",    key: "feature_new_users",enforced: "✅ API" },
+      { label: "Mart orders",         key: "feature_mart",          enforced: "✅ API" },
+      { label: "Food orders",         key: "feature_food",          enforced: "✅ API" },
+      { label: "Ride bookings",       key: "feature_rides",         enforced: "✅ API" },
+      { label: "Pharmacy orders",     key: "feature_pharmacy",      enforced: "✅ API" },
+      { label: "Parcel shipments",    key: "feature_parcel",        enforced: "✅ API" },
+      { label: "Wallet (all ops)",    key: "feature_wallet",        enforced: "✅ API" },
+      { label: "Referral card/bonus", key: "feature_referral",      enforced: "📱 Client" },
+      { label: "New user sign-up",    key: "feature_new_users",     enforced: "✅ API" },
+      { label: "Chat/WhatsApp",       key: "feature_chat",          enforced: "📱 Client" },
+      { label: "Live GPS tracking",   key: "feature_live_tracking", enforced: "✅ API + Client" },
+      { label: "Reviews & ratings",   key: "feature_reviews",       enforced: "✅ API" },
     ];
 
     return (
@@ -2618,6 +2626,17 @@ function renderSection(
           </div>
           <div className="space-y-3">
             {accountFeatures.map(f => <FTog key={f.fkey} {...f} />)}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare size={15} className="text-slate-500" />
+            <p className="font-semibold text-sm text-slate-700">Experience Features</p>
+            <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">chat / tracking / reviews API</span>
+          </div>
+          <div className="space-y-3">
+            {experienceFeatures.map(f => <FTog key={f.fkey} {...f} />)}
           </div>
         </div>
 
@@ -2770,11 +2789,12 @@ function renderSection(
         <div>
           <SLabel icon={ToggleRight}>Feature Switches</SLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {T("content_show_banner",   "Show Promotional Banner Carousel",   "Slide-show banners on customer home screen")}
-            {T("feature_chat",          "In-App Chat / WhatsApp Support",      "Chat icon in customer app → routes to WhatsApp")}
-            {T("feature_live_tracking", "Live Order GPS Tracking",             "Customer can track rider in real time")}
-            {T("feature_reviews",       "Customer Reviews & Ratings",          "Star ratings + reviews on orders / rides")}
+            {T("content_show_banner", "Show Promotional Banner Carousel", "Slide-show banners on customer home screen")}
           </div>
+          <p className="text-[11px] text-muted-foreground mt-2 flex items-center gap-1.5">
+            <Zap size={11} className="text-violet-500" />
+            Chat, Live Tracking and Reviews toggles have moved to the <strong>Feature Toggles</strong> tab.
+          </p>
         </div>
 
         {/* ── App Messaging ── */}
@@ -3454,9 +3474,9 @@ function renderSection(
 
     const maxOrdersDay     = parseInt(v("customer_max_orders_day") || "10");
     const signupBonus      = parseFloat(v("customer_signup_bonus")  || "0");
-    const minTopup         = parseFloat(v("customer_min_topup")     || "100");
-    const walletMax        = parseFloat(v("customer_wallet_max")    || "50000");
-    const minTransfer      = parseFloat(v("customer_min_withdrawal") || "200");
+    const minTopup         = parseFloat(v("wallet_min_topup")       || "100");
+    const walletMax        = parseFloat(v("wallet_max_balance")     || "50000");
+    const minTransfer      = parseFloat(v("wallet_min_withdrawal")  || "200");
     const p2pEnabled       = v("wallet_p2p_enabled") === "on";
     const referralEnabled  = v("customer_referral_enabled") === "on";
     const referralBonus    = parseFloat(v("customer_referral_bonus") || "100");
@@ -3542,9 +3562,9 @@ function renderSection(
         {/* ── Group 2: Wallet Limits ── */}
         <Group icon={Wallet} iconCls="bg-emerald-100 text-emerald-600" title="Wallet Limits" subtitle="Top-up, balance cap, and P2P transfer rules">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Field k="customer_min_topup"      label="Min Top-Up (Rs.)"        suffix="Rs." min={1} />
-            <Field k="customer_wallet_max"     label="Max Wallet Balance (Rs.)" suffix="Rs." min={100} />
-            <Field k="customer_min_withdrawal" label="Min Transfer (Rs.)"       suffix="Rs." min={1} />
+            <Field k="wallet_min_topup"      label="Min Top-Up (Rs.)"        suffix="Rs." min={1} />
+            <Field k="wallet_max_balance"    label="Max Wallet Balance (Rs.)" suffix="Rs." min={100} />
+            <Field k="wallet_min_withdrawal" label="Min Transfer (Rs.)"       suffix="Rs." min={1} />
           </div>
           <Tog k="wallet_p2p_enabled" label="P2P Money Transfer" sub="Customers can send wallet balance to each other" dangerOff />
           {/* Wallet Limits Overview */}
@@ -3559,9 +3579,9 @@ function renderSection(
                 </tr></thead>
                 <tbody className="divide-y divide-border">
                   {[
-                    { rule: "Min Top-Up",       val: `Rs. ${minTopup.toLocaleString()}`,    src: "customer_min_topup"      },
-                    { rule: "Max Wallet",        val: `Rs. ${walletMax.toLocaleString()}`,   src: "customer_wallet_max"     },
-                    { rule: "Min Transfer",      val: `Rs. ${minTransfer.toLocaleString()}`, src: "customer_min_withdrawal" },
+                    { rule: "Min Top-Up",       val: `Rs. ${minTopup.toLocaleString()}`,    src: "wallet_min_topup"      },
+                    { rule: "Max Wallet",        val: `Rs. ${walletMax.toLocaleString()}`,   src: "wallet_max_balance"    },
+                    { rule: "Min Transfer",      val: `Rs. ${minTransfer.toLocaleString()}`, src: "wallet_min_withdrawal" },
                     { rule: "P2P Transfers",     val: p2pEnabled ? "Enabled ✓" : "Disabled ✗", src: "wallet_p2p_enabled" },
                   ].map(row => (
                     <tr key={row.rule} className="hover:bg-muted/20">

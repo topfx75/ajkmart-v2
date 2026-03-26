@@ -50,9 +50,9 @@ router.post("/topup", async (req, res) => {
   // Fetch platform settings for validation
   const s = await getPlatformSettings();
   const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
-  const minTopup      = parseFloat(s["customer_min_topup"]  ?? s["wallet_min_topup"]  ?? "100");
-  const maxTopup      = parseFloat(s["wallet_max_topup"]    ?? "25000");
-  const maxBalance    = parseFloat(s["customer_wallet_max"] ?? s["wallet_max_balance"] ?? "50000");
+  const minTopup      = parseFloat(s["wallet_min_topup"]   ?? "100");
+  const maxTopup      = parseFloat(s["wallet_max_topup"]   ?? "25000");
+  const maxBalance    = parseFloat(s["wallet_max_balance"] ?? "50000");
 
   if (!walletEnabled) {
     res.status(503).json({ error: "Wallet service is currently disabled" }); return;
@@ -108,7 +108,7 @@ router.post("/send", async (req, res) => {
   const s = await getPlatformSettings();
   const walletEnabled  = (s["feature_wallet"]      ?? "on") === "on";
   const p2pEnabled     = (s["wallet_p2p_enabled"]  ?? "on") === "on";
-  const minWithdrawal  = parseFloat(s["customer_min_withdrawal"] ?? s["wallet_min_withdrawal"] ?? "200");
+  const minWithdrawal  = parseFloat(s["wallet_min_withdrawal"] ?? "200");
   const maxWithdrawal  = parseFloat(s["wallet_max_withdrawal"]   ?? "10000");
   const dailyLimit     = parseFloat(s["wallet_daily_limit"]      ?? "20000");
 
