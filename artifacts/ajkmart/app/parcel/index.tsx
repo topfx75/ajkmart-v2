@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import { useMapsAutocomplete, resolveLocation } from "@/hooks/useMaps";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -83,6 +84,8 @@ export default function ParcelScreen() {
   const [confirmedId, setConfirmedId] = useState("");
   const [confirmedFare, setConfirmedFare] = useState(0);
   const [showLocPicker, setShowLocPicker] = useState<"pickup" | "drop" | null>(null);
+  const [locSearch,     setLocSearch]     = useState("");
+  const { predictions, loading: locLoading } = useMapsAutocomplete(locSearch);
 
   const [senderName, setSenderName] = useState(user?.name || "");
   const [senderPhone, setSenderPhone] = useState(user?.phone || "");
@@ -404,32 +407,66 @@ export default function ParcelScreen() {
       </View>
 
       {/* Location Picker Modal */}
-      <Modal visible={!!showLocPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLocPicker(null)}>
+      <Modal visible={!!showLocPicker} animationType="slide" presentationStyle="pageSheet"
+        onRequestClose={() => { setShowLocPicker(null); setLocSearch(""); }}>
         <View style={ss.locModal}>
           <View style={ss.locModalHeader}>
             <Text style={ss.locModalTitle}>
-              {showLocPicker === "pickup" ? "Select Pickup" : "Select Drop"} Location
+              {showLocPicker === "pickup" ? "📍 Pickup" : "🏁 Drop"} Location
             </Text>
-            <Pressable onPress={() => setShowLocPicker(null)}>
+            <Pressable onPress={() => { setShowLocPicker(null); setLocSearch(""); }}>
               <Ionicons name="close" size={22} color={C.text} />
             </Pressable>
           </View>
-          <ScrollView>
-            {AJK_LOCATIONS.map(loc => (
+
+          {/* Search bar */}
+          <View style={ss.locSearchRow}>
+            <Ionicons name="search-outline" size={16} color={C.textMuted} />
+            <TextInput
+              value={locSearch}
+              onChangeText={setLocSearch}
+              placeholder="Location ya area search karein..."
+              placeholderTextColor={C.textMuted}
+              autoFocus
+              style={ss.locSearchInput}
+            />
+            {locLoading && <ActivityIndicator size="small" color={C.primary} />}
+            {locSearch.length > 0 && !locLoading && (
+              <Pressable onPress={() => setLocSearch("")}>
+                <Ionicons name="close-circle" size={16} color={C.textMuted} />
+              </Pressable>
+            )}
+          </View>
+
+          <ScrollView keyboardShouldPersistTaps="always">
+            {predictions.map(pred => (
               <Pressable
-                key={loc}
+                key={pred.placeId}
                 style={ss.locOption}
-                onPress={() => {
-                  if (showLocPicker === "pickup") setPickupAddress(loc);
-                  else setDropAddress(loc);
+                onPress={async () => {
+                  const loc = await resolveLocation(pred);
+                  const address = pred.description;
+                  if (showLocPicker === "pickup") setPickupAddress(address);
+                  else setDropAddress(address);
                   setShowLocPicker(null);
+                  setLocSearch("");
                 }}
               >
                 <Ionicons name="location-outline" size={18} color={C.primary} />
-                <Text style={ss.locOptionTxt}>{loc}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={ss.locOptionTxt}>{pred.mainText}</Text>
+                  {pred.secondaryText ? (
+                    <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }} numberOfLines={1}>{pred.secondaryText}</Text>
+                  ) : null}
+                </View>
                 <Ionicons name="chevron-forward" size={14} color={C.textMuted} />
               </Pressable>
             ))}
+            {predictions.length === 0 && !locLoading && locSearch.length > 2 && (
+              <View style={{ padding: 24, alignItems: "center" }}>
+                <Text style={{ color: C.textMuted, fontSize: 13 }}>Koi location nahi mili</Text>
+              </View>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -500,6 +537,8 @@ const ss = StyleSheet.create({
   locModal: { flex: 1, backgroundColor: "#fff" },
   locModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
   locModalTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text },
+  locSearchRow: { flexDirection: "row", alignItems: "center", gap: 10, margin: 12, backgroundColor: "#F8FAFC", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: C.borderLight },
+  locSearchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 14, color: C.text, paddingVertical: 0 },
   locOption: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border },
   locOptionTxt: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 14, color: C.text },
 

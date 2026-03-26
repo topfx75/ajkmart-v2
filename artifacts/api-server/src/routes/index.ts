@@ -21,6 +21,7 @@ import vendorRouter from "./vendor.js";
 import paymentsRouter from "./payments.js";
 import reviewsRouter from "./reviews.js";
 import systemRouter from "./system.js";
+import mapsRouter from "./maps.js";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use("/vendor", vendorRouter);
 router.use("/payments", paymentsRouter);
 router.use("/reviews", reviewsRouter);
 router.use("/admin/system", systemRouter);
+router.use("/maps", mapsRouter);
 
 export default router;

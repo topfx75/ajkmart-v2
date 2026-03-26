@@ -155,12 +155,22 @@ export default function Home() {
                       <p className="font-semibold text-sm text-gray-800 capitalize">{o.type} Order</p>
                       <p className="text-xs text-gray-500 truncate">{o.deliveryAddress || "Delivery address"}</p>
                     </div>
-                    <div className="text-right flex-shrink-0">
+                    <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                       <p className="font-bold text-green-600 text-sm">+{formatCurrency(
                         ((config.deliveryFee as Record<string,number>)[o.type] ?? config.deliveryFee.mart) * (config.finance.riderEarningPct / 100)
                       )}</p>
                       <p className="text-[10px] text-gray-400">delivery earn</p>
-                      <button onClick={() => acceptOrderMut.mutate(o.id)} disabled={acceptOrderMut.isPending} className="mt-1 bg-green-600 text-white text-xs px-3 py-1 rounded-lg font-bold">Accept</button>
+                      <div className="flex gap-1 mt-0.5">
+                        {o.deliveryAddress && (
+                          <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.deliveryAddress)}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="bg-blue-50 border border-blue-200 text-blue-600 text-xs px-2 py-1 rounded-lg font-semibold flex items-center gap-1"
+                            title="Navigate to delivery address">
+                            🗺️ Nav
+                          </a>
+                        )}
+                        <button onClick={() => acceptOrderMut.mutate(o.id)} disabled={acceptOrderMut.isPending} className="bg-green-600 text-white text-xs px-3 py-1 rounded-lg font-bold">Accept</button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -173,9 +183,26 @@ export default function Home() {
                       <p className="font-semibold text-sm text-gray-800 capitalize">{r.type} Ride · {r.distance}km</p>
                       <p className="text-xs text-gray-500 truncate">{r.pickupAddress} → {r.dropAddress}</p>
                     </div>
-                    <div className="text-right flex-shrink-0">
+                    <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                       <p className="font-bold text-green-600 text-sm">+{formatCurrency(r.fare * (config.finance.riderEarningPct / 100))}</p>
-                      <button onClick={() => acceptRideMut.mutate(r.id)} disabled={acceptRideMut.isPending} className="mt-1 bg-green-600 text-white text-xs px-3 py-1 rounded-lg font-bold">Accept</button>
+                      <div className="flex gap-1 mt-0.5">
+                        {r.pickupLat && r.dropLat ? (
+                          <a href={`https://www.google.com/maps/dir/?api=1&origin=${r.pickupLat},${r.pickupLng}&destination=${r.dropLat},${r.dropLng}&travelmode=${r.type === "bike" ? "bicycling" : "driving"}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="bg-blue-50 border border-blue-200 text-blue-600 text-xs px-2 py-1 rounded-lg font-semibold flex items-center gap-1"
+                            title="Navigate route">
+                            🗺️ Nav
+                          </a>
+                        ) : r.pickupAddress ? (
+                          <a href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(r.pickupAddress)}&destination=${encodeURIComponent(r.dropAddress)}&travelmode=driving`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="bg-blue-50 border border-blue-200 text-blue-600 text-xs px-2 py-1 rounded-lg font-semibold flex items-center gap-1"
+                            title="Navigate route">
+                            🗺️ Nav
+                          </a>
+                        ) : null}
+                        <button onClick={() => acceptRideMut.mutate(r.id)} disabled={acceptRideMut.isPending} className="bg-green-600 text-white text-xs px-3 py-1 rounded-lg font-bold">Accept</button>
+                      </div>
                     </div>
                   </div>
                 ))}
