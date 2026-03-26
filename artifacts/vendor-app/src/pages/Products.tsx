@@ -5,7 +5,7 @@ import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL } from "../lib/ui";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart" };
-const EMPTY_ROW = { name:"", price:"", category:"", unit:"", stock:"" };
+const EMPTY_ROW = { name:"", price:"", description:"", image:"", category:"", unit:"", stock:"" };
 const CATS  = ["food","grocery","bakery","pharmacy","electronics","clothing","mart","general"];
 const TYPES = ["mart","food","pharmacy","parcel"];
 
@@ -65,12 +65,44 @@ export default function Products() {
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
+  const [pasteText, setPasteText] = useState("");
+  const [showPaste, setShowPaste] = useState(false);
+  const [bulkCat, setBulkCat]   = useState("");
+
+  const parsePaste = () => {
+    const lines = pasteText.trim().split("\n").filter(Boolean);
+    const parsed = lines.map(line => {
+      const cols = line.split("\t");
+      const commaCols = line.split(",");
+      const parts = cols.length > 1 ? cols : commaCols;
+      return {
+        name:        (parts[0] || "").trim(),
+        price:       (parts[1] || "").trim(),
+        description: (parts[2] || "").trim(),
+        image:       (parts[3] || "").trim(),
+        category:    (parts[4] || bulkCat || "").trim(),
+        unit:        (parts[5] || "").trim(),
+        stock:       (parts[6] || "").trim(),
+      };
+    }).filter(r => r.name && r.price);
+    if (parsed.length > 0) { setBulkRows(r => [...r, ...parsed]); setShowPaste(false); setPasteText(""); showToast(`✅ Parsed ${parsed.length} rows`); }
+    else showToast("❌ No valid rows found — check format");
+  };
+
   const bulkMut = useMutation({
     mutationFn: () => {
       const valid = bulkRows.filter(r => r.name.trim() && r.price);
-      return api.bulkAddProducts(valid.map(r => ({ name: r.name.trim(), price: Number(r.price), category: r.category || "general", unit: r.unit || null, stock: r.stock ? Number(r.stock) : null })));
+      return api.bulkAddProducts(valid.map(r => ({
+        name:        r.name.trim(),
+        price:       Number(r.price),
+        description: r.description.trim() || null,
+        image:       r.image.trim() || null,
+        category:    r.category.trim() || bulkCat || "general",
+        unit:        r.unit.trim() || null,
+        stock:       r.stock ? Number(r.stock) : null,
+      })));
     },
-    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); setView("list"); setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}]); showToast(`✅ ${res.inserted} products added!`); },
+    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); setView("list"); setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}]); setBulkCat(""); showToast(`✅ ${res.inserted} products added!`); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
@@ -160,34 +192,179 @@ export default function Products() {
   );
 
   /* ── Bulk Add ── */
+  const B_INPUT = "w-full h-9 px-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 text-xs";
+  const validRows = bulkRows.filter(r => r.name.trim() && r.price);
+
   if (view === "bulk") return (
     <div className="min-h-screen bg-gray-50 md:bg-transparent md:min-h-0">
-      <PageHeader title="Bulk Add Products" subtitle="Add multiple products at once"
+      <PageHeader title="Bulk Add Products" subtitle={`${validRows.length} ready to add`}
         actions={<button onClick={() => setView("list")} className="h-10 px-4 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white font-bold rounded-xl text-sm android-press min-h-0">← Back</button>}
       />
       <div className="px-4 py-4 space-y-4 md:px-0 md:py-4">
-        <div className={CARD}>
-          <div className="grid grid-cols-12 px-3 py-2.5 bg-gray-50 border-b border-gray-100">
-            {["Name *","Price *","Category","Stock",""].map((h,i) => (
-              <p key={i} className={`text-[10px] font-extrabold text-gray-400 uppercase tracking-widest ${i===0?"col-span-4":i===1?"col-span-2":i===2?"col-span-3":i===3?"col-span-2":"col-span-1"}`}>{h}</p>
+
+        {/* ── Controls Bar ── */}
+        <div className={`${CARD} p-4`}>
+          <div className="md:grid md:grid-cols-3 md:gap-4 space-y-3 md:space-y-0">
+            <div>
+              <label className={LABEL}>Default Category (for all rows)</label>
+              <select value={bulkCat} onChange={e => setBulkCat(e.target.value)} className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400">
+                <option value="">— applies per row if set —</option>
+                {CATS.map(c => <option key={c} value={c} className="capitalize">{c}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2 items-end">
+              <button onClick={() => setBulkRows(r => [...r, {...EMPTY_ROW}])}
+                className="flex-1 h-10 border-2 border-dashed border-orange-300 text-orange-500 font-bold rounded-xl text-sm android-press">+ Add Row</button>
+              <button onClick={() => setBulkRows(r => [...r, {...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}])}
+                className="flex-1 h-10 border-2 border-dashed border-gray-200 text-gray-500 font-bold rounded-xl text-sm android-press">+5 Rows</button>
+            </div>
+            <div className="flex gap-2 items-end">
+              <button onClick={() => setShowPaste(!showPaste)}
+                className="flex-1 h-10 bg-blue-50 text-blue-600 font-bold rounded-xl text-sm android-press">📋 Paste Data</button>
+              <button onClick={() => setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}])}
+                className="h-10 px-3 bg-red-50 text-red-500 font-bold rounded-xl text-sm android-press">Clear</button>
+            </div>
+          </div>
+
+          {/* Paste Panel */}
+          {showPaste && (
+            <div className="mt-4 p-4 bg-blue-50 rounded-2xl space-y-3">
+              <div>
+                <p className="text-sm font-bold text-blue-800 mb-1">📋 Paste from Spreadsheet</p>
+                <p className="text-xs text-blue-600 mb-2">Format: <span className="font-mono bg-white px-1 rounded">Name | Price | Description | Image URL | Category | Unit | Stock</span> (tab or comma separated)</p>
+                <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={4}
+                  placeholder={"Chicken Biryani\t350\tDelicious rice dish\t\tfood\tpcs\t50\nVegetable Pulao\t280\t\t\tfood"}
+                  className="w-full px-3 py-2.5 bg-white border border-blue-200 rounded-xl text-xs font-mono focus:outline-none focus:border-blue-400 resize-none"/>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowPaste(false)} className="flex-1 h-9 border border-blue-200 text-blue-500 font-bold rounded-xl text-sm android-press min-h-0">Cancel</button>
+                <button onClick={parsePaste} disabled={!pasteText.trim()} className="flex-1 h-9 bg-blue-500 text-white font-bold rounded-xl text-sm android-press min-h-0">Parse & Import</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Desktop Table View ── */}
+        <div className={`${CARD} hidden md:block`}>
+          <div className="grid gap-1 px-3 py-2.5 bg-gray-50 border-b border-gray-100"
+            style={{ gridTemplateColumns: "2fr 1fr 2fr 1.5fr 1fr 0.7fr 0.7fr auto" }}>
+            {["Name *","Price *","Short Description","Image URL","Category","Unit","Stock",""].map((h,i) => (
+              <p key={i} className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest">{h}</p>
             ))}
           </div>
+          {bulkRows.map((row, i) => {
+            const hasErr = !!(bulkRows[i]!.name && !bulkRows[i]!.price) || false;
+            return (
+              <div key={i} className={`grid gap-1 px-2 py-1.5 border-b border-gray-50 last:border-0 ${hasErr ? "bg-red-50/30" : ""}`}
+                style={{ gridTemplateColumns: "2fr 1fr 2fr 1.5fr 1fr 0.7fr 0.7fr auto" }}>
+                <input className={`${B_INPUT} ${!row.name && row.price ? "border-red-300 bg-red-50" : ""}`}
+                  value={row.name} onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,name:e.target.value} : x))} placeholder="Product name *"/>
+                <input className={`${B_INPUT} ${row.name && !row.price ? "border-red-300 bg-red-50" : ""}`}
+                  type="number" inputMode="numeric" value={row.price} onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,price:e.target.value} : x))} placeholder="Rs. *"/>
+                <input className={B_INPUT} value={row.description}
+                  onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,description:e.target.value} : x))} placeholder="Short description"/>
+                <input className={B_INPUT} type="url" value={row.image}
+                  onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,image:e.target.value} : x))} placeholder="https://img.url"/>
+                <select className={`${B_INPUT} appearance-none`} value={row.category}
+                  onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,category:e.target.value} : x))}>
+                  <option value="">{bulkCat || "category"}</option>
+                  {CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <input className={B_INPUT} value={row.unit}
+                  onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,unit:e.target.value} : x))} placeholder="kg/pcs"/>
+                <input className={B_INPUT} type="number" inputMode="numeric" value={row.stock}
+                  onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,stock:e.target.value} : x))} placeholder="qty"/>
+                <button onClick={() => setBulkRows(r => r.filter((_,j) => j!==i))}
+                  className="w-8 h-9 text-red-400 hover:text-red-600 font-bold flex items-center justify-center text-base min-h-0">✕</button>
+              </div>
+            );
+          })}
+          {bulkRows.length === 0 && (
+            <div className="px-4 py-8 text-center text-gray-400 text-sm">No rows yet — add rows or paste data above</div>
+          )}
+        </div>
+
+        {/* ── Mobile Card View ── */}
+        <div className="md:hidden space-y-3">
           {bulkRows.map((row, i) => (
-            <div key={i} className="grid grid-cols-12 gap-1 px-2 py-2 border-b border-gray-50 last:border-0">
-              <input className="col-span-4 h-10 px-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 text-xs" value={row.name} onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,name:e.target.value} : x))} placeholder="Name"/>
-              <input className="col-span-2 h-10 px-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 text-xs" type="number" inputMode="numeric" value={row.price} onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,price:e.target.value} : x))} placeholder="Rs."/>
-              <input className="col-span-3 h-10 px-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 text-xs" value={row.category} onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,category:e.target.value} : x))} placeholder="cat"/>
-              <input className="col-span-2 h-10 px-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400 text-xs" type="number" inputMode="numeric" value={row.stock} onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,stock:e.target.value} : x))} placeholder="qty"/>
-              <button onClick={() => setBulkRows(r => r.filter((_,j) => j!==i))} className="col-span-1 text-red-400 font-bold flex items-center justify-center text-lg min-h-0">✕</button>
+            <div key={i} className={`${CARD} p-4 space-y-2.5 border-2 ${row.name && row.price ? "border-orange-100" : "border-gray-100"}`}>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">Row {i+1} {row.name && row.price ? "✓" : ""}</p>
+                <button onClick={() => setBulkRows(r => r.filter((_,j) => j!==i))} className="w-7 h-7 bg-red-50 text-red-500 rounded-lg font-bold text-sm min-h-0">✕</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">NAME *</p>
+                  <input className={`${B_INPUT} h-10`} value={row.name}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,name:e.target.value} : x))} placeholder="Product name"/>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">PRICE (Rs.) *</p>
+                  <input className={`${B_INPUT} h-10`} type="number" inputMode="numeric" value={row.price}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,price:e.target.value} : x))} placeholder="0"/>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">CATEGORY</p>
+                  <select className={`${B_INPUT} h-10 appearance-none`} value={row.category}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,category:e.target.value} : x))}>
+                    <option value="">{bulkCat || "select"}</option>
+                    {CATS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">SHORT DESCRIPTION</p>
+                  <input className={`${B_INPUT} h-10`} value={row.description}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,description:e.target.value} : x))} placeholder="Brief product description"/>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">UNIT</p>
+                  <input className={`${B_INPUT} h-10`} value={row.unit}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,unit:e.target.value} : x))} placeholder="kg/pcs/ltr"/>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">STOCK</p>
+                  <input className={`${B_INPUT} h-10`} type="number" inputMode="numeric" value={row.stock}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,stock:e.target.value} : x))} placeholder="qty"/>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">IMAGE URL</p>
+                  <input className={`${B_INPUT} h-10`} type="url" value={row.image}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,image:e.target.value} : x))} placeholder="https://..."/>
+                </div>
+              </div>
             </div>
           ))}
+          <button onClick={() => setBulkRows(r => [...r, {...EMPTY_ROW}])}
+            className="w-full h-12 border-2 border-dashed border-orange-300 text-orange-500 font-bold rounded-2xl text-sm android-press">+ Add Row</button>
         </div>
-        <button onClick={() => setBulkRows(r => [...r, {...EMPTY_ROW}])} className="w-full h-12 border-2 border-dashed border-orange-300 text-orange-500 font-bold rounded-2xl text-sm android-press">+ Add Row</button>
-        <div className="flex gap-3">
-          <button onClick={() => setView("list")} className={BTN_SECONDARY}>Cancel</button>
-          <button onClick={() => bulkMut.mutate()} disabled={bulkMut.isPending || bulkRows.filter(r => r.name && r.price).length === 0} className={BTN_PRIMARY}>
-            {bulkMut.isPending ? "Adding..." : `Add ${bulkRows.filter(r => r.name && r.price).length} Products`}
-          </button>
+
+        {/* ── Summary + Submit ── */}
+        <div className={`${CARD} p-4`}>
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex-1 bg-gray-50 rounded-xl p-3 text-center">
+              <p className="text-2xl font-extrabold text-gray-800">{bulkRows.length}</p>
+              <p className="text-xs text-gray-500">Total rows</p>
+            </div>
+            <div className="flex-1 bg-green-50 rounded-xl p-3 text-center">
+              <p className="text-2xl font-extrabold text-green-600">{validRows.length}</p>
+              <p className="text-xs text-gray-500">Ready to add</p>
+            </div>
+            <div className="flex-1 bg-red-50 rounded-xl p-3 text-center">
+              <p className="text-2xl font-extrabold text-red-500">{bulkRows.length - validRows.length}</p>
+              <p className="text-xs text-gray-500">Incomplete</p>
+            </div>
+          </div>
+          {bulkRows.length - validRows.length > 0 && (
+            <div className="bg-amber-50 rounded-xl px-3 py-2.5 mb-4">
+              <p className="text-xs text-amber-700 font-medium">⚠️ Rows missing Name or Price will be skipped. Only {validRows.length} complete rows will be added.</p>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button onClick={() => setView("list")} className={BTN_SECONDARY}>Cancel</button>
+            <button onClick={() => bulkMut.mutate()} disabled={bulkMut.isPending || validRows.length === 0} className={BTN_PRIMARY}>
+              {bulkMut.isPending ? "Adding..." : `➕ Add ${validRows.length} Products`}
+            </button>
+          </div>
         </div>
       </div>
       {Toast}

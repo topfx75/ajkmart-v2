@@ -58,4 +58,13 @@ export const api = {
   createPromo:   (data: any) => apiFetch("/vendor/promos", { method: "POST", body: JSON.stringify(data) }),
   togglePromo:   (id: string) => apiFetch(`/vendor/promos/${id}/toggle`, { method: "PATCH", body: "{}" }),
   deletePromo:   (id: string) => apiFetch(`/vendor/promos/${id}`, { method: "DELETE" }),
+
+  // Wallet
+  getWallet:      () => apiFetch("/vendor/wallet/transactions"),
+  withdrawWallet: (data: { amount: number; bankName: string; accountNumber: string; accountTitle: string; note?: string }) =>
+    apiFetch("/vendor/wallet/withdraw", { method: "POST", body: JSON.stringify(data) }),
+
+  // Notifications
+  getNotifications:  () => apiFetch("/vendor/notifications"),
+  markAllRead:       () => apiFetch("/vendor/notifications/read-all", { method: "PATCH", body: "{}" }),
 };

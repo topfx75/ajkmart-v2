@@ -9,6 +9,9 @@ import Orders from "./pages/Orders";
 import Products from "./pages/Products";
 import Store from "./pages/Store";
 import Profile from "./pages/Profile";
+import Wallet from "./pages/Wallet";
+import Analytics from "./pages/Analytics";
+import Notifications from "./pages/Notifications";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10000, refetchOnWindowFocus: true } },
@@ -53,7 +56,10 @@ function AppRoutes() {
               <Route path="/" component={Dashboard} />
               <Route path="/orders" component={Orders} />
               <Route path="/products" component={Products} />
+              <Route path="/wallet" component={Wallet} />
+              <Route path="/analytics" component={Analytics} />
               <Route path="/store" component={Store} />
+              <Route path="/notifications" component={Notifications} />
               <Route path="/profile" component={Profile} />
             </Switch>
           </div>

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { PageHeader } from "../components/PageHeader";
@@ -8,6 +10,13 @@ function fd(d: string | Date) { return new Date(d).toLocaleDateString("en-PK", {
 
 export default function Profile() {
   const { user, logout, refreshUser } = useAuth();
+  const { data: notifData } = useQuery({
+    queryKey: ["vendor-notifs-count"],
+    queryFn: () => api.getNotifications(),
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+  const unread: number = notifData?.unread || 0;
   const [editing, setEditing] = useState(false);
   const [name, setName]       = useState(user?.name || "");
   const [email, setEmail]     = useState(user?.email || "");
@@ -32,15 +41,45 @@ export default function Profile() {
         title="My Account"
         subtitle="Vendor profile & settings"
         actions={
-          <button onClick={logout}
-            className="h-9 px-4 bg-white/20 md:bg-red-50 md:text-red-600 text-white text-sm font-bold rounded-xl android-press min-h-0">
-            🚪 Logout
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/notifications" className="relative h-9 w-9 flex items-center justify-center bg-white/20 md:bg-gray-100 text-white md:text-gray-700 rounded-xl android-press min-h-0">
+              🔔
+              {unread > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-extrabold rounded-full w-4 h-4 flex items-center justify-center">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
+            </Link>
+            <button onClick={logout}
+              className="h-9 px-4 bg-white/20 md:bg-red-50 md:text-red-600 text-white text-sm font-bold rounded-xl android-press min-h-0">
+              🚪 Logout
+            </button>
+          </div>
         }
       />
 
       <div className="px-4 py-4 md:px-0 md:py-4">
         <div className="md:grid md:grid-cols-3 md:gap-6 space-y-4 md:space-y-0">
+          {/* ── Mobile Quick Links ── */}
+          <div className="md:hidden grid grid-cols-3 gap-3 col-span-full">
+            {[
+              { href: "/store",         icon: "🏪", label: "My Store"      },
+              { href: "/analytics",     icon: "📈", label: "Analytics"     },
+              { href: "/notifications", icon: "🔔", label: "Notifications", badge: unread },
+            ].map(item => (
+              <Link key={item.href} href={item.href}
+                className="bg-white rounded-2xl shadow-sm p-3 flex flex-col items-center gap-1.5 android-press relative">
+                <span className="text-2xl">{item.icon}</span>
+                <span className="text-[10px] font-bold text-gray-600">{item.label}</span>
+                {item.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-extrabold rounded-full w-5 h-5 flex items-center justify-center">
+                    {item.badge > 9 ? "9+" : item.badge}
+                  </span>
+                )}
+              </Link>
+            ))}
+          </div>
+
           {/* ── Left Column ── */}
           <div className="space-y-4">
             {/* Vendor Identity Card */}

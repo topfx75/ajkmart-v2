@@ -1,5 +1,5 @@
 # AJKMart Super App — Workspace
-<!-- Last updated: 2026-03-25 — Rider App + Vendor App added (mobile-first React+Vite web portals) -->
+<!-- Last updated: 2026-03-26 — Vendor App enhanced: Wallet module, Analytics, Notifications, improved Bulk Add -->
 
 ## Project Overview
 
@@ -28,9 +28,14 @@
 - Auth: phone OTP → token stored in `localStorage` as `vendor_token`
 - Vendor earns **85%** of order revenue (15% platform fee)
 - API routes: `/api/vendor/*` (auth middleware checks `roles` includes "vendor")
-- Pages: Login, Dashboard (stats, store toggle, pending orders), Orders (expandable, status flow), Products (CRUD + bulk add up to 50), Store (banner, hours, announcement, promo codes), Profile (wallet, security)
-- BottomNav: 5 tabs — Dashboard, Orders, Products, My Store, Profile
+- Pages: Login, Dashboard, Orders, Products (CRUD + enhanced bulk add with description/image/paste support), Wallet (balance, history, withdrawal modal), Analytics (revenue/order charts, top products), Store (banner, hours, announcement, promos), Notifications, Profile (quick links, security)
+- BottomNav: 5 tabs — Dashboard, Orders, Products, Wallet, Account
+- SideNav (desktop): Dashboard, Orders, Products, Wallet, Analytics, My Store, Account + notification badge
 - Promo codes: vendor-scoped, created and managed per vendor
+- Wallet: transaction history (credits/debits), secure withdrawal request modal (min Rs. 500, bank/EasyPaisa/JazzCash, admin processes in 24-48h)
+- Analytics: daily revenue + orders bar charts, KPIs (revenue, orders, avg order value, completion rate), top products, order status breakdown, performance tips
+- Notifications: in-app notification list with unread count, mark all read
+- Bulk Add Products: improved with description + image URL fields, default category selector, paste-from-spreadsheet parser (tab/comma separated), mobile card view, desktop table view, inline validation, row count summary
 - Store fields: storeBanner, storeDescription, storeHours (JSON, per-day), storeAnnouncement, storeMinOrder, storeDeliveryTime, storeIsOpen
 - Product fields: stock (inventory tracking), updatedAt
 
