@@ -17,23 +17,52 @@ import {
   ChevronRight,
   Zap,
   AppWindow,
+  Store,
+  Bike,
+  Ticket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const navItems = [
-  { name: "Dashboard",    href: "/dashboard",   icon: LayoutDashboard },
-  { name: "Users",        href: "/users",        icon: Users },
-  { name: "Orders",       href: "/orders",       icon: ShoppingBag },
-  { name: "Rides",        href: "/rides",        icon: Car },
-  { name: "Pharmacy",     href: "/pharmacy",     icon: Pill },
-  { name: "Parcels",      href: "/parcel",       icon: Box },
-  { name: "Products",     href: "/products",     icon: PackageSearch },
-  { name: "Flash Deals",  href: "/flash-deals",  icon: Zap },
-  { name: "Broadcast",    href: "/broadcast",    icon: Megaphone },
-  { name: "Transactions", href: "/transactions", icon: Receipt },
-  { name: "App Management", href: "/app-management", icon: AppWindow },
-  { name: "Settings",       href: "/settings",       icon: Settings2 },
+const navGroups = [
+  {
+    label: "Operations",
+    items: [
+      { name: "Dashboard",    href: "/dashboard",   icon: LayoutDashboard },
+      { name: "Orders",       href: "/orders",       icon: ShoppingBag },
+      { name: "Rides",        href: "/rides",        icon: Car },
+      { name: "Pharmacy",     href: "/pharmacy",     icon: Pill },
+      { name: "Parcels",      href: "/parcel",       icon: Box },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { name: "Users",        href: "/users",        icon: Users },
+      { name: "Vendors",      href: "/vendors",      icon: Store },
+      { name: "Riders",       href: "/riders",       icon: Bike },
+    ],
+  },
+  {
+    label: "Catalog & Promos",
+    items: [
+      { name: "Products",     href: "/products",     icon: PackageSearch },
+      { name: "Flash Deals",  href: "/flash-deals",  icon: Zap },
+      { name: "Promo Codes",  href: "/promo-codes",  icon: Ticket },
+    ],
+  },
+  {
+    label: "Finance & System",
+    items: [
+      { name: "Transactions", href: "/transactions", icon: Receipt },
+      { name: "Broadcast",    href: "/broadcast",    icon: Megaphone },
+      { name: "App Management", href: "/app-management", icon: AppWindow },
+      { name: "Settings",     href: "/settings",     icon: Settings2 },
+    ],
+  },
 ];
+
+// Flat list for backward compat (active detection etc.)
+const navItems = navGroups.flatMap(g => g.items);
 
 // Bottom nav items (most used pages for mobile)
 const bottomNavItems = [
@@ -76,30 +105,36 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <span className="ml-2 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">Admin</span>
       </div>
 
-      {/* Nav Items */}
-      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
-        <p className="px-3 mb-3 text-[10px] font-bold text-sidebar-foreground/40 uppercase tracking-widest">Navigation</p>
-        {navItems.map((item) => {
-          const active = isActive(item.href);
-          const Icon = item.icon;
-          return (
-            <Link key={item.href} href={item.href}>
-              <div
-                className={`
-                  flex items-center px-3 py-2.5 rounded-xl transition-all duration-150 cursor-pointer group
-                  ${active
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 font-semibold"
-                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  }
-                `}
-              >
-                <Icon className={`w-[18px] h-[18px] mr-3 shrink-0 ${active ? "text-white" : "text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground"}`} />
-                <span className="text-sm flex-1">{item.name}</span>
-                {active && <ChevronRight className="w-4 h-4 text-white/70 ml-1" />}
-              </div>
-            </Link>
-          );
-        })}
+      {/* Nav Items — grouped */}
+      <div className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
+        {navGroups.map(group => (
+          <div key={group.label}>
+            <p className="px-3 mb-1.5 text-[10px] font-bold text-sidebar-foreground/35 uppercase tracking-widest">{group.label}</p>
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = isActive(item.href);
+                const Icon = item.icon;
+                return (
+                  <Link key={item.href} href={item.href}>
+                    <div
+                      className={`
+                        flex items-center px-3 py-2.5 rounded-xl transition-all duration-150 cursor-pointer group
+                        ${active
+                          ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 font-semibold"
+                          : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        }
+                      `}
+                    >
+                      <Icon className={`w-[18px] h-[18px] mr-3 shrink-0 ${active ? "text-white" : "text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground"}`} />
+                      <span className="text-sm flex-1">{item.name}</span>
+                      {active && <ChevronRight className="w-4 h-4 text-white/70 ml-1" />}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Logout */}

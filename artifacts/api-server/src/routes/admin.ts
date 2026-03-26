@@ -993,4 +993,178 @@ router.delete("/promo-codes/:id", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ══════════════════════════════════════
+   VENDOR MANAGEMENT
+══════════════════════════════════════ */
+router.get("/vendors", async (_req, res) => {
+  const vendors = await db.select().from(usersTable).where(
+    or(ilike(usersTable.roles, "%vendor%"), eq(usersTable.role, "vendor"))
+  ).orderBy(desc(usersTable.createdAt));
+
+  const vendorIds = vendors.map(v => v.id);
+  let orderStats: any[] = [];
+  if (vendorIds.length > 0) {
+    orderStats = await db.select({
+      vendorId: ordersTable.vendorId,
+      totalOrders: count(),
+      totalRevenue: sum(ordersTable.total),
+      pendingOrders: sql<number>`COUNT(*) FILTER (WHERE ${ordersTable.status} = 'pending')`,
+    }).from(ordersTable).where(sql`${ordersTable.vendorId} = ANY(${sql.raw(`ARRAY[${vendorIds.map(id => `'${id}'`).join(",")}]`)})`).groupBy(ordersTable.vendorId).catch(() => []);
+  }
+
+  const statsMap = Object.fromEntries(orderStats.map(s => [s.vendorId, s]));
+
+  res.json({
+    vendors: vendors.map(v => {
+      const stats = statsMap[v.id] || {};
+      return {
+        id: v.id, phone: v.phone, name: v.name, email: v.email,
+        storeName: v.storeName, storeCategory: v.storeCategory,
+        storeIsOpen: v.storeIsOpen, storeDescription: v.storeDescription,
+        walletBalance: parseFloat(v.walletBalance ?? "0"),
+        isActive: v.isActive, isBanned: v.isBanned,
+        roles: v.roles, role: v.role,
+        createdAt: v.createdAt.toISOString(),
+        lastLoginAt: v.lastLoginAt ? v.lastLoginAt.toISOString() : null,
+        totalOrders: Number(stats.totalOrders ?? 0),
+        totalRevenue: parseFloat(String(stats.totalRevenue ?? "0")),
+        pendingOrders: Number(stats.pendingOrders ?? 0),
+      };
+    }),
+    total: vendors.length,
+  });
+});
+
+router.patch("/vendors/:id/status", async (req, res) => {
+  const { isActive, isBanned, banReason, securityNote } = req.body;
+  const updates: Record<string, any> = { updatedAt: new Date() };
+  if (isActive    !== undefined) updates.isActive    = isActive;
+  if (isBanned    !== undefined) updates.isBanned    = isBanned;
+  if (banReason   !== undefined) updates.banReason   = banReason || null;
+  if (securityNote !== undefined) updates.securityNote = securityNote || null;
+  const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, req.params["id"]!)).returning();
+  if (!user) { res.status(404).json({ error: "Vendor not found" }); return; }
+  if (isBanned) {
+    await sendUserNotification(req.params["id"]!, "Store Account Suspended ⚠️", banReason || "Your vendor account has been suspended. Contact support.", "warning", "warning-outline");
+  }
+  res.json({ ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
+});
+
+router.post("/vendors/:id/payout", async (req, res) => {
+  const { amount, description } = req.body;
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    res.status(400).json({ error: "Valid amount required" }); return;
+  }
+  const [vendor] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
+  if (!vendor) { res.status(404).json({ error: "Vendor not found" }); return; }
+  const amt = Number(amount);
+  const currentBal = parseFloat(vendor.walletBalance ?? "0");
+  if (currentBal < amt) {
+    res.status(400).json({ error: `Insufficient wallet balance (Rs. ${currentBal.toFixed(0)})` }); return;
+  }
+  const newBal = currentBal - amt;
+  const [updated] = await db.update(usersTable).set({ walletBalance: String(newBal), updatedAt: new Date() }).where(eq(usersTable.id, vendor.id)).returning();
+  await db.insert(walletTransactionsTable).values({
+    id: generateId(), userId: vendor.id, type: "debit", amount: String(amt),
+    description: description || `Admin payout processed: Rs. ${amt}`, reference: "admin_payout",
+  });
+  await sendUserNotification(vendor.id, "Payout Processed 💰", `Rs. ${amt} has been paid out from your vendor wallet.`, "system", "cash-outline");
+  res.json({ success: true, amount: amt, newBalance: newBal, vendor: { ...updated, walletBalance: newBal } });
+});
+
+router.post("/vendors/:id/credit", async (req, res) => {
+  const { amount, description } = req.body;
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    res.status(400).json({ error: "Valid amount required" }); return;
+  }
+  const [vendor] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
+  if (!vendor) { res.status(404).json({ error: "Vendor not found" }); return; }
+  const amt = Number(amount);
+  const newBal = parseFloat(vendor.walletBalance ?? "0") + amt;
+  const [updated] = await db.update(usersTable).set({ walletBalance: String(newBal), updatedAt: new Date() }).where(eq(usersTable.id, vendor.id)).returning();
+  await db.insert(walletTransactionsTable).values({
+    id: generateId(), userId: vendor.id, type: "credit", amount: String(amt),
+    description: description || `Admin credit: Rs. ${amt}`, reference: "admin_credit",
+  });
+  await sendUserNotification(vendor.id, "Wallet Credited 💰", `Rs. ${amt} has been credited to your vendor wallet.`, "system", "wallet-outline");
+  res.json({ success: true, amount: amt, newBalance: newBal, vendor: { ...updated, walletBalance: newBal } });
+});
+
+/* ══════════════════════════════════════
+   RIDER MANAGEMENT
+══════════════════════════════════════ */
+router.get("/riders", async (_req, res) => {
+  const riders = await db.select().from(usersTable).where(
+    or(ilike(usersTable.roles, "%rider%"), eq(usersTable.role, "rider"))
+  ).orderBy(desc(usersTable.createdAt));
+
+  res.json({
+    riders: riders.map(r => ({
+      id: r.id, phone: r.phone, name: r.name, email: r.email,
+      avatar: r.avatar,
+      walletBalance: parseFloat(r.walletBalance ?? "0"),
+      isActive: r.isActive, isBanned: r.isBanned,
+      roles: r.roles, role: r.role,
+      isOnline: (r as any).isOnline ?? false,
+      createdAt: r.createdAt.toISOString(),
+      lastLoginAt: r.lastLoginAt ? r.lastLoginAt.toISOString() : null,
+    })),
+    total: riders.length,
+  });
+});
+
+router.patch("/riders/:id/status", async (req, res) => {
+  const { isActive, isBanned, banReason } = req.body;
+  const updates: Record<string, any> = { updatedAt: new Date() };
+  if (isActive  !== undefined) updates.isActive  = isActive;
+  if (isBanned  !== undefined) updates.isBanned  = isBanned;
+  if (banReason !== undefined) updates.banReason = banReason || null;
+  const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, req.params["id"]!)).returning();
+  if (!user) { res.status(404).json({ error: "Rider not found" }); return; }
+  if (isBanned) {
+    await sendUserNotification(req.params["id"]!, "Rider Account Suspended ⚠️", banReason || "Your rider account has been suspended. Contact support.", "warning", "warning-outline");
+  }
+  res.json({ ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
+});
+
+router.post("/riders/:id/payout", async (req, res) => {
+  const { amount, description } = req.body;
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    res.status(400).json({ error: "Valid amount required" }); return;
+  }
+  const [rider] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
+  if (!rider) { res.status(404).json({ error: "Rider not found" }); return; }
+  const amt = Number(amount);
+  const currentBal = parseFloat(rider.walletBalance ?? "0");
+  if (currentBal < amt) {
+    res.status(400).json({ error: `Insufficient wallet balance (Rs. ${currentBal.toFixed(0)})` }); return;
+  }
+  const newBal = currentBal - amt;
+  const [updated] = await db.update(usersTable).set({ walletBalance: String(newBal), updatedAt: new Date() }).where(eq(usersTable.id, rider.id)).returning();
+  await db.insert(walletTransactionsTable).values({
+    id: generateId(), userId: rider.id, type: "debit", amount: String(amt),
+    description: description || `Rider payout: Rs. ${amt}`, reference: "rider_payout",
+  });
+  await sendUserNotification(rider.id, "Earnings Paid Out 💵", `Rs. ${amt} has been paid out to your account.`, "system", "cash-outline");
+  res.json({ success: true, amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
+});
+
+router.post("/riders/:id/bonus", async (req, res) => {
+  const { amount, description } = req.body;
+  if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+    res.status(400).json({ error: "Valid amount required" }); return;
+  }
+  const [rider] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
+  if (!rider) { res.status(404).json({ error: "Rider not found" }); return; }
+  const amt = Number(amount);
+  const newBal = parseFloat(rider.walletBalance ?? "0") + amt;
+  const [updated] = await db.update(usersTable).set({ walletBalance: String(newBal), updatedAt: new Date() }).where(eq(usersTable.id, rider.id)).returning();
+  await db.insert(walletTransactionsTable).values({
+    id: generateId(), userId: rider.id, type: "credit", amount: String(amt),
+    description: description || `Admin bonus: Rs. ${amt}`, reference: "rider_bonus",
+  });
+  await sendUserNotification(rider.id, "Bonus Received! 🎉", `Rs. ${amt} bonus has been added to your wallet.`, "system", "gift-outline");
+  res.json({ success: true, amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
+});
+
 export default router;

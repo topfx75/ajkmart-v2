@@ -288,3 +288,91 @@ export const useUpdatePlatformSettings = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-platform-settings"] }),
   });
 };
+
+/* ── Vendors ── */
+export const useVendors = () =>
+  useQuery({ queryKey: ["admin-vendors"], queryFn: () => fetcher("/vendors"), refetchInterval: REFETCH_INTERVAL });
+
+export const useUpdateVendorStatus = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: any) => fetcher(`/vendors/${id}/status`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-vendors"] }),
+  });
+};
+
+export const useVendorPayout = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
+      fetcher(`/vendors/${id}/payout`, { method: "POST", body: JSON.stringify({ amount, description }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-vendors"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+  });
+};
+
+export const useVendorCredit = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
+      fetcher(`/vendors/${id}/credit`, { method: "POST", body: JSON.stringify({ amount, description }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-vendors"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+  });
+};
+
+/* ── Riders ── */
+export const useRiders = () =>
+  useQuery({ queryKey: ["admin-riders"], queryFn: () => fetcher("/riders"), refetchInterval: REFETCH_INTERVAL });
+
+export const useUpdateRiderStatus = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: any) => fetcher(`/riders/${id}/status`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-riders"] }),
+  });
+};
+
+export const useRiderPayout = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
+      fetcher(`/riders/${id}/payout`, { method: "POST", body: JSON.stringify({ amount, description }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-riders"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+  });
+};
+
+export const useRiderBonus = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
+      fetcher(`/riders/${id}/bonus`, { method: "POST", body: JSON.stringify({ amount, description }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-riders"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+  });
+};
+
+/* ── Promo Codes ── */
+export const usePromoCodes = () =>
+  useQuery({ queryKey: ["admin-promo-codes"], queryFn: () => fetcher("/promo-codes"), refetchInterval: REFETCH_INTERVAL });
+
+export const useCreatePromoCode = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: any) => fetcher("/promo-codes", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-promo-codes"] }),
+  });
+};
+
+export const useUpdatePromoCode = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: any) => fetcher(`/promo-codes/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-promo-codes"] }),
+  });
+};
+
+export const useDeletePromoCode = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetcher(`/promo-codes/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-promo-codes"] }),
+  });
+};
