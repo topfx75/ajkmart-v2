@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
+import { usePlatformConfig } from "../lib/useConfig";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, CARD_HEADER, INPUT, TEXTAREA, BTN_PRIMARY, LABEL } from "../lib/ui";
 
@@ -10,6 +11,8 @@ const DEFAULT_HOURS = Object.fromEntries(DAYS.map(d => [d, { open:"09:00", close
 
 export default function Store() {
   const { user, refreshUser } = useAuth();
+  const { config } = usePlatformConfig();
+  const promoEnabled = config.vendor?.promoEnabled !== false;
   const qc = useQueryClient();
   const [tab, setTab] = useState<"info"|"hours"|"promos">("info");
   const [toast, setToast] = useState("");
@@ -236,7 +239,14 @@ export default function Store() {
         )}
 
         {/* ── PROMOS ── */}
-        {tab === "promos" && (
+        {tab === "promos" && !promoEnabled && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+            <p className="text-4xl mb-3">🔒</p>
+            <p className="font-bold text-amber-800 text-base">Promo Codes Disabled</p>
+            <p className="text-sm text-amber-600 mt-1 leading-relaxed">Admin ne abhi promo code creation disable ki hui hai. Jald hi wapas aayega!</p>
+          </div>
+        )}
+        {tab === "promos" && promoEnabled && (
           <div className="md:grid md:grid-cols-2 md:gap-6 space-y-4 md:space-y-0">
             <div>
               <div className={`${CARD} p-4 space-y-3`}>

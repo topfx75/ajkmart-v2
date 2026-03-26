@@ -8,7 +8,7 @@ import { fc, fd, CARD, CARD_HEADER, INPUT, SELECT, BTN_PRIMARY, BTN_SECONDARY, L
 
 const BANKS = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","Habib Bank","NBP","Faysal Bank","Allied Bank","Other"];
 
-function WithdrawModal({ balance, minPayout, onClose, onSuccess }: { balance: number; minPayout: number; onClose: () => void; onSuccess: () => void }) {
+function WithdrawModal({ balance, minPayout, maxPayout, onClose, onSuccess }: { balance: number; minPayout: number; maxPayout: number; onClose: () => void; onSuccess: () => void }) {
   const [amount, setAmount]   = useState("");
   const [bank, setBank]       = useState("");
   const [acNo, setAcNo]       = useState("");
@@ -27,6 +27,7 @@ function WithdrawModal({ balance, minPayout, onClose, onSuccess }: { balance: nu
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt <= 0)  { setErr("Valid amount required"); return; }
     if (amt < minPayout)                     { setErr(`Minimum withdrawal is ${fc(minPayout)}`); return; }
+    if (amt > maxPayout)                     { setErr(`Maximum single withdrawal is ${fc(maxPayout)}`); return; }
     if (amt > balance)                       { setErr(`Max available: ${fc(balance)}`); return; }
     if (!bank)                               { setErr("Select your bank / wallet"); return; }
     if (!acNo.trim())                        { setErr("Account / phone number required"); return; }
@@ -128,10 +129,13 @@ export default function Wallet() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
   const fin = config.finance;
+  const vc = config.vendor;
   const vendorKeepPct  = Math.round(100 - fin.vendorCommissionPct);
   const commissionPct  = fin.vendorCommissionPct;
-  const minPayout      = fin.minVendorPayout;
-  const settleDays     = fin.vendorSettleDays;
+  const minPayout      = vc?.minPayout ?? fin.minVendorPayout;
+  const maxPayout      = vc?.maxPayout ?? 50000;
+  const settleDays     = vc?.settleDays ?? fin.vendorSettleDays;
+  const withdrawalEnabled = vc?.withdrawalEnabled !== false;
   const qc = useQueryClient();
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [toast, setToast] = useState("");
@@ -193,10 +197,16 @@ export default function Wallet() {
             <p className="text-5xl font-extrabold mt-1 tracking-tight">{fc(balance)}</p>
             <p className="text-xs text-orange-200 mt-2">{vendorKeepPct}% of each order goes to your wallet · {commissionPct}% platform commission</p>
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowWithdraw(true)}
-                className="flex-1 h-12 bg-white text-orange-500 font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 shadow-md">
-                💸 Withdraw
-              </button>
+              {withdrawalEnabled ? (
+                <button onClick={() => setShowWithdraw(true)}
+                  className="flex-1 h-12 bg-white text-orange-500 font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 shadow-md">
+                  💸 Withdraw
+                </button>
+              ) : (
+                <div className="flex-1 h-12 bg-white/30 rounded-2xl flex items-center justify-center text-sm font-bold text-white/80 cursor-not-allowed">
+                  🔒 Withdrawals Paused
+                </div>
+              )}
               <div className="flex-1 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
                 <div className="text-center">
                   <p className="text-xs text-orange-200">Your Share</p>
@@ -222,12 +232,23 @@ export default function Wallet() {
           ))}
         </div>
 
+        {/* ── Withdrawal Disabled Banner ── */}
+        {!withdrawalEnabled && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3">
+            <span className="text-2xl flex-shrink-0">🚫</span>
+            <div>
+              <p className="text-sm font-bold text-red-800">Withdrawals Temporarily Disabled</p>
+              <p className="text-xs text-red-600 mt-0.5 leading-relaxed">Admin ne withdrawal requests abhi disable ki hain. Please baad mein try karein ya support se rabita karein.</p>
+            </div>
+          </div>
+        )}
+
         {/* ── Settlement Info ── */}
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex gap-3">
           <span className="text-2xl flex-shrink-0">📅</span>
           <div>
             <p className="text-sm font-bold text-amber-800">Settlement Cycle</p>
-            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Earnings are settled every <strong>{settleDays} days</strong> after order completion. Minimum withdrawal is <strong>{fc(minPayout)}</strong> per request.</p>
+            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Earnings are settled every <strong>{settleDays} days</strong> after order completion. Min. withdrawal is <strong>{fc(minPayout)}</strong> · Max. <strong>{fc(maxPayout)}</strong> per request.</p>
           </div>
         </div>
         {/* ── Withdrawal Info ── */}
@@ -235,7 +256,7 @@ export default function Wallet() {
           <span className="text-2xl flex-shrink-0">🔒</span>
           <div>
             <p className="text-sm font-bold text-blue-800">Secure Withdrawals</p>
-            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">All withdrawal requests are reviewed by admin. Funds are transferred to your verified bank account or mobile wallet within 24–48 hours. Min. {fc(minPayout)} per request.</p>
+            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">All withdrawal requests are reviewed by admin. Funds transferred within 24–48 hours. Range: {fc(minPayout)} – {fc(maxPayout)} per request.</p>
           </div>
         </div>
 
@@ -290,10 +311,11 @@ export default function Wallet() {
         </div>
       </div>
 
-      {showWithdraw && (
+      {showWithdraw && withdrawalEnabled && (
         <WithdrawModal
           balance={balance}
           minPayout={minPayout}
+          maxPayout={maxPayout}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["vendor-wallet"] });

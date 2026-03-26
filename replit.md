@@ -1,4 +1,13 @@
 # AJKMart Super App — Workspace
+<!-- Last updated: 2026-03-26 — VENDOR SETTINGS COMPLETE: Full-stack vendor management system — admin → API → vendor app, no loopholes.
+  - New seeds: vendor_promo_enabled (on), vendor_withdrawal_enabled (on), vendor_min_payout (500), vendor_max_payout (50000)
+  - platform-config API: vendor block added with 9 fields: commissionPct, settleDays, minPayout, maxPayout, minOrder, maxItems, autoApprove, promoEnabled, withdrawalEnabled
+  - Admin Vendor Settings: Professional 5-group renderer — Onboarding (auto_approve toggle + context banner), Commission & Revenue (commission_pct + settlement_days + live split visualizer bar), Payout Rules (min/max payout with validation warning), Store Rules (min_order + max_items with API enforcement note), Feature Controls (promo_enabled + withdrawal_enabled toggles with danger state), Earnings Summary table (Rs.500/1000/2000/5000 scenarios live)
+  - API enforcement in vendor.ts: POST /products checks product count vs vendor_max_items; POST /products/bulk same + tells vendor how many slots left; POST /promos checks vendor_promo_enabled and returns 403 if disabled; POST /wallet/withdraw checks vendor_withdrawal_enabled (403), vendor_min_payout, vendor_max_payout (all dynamic from settings, no hardcoded values)
+  - vendor-app/useConfig.ts: vendor block added to interface, DEFAULT_CONFIG, and API parse
+  - vendor-app/Wallet.tsx: uses config.vendor.minPayout + maxPayout + withdrawalEnabled; shows "Withdrawals Paused" button when disabled; shows red disabled banner; WithdrawModal validates against both min and max; settlement info shows both limits
+  - vendor-app/Store.tsx: uses config.vendor.promoEnabled; shows locked notice when disabled; promos tab entirely hidden behind promoEnabled flag
+  -->
 <!-- Last updated: 2026-03-26 — DELIVERY CHARGES COMPLETE: Full-stack delivery fee wiring across admin, API, customer app, vendor app, rider app. No hardcoded values, no loopholes.
   - New seeds: delivery_parcel_per_kg (Rs.40), delivery_free_enabled (on/off toggle)
   - platform-config API: deliveryFee block now has 7 fields: mart, food, pharmacy, parcel, parcelPerKg, freeEnabled, freeDeliveryAbove

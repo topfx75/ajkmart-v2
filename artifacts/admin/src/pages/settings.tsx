@@ -44,7 +44,7 @@ const CATEGORY_CONFIG: Record<CatKey, { label: string; icon: any; color: string;
 const TOGGLE_KEYS = new Set([
   "feature_mart","feature_food","feature_rides","feature_pharmacy",
   "feature_parcel","feature_wallet","feature_referral","feature_new_users",
-  "rider_cash_allowed","vendor_auto_approve",
+  "rider_cash_allowed","vendor_auto_approve","vendor_promo_enabled","vendor_withdrawal_enabled",
   "feature_chat","feature_live_tracking","feature_reviews",
   "security_otp_bypass","security_mfa_required","security_multi_device","security_gps_tracking",
   "security_geo_fence","security_spoof_detection","security_block_tor","security_block_vpn",
@@ -3276,6 +3276,208 @@ function renderSection(
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (cat === "vendor") {
+    const v = (k: string) => localValues[k] ?? catSettings.find(s => s.key === k)?.value ?? "";
+    const d = (k: string) => dirtyKeys.has(k);
+
+    const commPct      = parseFloat(v("vendor_commission_pct")   || "15");
+    const settleDays   = parseInt(v("vendor_settlement_days")    || "7");
+    const minPayout    = parseFloat(v("vendor_min_payout")       || "500");
+    const maxPayout    = parseFloat(v("vendor_max_payout")       || "50000");
+    const minOrder     = parseFloat(v("vendor_min_order")        || "100");
+    const maxItems     = parseInt(v("vendor_max_items")          || "100");
+    const autoApprove  = v("vendor_auto_approve")  === "on";
+    const promoOn      = v("vendor_promo_enabled") !== "off";
+    const withdrawOn   = v("vendor_withdrawal_enabled") !== "off";
+
+    const vendorKeep   = Math.round(100 - commPct);
+    const sampleOrder  = 1000;
+    const vendorEarns  = Math.round(sampleOrder * (vendorKeep / 100));
+    const platEarns    = sampleOrder - vendorEarns;
+
+    const VField = ({ k, label, suffix, hint }: { k: string; label: string; suffix?: string; hint?: string }) => {
+      const isDirty = d(k);
+      return (
+        <div className={`rounded-xl border p-4 space-y-2.5 transition-all ${isDirty ? "border-amber-300 bg-amber-50/30" : "border-border bg-white"}`}>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-semibold text-foreground">{label}</label>
+            {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
+          </div>
+          {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+          <div className="relative">
+            <Input type="number" min={0} value={v(k)} onChange={e => handleChange(k, e.target.value)}
+              className={`h-10 rounded-xl ${suffix ? "pr-16" : ""} ${isDirty ? "border-amber-300 bg-amber-50/50 ring-1 ring-amber-200" : ""}`}
+            />
+            {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">{suffix}</span>}
+          </div>
+          <p className="text-[10px] text-muted-foreground font-mono">{k}</p>
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-6">
+
+        {/* ── Group 1: Onboarding & Approval ── */}
+        <div className="space-y-3">
+          <SLabel icon={Store}>Onboarding & Registration</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Control how new vendors join the platform</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Toggle
+              checked={autoApprove} isDirty={d("vendor_auto_approve")}
+              onChange={val => handleToggle("vendor_auto_approve", val)}
+              label="Auto-Approve New Vendors"
+              sub={autoApprove ? "New vendors are immediately active — no review needed" : "New vendor accounts need manual admin approval"}
+            />
+          </div>
+          {!autoApprove && (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-start gap-2">
+              <Shield className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-blue-700 leading-relaxed">
+                <strong>Manual Review:</strong> When off, newly approved vendor accounts are set to <em>inactive</em> by default. Admin must activate them from the Users panel before they can log in.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Group 2: Commission & Revenue ── */}
+        <div className="space-y-3 border-t border-border/40 pt-5">
+          <SLabel icon={Zap}>Commission & Revenue Split</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">How earnings are split between vendors and the platform</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <VField k="vendor_commission_pct" label="Platform Commission (%)" suffix="%" hint="Platform keeps this % of every vendor order value" />
+            <VField k="vendor_settlement_days" label="Settlement Cycle (Days)" suffix="days" hint="Days after order completion before vendor earnings settle" />
+          </div>
+
+          {/* Revenue Split Visualizer */}
+          <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-xl p-4">
+            <p className="text-xs font-bold text-orange-700 mb-3">💡 Live Revenue Preview — Rs. {sampleOrder.toLocaleString()} order</p>
+            <div className="flex rounded-lg overflow-hidden h-8 mb-2.5 shadow-sm">
+              <div className="flex items-center justify-center text-xs font-extrabold text-white" style={{ width: `${vendorKeep}%`, background: "linear-gradient(90deg,#f97316,#fb923c)" }}>
+                {vendorKeep}% Vendor
+              </div>
+              <div className="flex items-center justify-center text-xs font-extrabold text-white" style={{ width: `${commPct}%`, background: "linear-gradient(90deg,#1d4ed8,#3b82f6)" }}>
+                {commPct}%
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white rounded-lg p-3 border border-orange-100 text-center">
+                <p className="text-lg font-extrabold text-orange-600">Rs. {vendorEarns.toLocaleString()}</p>
+                <p className="text-[11px] text-muted-foreground font-medium">Vendor earns ({vendorKeep}%)</p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-blue-100 text-center">
+                <p className="text-lg font-extrabold text-blue-600">Rs. {platEarns.toLocaleString()}</p>
+                <p className="text-[11px] text-muted-foreground font-medium">Platform keeps ({commPct}%)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Group 3: Payout Rules ── */}
+        <div className="space-y-3 border-t border-border/40 pt-5">
+          <SLabel icon={Banknote}>Payout Rules</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Minimum and maximum withdrawal request amounts</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <VField k="vendor_min_payout" label="Minimum Payout Request (Rs.)" suffix="Rs." hint="Vendor cannot submit a withdrawal below this amount" />
+            <VField k="vendor_max_payout" label="Maximum Single Payout (Rs.)" suffix="Rs." hint="Cap per withdrawal request — prevents large one-time draws" />
+          </div>
+          {minPayout > maxPayout && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <p className="text-xs text-red-700 font-semibold">⚠️ Minimum payout (Rs. {minPayout}) is greater than maximum (Rs. {maxPayout}). Please fix this.</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Group 4: Store Rules ── */}
+        <div className="space-y-3 border-t border-border/40 pt-5">
+          <SLabel icon={ShoppingCart}>Store Rules</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Platform-wide limits applied to all vendor stores</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <VField k="vendor_min_order" label="Default Minimum Order (Rs.)" suffix="Rs." hint="Vendors set their own min order — this is the platform floor" />
+            <VField k="vendor_max_items" label="Max Menu Items Per Vendor" suffix="items" hint="Product/menu listing cap enforced at API level" />
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3 flex items-start gap-2">
+            <Package className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Product limit is enforced server-side — vendors cannot add more items once they reach <strong>{maxItems} items</strong>. Current limit applies to single-add and bulk-add both.
+            </p>
+          </div>
+        </div>
+
+        {/* ── Group 5: Feature Controls ── */}
+        <div className="space-y-3 border-t border-border/40 pt-5">
+          <SLabel icon={ToggleRight}>Feature Controls</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Enable or disable specific vendor portal features</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Toggle
+              checked={promoOn} isDirty={d("vendor_promo_enabled")}
+              onChange={val => handleToggle("vendor_promo_enabled", val)}
+              label="Vendors Can Create Promo Codes"
+              sub={promoOn ? "Vendors can create & manage discount codes" : "Promo tab is locked in vendor portal"}
+            />
+            <Toggle
+              checked={withdrawOn} isDirty={d("vendor_withdrawal_enabled")}
+              onChange={val => handleToggle("vendor_withdrawal_enabled", val)}
+              label="Vendors Can Submit Withdrawals"
+              sub={withdrawOn ? "Withdraw button is active in vendor wallet" : "Wallet shows 'Withdrawals Paused' — no requests accepted"}
+              danger={!withdrawOn}
+            />
+          </div>
+          {!withdrawOn && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-amber-700 leading-relaxed">
+                <strong>Withdrawals are off.</strong> Vendors see a "Paused" notice in their wallet. API also returns 403 if they attempt a withdrawal. Turn on to resume payouts.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Simulation Summary Card ── */}
+        <div className="border-t border-border/40 pt-5">
+          <SLabel icon={BarChart3}>Vendor Earnings Summary</SLabel>
+          <p className="text-xs text-muted-foreground mb-3 -mt-1">Live preview of what a typical vendor experiences with current settings</p>
+          <div className="overflow-hidden rounded-xl border border-border bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-border">
+                <tr>
+                  <th className="text-left px-4 py-2.5 text-xs font-bold text-muted-foreground">Scenario</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-bold text-muted-foreground">Vendor Earns</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-bold text-muted-foreground">Platform Takes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {[500, 1000, 2000, 5000].map(amt => (
+                  <tr key={amt} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-4 py-2.5 text-muted-foreground">Rs. {amt.toLocaleString()} order</td>
+                    <td className="px-4 py-2.5 text-right font-bold text-orange-600">Rs. {Math.round(amt * vendorKeep / 100).toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-blue-600">Rs. {Math.round(amt * commPct / 100).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="bg-gray-50 border-t border-border px-4 py-3 grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-[10px] text-muted-foreground font-medium">Settlement</p>
+                <p className="text-sm font-extrabold text-foreground">{settleDays} days</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground font-medium">Min Payout</p>
+                <p className="text-sm font-extrabold text-foreground">Rs. {minPayout.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground font-medium">Max Payout</p>
+                <p className="text-sm font-extrabold text-foreground">Rs. {maxPayout.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     );
   }

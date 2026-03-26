@@ -2,6 +2,17 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./api";
 
 export interface PlatformConfig {
+  vendor: {
+    commissionPct: number;
+    settleDays: number;
+    minPayout: number;
+    maxPayout: number;
+    minOrder: number;
+    maxItems: number;
+    autoApprove: boolean;
+    promoEnabled: boolean;
+    withdrawalEnabled: boolean;
+  };
   platform: {
     appName: string;
     appTagline: string;
@@ -82,6 +93,7 @@ export interface PlatformConfig {
 }
 
 const DEFAULT_CONFIG: PlatformConfig = {
+  vendor: { commissionPct: 15, settleDays: 7, minPayout: 500, maxPayout: 50000, minOrder: 100, maxItems: 100, autoApprove: false, promoEnabled: true, withdrawalEnabled: true },
   platform: {
     appName: "AJKMart",
     appTagline: "Your super app for everything",

@@ -146,6 +146,17 @@ router.get("/", async (_req, res) => {
       vendorSettleDays:      parseInt(s["vendor_settlement_days"]    ?? "7"),
       referralBonus:         parseFloat(s["customer_referral_bonus"] ?? "100"),
     },
+    vendor: {
+      commissionPct:      parseFloat(s["vendor_commission_pct"]     ?? "15"),
+      settleDays:         parseInt(s["vendor_settlement_days"]       ?? "7"),
+      minPayout:          parseFloat(s["vendor_min_payout"]          ?? "500"),
+      maxPayout:          parseFloat(s["vendor_max_payout"]          ?? "50000"),
+      minOrder:           parseFloat(s["vendor_min_order"]           ?? "100"),
+      maxItems:           parseInt(s["vendor_max_items"]             ?? "100"),
+      autoApprove:        (s["vendor_auto_approve"]                  ?? "off") === "on",
+      promoEnabled:       (s["vendor_promo_enabled"]                 ?? "on")  === "on",
+      withdrawalEnabled:  (s["vendor_withdrawal_enabled"]            ?? "on")  === "on",
+    },
     security: {
       gpsTracking: (s["security_gps_tracking"] ?? "on")  === "on",
       otpBypass:   (s["security_otp_bypass"]   ?? "off") === "on",

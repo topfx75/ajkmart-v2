@@ -208,6 +208,15 @@ router.post("/products", async (req, res) => {
   const user = (req as any).vendorUser;
   const body = req.body;
   if (!body.name || !body.price) { res.status(400).json({ error: "name and price required" }); return; }
+
+  // Enforce max items limit
+  const s = await getPlatformSettings();
+  const maxItems = parseInt(s["vendor_max_items"] ?? "100");
+  const [countRow] = await db.select({ c: count() }).from(productsTable).where(eq(productsTable.vendorId, vendorId));
+  if ((countRow?.c ?? 0) >= maxItems) {
+    res.status(400).json({ error: `Product limit reached. Maximum ${maxItems} items allowed per vendor.` }); return;
+  }
+
   const [product] = await db.insert(productsTable).values({
     id: generateId(), vendorId, vendorName: user.storeName || user.name,
     name: body.name, description: body.description || null,
@@ -227,6 +236,15 @@ router.post("/products/bulk", async (req, res) => {
   const { products } = req.body;
   if (!Array.isArray(products) || products.length === 0) { res.status(400).json({ error: "products array required" }); return; }
   if (products.length > 50) { res.status(400).json({ error: "Max 50 products at a time" }); return; }
+
+  // Enforce max items limit (check current count + new items)
+  const s2 = await getPlatformSettings();
+  const maxItems2 = parseInt(s2["vendor_max_items"] ?? "100");
+  const [countRow2] = await db.select({ c: count() }).from(productsTable).where(eq(productsTable.vendorId, vendorId));
+  const currentCount = countRow2?.c ?? 0;
+  if (currentCount + products.length > maxItems2) {
+    res.status(400).json({ error: `Product limit exceeded. You have ${currentCount}/${maxItems2} items. Can only add ${Math.max(0, maxItems2 - currentCount)} more.` }); return;
+  }
   const invalid = products.filter(p => !p.name || !p.price);
   if (invalid.length > 0) { res.status(400).json({ error: `${invalid.length} products missing name or price` }); return; }
   const inserted = await db.insert(productsTable).values(
@@ -280,6 +298,11 @@ router.post("/promos", async (req, res) => {
   const body = req.body;
   if (!body.code || (!body.discountPct && !body.discountFlat)) {
     res.status(400).json({ error: "code + discount (% or flat) required" }); return;
+  }
+  // Check if promos are enabled by admin
+  const sp = await getPlatformSettings();
+  if ((sp["vendor_promo_enabled"] ?? "on") !== "on") {
+    res.status(403).json({ error: "Promo code creation is currently disabled by admin." }); return;
   }
   // Check if code already exists
   const [existing] = await db.select({ id: promoCodesTable.id }).from(promoCodesTable).where(eq(promoCodesTable.code, body.code.toUpperCase())).limit(1);
@@ -339,8 +362,17 @@ router.post("/wallet/withdraw", async (req, res) => {
   const { amount, accountTitle, accountNumber, bankName, note } = req.body;
   const amt = safeNum(amount);
 
+  // Check admin settings for withdrawal rules
+  const sw = await getPlatformSettings();
+  if ((sw["vendor_withdrawal_enabled"] ?? "on") !== "on") {
+    res.status(403).json({ error: "Withdrawal requests are temporarily disabled by admin. Please try again later." }); return;
+  }
+  const minPayout = parseFloat(sw["vendor_min_payout"] ?? "500");
+  const maxPayout = parseFloat(sw["vendor_max_payout"] ?? "50000");
+
   if (!amt || amt <= 0) { res.status(400).json({ error: "Valid amount required" }); return; }
-  if (amt < 500) { res.status(400).json({ error: "Minimum withdrawal is Rs. 500" }); return; }
+  if (amt < minPayout) { res.status(400).json({ error: `Minimum withdrawal is Rs. ${minPayout}` }); return; }
+  if (amt > maxPayout) { res.status(400).json({ error: `Maximum single withdrawal is Rs. ${maxPayout}` }); return; }
   if (!accountTitle || !accountNumber || !bankName) {
     res.status(400).json({ error: "Account title, number, and bank name are required" }); return;
   }
