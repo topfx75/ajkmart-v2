@@ -78,7 +78,11 @@ export default function WalletScreen() {
   const [sendLoading, setSendLoading] = useState(false);
 
   const { config: platformConfig } = usePlatformConfig();
-  const appName = platformConfig.platform.appName;
+  const appName     = platformConfig.platform.appName;
+  const minTopup    = platformConfig.customer.minTopup;
+  const walletMax   = platformConfig.customer.walletMax;
+  const minTransfer = platformConfig.customer.minTransfer;
+  const p2pEnabled  = platformConfig.customer.p2pEnabled;
 
   const { data, isLoading, refetch } = useGetWallet(
     { userId: user?.id || "" },
@@ -94,8 +98,8 @@ export default function WalletScreen() {
 
   const handleTopUp = async () => {
     const num = parseFloat(amount);
-    if (!num || num < 100)   { showToast("Minimum Rs. 100 add karein", "error"); return; }
-    if (num > 50000)         { showToast("Maximum Rs. 50,000 per top-up", "error"); return; }
+    if (!num || num < minTopup)   { showToast(`Minimum Rs. ${minTopup.toLocaleString()} add karein`, "error"); return; }
+    if (num > walletMax)          { showToast(`Maximum Rs. ${walletMax.toLocaleString()} per top-up`, "error"); return; }
     setLoading(true);
     try {
       const result = await topUpWallet({ userId: user!.id, amount: num });
@@ -112,8 +116,8 @@ export default function WalletScreen() {
   const handleSend = async () => {
     if (!sendPhone.trim()) { showToast("Receiver ka phone number enter karein", "error"); return; }
     const num = parseFloat(sendAmount);
-    if (!num || num < 50)  { showToast("Minimum Rs. 50 transfer karein", "error"); return; }
-    if (num > balance)     { showToast("Wallet mein enough balance nahi", "error"); return; }
+    if (!num || num < minTransfer) { showToast(`Minimum Rs. ${minTransfer.toLocaleString()} transfer karein`, "error"); return; }
+    if (num > balance)             { showToast("Wallet mein enough balance nahi", "error"); return; }
     setSendLoading(true);
     try {
       const res = await fetch(`${API}/wallet/send`, {
@@ -163,12 +167,14 @@ export default function WalletScreen() {
               </View>
               <Text style={ws.actionTxt}>Top Up</Text>
             </Pressable>
-            <Pressable onPress={() => setShowSend(true)} style={ws.action}>
-              <View style={ws.actionIcon}>
-                <Ionicons name="send-outline" size={20} color={C.primary} />
-              </View>
-              <Text style={ws.actionTxt}>Send</Text>
-            </Pressable>
+            {p2pEnabled && (
+              <Pressable onPress={() => setShowSend(true)} style={ws.action}>
+                <View style={ws.actionIcon}>
+                  <Ionicons name="send-outline" size={20} color={C.primary} />
+                </View>
+                <Text style={ws.actionTxt}>Send</Text>
+              </Pressable>
+            )}
             <Pressable onPress={() => setShowQR(true)} style={ws.action}>
               <View style={ws.actionIcon}>
                 <Ionicons name="qr-code-outline" size={20} color={C.primary} />
@@ -318,7 +324,7 @@ export default function WalletScreen() {
 
             <View style={[ws.sheetNote, { marginTop: 8 }]}>
               <Ionicons name="wallet-outline" size={14} color={C.primary} />
-              <Text style={ws.sheetNoteTxt}>Available: Rs. {balance.toLocaleString()} • Min transfer: Rs. 50</Text>
+              <Text style={ws.sheetNoteTxt}>Available: Rs. {balance.toLocaleString()} • Min: Rs. {minTransfer.toLocaleString()}</Text>
             </View>
 
             <Pressable onPress={handleSend} disabled={sendLoading || !sendPhone || !sendAmount} style={[ws.actionBtn, { backgroundColor: "#7C3AED" }, (!sendPhone || !sendAmount || sendLoading) && { opacity: 0.5 }]}>

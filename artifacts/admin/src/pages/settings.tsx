@@ -7,6 +7,7 @@ import {
   Loader2, Eye, EyeOff, ExternalLink, ChevronRight,
   Building2, Banknote, Wallet, Phone, FileText, Lock,
   ToggleRight, Settings, RotateCcw, Package,
+  Gift, Star, Percent, ShieldCheck,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
@@ -44,6 +45,7 @@ const CATEGORY_CONFIG: Record<CatKey, { label: string; icon: any; color: string;
 const TOGGLE_KEYS = new Set([
   "feature_mart","feature_food","feature_rides","feature_pharmacy",
   "feature_parcel","feature_wallet","feature_referral","feature_new_users",
+  "customer_referral_enabled","customer_loyalty_enabled",
   "rider_cash_allowed","rider_auto_approve","rider_withdrawal_enabled",
   "vendor_auto_approve","vendor_promo_enabled","vendor_withdrawal_enabled",
   "feature_chat","feature_live_tracking","feature_reviews",
@@ -3277,6 +3279,216 @@ function renderSection(
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  /* ─────────────────────────── CUSTOMER SETTINGS RENDERER ─────────────────────────── */
+  if (cat === "customer") {
+    const v = (k: string) => localValues[k] ?? settings.find(s => s.key === k)?.value ?? "";
+    const d = (k: string) => dirtyKeys.has(k);
+
+    const maxOrdersDay     = parseInt(v("customer_max_orders_day") || "10");
+    const signupBonus      = parseFloat(v("customer_signup_bonus")  || "0");
+    const minTopup         = parseFloat(v("customer_min_topup")     || "100");
+    const walletMax        = parseFloat(v("customer_wallet_max")    || "50000");
+    const minTransfer      = parseFloat(v("customer_min_withdrawal") || "200");
+    const p2pEnabled       = v("wallet_p2p_enabled") === "on";
+    const referralEnabled  = v("customer_referral_enabled") === "on";
+    const referralBonus    = parseFloat(v("customer_referral_bonus") || "100");
+    const loyaltyEnabled   = v("customer_loyalty_enabled") === "on";
+    const loyaltyPts       = parseFloat(v("customer_loyalty_pts")   || "5");
+    const cbOrders         = v("wallet_cashback_on_orders") === "on";
+    const cbRides          = v("wallet_cashback_on_rides") === "on";
+    const cbPharmacy       = v("wallet_cashback_on_pharmacy") === "on";
+    const cbPct            = parseFloat(v("wallet_cashback_pct") || "0");
+
+    const Group = ({ icon: Icon, iconCls, title, subtitle, children }: {
+      icon: React.ElementType; iconCls: string; title: string; subtitle: string; children: React.ReactNode;
+    }) => (
+      <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-muted/30">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${iconCls}`}>
+            <Icon size={18} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-foreground">{title}</p>
+            <p className="text-xs text-muted-foreground">{subtitle}</p>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">{children}</div>
+      </div>
+    );
+
+    const Field = ({ k, label, suffix, min, disabled }: { k: string; label: string; suffix?: string; min?: number; disabled?: boolean }) => (
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-semibold text-foreground">{label}</label>
+          {d(k) && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">CHANGED</span>}
+        </div>
+        <div className="relative">
+          <Input
+            type="number" min={min ?? 0}
+            value={v(k)}
+            onChange={e => handleChange(k, e.target.value)}
+            disabled={disabled}
+            className={`h-10 rounded-xl ${suffix ? "pr-16" : ""} ${d(k) ? "border-amber-300 bg-amber-50/50 ring-1 ring-amber-200" : ""} ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+          />
+          {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">{suffix}</span>}
+        </div>
+        <p className="text-[10px] text-muted-foreground font-mono">{k}</p>
+      </div>
+    );
+
+    const Tog = ({ k, label, sub, dangerOff }: { k: string; label: string; sub?: string; dangerOff?: boolean }) => {
+      const on = v(k) === "on";
+      return (
+        <div className={`flex items-center justify-between rounded-xl px-4 py-3 border ${dangerOff && !on ? "bg-red-50 border-red-200" : "bg-muted/20 border-border"} ${d(k) ? "ring-1 ring-amber-300" : ""}`}>
+          <div>
+            <p className="text-sm font-semibold text-foreground">{label}</p>
+            {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+          </div>
+          <button
+            onClick={() => handleToggle(k, !on)}
+            className={`relative w-11 h-6 rounded-full transition-colors ${on ? (dangerOff ? "bg-emerald-500" : "bg-blue-500") : (dangerOff ? "bg-red-400" : "bg-muted-foreground/30")}`}
+          >
+            <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-5">
+        {/* ── Group 1: Account Controls ── */}
+        <Group icon={Users} iconCls="bg-blue-100 text-blue-600" title="Account Controls" subtitle="Per-customer limits and onboarding incentives">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field k="customer_max_orders_day" label="Max Orders Per Day" suffix="orders" min={1} />
+            <Field k="customer_signup_bonus"   label="New User Signup Bonus" suffix="Rs." min={0} />
+          </div>
+          <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+            <ShieldCheck size={15} className="text-blue-500 mt-0.5 shrink-0" />
+            <div className="text-xs text-blue-700 space-y-0.5">
+              <p className="font-semibold">Daily Order Enforcement</p>
+              <p>Orders are always capped at this limit regardless of security settings. Security's own daily limit ({parseInt(settings.find(s => s.key === "security_max_daily_orders")?.value || "20")} orders) also applies — the stricter limit wins.</p>
+            </div>
+          </div>
+        </Group>
+
+        {/* ── Group 2: Wallet Limits ── */}
+        <Group icon={Wallet} iconCls="bg-emerald-100 text-emerald-600" title="Wallet Limits" subtitle="Top-up, balance cap, and P2P transfer rules">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Field k="customer_min_topup"      label="Min Top-Up (Rs.)"        suffix="Rs." min={1} />
+            <Field k="customer_wallet_max"     label="Max Wallet Balance (Rs.)" suffix="Rs." min={100} />
+            <Field k="customer_min_withdrawal" label="Min Transfer (Rs.)"       suffix="Rs." min={1} />
+          </div>
+          <Tog k="wallet_p2p_enabled" label="P2P Money Transfer" sub="Customers can send wallet balance to each other" dangerOff />
+          {/* Wallet Limits Overview */}
+          <div>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Wallet Limits Overview</p>
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-xs">
+                <thead><tr className="bg-muted/50">
+                  <th className="px-3 py-2 text-left font-bold text-muted-foreground">Rule</th>
+                  <th className="px-3 py-2 text-right font-bold text-muted-foreground">Limit</th>
+                  <th className="px-3 py-2 text-left font-bold text-muted-foreground">Source</th>
+                </tr></thead>
+                <tbody className="divide-y divide-border">
+                  {[
+                    { rule: "Min Top-Up",       val: `Rs. ${minTopup.toLocaleString()}`,    src: "customer_min_topup"      },
+                    { rule: "Max Wallet",        val: `Rs. ${walletMax.toLocaleString()}`,   src: "customer_wallet_max"     },
+                    { rule: "Min Transfer",      val: `Rs. ${minTransfer.toLocaleString()}`, src: "customer_min_withdrawal" },
+                    { rule: "P2P Transfers",     val: p2pEnabled ? "Enabled ✓" : "Disabled ✗", src: "wallet_p2p_enabled" },
+                  ].map(row => (
+                    <tr key={row.rule} className="hover:bg-muted/20">
+                      <td className="px-3 py-2 font-medium text-foreground">{row.rule}</td>
+                      <td className="px-3 py-2 text-right font-bold text-blue-700">{row.val}</td>
+                      <td className="px-3 py-2 text-muted-foreground font-mono text-[10px]">{row.src}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Group>
+
+        {/* ── Group 3: Referral Program ── */}
+        <Group icon={Gift} iconCls="bg-purple-100 text-purple-600" title="Referral Program" subtitle="Reward customers for inviting new users">
+          <Tog k="customer_referral_enabled" label="Referral Program" sub="Enable refer-a-friend bonus system" dangerOff />
+          <Field k="customer_referral_bonus" label="Referral Bonus (Rs.)" suffix="Rs." min={0} disabled={!referralEnabled} />
+          <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border ${referralEnabled ? "bg-purple-50 border-purple-200" : "bg-muted/20 border-border"}`}>
+            <Gift size={14} className={`mt-0.5 shrink-0 ${referralEnabled ? "text-purple-500" : "text-muted-foreground"}`} />
+            <div className={`text-xs space-y-0.5 ${referralEnabled ? "text-purple-700" : "text-muted-foreground"}`}>
+              <p className="font-semibold">{referralEnabled ? "How it works" : "Referral program is OFF"}</p>
+              {referralEnabled
+                ? <p>When a referred user places their first order, both the referrer and the new user receive Rs. {referralBonus.toLocaleString()} in wallet credit.</p>
+                : <p>Turn on referral program to reward customers who invite friends. Bonus is credited on the new user's first order.</p>
+              }
+            </div>
+          </div>
+        </Group>
+
+        {/* ── Group 4: Loyalty Program ── */}
+        <Group icon={Star} iconCls="bg-amber-100 text-amber-600" title="Loyalty Program" subtitle="Points earned per Rs. 100 spent">
+          <Tog k="customer_loyalty_enabled" label="Loyalty Points Program" sub="Customers earn points with each order" dangerOff />
+          <Field k="customer_loyalty_pts" label="Points Per Rs. 100 Spent" suffix="pts" min={0} disabled={!loyaltyEnabled} />
+          {/* Loyalty Simulation Table */}
+          <div className={loyaltyEnabled ? "" : "opacity-40 pointer-events-none"}>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Loyalty Simulation</p>
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-xs">
+                <thead><tr className="bg-muted/50">
+                  <th className="px-3 py-2 text-left font-bold text-muted-foreground">Order Value</th>
+                  <th className="px-3 py-2 text-right font-bold text-muted-foreground">Points Earned</th>
+                  <th className="px-3 py-2 text-right font-bold text-muted-foreground">Est. Value</th>
+                </tr></thead>
+                <tbody className="divide-y divide-border">
+                  {[100, 500, 1000, 2000, 5000].map(amt => {
+                    const pts = Math.floor(amt / 100 * loyaltyPts);
+                    const val = (pts * 0.1).toFixed(2);
+                    return (
+                      <tr key={amt} className="hover:bg-muted/20">
+                        <td className="px-3 py-2 text-foreground font-medium">Rs. {amt.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right font-bold text-amber-700">{pts} pts</td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">≈ Rs. {val}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1.5">* 1 point ≈ Rs. 0.10 value. Adjust redemption rate in loyalty engine.</p>
+          </div>
+        </Group>
+
+        {/* ── Group 5: Cashback Settings ── */}
+        <Group icon={Percent} iconCls="bg-rose-100 text-rose-600" title="Cashback Settings" subtitle="Cashback applied per order category">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Tog k="wallet_cashback_on_orders"   label="Cashback on Mart/Food" sub="Orders only" />
+            <Tog k="wallet_cashback_on_rides"    label="Cashback on Rides"     sub="Bike & car" />
+            <Tog k="wallet_cashback_on_pharmacy" label="Cashback on Pharmacy"  sub="Medicine orders" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field k="wallet_cashback_pct" label="Cashback %" suffix="%" min={0} />
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-foreground">Max Cashback Cap</label>
+              <div className="h-10 rounded-xl border border-border bg-muted/20 px-4 flex items-center">
+                <span className="text-sm text-muted-foreground">
+                  Set in Finance Settings → finance_cashback_max_rs
+                </span>
+              </div>
+            </div>
+          </div>
+          {(cbOrders || cbRides || cbPharmacy) && cbPct > 0 && (
+            <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+              <Zap size={14} className="text-rose-500 mt-0.5 shrink-0" />
+              <p className="text-xs text-rose-700">
+                <span className="font-semibold">Active: </span>
+                {cbPct}% cashback on {[cbOrders && "Mart/Food", cbRides && "Rides", cbPharmacy && "Pharmacy"].filter(Boolean).join(", ")}. Capped per Finance settings.
+              </p>
+            </div>
+          )}
+        </Group>
       </div>
     );
   }

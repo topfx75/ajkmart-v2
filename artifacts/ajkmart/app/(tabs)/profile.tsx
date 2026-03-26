@@ -706,6 +706,48 @@ export default function ProfileScreen() {
           </View>
         </Pressable>
 
+        {/* ── Referral Program Card ── */}
+        {platformConfig.customer.referralEnabled && (
+          <View style={rc.wrap}>
+            <View style={rc.left}>
+              <View style={rc.iconBox}>
+                <Ionicons name="gift-outline" size={22} color="#7C3AED" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={rc.title}>Refer & Earn</Text>
+                <Text style={rc.sub}>Dost ko invite karein — dono ko Rs. {platformConfig.customer.referralBonus.toLocaleString()} milega</Text>
+                <View style={rc.codeRow}>
+                  <Text style={rc.codeLabel}>Aapka Code:</Text>
+                  <View style={rc.codePill}>
+                    <Text style={rc.code}>{user?.id?.slice(-8).toUpperCase() ?? "AJKXXXX"}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ── Loyalty Points Card ── */}
+        {platformConfig.customer.loyaltyEnabled && (
+          <View style={[rc.wrap, { borderColor: "#F59E0B22", backgroundColor: "#FFFBEB" }]}>
+            <View style={rc.left}>
+              <View style={[rc.iconBox, { backgroundColor: "#FEF3C7" }]}>
+                <Ionicons name="star-outline" size={22} color="#D97706" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={rc.title}>Loyalty Points</Text>
+                <Text style={rc.sub}>Har Rs. 100 spend karne par {platformConfig.customer.loyaltyPtsPerRs100} points milte hain</Text>
+                <View style={rc.codeRow}>
+                  <Text style={rc.codeLabel}>Aap kama sakte hain:</Text>
+                  <View style={[rc.codePill, { backgroundColor: "#FDE68A" }]}>
+                    <Text style={[rc.code, { color: "#92400E" }]}>{platformConfig.customer.loyaltyPtsPerRs100} pts / Rs.100</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* ── Account ── */}
         <SectionCard title="ACCOUNT">
           <Row icon="person-outline"          label="Edit Profile"       sub="Naam, email update karein"            onPress={() => setShowEdit(true)} />
@@ -902,6 +944,19 @@ const wb = StyleSheet.create({
   amt: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
   btn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.rideLight, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
   btnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.primary },
+});
+
+/* Referral / Loyalty Cards */
+const rc = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#FAF5FF", marginHorizontal: 16, marginTop: 12, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: "#E9D5FF" },
+  left: { flexDirection: "row", alignItems: "flex-start", gap: 12, flex: 1 },
+  iconBox: { width: 44, height: 44, borderRadius: 13, backgroundColor: "#F3E8FF", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  title: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, marginBottom: 3 },
+  sub: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, lineHeight: 17, marginBottom: 8 },
+  codeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  codeLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.textMuted },
+  codePill: { backgroundColor: "#E9D5FF", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  code: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#6D28D9", letterSpacing: 1 },
 });
 
 /* Section Card */

@@ -83,6 +83,18 @@ export interface PlatformConfig {
     vendorSettleDays: number;
     referralBonus: number;
   };
+  customer: {
+    walletMax: number;
+    minTopup: number;
+    minTransfer: number;
+    referralEnabled: boolean;
+    referralBonus: number;
+    loyaltyEnabled: boolean;
+    loyaltyPtsPerRs100: number;
+    maxOrdersDay: number;
+    signupBonus: number;
+    p2pEnabled: boolean;
+  };
 }
 
 const DEFAULT: PlatformConfig = {
@@ -137,6 +149,12 @@ const DEFAULT: PlatformConfig = {
     gstEnabled: false, gstPct: 17, cashbackEnabled: false, cashbackPct: 2, cashbackMaxRs: 100,
     invoiceEnabled: false, platformCommissionPct: 10, vendorCommissionPct: 15, riderEarningPct: 80,
     minVendorPayout: 500, minRiderPayout: 500, vendorSettleDays: 7, referralBonus: 100,
+  },
+  customer: {
+    walletMax: 50000, minTopup: 100, minTransfer: 200,
+    referralEnabled: true, referralBonus: 100,
+    loyaltyEnabled: true, loyaltyPtsPerRs100: 5,
+    maxOrdersDay: 10, signupBonus: 0, p2pEnabled: true,
   },
 };
 
@@ -251,6 +269,18 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           minRiderPayout:       raw.finance?.minRiderPayout       ?? DEFAULT.finance.minRiderPayout,
           vendorSettleDays:     raw.finance?.vendorSettleDays     ?? DEFAULT.finance.vendorSettleDays,
           referralBonus:        raw.finance?.referralBonus        ?? DEFAULT.finance.referralBonus,
+        },
+        customer: {
+          walletMax:          raw.customer?.walletMax          ?? DEFAULT.customer.walletMax,
+          minTopup:           raw.customer?.minTopup           ?? DEFAULT.customer.minTopup,
+          minTransfer:        raw.customer?.minTransfer        ?? DEFAULT.customer.minTransfer,
+          referralEnabled:    raw.customer?.referralEnabled    ?? DEFAULT.customer.referralEnabled,
+          referralBonus:      raw.customer?.referralBonus      ?? DEFAULT.customer.referralBonus,
+          loyaltyEnabled:     raw.customer?.loyaltyEnabled     ?? DEFAULT.customer.loyaltyEnabled,
+          loyaltyPtsPerRs100: raw.customer?.loyaltyPtsPerRs100 ?? DEFAULT.customer.loyaltyPtsPerRs100,
+          maxOrdersDay:       raw.customer?.maxOrdersDay       ?? DEFAULT.customer.maxOrdersDay,
+          signupBonus:        raw.customer?.signupBonus        ?? DEFAULT.customer.signupBonus,
+          p2pEnabled:         raw.customer?.p2pEnabled         ?? DEFAULT.customer.p2pEnabled,
         },
       };
       _cached = parsed;

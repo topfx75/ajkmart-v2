@@ -1,4 +1,22 @@
 # AJKMart Super App — Workspace
+<!-- Last updated: 2026-03-26 — CUSTOMER SETTINGS COMPLETE: Full-stack customer management — admin → API → customer app, zero loopholes.
+  - New seeds: customer_referral_enabled (on), customer_loyalty_enabled (on), customer_signup_bonus (0)
+  - TOGGLE_KEYS updated: customer_referral_enabled + customer_loyalty_enabled added
+  - platform-config API: customer block added with 10 fields: walletMax, minTopup, minTransfer, referralEnabled, referralBonus, loyaltyEnabled, loyaltyPtsPerRs100, maxOrdersDay, signupBonus, p2pEnabled
+  - Admin Customer Settings Renderer (5 groups):
+    * Account Controls: maxOrdersDay + signupBonus + dual-limit info card showing security_max_daily_orders
+    * Wallet Limits: minTopup, walletMax, minTransfer, p2p toggle, Wallet Limits Overview table (4 rows with live values and seed key references)
+    * Referral Program: referralEnabled toggle, referralBonus (disabled when off), dynamic info card explaining flow
+    * Loyalty Program: loyaltyEnabled toggle, loyaltyPts (disabled when off), Loyalty Simulation table (Rs.100/500/1000/2000/5000 → pts earned + est. value)
+    * Cashback Settings: 3 category toggles (orders/rides/pharmacy), cashback %, Finance Settings cross-reference note, amber summary banner when active
+  - API enforcement:
+    * orders.ts: customer_max_orders_day always enforced before security block (separate daily count query)
+    * wallet.ts topup: reads customer_min_topup first (fallback to wallet_min_topup), customer_wallet_max first (fallback to wallet_max_balance)
+    * wallet.ts send: reads customer_min_withdrawal first (fallback to wallet_min_withdrawal), gates on wallet_p2p_enabled (403 when disabled)
+  - Customer app PlatformConfigContext.tsx: customer block added (10 fields) with interface, DEFAULT, and parser
+  - Customer app wallet.tsx: dynamic minTopup, walletMax, minTransfer; Send button hidden when p2pEnabled=false; modal info text uses live minTransfer value
+  - Customer app profile.tsx: Referral card (purple, gift icon, shows referral code = last 8 chars of userId) shown when referralEnabled; Loyalty card (amber, star icon, shows pts/Rs.100 rate) shown when loyaltyEnabled; rc StyleSheet added
+  -->
 <!-- Last updated: 2026-03-26 — RIDER SETTINGS COMPLETE: Full-stack rider management — admin → API → rider app, zero loopholes.
   - New seeds: rider_auto_approve (off), rider_withdrawal_enabled (on), rider_max_payout (50000)
   - TOGGLE_KEYS updated: rider_auto_approve + rider_withdrawal_enabled added

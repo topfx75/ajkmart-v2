@@ -81,21 +81,25 @@ router.post("/", async (req, res) => {
     res.status(403).json({ error: "Your account is inactive. Please contact support." }); return;
   }
 
+  /* ── Customer daily order cap (always enforced from Customer Settings) ── */
+  const custMaxPerDay = parseInt(s["customer_max_orders_day"] ?? "20", 10);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const [custDailyResult] = await db
+    .select({ c: count() })
+    .from(ordersTable)
+    .where(and(eq(ordersTable.userId, userId), gte(ordersTable.createdAt, todayStart)));
+  const custDailyCount = Number(custDailyResult?.c ?? 0);
+  if (custDailyCount >= custMaxPerDay) {
+    res.status(429).json({ error: `Aaj ke liye order limit (${custMaxPerDay} orders) reach ho gayi. Kal dobara try karein.` }); return;
+  }
+
   /* ── Fake order / fraud detection ── */
   if (s["security_fake_order_detect"] === "on") {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    /* Max daily orders per customer */
+    /* Max daily orders — security override (uses security_max_daily_orders) */
     const maxDailyOrders = parseInt(s["security_max_daily_orders"] ?? "20", 10);
-    const [dailyCountResult] = await db
-      .select({ c: count() })
-      .from(ordersTable)
-      .where(and(eq(ordersTable.userId, userId), gte(ordersTable.createdAt, todayStart)));
-
-    const dailyCount = Number(dailyCountResult?.c ?? 0);
-    if (dailyCount >= maxDailyOrders) {
-      addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily order limit: ${dailyCount}/${maxDailyOrders}`, severity: "medium" });
+    if (custDailyCount >= maxDailyOrders) {
+      addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily order limit: ${custDailyCount}/${maxDailyOrders}`, severity: "medium" });
       res.status(429).json({ error: `Daily order limit reached (${maxDailyOrders} orders per day). Please try again tomorrow.` }); return;
     }
 

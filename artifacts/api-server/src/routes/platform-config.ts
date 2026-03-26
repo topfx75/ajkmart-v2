@@ -146,6 +146,18 @@ router.get("/", async (_req, res) => {
       vendorSettleDays:      parseInt(s["vendor_settlement_days"]    ?? "7"),
       referralBonus:         parseFloat(s["customer_referral_bonus"] ?? "100"),
     },
+    customer: {
+      walletMax:          parseFloat(s["customer_wallet_max"]       ?? "50000"),
+      minTopup:           parseFloat(s["customer_min_topup"]        ?? "100"),
+      minTransfer:        parseFloat(s["customer_min_withdrawal"]   ?? "200"),
+      referralEnabled:    (s["customer_referral_enabled"]           ?? "on") === "on",
+      referralBonus:      parseFloat(s["customer_referral_bonus"]   ?? "100"),
+      loyaltyEnabled:     (s["customer_loyalty_enabled"]            ?? "on") === "on",
+      loyaltyPtsPerRs100: parseFloat(s["customer_loyalty_pts"]      ?? "5"),
+      maxOrdersDay:       parseInt(s["customer_max_orders_day"]     ?? "10"),
+      signupBonus:        parseFloat(s["customer_signup_bonus"]     ?? "0"),
+      p2pEnabled:         (s["wallet_p2p_enabled"]                  ?? "on") === "on",
+    },
     rider: {
       keepPct:            parseFloat(s["rider_keep_pct"]            ?? "80"),
       bonusPerTrip:       parseFloat(s["rider_bonus_per_trip"]      ?? "0"),
