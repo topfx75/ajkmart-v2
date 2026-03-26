@@ -36,16 +36,21 @@ function relativeTime(iso: string) {
 /* ══════════════════════════════════════════
    EDIT PROFILE MODAL  (name + email + phone)
 ══════════════════════════════════════════ */
+const EXPO_CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Poonch","Neelum Valley","Rawalpindi","Islamabad","Other"];
+
 function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { user, updateUser } = useAuth();
   const { showToast } = useToast();
   const [name,   setName]   = useState(user?.name  || "");
   const [email,  setEmail]  = useState(user?.email || "");
+  const [cnic,   setCnic]   = useState((user as any)?.cnic  || "");
+  const [city,   setCity]   = useState((user as any)?.city  || "");
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
   useEffect(() => {
-    if (visible) { setName(user?.name || ""); setEmail(user?.email || ""); setError(""); }
+    if (visible) { setName(user?.name || ""); setEmail(user?.email || ""); setCnic((user as any)?.cnic || ""); setCity((user as any)?.city || ""); setError(""); }
   }, [visible, user]);
 
   const save = async () => {
@@ -56,10 +61,10 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
       const res = await fetch(`${API}/users/profile`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user!.id, name: name.trim(), email: email.trim() }),
+        body: JSON.stringify({ userId: user!.id, name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() }),
       });
       if (!res.ok) throw new Error();
-      updateUser({ name: name.trim(), email: email.trim() });
+      updateUser({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() } as any);
       onClose();
       showToast("Profile update ho gayi!", "success");
     } catch { showToast("Update fail. Dobara try karein.", "error"); }
@@ -119,6 +124,42 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               keyboardType="email-address"
               autoCapitalize="none"
             />
+          </View>
+
+          {/* CNIC */}
+          <Text style={[st.fldLabel, { marginTop: 12 }]}>CNIC / National ID</Text>
+          <View style={st.fldWrap}>
+            <View style={[st.fldPre, { backgroundColor: "#FFF7ED" }]}>
+              <Ionicons name="card-outline" size={16} color="#D97706" />
+            </View>
+            <TextInput
+              style={st.fldInput}
+              value={cnic}
+              onChangeText={setCnic}
+              placeholder="XXXXX-XXXXXXX-X (optional)"
+              placeholderTextColor={C.textMuted}
+              keyboardType="numeric"
+              maxLength={15}
+            />
+          </View>
+          <Text style={st.fldHint}>Verification ke liye (optional)</Text>
+
+          {/* City */}
+          <Text style={[st.fldLabel, { marginTop: 12 }]}>City</Text>
+          <View style={[st.fldWrap, { paddingRight: 0, overflow: "hidden" }]}>
+            <View style={[st.fldPre, { backgroundColor: "#F0FDF4" }]}>
+              <Ionicons name="location-outline" size={16} color="#059669" />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", gap: 6, alignItems: "center", paddingRight: 12, paddingLeft: 8, height: 52 }}>
+                {EXPO_CITIES.map(c => (
+                  <Pressable key={c} onPress={() => setCity(c)}
+                    style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: city === c ? "#D1FAE5" : "#F8FAFC", borderWidth: 1, borderColor: city === c ? "#059669" : "#E2E8F0" }}>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: city === c ? "#059669" : C.textMuted }}>{c}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
           </View>
 
           {error ? (

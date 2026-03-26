@@ -40,12 +40,16 @@ function formatUser(user: any) {
     avatar: user.avatar,
     storeName: user.storeName, storeCategory: user.storeCategory,
     storeBanner: user.storeBanner, storeDescription: user.storeDescription,
-    storeHours: user.storeHours ? JSON.parse(user.storeHours) : null,
+    storeHours: user.storeHours ? (typeof user.storeHours === "string" ? (() => { try { return JSON.parse(user.storeHours); } catch { return null; } })() : user.storeHours) : null,
     storeAnnouncement: user.storeAnnouncement,
     storeMinOrder: safeNum(user.storeMinOrder),
     storeDeliveryTime: user.storeDeliveryTime,
     storeIsOpen: user.storeIsOpen ?? true,
     walletBalance: safeNum(user.walletBalance),
+    // Extended profile
+    cnic: user.cnic, address: user.address, city: user.city,
+    bankName: user.bankName, bankAccount: user.bankAccount, bankAccountTitle: user.bankAccountTitle,
+    businessType: user.businessType,
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
   };
@@ -76,10 +80,17 @@ router.get("/me", async (req, res) => {
 /* ── PATCH /vendor/profile ── */
 router.patch("/profile", async (req, res) => {
   const vendorId = (req as any).vendorId;
-  const { name, email } = req.body;
+  const { name, email, cnic, address, city, bankName, bankAccount, bankAccountTitle, businessType } = req.body;
   const updates: any = { updatedAt: new Date() };
-  if (name  !== undefined) updates.name  = name;
-  if (email !== undefined) updates.email = email;
+  if (name             !== undefined) updates.name             = name;
+  if (email            !== undefined) updates.email            = email;
+  if (cnic             !== undefined) updates.cnic             = cnic;
+  if (address          !== undefined) updates.address          = address;
+  if (city             !== undefined) updates.city             = city;
+  if (bankName         !== undefined) updates.bankName         = bankName;
+  if (bankAccount      !== undefined) updates.bankAccount      = bankAccount;
+  if (bankAccountTitle !== undefined) updates.bankAccountTitle = bankAccountTitle;
+  if (businessType     !== undefined) updates.businessType     = businessType;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, vendorId)).returning();
   res.json(formatUser(user));
 });

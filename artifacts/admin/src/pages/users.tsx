@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Search, CheckCircle2, XCircle, Wallet, RefreshCw, Trash2,
   Activity, ShoppingBag, Car, Pill, Package, Shield, UserCog,
-  Ban, KeyRound, Save, AlertTriangle,
+  Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity } from "@/hooks/use-admin";
@@ -19,8 +19,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 /* ── Activity Modal ── */
-function UserActivityModal({ userId, userName, onClose }: { userId: string; userName: string; onClose: () => void }) {
+function UserActivityModal({ userId, userName, user: userData, onClose }: { userId: string; userName: string; user: any; onClose: () => void }) {
   const { data, isLoading } = useUserActivity(userId);
+  const userRoles = (userData.roles || userData.role || "customer").split(",").filter(Boolean);
+  const isRider  = userRoles.includes("rider");
+  const isVendor = userRoles.includes("vendor");
+
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
       <DialogContent className="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-3xl">
@@ -29,6 +33,73 @@ function UserActivityModal({ userId, userName, onClose }: { userId: string; user
             <Activity className="w-5 h-5 text-primary" /> Activity — {userName}
           </DialogTitle>
         </DialogHeader>
+
+        {/* Profile Info Section */}
+        <div className="bg-muted/40 rounded-2xl p-3 space-y-2 border border-border/50">
+          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Profile Details</p>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            {userData.email && (
+              <div className="flex items-center gap-2 col-span-2">
+                <span className="text-muted-foreground">✉</span>
+                <span className="text-foreground">{userData.email}</span>
+              </div>
+            )}
+            {userData.cnic && (
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                <span className="text-muted-foreground text-xs">CNIC:</span>
+                <span className="font-mono text-xs font-semibold">{userData.cnic}</span>
+              </div>
+            )}
+            {userData.city && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                <span className="text-muted-foreground text-xs">City:</span>
+                <span className="font-semibold text-xs">{userData.city}</span>
+              </div>
+            )}
+            {userData.address && (
+              <div className="flex items-center gap-2 col-span-2">
+                <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                <span className="text-xs text-muted-foreground truncate">{userData.address}</span>
+              </div>
+            )}
+            {isRider && userData.vehicleType && (
+              <div className="flex items-center gap-2">
+                <Truck className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                <span className="text-muted-foreground text-xs">Vehicle:</span>
+                <span className="font-semibold text-xs capitalize">{userData.vehicleType}</span>
+              </div>
+            )}
+            {isRider && userData.vehiclePlate && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded">{userData.vehiclePlate}</span>
+              </div>
+            )}
+            {isRider && userData.emergencyContact && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">Emergency:</span>
+                <span className="text-xs font-semibold">{userData.emergencyContact}</span>
+              </div>
+            )}
+            {isVendor && userData.businessType && (
+              <div className="flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
+                <span className="text-muted-foreground text-xs">Business:</span>
+                <span className="font-semibold text-xs capitalize">{userData.businessType}</span>
+              </div>
+            )}
+            {(isRider || isVendor) && userData.bankName && (
+              <div className="flex items-center gap-2 col-span-2 bg-sky-50 border border-sky-200 rounded-xl px-2 py-1.5">
+                <span className="text-xs font-bold text-sky-700">Bank:</span>
+                <span className="text-xs text-sky-800">{userData.bankName}</span>
+                {userData.bankAccountTitle && <span className="text-xs text-muted-foreground">· {userData.bankAccountTitle}</span>}
+                {userData.bankAccount && <span className="font-mono text-xs font-bold text-sky-900">{userData.bankAccount}</span>}
+              </div>
+            )}
+          </div>
+        </div>
+
         {isLoading ? (
           <div className="h-40 flex items-center justify-center text-muted-foreground">Loading...</div>
         ) : (
@@ -497,7 +568,13 @@ export default function Users() {
                               {isBanned && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200 px-1">BANNED</Badge>}
                               {isBlocked && <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-600 border-amber-200 px-1">BLOCKED</Badge>}
                             </div>
-                            <p className="text-xs text-muted-foreground font-mono">{user.id.slice(-8).toUpperCase()}</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-xs text-muted-foreground font-mono">{user.id.slice(-8).toUpperCase()}</p>
+                              {user.city && <span className="flex items-center gap-0.5 text-[10px] text-blue-600"><MapPin className="w-2.5 h-2.5"/>{user.city}</span>}
+                              {userRoles.includes("rider") && user.vehiclePlate && <span className="text-[10px] font-mono font-bold bg-green-100 text-green-700 px-1.5 rounded">{user.vehiclePlate}</span>}
+                              {userRoles.includes("vendor") && user.businessType && <span className="text-[10px] text-orange-600 capitalize">{user.businessType}</span>}
+                              {user.cnic && <span className="flex items-center gap-0.5 text-[10px] text-amber-700"><CreditCard className="w-2.5 h-2.5"/>ID✓</span>}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -609,7 +686,7 @@ export default function Users() {
       </Dialog>
 
       {/* Activity Modal */}
-      {activityUser && <UserActivityModal userId={activityUser.id} userName={activityUser.name || activityUser.phone} onClose={() => setActivityUser(null)} />}
+      {activityUser && <UserActivityModal userId={activityUser.id} userName={activityUser.name || activityUser.phone} user={activityUser} onClose={() => setActivityUser(null)} />}
 
       {/* Security Modal */}
       {securityUser && <SecurityModal user={securityUser} onClose={() => setSecurityUser(null)} />}

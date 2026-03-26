@@ -51,6 +51,12 @@ router.get("/me", async (req, res) => {
     id: user.id, phone: user.phone, name: user.name, email: user.email,
     avatar: user.avatar, isOnline: user.isOnline,
     walletBalance: parseFloat(user.walletBalance ?? "0"),
+    // Extended profile
+    cnic: user.cnic, address: user.address, city: user.city,
+    emergencyContact: user.emergencyContact,
+    vehicleType: user.vehicleType, vehiclePlate: user.vehiclePlate,
+    bankName: user.bankName, bankAccount: user.bankAccount, bankAccountTitle: user.bankAccountTitle,
+    lastLoginAt: user.lastLoginAt, createdAt: user.createdAt,
     stats: {
       deliveriesToday: deliveriesToday[0]?.c ?? 0,
       earningsToday: parseFloat(String(earningsToday[0]?.s ?? "0")) * 0.8,
@@ -71,12 +77,22 @@ router.patch("/online", async (req, res) => {
 /* ── PATCH /rider/profile — Update profile ── */
 router.patch("/profile", async (req, res) => {
   const riderId = (req as any).riderId;
-  const { name, email } = req.body;
+  const { name, email, cnic, address, city, emergencyContact, vehicleType, vehiclePlate, bankName, bankAccount, bankAccountTitle } = req.body;
   const updates: any = { updatedAt: new Date() };
-  if (name)  updates.name  = name;
-  if (email) updates.email = email;
+  if (name             !== undefined) updates.name             = name;
+  if (email            !== undefined) updates.email            = email;
+  if (cnic             !== undefined) updates.cnic             = cnic;
+  if (address          !== undefined) updates.address          = address;
+  if (city             !== undefined) updates.city             = city;
+  if (emergencyContact !== undefined) updates.emergencyContact = emergencyContact;
+  if (vehicleType      !== undefined) updates.vehicleType      = vehicleType;
+  if (vehiclePlate     !== undefined) updates.vehiclePlate     = vehiclePlate;
+  if (bankName         !== undefined) updates.bankName         = bankName;
+  if (bankAccount      !== undefined) updates.bankAccount      = bankAccount;
+  if (bankAccountTitle !== undefined) updates.bankAccountTitle = bankAccountTitle;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, riderId)).returning();
-  res.json({ id: user.id, name: user.name, phone: user.phone, email: user.email });
+  const safeNum = (v: any) => v ? parseFloat(String(v)) : 0;
+  res.json({ id: user.id, name: user.name, phone: user.phone, email: user.email, role: user.role, isOnline: user.isOnline, walletBalance: safeNum(user.walletBalance), cnic: user.cnic, address: user.address, city: user.city, emergencyContact: user.emergencyContact, vehicleType: user.vehicleType, vehiclePlate: user.vehiclePlate, bankName: user.bankName, bankAccount: user.bankAccount, bankAccountTitle: user.bankAccountTitle, createdAt: user.createdAt, lastLoginAt: user.lastLoginAt });
 });
 
 /* ── GET /rider/requests — Available orders to pick up ── */
