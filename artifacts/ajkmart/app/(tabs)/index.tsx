@@ -511,7 +511,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.carouselWrap}>
-          <BannerCarousel />
+          {platformConfig.content.showBanner && <BannerCarousel />}
         </View>
 
         <View style={{ height: TAB_H + insets.bottom + 20 }} />

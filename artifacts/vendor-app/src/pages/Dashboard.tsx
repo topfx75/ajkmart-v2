@@ -6,6 +6,18 @@ import { useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, STAT_VAL, STAT_LBL } from "../lib/ui";
 
+function VendorNoticeBanner({ message }: { message: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 flex items-start gap-3 mb-2">
+      <span className="text-blue-500 text-base flex-shrink-0 mt-0.5">📌</span>
+      <p className="text-sm text-blue-700 font-medium leading-snug flex-1">{message}</p>
+      <button onClick={() => setDismissed(true)} className="text-blue-400 hover:text-blue-600 text-lg leading-none flex-shrink-0">×</button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
@@ -79,6 +91,10 @@ export default function Dashboard() {
       />
 
       <div className="px-4 py-4 space-y-4 md:px-0 md:py-0 md:space-y-0">
+        {/* Vendor Notice Banner */}
+        {config.content.vendorNotice && (
+          <VendorNoticeBanner message={config.content.vendorNotice} />
+        )}
         {/* Desktop wallet bar */}
         <div className="hidden md:flex items-center gap-4 px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl text-white shadow-sm mb-6">
           <div className="flex-1">
@@ -87,7 +103,7 @@ export default function Dashboard() {
           </div>
           <div className="text-center border-l border-white/20 pl-4">
             <p className="text-orange-100 text-xs font-medium">Commission</p>
-            <p className="text-3xl font-extrabold">85%</p>
+            <p className="text-3xl font-extrabold">{Math.round(100 - (config.platform.vendorCommissionPct ?? 15))}%</p>
           </div>
           <div className="text-right border-l border-white/20 pl-4">
             <p className="text-orange-100 text-xs font-medium">All-Time Earned</p>

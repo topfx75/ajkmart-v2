@@ -6,6 +6,18 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 function formatCurrency(n: number) { return `Rs. ${Math.round(n).toLocaleString()}`; }
 
+function RiderNoticeBanner({ message }: { message: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 flex items-start gap-3 mb-3">
+      <span className="text-blue-500 text-base flex-shrink-0 mt-0.5">📌</span>
+      <p className="text-sm text-blue-700 font-medium leading-snug flex-1">{message}</p>
+      <button onClick={() => setDismissed(true)} className="text-blue-400 hover:text-blue-600 text-lg leading-none flex-shrink-0">×</button>
+    </div>
+  );
+}
+
 export default function Home() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
@@ -89,6 +101,10 @@ export default function Home() {
 
       {/* Stats Cards */}
       <div className="px-4 -mt-10">
+        {/* Rider Notice Banner */}
+        {config.content.riderNotice && (
+          <RiderNoticeBanner message={config.content.riderNotice} />
+        )}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <p className="text-xs text-gray-500">Today's Deliveries</p>

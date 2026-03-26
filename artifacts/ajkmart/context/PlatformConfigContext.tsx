@@ -13,12 +13,18 @@ export interface PlatformConfig {
     reviews: boolean;
   };
   content: {
+    showBanner: boolean;
     banner: string;
     announcement: string;
     maintenanceMsg: string;
     supportMsg: string;
+    vendorNotice: string;
+    riderNotice: string;
     tncUrl: string;
     privacyUrl: string;
+    refundPolicyUrl: string;
+    faqUrl: string;
+    aboutUrl: string;
   };
   platform: {
     appName: string;
@@ -37,12 +43,18 @@ const DEFAULT: PlatformConfig = {
   appStatus: "active",
   features: { chat: false, wallet: true, liveTracking: true, reviews: true },
   content: {
-    banner: "",
-    announcement: "",
-    maintenanceMsg: "We're performing scheduled maintenance. Back soon!",
-    supportMsg: "Need help? Chat with us!",
-    tncUrl: "",
-    privacyUrl: "",
+    showBanner:      true,
+    banner:          "Free delivery on your first order! 🎉",
+    announcement:    "",
+    maintenanceMsg:  "We're performing scheduled maintenance. Back soon!",
+    supportMsg:      "Need help? Chat with us!",
+    vendorNotice:    "",
+    riderNotice:     "",
+    tncUrl:          "",
+    privacyUrl:      "",
+    refundPolicyUrl: "",
+    faqUrl:          "",
+    aboutUrl:        "",
   },
   platform: {
     appName: "AJKMart",
@@ -99,12 +111,18 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           reviews:      raw.features?.reviews       ?? true,
         },
         content: {
-          banner:          raw.content?.banner          ?? "",
+          showBanner:      raw.content?.showBanner      ?? true,
+          banner:          raw.content?.banner          ?? DEFAULT.content.banner,
           announcement:    raw.content?.announcement    ?? "",
           maintenanceMsg:  raw.content?.maintenanceMsg  ?? DEFAULT.content.maintenanceMsg,
           supportMsg:      raw.content?.supportMsg      ?? DEFAULT.content.supportMsg,
+          vendorNotice:    raw.content?.vendorNotice    ?? "",
+          riderNotice:     raw.content?.riderNotice     ?? "",
           tncUrl:          raw.content?.tncUrl          ?? "",
           privacyUrl:      raw.content?.privacyUrl      ?? "",
+          refundPolicyUrl: raw.content?.refundPolicyUrl ?? "",
+          faqUrl:          raw.content?.faqUrl          ?? "",
+          aboutUrl:        raw.content?.aboutUrl        ?? "",
         },
         platform: {
           appName:         raw.platform?.appName         ?? DEFAULT.platform.appName,

@@ -31,12 +31,18 @@ export interface PlatformConfig {
     reviews: boolean;
   };
   content: {
+    showBanner: boolean;
     banner: string;
     announcement: string;
     maintenanceMsg: string;
     supportMsg: string;
+    vendorNotice: string;
+    riderNotice: string;
     tncUrl: string;
     privacyUrl: string;
+    refundPolicyUrl: string;
+    faqUrl: string;
+    aboutUrl: string;
   };
 }
 
@@ -57,7 +63,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
     minOrderAmount: 100,
   },
   features: { mart: true, food: true, rides: true, pharmacy: true, parcel: true, wallet: true, referral: true, newUsers: true, chat: false, liveTracking: true, reviews: true },
-  content: { banner: "", announcement: "", maintenanceMsg: "We're performing scheduled maintenance. Back soon!", supportMsg: "Need help? Chat with us!", tncUrl: "", privacyUrl: "" },
+  content: { showBanner: true, banner: "Free delivery on your first order! 🎉", announcement: "", maintenanceMsg: "We're performing scheduled maintenance. Back soon!", supportMsg: "Need help? Chat with us!", vendorNotice: "", riderNotice: "", tncUrl: "", privacyUrl: "", refundPolicyUrl: "", faqUrl: "", aboutUrl: "" },
 };
 
 export function usePlatformConfig() {

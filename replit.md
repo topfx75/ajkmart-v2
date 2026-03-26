@@ -1,6 +1,12 @@
 # AJKMart Super App — Workspace
-<!-- Last updated: 2026-03-26 — Content Settings fully wired: all 9 content fields (6 text + 3 feature toggles) now propagate admin → API → all 3 apps with no loopholes. Customer profile support section fixed (phone dialer + WhatsApp). Admin Content section upgraded with textarea, char counters, app coverage hints. -->
-<!-- Previous: PlatformConfigContext 3 critical bugs fixed (appStatus/appName field paths, boolean feature flags). appName dynamic across all 3 apps. General settings (app_name, app_status, support_phone) fully wired. -->
+<!-- Last updated: 2026-03-26 — CONTENT WIRING COMPLETE: All admin Content settings fully propagate to all 3 client apps with no loopholes or hardcoded values.
+  - Admin Content section: 4 professional groups — Feature Switches (showBanner, chat, liveTracking, reviews), App Messaging (banner, announcement, maintenanceMsg, supportMsg), Role-Specific Notices (vendorNotice, riderNotice), Legal & Policy Links (tnc, privacy, refund, faq, about).
+  - Customer home: showBanner toggle gates BannerCarousel; contentBanner shows as promo ribbon below service pills.
+  - Vendor dashboard: vendorNotice shows as dismissable banner; commission % is now dynamic from config (not hardcoded 85%).
+  - Rider home: riderNotice shows as dismissable banner inside stats card area.
+  - All 3 profile pages: refundPolicyUrl, faqUrl, aboutUrl added as tappable rows / footer links (hidden when empty).
+  - Previous: General Settings (appTagline, appVersion, supportEmail, supportHours, businessAddress, socialFacebook, socialInstagram) all wired. app_status is live/maintenance toggle. Vendor login footer uses dynamic commission % and businessAddress. -->
+<!-- Previous: Content Settings fully wired: all 9 content fields (6 text + 3 feature toggles) now propagate admin → API → all 3 apps with no loopholes. Customer profile support section fixed (phone dialer + WhatsApp). Admin Content section upgraded with textarea, char counters, app coverage hints. -->
 
 ## Project Overview
 

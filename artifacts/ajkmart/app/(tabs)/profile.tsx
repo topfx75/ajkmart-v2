@@ -549,6 +549,9 @@ export default function ProfileScreen() {
   const platformCfg = {
     tncUrl:          platformConfig.content.tncUrl,
     privacyUrl:      platformConfig.content.privacyUrl,
+    refundPolicyUrl: platformConfig.content.refundPolicyUrl,
+    faqUrl:          platformConfig.content.faqUrl,
+    aboutUrl:        platformConfig.content.aboutUrl,
     supportMsg:      platformConfig.content.supportMsg,
     supportPhone:    platformConfig.platform.supportPhone,
     supportEmail:    platformConfig.platform.supportEmail,
@@ -784,6 +787,27 @@ export default function ProfileScreen() {
                  sub="Aapka data kaise use hota hai"
                  onPress={() => Linking.openURL(platformCfg.privacyUrl).catch(() => {})}
                  iconColor="#0891B2" iconBg="#E0F2FE" />
+          )}
+          {platformCfg.refundPolicyUrl && (
+            <Row icon="return-down-back-outline"
+                 label="Refund Policy"
+                 sub="Refund aur cancellation rules"
+                 onPress={() => Linking.openURL(platformCfg.refundPolicyUrl).catch(() => {})}
+                 iconColor="#059669" iconBg="#ECFDF5" />
+          )}
+          {platformCfg.faqUrl && (
+            <Row icon="help-circle-outline"
+                 label="Help & FAQs"
+                 sub="Aksar pooche jane wale sawalat"
+                 onPress={() => Linking.openURL(platformCfg.faqUrl).catch(() => {})}
+                 iconColor="#7C3AED" iconBg="#F5F3FF" />
+          )}
+          {platformCfg.aboutUrl && (
+            <Row icon="information-circle-outline"
+                 label="About Us"
+                 sub={`${platformCfg.appName} ke baare mein`}
+                 onPress={() => Linking.openURL(platformCfg.aboutUrl).catch(() => {})}
+                 iconColor="#EA580C" iconBg="#FFF7ED" />
           )}
         </SectionCard>
 

@@ -427,7 +427,7 @@ export default function Profile() {
                   )}
                 </div>
               )}
-              {(config.content.tncUrl || config.content.privacyUrl || config.features.chat) && (
+              {(config.content.tncUrl || config.content.privacyUrl || config.content.refundPolicyUrl || config.content.faqUrl || config.content.aboutUrl || config.features.chat) && (
                 <div className="flex flex-wrap gap-2 justify-center">
                   {config.content.tncUrl && (
                     <a href={config.content.tncUrl} target="_blank" rel="noopener noreferrer"
@@ -439,6 +439,24 @@ export default function Profile() {
                     <a href={config.content.privacyUrl} target="_blank" rel="noopener noreferrer"
                       className="text-xs text-orange-600 underline underline-offset-2 hover:text-orange-800 transition-colors">
                       🔒 Privacy Policy
+                    </a>
+                  )}
+                  {config.content.refundPolicyUrl && (
+                    <a href={config.content.refundPolicyUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-orange-600 underline underline-offset-2 hover:text-orange-800 transition-colors">
+                      ↩️ Refund Policy
+                    </a>
+                  )}
+                  {config.content.faqUrl && (
+                    <a href={config.content.faqUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-orange-600 underline underline-offset-2 hover:text-orange-800 transition-colors">
+                      ❓ Help & FAQs
+                    </a>
+                  )}
+                  {config.content.aboutUrl && (
+                    <a href={config.content.aboutUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-orange-600 underline underline-offset-2 hover:text-orange-800 transition-colors">
+                      ℹ️ About Us
                     </a>
                   )}
                   {config.features.chat && (

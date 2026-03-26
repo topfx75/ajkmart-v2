@@ -60,12 +60,15 @@ const TOGGLE_KEYS = new Set([
   "payment_auto_cancel","payment_receipt_required",
   "wallet_p2p_enabled","wallet_kyc_required",
   "wallet_cashback_on_orders","wallet_cashback_on_rides","wallet_cashback_on_pharmacy",
+  "content_show_banner",
 ]);
 
 const TEXT_KEYS = new Set([
   "app_name","app_status","support_phone",
   "app_tagline","app_version","support_email","support_hours","business_address","social_facebook","social_instagram",
-  "content_banner","content_announcement","content_maintenance_msg","content_support_msg","content_tnc_url","content_privacy_url",
+  "content_banner","content_announcement","content_maintenance_msg","content_support_msg",
+  "content_vendor_notice","content_rider_notice",
+  "content_tnc_url","content_privacy_url","content_refund_policy_url","content_faq_url","content_about_url",
   "api_map_key","api_sms_gateway","api_firebase_key",
   "security_session_days","security_admin_token_hrs","security_rider_token_days",
   "security_login_max_attempts","security_lockout_minutes",
@@ -97,20 +100,30 @@ const FEATURE_ICONS: Record<string,string> = {
   integration_push_notif:"🔔", integration_analytics:"📊", integration_email:"📧", integration_sentry:"🐛", integration_whatsapp:"💬",
 };
 
-const CONTENT_TEXTAREA_KEYS = new Set(["content_announcement", "content_maintenance_msg", "content_support_msg", "content_banner"]);
+const CONTENT_TEXTAREA_KEYS = new Set([
+  "content_announcement","content_maintenance_msg","content_support_msg","content_banner",
+  "content_vendor_notice","content_rider_notice",
+]);
 const CONTENT_CHAR_LIMITS: Record<string, number> = {
-  content_banner: 80,
-  content_announcement: 120,
-  content_support_msg: 60,
+  content_banner:          80,
+  content_announcement:    120,
+  content_support_msg:     60,
   content_maintenance_msg: 200,
+  content_vendor_notice:   150,
+  content_rider_notice:    150,
 };
 const CONTENT_HINTS: Record<string, { hint: string; apps: string }> = {
-  content_banner:          { hint: "Promotional ribbon shown on customer home screen below services", apps: "📱 Customer App" },
-  content_announcement:    { hint: "Dismissable top bar. Leave empty to hide it in all apps", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
-  content_maintenance_msg: { hint: "Full-screen message shown when maintenance mode is active", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
-  content_support_msg:     { hint: "Shown as subtitle in the Call Support / Live Chat row", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
-  content_tnc_url:         { hint: "Opens in browser when user taps Terms of Service. Leave empty to show default message", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
-  content_privacy_url:     { hint: "Opens in browser when user taps Privacy Policy. Leave empty to hide the row", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_banner:           { hint: "Promo ribbon below service pills on home screen. Leave empty to hide", apps: "📱 Customer App" },
+  content_announcement:     { hint: "Dismissable top bar. Leave empty to hide it in all apps", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_maintenance_msg:  { hint: "Full-screen message shown when app_status = maintenance", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_support_msg:      { hint: "Shown as subtitle in Call Support row and WhatsApp greeting", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_vendor_notice:    { hint: "Info/warning banner shown at top of vendor dashboard. Leave empty to hide", apps: "🏪 Vendor App only" },
+  content_rider_notice:     { hint: "Info/warning banner shown at top of rider home screen. Leave empty to hide", apps: "🏍️ Rider App only" },
+  content_tnc_url:          { hint: "Opens in browser when user taps Terms of Service. Leave empty to hide", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_privacy_url:      { hint: "Opens in browser when user taps Privacy Policy. Leave empty to hide", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_refund_policy_url:{ hint: "Refund & Returns policy page. Leave empty to hide the row", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_faq_url:          { hint: "Help Center or FAQ page. Leave empty to hide the row", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
+  content_about_url:        { hint: "About Us page. Leave empty to hide the row", apps: "📱 Customer  •  🏪 Vendor  •  🏍️ Rider" },
 };
 
 /* ─── Shared UI Atoms ────────────────────────────────────────────────────── */
@@ -2517,73 +2530,111 @@ function renderSection(
   }
 
   if (cat === "content") {
+    const T = (key: string, label: string, sub?: string, danger = false) => (
+      <Toggle key={key} checked={(localValues[key] ?? "on") === "on"}
+        onChange={v => handleToggle(key, v)} label={label} sub={sub} isDirty={dirtyKeys.has(key)} danger={danger} />
+    );
+
+    const ContentField = ({ s }: { s: Setting }) => {
+      const isDirty   = dirtyKeys.has(s.key);
+      const val       = localValues[s.key] ?? s.value;
+      const isUrl     = s.key.includes("_url");
+      const isTA      = CONTENT_TEXTAREA_KEYS.has(s.key);
+      const limit     = CONTENT_CHAR_LIMITS[s.key];
+      const meta      = CONTENT_HINTS[s.key];
+      const overLimit = limit ? val.length > limit : false;
+      return (
+        <div className={`rounded-xl border p-4 space-y-2.5 transition-all ${isDirty ? "border-amber-300 bg-amber-50/30" : "border-border bg-white"}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {isUrl
+                ? <Link className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                : <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+              <label className="text-sm font-semibold text-foreground leading-snug">{s.label}</label>
+              {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold flex-shrink-0">CHANGED</Badge>}
+            </div>
+            {limit && (
+              <span className={`text-[10px] font-mono font-bold flex-shrink-0 ${overLimit ? "text-red-500" : val.length > limit * 0.8 ? "text-amber-500" : "text-muted-foreground"}`}>
+                {val.length}/{limit}
+              </span>
+            )}
+          </div>
+          {isTA ? (
+            <textarea
+              value={val}
+              onChange={e => handleChange(s.key, e.target.value)}
+              placeholder={getPlaceholder(s.key)}
+              rows={s.key === "content_maintenance_msg" ? 3 : 2}
+              className={`w-full rounded-lg border text-sm p-3 resize-none focus:outline-none focus:ring-2 focus:ring-pink-200 transition-colors
+                ${isDirty ? "border-amber-300 bg-amber-50/40" : "border-border"}
+                ${overLimit ? "border-red-300 bg-red-50/40" : ""}`}
+            />
+          ) : (
+            <Input type="text" value={val} onChange={e => handleChange(s.key, e.target.value)}
+              placeholder={getPlaceholder(s.key)}
+              className={`h-9 rounded-lg text-sm ${isDirty ? "border-amber-300 bg-amber-50/40" : ""} ${!val ? "border-dashed" : ""}`}
+            />
+          )}
+          {meta && (
+            <div className="flex flex-col gap-0.5">
+              <p className="text-[11px] text-muted-foreground">{meta.hint}</p>
+              <p className="text-[10px] font-semibold text-pink-600">{meta.apps}</p>
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground/60 font-mono">{s.key}</p>
+        </div>
+      );
+    };
+
+    const getField = (key: string) => catSettings.find(s => s.key === key);
+    const msgFields  = ["content_banner","content_announcement","content_maintenance_msg","content_support_msg"].map(k => getField(k)).filter(Boolean) as Setting[];
+    const noticeFields = ["content_vendor_notice","content_rider_notice"].map(k => getField(k)).filter(Boolean) as Setting[];
+    const linkFields = ["content_tnc_url","content_privacy_url","content_refund_policy_url","content_faq_url","content_about_url"].map(k => getField(k)).filter(Boolean) as Setting[];
+
     return (
-      <div className="space-y-5">
-        {toggles.length > 0 && (
-          <div>
-            <SLabel icon={ToggleRight}>Feature Switches</SLabel>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {toggles.map(s => (
-                <Toggle key={s.key} checked={(localValues[s.key] ?? s.value) === "on"}
-                  onChange={v => handleToggle(s.key, v)} label={s.label} isDirty={dirtyKeys.has(s.key)} />
-              ))}
-            </div>
+      <div className="space-y-7">
+        {/* ── Feature Switches ── */}
+        <div>
+          <SLabel icon={ToggleRight}>Feature Switches</SLabel>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {T("content_show_banner",   "Show Promotional Banner Carousel",   "Slide-show banners on customer home screen")}
+            {T("feature_chat",          "In-App Chat / WhatsApp Support",      "Chat icon in customer app → routes to WhatsApp")}
+            {T("feature_live_tracking", "Live Order GPS Tracking",             "Customer can track rider in real time")}
+            {T("feature_reviews",       "Customer Reviews & Ratings",          "Star ratings + reviews on orders / rides")}
           </div>
-        )}
-        {inputs.length > 0 && (
-          <div className={toggles.length > 0 ? "border-t border-border/40 pt-4" : ""}>
-            <SLabel icon={MessageSquare}>Text Content & Links</SLabel>
-            <div className="grid grid-cols-1 gap-5">
-              {inputs.map(s => {
-                const isDirty  = dirtyKeys.has(s.key);
-                const val      = localValues[s.key] ?? s.value;
-                const isUrl    = s.key.includes("_url");
-                const isTA     = CONTENT_TEXTAREA_KEYS.has(s.key);
-                const limit    = CONTENT_CHAR_LIMITS[s.key];
-                const meta     = CONTENT_HINTS[s.key];
-                const overLimit = limit ? val.length > limit : false;
-                return (
-                  <div key={s.key} className={`rounded-xl border p-4 space-y-2.5 transition-all ${isDirty ? "border-amber-300 bg-amber-50/30" : "border-border bg-white"}`}>
-                    {/* Header row */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {isUrl ? <Link className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" /> : <MessageSquare className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
-                        <label className="text-sm font-semibold text-foreground leading-snug">{s.label}</label>
-                        {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold flex-shrink-0">CHANGED</Badge>}
-                      </div>
-                      {limit && <span className={`text-[10px] font-mono font-bold flex-shrink-0 ${overLimit ? "text-red-500" : val.length > limit * 0.8 ? "text-amber-500" : "text-muted-foreground"}`}>{val.length}/{limit}</span>}
-                    </div>
-                    {/* Input or Textarea */}
-                    {isTA ? (
-                      <textarea
-                        value={val}
-                        onChange={e => handleChange(s.key, e.target.value)}
-                        placeholder={getPlaceholder(s.key)}
-                        rows={s.key === "content_maintenance_msg" ? 3 : 2}
-                        className={`w-full rounded-lg border text-sm p-3 resize-none focus:outline-none focus:ring-2 focus:ring-pink-200 transition-colors
-                          ${isDirty ? "border-amber-300 bg-amber-50/40" : "border-border"}
-                          ${overLimit ? "border-red-300 bg-red-50/40" : ""}`}
-                      />
-                    ) : (
-                      <Input type="text" value={val} onChange={e => handleChange(s.key, e.target.value)}
-                        placeholder={getPlaceholder(s.key)}
-                        className={`h-9 rounded-lg text-sm ${isDirty ? "border-amber-300 bg-amber-50/40" : ""} ${!val ? "border-dashed" : ""}`}
-                      />
-                    )}
-                    {/* Hints */}
-                    {meta && (
-                      <div className="flex flex-col gap-0.5">
-                        <p className="text-[11px] text-muted-foreground">{meta.hint}</p>
-                        <p className="text-[10px] font-semibold text-pink-600">{meta.apps}</p>
-                      </div>
-                    )}
-                    <p className="text-[10px] text-muted-foreground/60 font-mono">{s.key}</p>
-                  </div>
-                );
-              })}
-            </div>
+        </div>
+
+        {/* ── App Messaging ── */}
+        <div className="border-t border-border/40 pt-5">
+          <SLabel icon={MessageSquare}>App Messaging</SLabel>
+          <div className="grid grid-cols-1 gap-4">
+            {msgFields.map(s => <ContentField key={s.key} s={s} />)}
           </div>
-        )}
+        </div>
+
+        {/* ── Role-Specific Notices ── */}
+        <div className="border-t border-border/40 pt-5">
+          <SLabel icon={Info}>Role-Specific Notices</SLabel>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {noticeFields.map(s => <ContentField key={s.key} s={s} />)}
+          </div>
+          <div className="mt-3 rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 flex gap-2">
+            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>These notices appear as a dismissable banner at the top of the Vendor Dashboard and Rider Home screens. Leave empty to hide them.</span>
+          </div>
+        </div>
+
+        {/* ── Legal & Policy Links ── */}
+        <div className="border-t border-border/40 pt-5">
+          <SLabel icon={FileText}>Legal & Policy Links</SLabel>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {linkFields.map(s => <ContentField key={s.key} s={s} />)}
+          </div>
+          <div className="mt-3 rounded-xl bg-gray-50 border border-border p-3 text-xs text-muted-foreground flex gap-2">
+            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>All URLs open in the device browser. Rows are automatically hidden when the URL is empty — no code changes needed.</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -2789,10 +2840,15 @@ export default function SettingsPage() {
     if (key === "api_firebase_key") return "AAAA...";
     if (key === "api_sms_gateway") return "console";
     if (key.includes("_url")) return "https://...";
-    if (key === "content_announcement") return "Leave empty to hide the bar";
+    if (key === "content_announcement") return "Leave empty to hide the bar in all apps";
     if (key === "content_banner") return "Free delivery on your first order! 🎉";
     if (key === "content_maintenance_msg") return "We're performing scheduled maintenance. Back soon!";
     if (key === "content_support_msg") return "Need help? Chat with us on WhatsApp!";
+    if (key === "content_vendor_notice") return "Leave empty to hide. E.g. New settlement policy starting May 1.";
+    if (key === "content_rider_notice") return "Leave empty to hide. E.g. Bonus Rs.200 for 10+ deliveries today!";
+    if (key === "content_refund_policy_url") return "https://ajkmart.pk/refund-policy";
+    if (key === "content_faq_url") return "https://ajkmart.pk/help";
+    if (key === "content_about_url") return "https://ajkmart.pk/about";
     return "";
   };
 
