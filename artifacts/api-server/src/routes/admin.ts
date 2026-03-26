@@ -44,7 +44,14 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "ride_car_base_fare",     value: "25",   label: "Car Base Fare (Rs.)",            category: "rides" },
   { key: "ride_car_per_km",        value: "12",   label: "Car Per KM Rate (Rs.)",          category: "rides" },
   /* Finance */
-  { key: "platform_commission_pct",value: "10",   label: "Platform Commission (%)",        category: "finance" },
+  { key: "platform_commission_pct", value: "10",  label: "Platform Commission % (Global Override)", category: "finance" },
+  { key: "finance_gst_enabled",     value: "off", label: "Collect GST / Sales Tax",                 category: "finance" },
+  { key: "finance_gst_pct",         value: "17",  label: "GST / Tax Rate (%)",                      category: "finance" },
+  { key: "finance_cashback_enabled",value: "off", label: "Enable Order Cashback Rewards",            category: "finance" },
+  { key: "finance_cashback_pct",    value: "2",   label: "Cashback % on Every Order",               category: "finance" },
+  { key: "finance_cashback_max_rs", value: "100", label: "Max Cashback Per Order (Rs.)",             category: "finance" },
+  { key: "finance_invoice_enabled", value: "off", label: "Auto-Generate PDF Invoices on Orders",    category: "finance" },
+  { key: "finance_min_vendor_payout",value:"500", label: "Minimum Vendor Payout Request (Rs.)",     category: "finance" },
   /* Orders */
   { key: "min_order_amount",          value: "100",   label: "Minimum Order Amount (Rs.)",              category: "orders" },
   { key: "max_cod_amount",            value: "5000",  label: "Max COD Order Amount (Rs.)",              category: "orders" },

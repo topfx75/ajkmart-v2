@@ -107,6 +107,7 @@ export default function CartScreen() {
   const { config: platformConfig } = usePlatformConfig();
   const appName    = platformConfig.platform.appName;
   const orderRules = platformConfig.orderRules;
+  const finance    = platformConfig.finance;
 
   const [payMethod, setPayMethod] = useState<PayMethod>("cash");
   const [loading, setLoading] = useState(false);
@@ -158,7 +159,9 @@ export default function CartScreen() {
   }, []);
 
   const deliveryFee = total >= freeDeliveryAbove ? 0 : (cartType === "food" ? deliveryFeeConfig.food : deliveryFeeConfig.mart);
-  const grandTotal = total + deliveryFee;
+  const gstAmount   = finance.gstEnabled ? Math.round(total * finance.gstPct / 100) : 0;
+  const cashbackAmt = finance.cashbackEnabled ? Math.min(Math.round(total * finance.cashbackPct / 100), finance.cashbackMaxRs) : 0;
+  const grandTotal  = total + deliveryFee + gstAmount;
 
   // Dynamic payment methods: hide COD if order exceeds max COD limit
   const availablePayMethods = allPayMethods.map(m => {
@@ -698,12 +701,28 @@ export default function CartScreen() {
             </View>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Delivery Fee</Text>
-              <Text style={styles.summaryValue}>Rs. {deliveryFee}</Text>
+              <Text style={styles.summaryValue}>
+                {deliveryFee === 0 ? "FREE 🎉" : `Rs. ${deliveryFee}`}
+              </Text>
             </View>
+            {finance.gstEnabled && gstAmount > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>GST ({finance.gstPct}%)</Text>
+                <Text style={[styles.summaryValue, { color: "#D97706" }]}>Rs. {gstAmount.toLocaleString()}</Text>
+              </View>
+            )}
             <View style={[styles.summaryRow, styles.summaryDivider]}>
               <Text style={styles.grandLabel}>Grand Total</Text>
               <Text style={styles.grandValue}>Rs. {grandTotal.toLocaleString()}</Text>
             </View>
+            {finance.cashbackEnabled && cashbackAmt > 0 && (
+              <View style={{ marginTop: 10, backgroundColor: "#ECFDF5", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontSize: 16 }}>🎁</Text>
+                <Text style={{ fontSize: 12, color: "#065F46", fontWeight: "600", flex: 1 }}>
+                  Earn <Text style={{ fontWeight: "800" }}>Rs. {cashbackAmt}</Text> wallet cashback on this order!
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 

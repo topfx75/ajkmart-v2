@@ -32,7 +32,7 @@ const CATEGORY_CONFIG: Record<CatKey, { label: string; icon: any; color: string;
   vendor:       { label: "Vendor",             icon: Store,        color: "text-orange-600",  bg: "bg-orange-50",  activeBg: "bg-orange-600",  description: "Commission, menu limits, settlement and approval rules" },
   delivery:     { label: "Delivery Charges",   icon: Truck,        color: "text-sky-600",     bg: "bg-sky-50",     activeBg: "bg-sky-600",     description: "Delivery fees per service and free delivery threshold" },
   rides:        { label: "Ride Pricing",        icon: Car,          color: "text-teal-600",    bg: "bg-teal-50",    activeBg: "bg-teal-600",    description: "Base fare and per-km rates for bike and car rides" },
-  finance:      { label: "Finance",            icon: BarChart3,    color: "text-purple-600",  bg: "bg-purple-50",  activeBg: "bg-purple-600",  description: "Platform-wide commission percentage" },
+  finance:      { label: "Finance",            icon: BarChart3,    color: "text-purple-600",  bg: "bg-purple-50",  activeBg: "bg-purple-600",  description: "Commission rates, tax, cashback, payouts and invoice generation" },
   orders:       { label: "Order Rules",        icon: ShoppingCart, color: "text-amber-600",   bg: "bg-amber-50",   activeBg: "bg-amber-600",   description: "Minimum order amounts and COD limits" },
   general:      { label: "General",            icon: Globe,        color: "text-gray-600",    bg: "bg-gray-50",    activeBg: "bg-gray-700",    description: "App name, support contact and maintenance mode" },
   content:      { label: "Content",            icon: MessageSquare,color: "text-pink-600",    bg: "bg-pink-50",    activeBg: "bg-pink-600",    description: "Banners, announcements, chat support and content links" },
@@ -62,6 +62,9 @@ const TOGGLE_KEYS = new Set([
   "wallet_cashback_on_orders","wallet_cashback_on_rides","wallet_cashback_on_pharmacy",
   "content_show_banner",
   "order_schedule_enabled",
+  "finance_gst_enabled",
+  "finance_cashback_enabled",
+  "finance_invoice_enabled",
 ]);
 
 const TEXT_KEYS = new Set([
@@ -2749,6 +2752,136 @@ function renderSection(
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  /* ─────────────────────────── FINANCE RENDERER ─────────────────────────── */
+  if (cat === "finance") {
+    const COMMISSION_KEYS = new Set(["platform_commission_pct"]);
+    const TAX_KEYS        = new Set(["finance_gst_enabled","finance_gst_pct"]);
+    const PAYOUT_KEYS     = new Set(["finance_min_vendor_payout"]);
+    const CASHBACK_KEYS   = new Set(["finance_cashback_enabled","finance_cashback_pct","finance_cashback_max_rs"]);
+    const INVOICE_KEYS    = new Set(["finance_invoice_enabled"]);
+
+    const commFields  = catSettings.filter(s => COMMISSION_KEYS.has(s.key));
+    const taxFields   = catSettings.filter(s => TAX_KEYS.has(s.key));
+    const payoutField = catSettings.filter(s => PAYOUT_KEYS.has(s.key));
+    const cashFields  = catSettings.filter(s => CASHBACK_KEYS.has(s.key));
+    const invoiceField = catSettings.filter(s => INVOICE_KEYS.has(s.key));
+
+    const SUFFIX: Record<string,string> = {
+      platform_commission_pct: "%",
+      finance_gst_pct: "%",
+      finance_cashback_pct: "%",
+      finance_cashback_max_rs: "Rs.",
+      finance_min_vendor_payout: "Rs.",
+    };
+    const HINT: Record<string,string> = {
+      platform_commission_pct:  "Global platform cut applied on every order. Overrides vendor-specific commission if set higher",
+      finance_gst_enabled:      "If enabled, GST is shown as a separate line in the customer cart and added to the grand total",
+      finance_gst_pct:          "Current Pakistan standard GST rate. Applied on the order subtotal (excl. delivery fee)",
+      finance_cashback_enabled: "Customers earn wallet cashback on every completed order — deposited automatically on delivery",
+      finance_cashback_pct:     "Percentage of order subtotal credited as wallet bonus after successful delivery",
+      finance_cashback_max_rs:  "Maximum cashback credited per order — prevents excessive payouts on very large orders",
+      finance_invoice_enabled:  "Automatically generate a PDF invoice for every completed order (vendor + customer copy)",
+      finance_min_vendor_payout:"Vendor cannot submit a withdrawal request below this amount",
+    };
+
+    const FinNumField = ({ s }: { s: Setting }) => {
+      const isDirty = dirtyKeys.has(s.key);
+      const sfx = SUFFIX[s.key] ?? "";
+      const isPrefix = sfx === "Rs.";
+      return (
+        <div className={`rounded-xl border p-4 space-y-2.5 transition-all ${isDirty ? "border-amber-300 bg-amber-50/30" : "border-border bg-white"}`}>
+          <div className="flex items-start justify-between gap-2">
+            <label className="text-sm font-semibold text-foreground leading-snug flex-1">{s.label}</label>
+            {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold flex-shrink-0">CHANGED</Badge>}
+          </div>
+          {HINT[s.key] && <p className="text-[11px] text-muted-foreground">{HINT[s.key]}</p>}
+          <div className="relative">
+            {isPrefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">Rs.</span>}
+            <Input type="number" min={0} value={localValues[s.key] ?? s.value}
+              onChange={e => handleChange(s.key, e.target.value)}
+              className={`h-10 rounded-xl ${isPrefix ? "pl-10" : sfx ? "pr-10" : ""} ${isDirty ? "border-amber-300 bg-amber-50/50 ring-1 ring-amber-200" : ""}`}
+            />
+            {!isPrefix && sfx && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">{sfx}</span>}
+          </div>
+          <p className="text-[10px] text-muted-foreground/50 font-mono">{s.key}</p>
+        </div>
+      );
+    };
+
+    const FinToggle = ({ s }: { s: Setting }) => (
+      <Toggle checked={(localValues[s.key] ?? s.value) === "on"}
+        onChange={v => handleToggle(s.key, v)} label={s.label} isDirty={dirtyKeys.has(s.key)} />
+    );
+
+    const RefInfoCard = ({ label, value, detail, linkCat }: { label: string; value: string; detail: string; linkCat: string }) => (
+      <div className="rounded-xl border border-dashed border-purple-200 bg-purple-50/30 p-4 space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-semibold text-foreground">{label}</p>
+          <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full font-semibold flex-shrink-0">ref: {linkCat}</span>
+        </div>
+        <p className="text-2xl font-extrabold text-purple-700">{value}</p>
+        <p className="text-[11px] text-muted-foreground">{detail}</p>
+      </div>
+    );
+
+    const vendorCommVal = settings.find(s => s.key === "vendor_commission_pct")?.value ?? "15";
+    const riderEarnVal  = settings.find(s => s.key === "rider_keep_pct")?.value ?? "80";
+    const settleDaysVal = settings.find(s => s.key === "vendor_settlement_days")?.value ?? "7";
+    const minRiderVal   = settings.find(s => s.key === "rider_min_payout")?.value ?? "500";
+
+    return (
+      <div className="space-y-7">
+
+        {/* ── Group 1: Revenue & Commission ── */}
+        <div className="space-y-3">
+          <SLabel icon={BarChart3}>Revenue &amp; Commission</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Platform commission is the cut AJKMart takes from every order. Vendor and rider shares are configured in their respective sections and shown here for reference.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {commFields.map(s => <FinNumField key={s.key} s={s} />)}
+            <RefInfoCard label="Vendor Commission %" value={`${vendorCommVal}%`} detail="Vendor pays this % of order value to platform" linkCat="Vendor" />
+            <RefInfoCard label="Rider Earning %" value={`${riderEarnVal}%`} detail="Rider keeps this % of the delivery fee earned" linkCat="Rider" />
+          </div>
+          <div className="bg-purple-50 border border-purple-100 rounded-xl p-3.5 flex gap-2.5">
+            <Info className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-purple-700 leading-relaxed">
+              <strong>Revenue split example:</strong> Order subtotal Rs.1,000 → Platform takes {localValues["platform_commission_pct"] ?? settings.find(s=>s.key==="platform_commission_pct")?.value ?? "10"}% (Rs.{Math.round(1000*(Number(localValues["platform_commission_pct"]??settings.find(s=>s.key==="platform_commission_pct")?.value??10)/100))}) · Vendor keeps remainder after their {vendorCommVal}% commission · Rider keeps {riderEarnVal}% of delivery fee.
+            </p>
+          </div>
+        </div>
+
+        {/* ── Group 2: Tax & Invoicing ── */}
+        <div className="space-y-3 border-t border-border/40 pt-6">
+          <SLabel icon={FileText}>Tax &amp; Invoicing</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">When GST is enabled, a tax line is automatically added to the customer cart breakdown. Invoice generation creates PDFs on order completion.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {taxFields.map(s => TOGGLE_KEYS.has(s.key) ? <FinToggle key={s.key} s={s} /> : <FinNumField key={s.key} s={s} />)}
+          </div>
+          {invoiceField.map(s => <FinToggle key={s.key} s={s} />)}
+        </div>
+
+        {/* ── Group 3: Payout Rules ── */}
+        <div className="space-y-3 border-t border-border/40 pt-6">
+          <SLabel icon={Wallet}>Payout Rules</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Minimum payout thresholds prevent micro-withdrawals. Settlement cycle is configured in Vendor settings.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {payoutField.map(s => <FinNumField key={s.key} s={s} />)}
+            <RefInfoCard label="Rider Min Payout" value={`Rs. ${minRiderVal}`} detail="Minimum rider withdrawal request threshold" linkCat="Rider" />
+            <RefInfoCard label="Vendor Settlement Cycle" value={`${settleDaysVal} days`} detail="Days after order completion before vendor can settle" linkCat="Vendor" />
+          </div>
+        </div>
+
+        {/* ── Group 4: Cashback & Rewards ── */}
+        <div className="space-y-3 border-t border-border/40 pt-6">
+          <SLabel icon={Banknote}>Cashback &amp; Rewards</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">When cashback is active, customers earn a wallet bonus on every successfully delivered order. The preview is shown in the customer cart.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {cashFields.map(s => TOGGLE_KEYS.has(s.key) ? <FinToggle key={s.key} s={s} /> : <FinNumField key={s.key} s={s} />)}
+          </div>
+        </div>
       </div>
     );
   }

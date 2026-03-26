@@ -8,7 +8,7 @@ const BANKS = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfa
 const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
 const fd = (d: string | Date) => new Date(d).toLocaleString("en-PK", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" });
 
-function WithdrawModal({ balance, onClose, onSuccess }: { balance: number; onClose: () => void; onSuccess: () => void }) {
+function WithdrawModal({ balance, minPayout, onClose, onSuccess }: { balance: number; minPayout: number; onClose: () => void; onSuccess: () => void }) {
   const [amount, setAmount]  = useState("");
   const [bank, setBank]      = useState("");
   const [acNo, setAcNo]      = useState("");
@@ -29,7 +29,7 @@ function WithdrawModal({ balance, onClose, onSuccess }: { balance: number; onClo
   const validate = () => {
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setErr("Valid amount required"); return; }
-    if (amt < 500)   { setErr("Minimum withdrawal is Rs. 500"); return; }
+    if (amt < minPayout)   { setErr(`Minimum withdrawal is ${fc(minPayout)}`); return; }
     if (amt > balance) { setErr(`Max available: ${fc(balance)}`); return; }
     if (!bank)         { setErr("Select your bank / wallet"); return; }
     if (!acNo.trim())  { setErr("Account / phone number required"); return; }
@@ -84,7 +84,7 @@ function WithdrawModal({ balance, onClose, onSuccess }: { balance: number; onClo
             <div className="bg-gradient-to-r from-green-600 to-emerald-600 rounded-2xl p-4 text-white mb-5">
               <p className="text-sm text-green-100">Available Balance</p>
               <p className="text-3xl font-extrabold mt-0.5">{fc(balance)}</p>
-              <p className="text-xs text-green-200 mt-1.5">Minimum withdrawal: Rs. 500</p>
+              <p className="text-xs text-green-200 mt-1.5">Minimum withdrawal: {fc(minPayout)}</p>
             </div>
             <div className="space-y-3">
               <div>
@@ -129,6 +129,10 @@ function WithdrawModal({ balance, onClose, onSuccess }: { balance: number; onClo
 export default function Wallet() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
+  const fin = config.finance;
+  const riderKeepPct  = fin.riderEarningPct;
+  const minPayout     = fin.minRiderPayout;
+  const settleDays    = fin.vendorSettleDays;
   const qc = useQueryClient();
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [toast, setToast] = useState("");
@@ -186,7 +190,7 @@ export default function Wallet() {
           <div className="relative">
             <p className="text-sm text-gray-500 font-medium">Available Balance</p>
             <p className="text-5xl font-extrabold text-green-600 mt-1">{fc(balance)}</p>
-            <p className="text-xs text-gray-400 mt-2">80% of each delivery goes to your wallet</p>
+            <p className="text-xs text-gray-400 mt-2">{riderKeepPct}% of each delivery goes to your wallet</p>
             <button onClick={() => setShowWithdraw(true)}
               className="mt-4 w-full h-12 bg-green-600 text-white font-extrabold rounded-2xl flex items-center justify-center gap-2">
               💸 Withdraw Funds
@@ -209,12 +213,20 @@ export default function Wallet() {
           ))}
         </div>
 
+        {/* Earnings Rate Info */}
+        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex gap-3">
+          <span className="text-2xl flex-shrink-0">💹</span>
+          <div>
+            <p className="text-sm font-bold text-emerald-800">Your Earnings Rate</p>
+            <p className="text-xs text-emerald-700 mt-0.5 leading-relaxed">You keep <strong>{riderKeepPct}%</strong> of every delivery fee. Minimum withdrawal is <strong>{fc(minPayout)}</strong> per request.</p>
+          </div>
+        </div>
         {/* Security Info */}
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3">
           <span className="text-2xl flex-shrink-0">🔒</span>
           <div>
             <p className="text-sm font-bold text-blue-800">Secure Withdrawals</p>
-            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">Withdrawal requests are reviewed by admin and transferred to your bank or mobile wallet within 24–48 hours. Min. Rs. 500 per request.</p>
+            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">Withdrawal requests are reviewed by admin and transferred to your bank or mobile wallet within 24–48 hours. Min. {fc(minPayout)} per request.</p>
           </div>
         </div>
 
@@ -273,6 +285,7 @@ export default function Wallet() {
       {showWithdraw && (
         <WithdrawModal
           balance={balance}
+          minPayout={minPayout}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => { qc.invalidateQueries({ queryKey: ["rider-wallet"] }); refreshUser(); showToast("✅ Withdrawal request submitted!"); }}
         />

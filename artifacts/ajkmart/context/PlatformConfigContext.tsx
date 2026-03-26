@@ -48,6 +48,21 @@ export interface PlatformConfig {
     ratingWindowHours: number;
     scheduleEnabled: boolean;
   };
+  finance: {
+    gstEnabled: boolean;
+    gstPct: number;
+    cashbackEnabled: boolean;
+    cashbackPct: number;
+    cashbackMaxRs: number;
+    invoiceEnabled: boolean;
+    platformCommissionPct: number;
+    vendorCommissionPct: number;
+    riderEarningPct: number;
+    minVendorPayout: number;
+    minRiderPayout: number;
+    vendorSettleDays: number;
+    referralBonus: number;
+  };
 }
 
 const DEFAULT: PlatformConfig = {
@@ -88,6 +103,11 @@ const DEFAULT: PlatformConfig = {
     preptimeMin:       15,
     ratingWindowHours: 48,
     scheduleEnabled:   false,
+  },
+  finance: {
+    gstEnabled: false, gstPct: 17, cashbackEnabled: false, cashbackPct: 2, cashbackMaxRs: 100,
+    invoiceEnabled: false, platformCommissionPct: 10, vendorCommissionPct: 15, riderEarningPct: 80,
+    minVendorPayout: 500, minRiderPayout: 500, vendorSettleDays: 7, referralBonus: 100,
   },
 };
 
@@ -167,6 +187,21 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           preptimeMin:       raw.orderRules?.preptimeMin       ?? DEFAULT.orderRules.preptimeMin,
           ratingWindowHours: raw.orderRules?.ratingWindowHours ?? DEFAULT.orderRules.ratingWindowHours,
           scheduleEnabled:   raw.orderRules?.scheduleEnabled   ?? DEFAULT.orderRules.scheduleEnabled,
+        },
+        finance: {
+          gstEnabled:           raw.finance?.gstEnabled           ?? DEFAULT.finance.gstEnabled,
+          gstPct:               raw.finance?.gstPct               ?? DEFAULT.finance.gstPct,
+          cashbackEnabled:      raw.finance?.cashbackEnabled      ?? DEFAULT.finance.cashbackEnabled,
+          cashbackPct:          raw.finance?.cashbackPct          ?? DEFAULT.finance.cashbackPct,
+          cashbackMaxRs:        raw.finance?.cashbackMaxRs        ?? DEFAULT.finance.cashbackMaxRs,
+          invoiceEnabled:       raw.finance?.invoiceEnabled       ?? DEFAULT.finance.invoiceEnabled,
+          platformCommissionPct:raw.finance?.platformCommissionPct?? DEFAULT.finance.platformCommissionPct,
+          vendorCommissionPct:  raw.finance?.vendorCommissionPct  ?? DEFAULT.finance.vendorCommissionPct,
+          riderEarningPct:      raw.finance?.riderEarningPct      ?? DEFAULT.finance.riderEarningPct,
+          minVendorPayout:      raw.finance?.minVendorPayout      ?? DEFAULT.finance.minVendorPayout,
+          minRiderPayout:       raw.finance?.minRiderPayout       ?? DEFAULT.finance.minRiderPayout,
+          vendorSettleDays:     raw.finance?.vendorSettleDays     ?? DEFAULT.finance.vendorSettleDays,
+          referralBonus:        raw.finance?.referralBonus        ?? DEFAULT.finance.referralBonus,
         },
       };
       _cached = parsed;

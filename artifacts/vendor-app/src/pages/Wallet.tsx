@@ -8,7 +8,7 @@ import { fc, fd, CARD, CARD_HEADER, INPUT, SELECT, BTN_PRIMARY, BTN_SECONDARY, L
 
 const BANKS = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","Habib Bank","NBP","Faysal Bank","Allied Bank","Other"];
 
-function WithdrawModal({ balance, onClose, onSuccess }: { balance: number; onClose: () => void; onSuccess: () => void }) {
+function WithdrawModal({ balance, minPayout, onClose, onSuccess }: { balance: number; minPayout: number; onClose: () => void; onSuccess: () => void }) {
   const [amount, setAmount]   = useState("");
   const [bank, setBank]       = useState("");
   const [acNo, setAcNo]       = useState("");
@@ -26,7 +26,7 @@ function WithdrawModal({ balance, onClose, onSuccess }: { balance: number; onClo
   const validate = () => {
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt <= 0)  { setErr("Valid amount required"); return; }
-    if (amt < 500)                           { setErr("Minimum withdrawal is Rs. 500"); return; }
+    if (amt < minPayout)                     { setErr(`Minimum withdrawal is ${fc(minPayout)}`); return; }
     if (amt > balance)                       { setErr(`Max available: ${fc(balance)}`); return; }
     if (!bank)                               { setErr("Select your bank / wallet"); return; }
     if (!acNo.trim())                        { setErr("Account / phone number required"); return; }
@@ -76,7 +76,7 @@ function WithdrawModal({ balance, onClose, onSuccess }: { balance: number; onClo
             <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 text-white mb-5">
               <p className="text-sm text-orange-100">Available Balance</p>
               <p className="text-3xl font-extrabold mt-0.5">{fc(balance)}</p>
-              <p className="text-xs text-orange-200 mt-1.5">Minimum withdrawal: Rs. 500</p>
+              <p className="text-xs text-orange-200 mt-1.5">Minimum withdrawal: {fc(minPayout)}</p>
             </div>
             <div className="space-y-3">
               <div>
@@ -127,6 +127,11 @@ function txBadge(type: string) {
 export default function Wallet() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
+  const fin = config.finance;
+  const vendorKeepPct  = Math.round(100 - fin.vendorCommissionPct);
+  const commissionPct  = fin.vendorCommissionPct;
+  const minPayout      = fin.minVendorPayout;
+  const settleDays     = fin.vendorSettleDays;
   const qc = useQueryClient();
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [toast, setToast] = useState("");
@@ -186,7 +191,7 @@ export default function Wallet() {
           <div className="relative">
             <p className="text-sm text-orange-100 font-semibold">Available Balance</p>
             <p className="text-5xl font-extrabold mt-1 tracking-tight">{fc(balance)}</p>
-            <p className="text-xs text-orange-200 mt-2">85% of each order goes to your wallet · 15% platform fee</p>
+            <p className="text-xs text-orange-200 mt-2">{vendorKeepPct}% of each order goes to your wallet · {commissionPct}% platform commission</p>
             <div className="flex gap-3 mt-4">
               <button onClick={() => setShowWithdraw(true)}
                 className="flex-1 h-12 bg-white text-orange-500 font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 shadow-md">
@@ -194,8 +199,8 @@ export default function Wallet() {
               </button>
               <div className="flex-1 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
                 <div className="text-center">
-                  <p className="text-xs text-orange-200">Commission</p>
-                  <p className="text-xl font-extrabold">85%</p>
+                  <p className="text-xs text-orange-200">Your Share</p>
+                  <p className="text-xl font-extrabold">{vendorKeepPct}%</p>
                 </div>
               </div>
             </div>
@@ -217,12 +222,20 @@ export default function Wallet() {
           ))}
         </div>
 
+        {/* ── Settlement Info ── */}
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex gap-3">
+          <span className="text-2xl flex-shrink-0">📅</span>
+          <div>
+            <p className="text-sm font-bold text-amber-800">Settlement Cycle</p>
+            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Earnings are settled every <strong>{settleDays} days</strong> after order completion. Minimum withdrawal is <strong>{fc(minPayout)}</strong> per request.</p>
+          </div>
+        </div>
         {/* ── Withdrawal Info ── */}
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3">
           <span className="text-2xl flex-shrink-0">🔒</span>
           <div>
             <p className="text-sm font-bold text-blue-800">Secure Withdrawals</p>
-            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">All withdrawal requests are reviewed by admin. Funds are transferred to your verified bank account or mobile wallet within 24–48 hours. Min. Rs. 500 per request.</p>
+            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">All withdrawal requests are reviewed by admin. Funds are transferred to your verified bank account or mobile wallet within 24–48 hours. Min. {fc(minPayout)} per request.</p>
           </div>
         </div>
 
@@ -280,6 +293,7 @@ export default function Wallet() {
       {showWithdraw && (
         <WithdrawModal
           balance={balance}
+          minPayout={minPayout}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["vendor-wallet"] });
