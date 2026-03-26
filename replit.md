@@ -1,6 +1,6 @@
 # AJKMart Super App — Workspace
-<!-- Last updated: 2026-03-26 — Content Settings fully wired: PlatformConfigContext, global maintenance overlay (all tabs), feature_reviews (rating modal + reviews DB + vendor analytics), feature_live_tracking (customer orders gate), reviews table + API -->
-<!-- Previous: Deep Audit: 14 critical bugs fixed (race conditions, refund logic, hardcoded commission %, rider/vendor earnings, missing transactions, accept race, feature flags) -->
+<!-- Last updated: 2026-03-26 — Content Settings fully wired: all 9 content fields (6 text + 3 feature toggles) now propagate admin → API → all 3 apps with no loopholes. Customer profile support section fixed (phone dialer + WhatsApp). Admin Content section upgraded with textarea, char counters, app coverage hints. -->
+<!-- Previous: PlatformConfigContext 3 critical bugs fixed (appStatus/appName field paths, boolean feature flags). appName dynamic across all 3 apps. General settings (app_name, app_status, support_phone) fully wired. -->
 
 ## Project Overview
 

@@ -732,17 +732,17 @@ export default function ProfileScreen() {
 
         {/* ── Support ── */}
         <SectionCard title="SUPPORT">
-          <Row icon="help-circle-outline"
-               label="Help & FAQ"
-               sub={`Call: ${platformCfg.supportPhone}`}
-               onPress={() => showToast(`📞 ${platformCfg.supportPhone}  ⏰ 8AM–10PM`, "info")}
+          <Row icon="call-outline"
+               label="Call Support"
+               sub={platformCfg.chat ? `Call: ${platformCfg.supportPhone}` : (platformCfg.supportMsg || `Call: ${platformCfg.supportPhone}`)}
+               onPress={() => Linking.openURL(`tel:${platformCfg.supportPhone}`).catch(() => showToast(`📞 ${platformCfg.supportPhone}`, "info"))}
                iconColor="#64748B" iconBg="#F1F5F9" />
           {platformCfg.chat && (
-            <Row icon="chatbubble-outline"
+            <Row icon="logo-whatsapp"
                  label="Live Chat"
                  sub={platformCfg.supportMsg}
-                 onPress={() => showToast(`📞 ${platformCfg.supportPhone}  ⏱ Avg 5 min`, "info")}
-                 iconColor="#0891B2" iconBg="#E0F2FE" />
+                 onPress={() => Linking.openURL(`https://wa.me/${platformCfg.supportPhone.replace(/^0/, "92")}`).catch(() => showToast(`📞 ${platformCfg.supportPhone}`, "info"))}
+                 iconColor="#25D366" iconBg="#DCFCE7" />
           )}
           {platformCfg.tncUrl ? (
             <Row icon="document-text-outline"
