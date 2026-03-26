@@ -46,8 +46,15 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   /* Finance */
   { key: "platform_commission_pct",value: "10",   label: "Platform Commission (%)",        category: "finance" },
   /* Orders */
-  { key: "min_order_amount",       value: "100",  label: "Minimum Order Amount (Rs.)",     category: "orders" },
-  { key: "max_cod_amount",         value: "5000", label: "Max COD Order Amount (Rs.)",     category: "orders" },
+  { key: "min_order_amount",          value: "100",   label: "Minimum Order Amount (Rs.)",              category: "orders" },
+  { key: "max_cod_amount",            value: "5000",  label: "Max COD Order Amount (Rs.)",              category: "orders" },
+  { key: "order_max_cart_value",      value: "50000", label: "Max Cart Value / Hard Cap (Rs.)",         category: "orders" },
+  { key: "order_cancel_window_min",   value: "5",     label: "Customer Cancel Window (minutes)",        category: "orders" },
+  { key: "order_auto_cancel_min",     value: "15",    label: "Auto-Cancel if Unaccepted (minutes)",     category: "orders" },
+  { key: "order_refund_days",         value: "3",     label: "Refund Processing Time (days)",           category: "orders" },
+  { key: "order_preptime_min",        value: "15",    label: "Default Prep Time Shown (minutes)",       category: "orders" },
+  { key: "order_rating_window_hours", value: "48",    label: "Rating Window After Delivery (hours)",    category: "orders" },
+  { key: "order_schedule_enabled",    value: "off",   label: "Allow Advance Order Scheduling",          category: "orders" },
   /* General */
   { key: "app_name",               value: "AJKMart",                        label: "App Name",                    category: "general" },
   { key: "app_tagline",            value: "Your super app for everything",   label: "App Tagline / Subtitle",      category: "general" },

@@ -55,16 +55,34 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 /* ─────────────────────────── Grocery/Food Card ─────────────────────────── */
-function OrderCard({ order, liveTracking, reviews, onRate }: {
+function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, ratingWindowHours, onRate, onCancel }: {
   order: any;
   liveTracking: boolean;
   reviews: boolean;
+  cancelWindowMin: number;
+  refundDays: number;
+  ratingWindowHours: number;
   onRate: (o: any) => void;
+  onCancel: (o: any) => void;
 }) {
   const cfg = ORDER_STATUS[order.status] || ORDER_STATUS["pending"]!;
   const isFood = order.type === "food";
   const isDelivered = order.status === "delivered";
+  const isCancelled = order.status === "cancelled";
   const isActive = !["delivered", "cancelled"].includes(order.status);
+
+  // Cancel window calculation
+  const minutesSincePlaced = order.createdAt
+    ? (Date.now() - new Date(order.createdAt).getTime()) / 60000
+    : 999;
+  const canCancel = order.status === "pending" && minutesSincePlaced <= cancelWindowMin;
+  const cancelMinsLeft = Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
+
+  // Rating window: only show rate button if within ratingWindowHours after delivery
+  const hourssinceDelivery = order.updatedAt
+    ? (Date.now() - new Date(order.updatedAt).getTime()) / 3600000
+    : 0;
+  const canRate = reviews && isDelivered && !order._reviewed && hourssinceDelivery <= ratingWindowHours;
 
   return (
     <View style={styles.card}>
@@ -127,7 +145,16 @@ function OrderCard({ order, liveTracking, reviews, onRate }: {
         </View>
       )}
 
-      {reviews && isDelivered && !order._reviewed && (
+      {/* Cancel button — only within cancel window on pending orders */}
+      {canCancel && (
+        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)}>
+          <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
+          <Text style={styles.cancelBtnText}>Cancel Order ({cancelMinsLeft}m left)</Text>
+        </Pressable>
+      )}
+
+      {/* Rate button — only within rating window */}
+      {canRate && (
         <Pressable style={styles.rateBtn} onPress={() => onRate(order)}>
           <Ionicons name="star-outline" size={14} color="#F59E0B" />
           <Text style={styles.rateBtnText}>Rate this order</Text>
@@ -138,6 +165,14 @@ function OrderCard({ order, liveTracking, reviews, onRate }: {
         <View style={styles.reviewedBadge}>
           <Ionicons name="star" size={13} color="#F59E0B" />
           <Text style={styles.reviewedText}>Reviewed — Thank you!</Text>
+        </View>
+      )}
+
+      {/* Refund info on cancelled orders */}
+      {isCancelled && order.paymentMethod !== "cash" && refundDays > 0 && (
+        <View style={styles.refundBar}>
+          <Ionicons name="return-down-back-outline" size={12} color="#059669" />
+          <Text style={styles.refundText}>Refund {refundDays} din mein process hoga</Text>
         </View>
       )}
     </View>
@@ -484,6 +519,8 @@ export default function OrdersScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_H  = Platform.OS === "web" ? 84 : 49;
 
+  const orderRules = config.orderRules;
+
   const handleRate = useCallback((order: any) => {
     if (!reviewedIds.has(order.id)) setReviewTarget(order);
   }, [reviewedIds]);
@@ -491,6 +528,8 @@ export default function OrdersScreen() {
   const handleReviewDone = useCallback((orderId: string) => {
     setReviewedIds(prev => new Set([...prev, orderId]));
   }, []);
+
+  const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
   /* ── Grocery/Food orders ── */
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useGetOrders(
@@ -510,7 +549,17 @@ export default function OrdersScreen() {
   const [parcelData, setParcelData] = useState<any>(null);
   const [parcelLoading, setParcelLoading] = useState(false);
 
-  const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+  const handleCancel = useCallback(async (order: any) => {
+    try {
+      const res = await fetch(`${API_BASE}/orders/${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelled", userId: user?.id }),
+      });
+      if (!res.ok) throw new Error();
+      refetchOrders();
+    } catch { /* silent — order list will refresh on next poll */ }
+  }, [user, refetchOrders, API_BASE]);
 
   const fetchRides = useCallback(async () => {
     if (!user?.id) return;
@@ -698,7 +747,7 @@ export default function OrdersScreen() {
         {anyActive > 0 && (
           <>
             <SectionHeader title="Active" count={anyActive} active />
-            {activeOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} />)}
+            {activeOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} />)}
             {activeRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} />)}
             {activePharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
             {activeParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
@@ -708,7 +757,7 @@ export default function OrdersScreen() {
         {anyPast > 0 && (
           <>
             <SectionHeader title="History" count={anyPast} />
-            {pastOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} />)}
+            {pastOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} />)}
             {pastRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} />)}
             {pastPharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
             {pastParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
@@ -862,6 +911,12 @@ const styles = StyleSheet.create({
   payBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
   payText: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
 
+  cancelBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    marginTop: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: "#FEF2F2",
+    borderWidth: 1, borderColor: "#FECACA",
+  },
+  cancelBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#DC2626" },
   rateBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.borderLight,
@@ -873,4 +928,10 @@ const styles = StyleSheet.create({
     marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.borderLight,
   },
   reviewedText: { fontFamily: "Inter_500Medium", fontSize: 12, color: "#92400E" },
+  refundBar: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    marginTop: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8,
+    backgroundColor: "#ECFDF5",
+  },
+  refundText: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#047857" },
 });

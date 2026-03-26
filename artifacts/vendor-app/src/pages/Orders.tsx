@@ -1,8 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { usePlatformConfig } from "../lib/useConfig";
 import { PageHeader } from "../components/PageHeader";
 import { fc, fd, CARD } from "../lib/ui";
+
+function useNow(intervalMs = 10000) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
 
 const TABS = [
   { key: "new",       label: "New",      icon: "🔔" },
@@ -30,6 +40,11 @@ const ORDER_ICON: Record<string, string> = { food: "🍔", mart: "🛒", pharmac
 
 export default function Orders() {
   const qc = useQueryClient();
+  const { config } = usePlatformConfig();
+  const orderRules = config.orderRules;
+  const vendorKeepp = 1 - (config.platform.vendorCommissionPct / 100);
+  const now = useNow(10000);
+
   const [tab, setTab]           = useState("new");
   const [expanded, setExpanded] = useState<string|null>(null);
   const [toast, setToast]       = useState("");
@@ -97,8 +112,39 @@ export default function Orders() {
               const next = NEXT[o.status];
               const items = Array.isArray(o.items) ? o.items : [];
               const isExp = expanded === o.id;
+
+              // Auto-cancel countdown
+              const msSincePlaced  = o.createdAt ? now - new Date(o.createdAt).getTime() : 0;
+              const autoCancelMs   = orderRules.autoCancelMin * 60 * 1000;
+              const msLeft         = Math.max(0, autoCancelMs - msSincePlaced);
+              const minsLeft       = Math.ceil(msLeft / 60000);
+              const secsLeft       = Math.ceil((msLeft % 60000) / 1000);
+              const isPendingTimer = o.status === "pending" && msLeft > 0;
+              const pct            = msLeft / autoCancelMs * 100;
+              const timerRed       = minsLeft <= 2 && isPendingTimer;
+
               return (
                 <div key={o.id} className={`${CARD}${o.status === "pending" ? " border-l-4 border-orange-400" : ""}`}>
+                  {/* Auto-cancel countdown bar */}
+                  {isPendingTimer && (
+                    <div className="px-4 pt-3 pb-1">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={`text-[10px] font-bold tracking-wide ${timerRed ? "text-red-600" : "text-orange-500"}`}>
+                          {timerRed ? "⚠️ AUTO-CANCEL IN" : "⏱ AUTO-CANCEL IN"}
+                        </span>
+                        <span className={`text-[11px] font-extrabold tabular-nums ${timerRed ? "text-red-600" : "text-orange-600"}`}>
+                          {minsLeft}:{String(secsLeft).padStart(2,"0")}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-1000 ${timerRed ? "bg-red-500" : "bg-orange-400"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Order Row */}
                   <button className="w-full px-4 py-3.5 flex items-center gap-3 text-left android-press min-h-0"
                     onClick={() => setExpanded(isExp ? null : o.id)}>
@@ -116,7 +162,7 @@ export default function Orders() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="font-extrabold text-gray-800 text-base">{fc(o.total)}</p>
-                      <p className="text-xs text-green-600 font-semibold">+{fc(o.total * 0.85)}</p>
+                      <p className="text-xs text-green-600 font-semibold">+{fc(o.total * vendorKeepp)}</p>
                       <span className="text-gray-300 text-xs">{isExp ? "▲" : "▼"}</span>
                     </div>
                   </button>

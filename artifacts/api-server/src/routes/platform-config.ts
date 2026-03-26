@@ -84,6 +84,17 @@ router.get("/", async (_req, res) => {
       socialFacebook:       s["social_facebook"]    ?? "",
       socialInstagram:      s["social_instagram"]   ?? "",
     },
+    orderRules: {
+      minOrderAmount:    parseFloat(s["min_order_amount"]          ?? "100"),
+      maxCodAmount:      parseFloat(s["max_cod_amount"]            ?? "5000"),
+      maxCartValue:      parseFloat(s["order_max_cart_value"]      ?? "50000"),
+      cancelWindowMin:   parseInt(s["order_cancel_window_min"]     ?? "5"),
+      autoCancelMin:     parseInt(s["order_auto_cancel_min"]       ?? "15"),
+      refundDays:        parseInt(s["order_refund_days"]           ?? "3"),
+      preptimeMin:       parseInt(s["order_preptime_min"]          ?? "15"),
+      ratingWindowHours: parseInt(s["order_rating_window_hours"]   ?? "48"),
+      scheduleEnabled:   (s["order_schedule_enabled"]              ?? "off") === "on",
+    },
     features: {
       mart:         (s["feature_mart"]          ?? "on")  === "on",
       food:         (s["feature_food"]          ?? "on")  === "on",

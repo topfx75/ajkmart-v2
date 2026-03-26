@@ -61,6 +61,7 @@ const TOGGLE_KEYS = new Set([
   "wallet_p2p_enabled","wallet_kyc_required",
   "wallet_cashback_on_orders","wallet_cashback_on_rides","wallet_cashback_on_pharmacy",
   "content_show_banner",
+  "order_schedule_enabled",
 ]);
 
 const TEXT_KEYS = new Set([
@@ -2748,6 +2749,94 @@ function renderSection(
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (cat === "orders") {
+    const AMOUNT_KEYS  = new Set(["min_order_amount","max_cod_amount","order_max_cart_value"]);
+    const TIMING_KEYS  = new Set(["order_cancel_window_min","order_auto_cancel_min","order_refund_days","order_preptime_min","order_rating_window_hours"]);
+    const SCHED_KEYS   = new Set(["order_schedule_enabled"]);
+
+    const amountFields  = catSettings.filter(s => AMOUNT_KEYS.has(s.key));
+    const timingFields  = catSettings.filter(s => TIMING_KEYS.has(s.key));
+    const schedFields   = catSettings.filter(s => SCHED_KEYS.has(s.key));
+
+    const SUFFIX: Record<string,string> = {
+      min_order_amount: "Rs.", max_cod_amount: "Rs.", order_max_cart_value: "Rs.",
+      order_cancel_window_min: "min", order_auto_cancel_min: "min",
+      order_refund_days: "days", order_preptime_min: "min", order_rating_window_hours: "hrs",
+    };
+    const HINT: Record<string,string> = {
+      min_order_amount:        "Customer cannot checkout below this amount",
+      max_cod_amount:          "COD option hides automatically above this cart value",
+      order_max_cart_value:    "Hard cap — checkout blocked if cart exceeds this",
+      order_cancel_window_min: "Customer can cancel a pending order within this window",
+      order_auto_cancel_min:   "Pending order auto-cancels if vendor does not accept in time",
+      order_refund_days:       "Shown to customer on cancelled non-COD orders",
+      order_preptime_min:      "Estimated prep time shown on tracking screen",
+      order_rating_window_hours: "Rate button disappears after this many hours post-delivery",
+    };
+
+    const OrderNumField = ({ s }: { s: Setting }) => {
+      const isDirty = dirtyKeys.has(s.key);
+      const sfx = SUFFIX[s.key] ?? "";
+      return (
+        <div className={`rounded-xl border p-4 space-y-2.5 transition-all ${isDirty ? "border-amber-300 bg-amber-50/30" : "border-border bg-white"}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <label className="text-sm font-semibold text-foreground leading-snug">{s.label}</label>
+              {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold flex-shrink-0">CHANGED</Badge>}
+            </div>
+          </div>
+          {HINT[s.key] && <p className="text-[11px] text-muted-foreground">{HINT[s.key]}</p>}
+          <div className="relative">
+            <Input type="number" min={0} value={localValues[s.key] ?? s.value}
+              onChange={e => handleChange(s.key, e.target.value)}
+              className={`h-10 rounded-xl ${sfx ? "pr-14" : ""} ${isDirty ? "border-amber-300 bg-amber-50/50 ring-1 ring-amber-200" : ""}`}
+            />
+            {sfx && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">{sfx}</span>}
+          </div>
+          <p className="text-[10px] text-muted-foreground font-mono">{s.key}</p>
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Group 1: Amount Limits */}
+        {amountFields.length > 0 && (
+          <div className="space-y-3">
+            <SLabel icon={Banknote}>Amount Limits</SLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {amountFields.map(s => <OrderNumField key={s.key} s={s} />)}
+            </div>
+          </div>
+        )}
+
+        {/* Group 2: Timing & Cancellation */}
+        {timingFields.length > 0 && (
+          <div className="space-y-3 border-t border-border/40 pt-5">
+            <SLabel icon={RotateCcw}>Timing & Cancellation</SLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {timingFields.map(s => <OrderNumField key={s.key} s={s} />)}
+            </div>
+          </div>
+        )}
+
+        {/* Group 3: Scheduling */}
+        {schedFields.length > 0 && (
+          <div className="space-y-3 border-t border-border/40 pt-5">
+            <SLabel icon={Settings}>Scheduling</SLabel>
+            <p className="text-xs text-muted-foreground -mt-1">Allow customers to place orders for a future time slot</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {schedFields.map(s => (
+                <Toggle key={s.key} checked={(localValues[s.key] ?? s.value) === "on"}
+                  onChange={v => handleToggle(s.key, v)} label={s.label} isDirty={dirtyKeys.has(s.key)} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

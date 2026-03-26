@@ -37,6 +37,17 @@ export interface PlatformConfig {
     socialFacebook: string;
     socialInstagram: string;
   };
+  orderRules: {
+    minOrderAmount: number;
+    maxCodAmount: number;
+    maxCartValue: number;
+    cancelWindowMin: number;
+    autoCancelMin: number;
+    refundDays: number;
+    preptimeMin: number;
+    ratingWindowHours: number;
+    scheduleEnabled: boolean;
+  };
 }
 
 const DEFAULT: PlatformConfig = {
@@ -66,6 +77,17 @@ const DEFAULT: PlatformConfig = {
     businessAddress: "Muzaffarabad, AJK, Pakistan",
     socialFacebook: "",
     socialInstagram: "",
+  },
+  orderRules: {
+    minOrderAmount:    100,
+    maxCodAmount:      5000,
+    maxCartValue:      50000,
+    cancelWindowMin:   5,
+    autoCancelMin:     15,
+    refundDays:        3,
+    preptimeMin:       15,
+    ratingWindowHours: 48,
+    scheduleEnabled:   false,
   },
 };
 
@@ -134,6 +156,17 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           businessAddress: raw.platform?.businessAddress ?? DEFAULT.platform.businessAddress,
           socialFacebook:  raw.platform?.socialFacebook  ?? "",
           socialInstagram: raw.platform?.socialInstagram ?? "",
+        },
+        orderRules: {
+          minOrderAmount:    raw.orderRules?.minOrderAmount    ?? DEFAULT.orderRules.minOrderAmount,
+          maxCodAmount:      raw.orderRules?.maxCodAmount      ?? DEFAULT.orderRules.maxCodAmount,
+          maxCartValue:      raw.orderRules?.maxCartValue      ?? DEFAULT.orderRules.maxCartValue,
+          cancelWindowMin:   raw.orderRules?.cancelWindowMin   ?? DEFAULT.orderRules.cancelWindowMin,
+          autoCancelMin:     raw.orderRules?.autoCancelMin     ?? DEFAULT.orderRules.autoCancelMin,
+          refundDays:        raw.orderRules?.refundDays        ?? DEFAULT.orderRules.refundDays,
+          preptimeMin:       raw.orderRules?.preptimeMin       ?? DEFAULT.orderRules.preptimeMin,
+          ratingWindowHours: raw.orderRules?.ratingWindowHours ?? DEFAULT.orderRules.ratingWindowHours,
+          scheduleEnabled:   raw.orderRules?.scheduleEnabled   ?? DEFAULT.orderRules.scheduleEnabled,
         },
       };
       _cached = parsed;

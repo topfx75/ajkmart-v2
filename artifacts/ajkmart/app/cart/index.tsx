@@ -105,7 +105,8 @@ export default function CartScreen() {
   const { items, total, cartType, updateQuantity, clearCart } = useCart();
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
-  const appName = platformConfig.platform.appName;
+  const appName    = platformConfig.platform.appName;
+  const orderRules = platformConfig.orderRules;
 
   const [payMethod, setPayMethod] = useState<PayMethod>("cash");
   const [loading, setLoading] = useState(false);
@@ -117,7 +118,7 @@ export default function CartScreen() {
   const [showAddrPicker, setShowAddrPicker] = useState(false);
   const [addrLoading, setAddrLoading] = useState(false);
 
-  const [availablePayMethods, setAvailablePayMethods] = useState<PaymentMethod[]>([
+  const [allPayMethods, setAllPayMethods] = useState<PaymentMethod[]>([
     { id: "cash",   label: "Cash on Delivery",    logo: "💵", available: true,  description: "Delivery par payment karein" },
     { id: "wallet", label: `${appName} Wallet`,   logo: "💰", available: true,  description: "Wallet se instant pay" },
   ]);
@@ -141,7 +142,6 @@ export default function CartScreen() {
           setDeliveryFeeConfig({ mart: d.deliveryFee.mart, food: d.deliveryFee.food });
         }
         if (d.platform?.freeDeliveryAbove) setFreeDeliveryAbove(d.platform.freeDeliveryAbove);
-        // Update available payment methods from config
         if (d.payment?.methods) {
           const methods: PaymentMethod[] = d.payment.methods.map((m: any) => ({
             id:          m.id,
@@ -151,7 +151,7 @@ export default function CartScreen() {
             description: m.description,
             mode:        m.mode,
           }));
-          setAvailablePayMethods(methods);
+          setAllPayMethods(methods);
         }
       })
       .catch(() => {});
@@ -159,6 +159,22 @@ export default function CartScreen() {
 
   const deliveryFee = total >= freeDeliveryAbove ? 0 : (cartType === "food" ? deliveryFeeConfig.food : deliveryFeeConfig.mart);
   const grandTotal = total + deliveryFee;
+
+  // Dynamic payment methods: hide COD if order exceeds max COD limit
+  const availablePayMethods = allPayMethods.map(m => {
+    if (m.id === "cash" && grandTotal > orderRules.maxCodAmount) {
+      return { ...m, available: false, description: `COD limit: Rs.${orderRules.maxCodAmount.toLocaleString()}` };
+    }
+    return m;
+  });
+
+  // Auto-switch away from COD if it becomes unavailable
+  useEffect(() => {
+    if (payMethod === "cash" && grandTotal > orderRules.maxCodAmount) {
+      const fallback = availablePayMethods.find(m => m.id !== "cash" && m.available);
+      if (fallback) setPayMethod(fallback.id as PayMethod);
+    }
+  }, [grandTotal, orderRules.maxCodAmount]);
 
   const selectedAddr = addresses.find(a => a.id === selectedAddrId);
   const deliveryLine = selectedAddr
@@ -210,6 +226,14 @@ export default function CartScreen() {
   const handleCheckout = async () => {
     if (!user) { showToast("Login karein order place karne ke liye", "error"); return; }
     if (items.length === 0) { showToast("Cart mein koi item nahi", "error"); return; }
+    if (total < orderRules.minOrderAmount) {
+      showToast(`Minimum order Rs.${orderRules.minOrderAmount} — Rs.${orderRules.minOrderAmount - total} aur add karein`, "error");
+      return;
+    }
+    if (total > orderRules.maxCartValue) {
+      showToast(`Cart value Rs.${orderRules.maxCartValue.toLocaleString()} se zyada nahi ho sakti`, "error");
+      return;
+    }
 
     if (payMethod === "wallet") {
       if (user.walletBalance < grandTotal) {
@@ -688,31 +712,44 @@ export default function CartScreen() {
 
       {/* Checkout Bar */}
       <View style={[styles.checkoutBar, { paddingBottom: Platform.OS === "web" ? 34 : insets.bottom + 12 }]}>
-        <View style={styles.checkoutInfo}>
-          <Text style={styles.checkoutLabel}>Total Amount</Text>
-          <Text style={styles.checkoutAmount}>Rs. {grandTotal.toLocaleString()}</Text>
+        {/* Min-order progress indicator */}
+        {total < orderRules.minOrderAmount && total > 0 && (
+          <View style={styles.minOrderBar}>
+            <View style={styles.minOrderTrack}>
+              <View style={[styles.minOrderFill, { width: `${Math.min(100, (total / orderRules.minOrderAmount) * 100)}%` as any }]} />
+            </View>
+            <Text style={styles.minOrderText}>
+              Rs.{(orderRules.minOrderAmount - total).toLocaleString()} more for minimum order
+            </Text>
+          </View>
+        )}
+        <View style={styles.checkoutRow}>
+          <View style={styles.checkoutInfo}>
+            <Text style={styles.checkoutLabel}>Total Amount</Text>
+            <Text style={styles.checkoutAmount}>Rs. {grandTotal.toLocaleString()}</Text>
+          </View>
+          <Pressable
+            onPress={handleCheckout}
+            style={[styles.checkoutBtn, (loading || total < orderRules.minOrderAmount) && styles.checkoutBtnDisabled]}
+            disabled={loading || total < orderRules.minOrderAmount}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.checkoutBtnText}>
+                  {payMethod === "jazzcash" ? "Pay with JazzCash" :
+                   payMethod === "easypaisa" ? "Pay with EasyPaisa" :
+                   "Place Order"}
+                </Text>
+                <Ionicons
+                  name={payMethod === "jazzcash" || payMethod === "easypaisa" ? "card-outline" : "arrow-forward"}
+                  size={18} color="#fff"
+                />
+              </>
+            )}
+          </Pressable>
         </View>
-        <Pressable
-          onPress={handleCheckout}
-          style={[styles.checkoutBtn, loading && styles.checkoutBtnDisabled]}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Text style={styles.checkoutBtnText}>
-                {payMethod === "jazzcash" ? "Pay with JazzCash" :
-                 payMethod === "easypaisa" ? "Pay with EasyPaisa" :
-                 "Place Order"}
-              </Text>
-              <Ionicons
-                name={payMethod === "jazzcash" || payMethod === "easypaisa" ? "card-outline" : "arrow-forward"}
-                size={18} color="#fff"
-              />
-            </>
-          )}
-        </Pressable>
       </View>
 
       <GatewayModal />
@@ -784,8 +821,13 @@ const styles = StyleSheet.create({
   grandLabel: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text },
   grandValue: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.primary },
 
-  checkoutBar: { backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.border, flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 12, gap: 14, shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 10 },
+  checkoutBar: { backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.border, flexDirection: "column", paddingHorizontal: 16, paddingTop: 12, gap: 10, shadowColor: "#000", shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 10 },
+  checkoutRow: { flexDirection: "row", alignItems: "center", gap: 14 },
   checkoutInfo: { flex: 1 },
+  minOrderBar: { gap: 4 },
+  minOrderTrack: { height: 4, borderRadius: 4, backgroundColor: "#E2E8F0", overflow: "hidden" },
+  minOrderFill: { height: 4, borderRadius: 4, backgroundColor: C.primary },
+  minOrderText: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.textMuted },
   checkoutLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
   checkoutAmount: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text },
   checkoutBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.primary, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 22 },
