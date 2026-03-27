@@ -66,6 +66,13 @@ export default function Home() {
     refetchInterval: 60000,
   });
 
+  const { data: activeData } = useQuery({
+    queryKey: ["rider-active"],
+    queryFn: () => api.getActive(),
+    refetchInterval: 8000,
+  });
+  const hasActiveTask = !!(activeData?.order || activeData?.ride);
+
   const prevCount = useState<number>(0);
   const { data: requestsData } = useQuery({
     queryKey: ["rider-requests"],
@@ -83,18 +90,24 @@ export default function Home() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
       qc.invalidateQueries({ queryKey: ["rider-active"] });
-      showToast("✅ Order accepted! Go to Active tab.");
+      showToast("✅ Order accepted! Active tab mein dekho.");
     },
-    onError: (e: any) => showToast("❌ " + e.message),
+    onError: (e: any) => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      showToast("❌ " + (e.message || "Order accept nahi hua — shayad kisi ne pehle le liya"));
+    },
   });
   const acceptRideMut = useMutation({
     mutationFn: (id: string) => api.acceptRide(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
       qc.invalidateQueries({ queryKey: ["rider-active"] });
-      showToast("✅ Ride accepted! Go to Active tab.");
+      showToast("✅ Ride accepted! Active tab mein dekho.");
     },
-    onError: (e: any) => showToast("❌ " + e.message),
+    onError: (e: any) => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      showToast("❌ " + (e.message || "Ride accept nahi hua — shayad kisi ne pehle le li"));
+    },
   });
 
   const orders: any[] = requestsData?.orders || [];
@@ -179,6 +192,27 @@ export default function Home() {
         {/* ── REQUEST ALERTS ── */}
         {user?.isOnline ? (
           <>
+            {/* Active task warning */}
+            {hasActiveTask && (
+              <Link href="/active"
+                className="block bg-amber-50 border-2 border-amber-400 rounded-2xl px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-extrabold text-amber-800">
+                      {activeData?.order ? "Active Delivery in Progress" : "Active Ride in Progress"}
+                    </p>
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      {activeData?.order
+                        ? `Order #${activeData.order.id?.slice(-6).toUpperCase()} — ${activeData.order.deliveryAddress || "Customer"}`
+                        : `Ride → ${activeData?.ride?.dropAddress || "Drop location"}`}
+                    </p>
+                  </div>
+                  <span className="text-amber-500 font-bold text-xs bg-amber-100 px-2 py-1 rounded-full flex-shrink-0">Go →</span>
+                </div>
+              </Link>
+            )}
+
             <div className={`rounded-2xl shadow-sm overflow-hidden transition-all ${newRequestPulse ? "ring-2 ring-green-400 ring-offset-1" : ""}`}>
               <div className={`px-4 py-3 flex items-center justify-between ${totalRequests > 0 ? "bg-orange-500" : "bg-gray-700"}`}>
                 <div className="flex items-center gap-2">

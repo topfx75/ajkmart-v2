@@ -53,7 +53,8 @@ export default function Active() {
   const [toastMsg, setToastMsg]   = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelTarget, setCancelTarget]           = useState<"order" | "ride">("ride");
-  const [orderPickedUp, setOrderPickedUp]         = useState(false);
+  const [orderPickedUp, _setOrderPickedUp]         = useState(() => sessionStorage.getItem("orderPickedUp") === "true");
+  const setOrderPickedUp = (v: boolean) => { _setOrderPickedUp(v); sessionStorage.setItem("orderPickedUp", String(v)); };
   const [proofPhoto, setProofPhoto]               = useState<string | null>(null);
   const [proofFileName, setProofFileName]         = useState<string>("");
   const photoInputRef                             = useRef<HTMLInputElement>(null);
@@ -81,8 +82,19 @@ export default function Active() {
       qc.invalidateQueries({ queryKey: ["rider-active"] });
       qc.invalidateQueries({ queryKey: ["rider-history"] });
       qc.invalidateQueries({ queryKey: ["rider-earnings"] });
-      if (vars.status === "delivered") showToast("🎉 Order delivered! Earnings credited.");
-      else showToast("✅ Status updated!");
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      if (vars.status === "delivered") {
+        sessionStorage.removeItem("orderPickedUp");
+        setProofPhoto(null);
+        showToast("🎉 Order delivered! Earnings credited.");
+      } else if (vars.status === "cancelled") {
+        sessionStorage.removeItem("orderPickedUp");
+        setProofPhoto(null);
+        setShowCancelConfirm(false);
+        showToast("Order cancel ho gaya. Customer ko naya rider milega.");
+      } else {
+        showToast("✅ Status updated!");
+      }
     },
     onError: (e: any) => showToast("❌ " + e.message),
   });
@@ -93,7 +105,9 @@ export default function Active() {
       qc.invalidateQueries({ queryKey: ["rider-active"] });
       qc.invalidateQueries({ queryKey: ["rider-history"] });
       qc.invalidateQueries({ queryKey: ["rider-earnings"] });
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
       if (vars.status === "completed") showToast("🎉 Ride completed! Earnings credited.");
+      else if (vars.status === "cancelled") { setShowCancelConfirm(false); showToast("Ride cancel ho gaya."); }
       else showToast("✅ Status updated!");
     },
     onError: (e: any) => showToast("❌ " + e.message),

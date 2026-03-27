@@ -240,11 +240,25 @@ router.post("/orders/:id/accept", async (req, res) => {
 router.patch("/orders/:id/status", async (req, res) => {
   const riderId = (req as any).riderId;
   const { status } = req.body;
-  const validStatuses = ["out_for_delivery", "delivered"];
+  const validStatuses = ["out_for_delivery", "delivered", "cancelled"];
   if (!validStatuses.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
 
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found or not yours" }); return; }
+
+  /* ── Rider Cancel: clear riderId + reset to preparing so another rider can pick it up ── */
+  if (status === "cancelled") {
+    const [cancelled] = await db.update(ordersTable)
+      .set({ riderId: null, status: "preparing", updatedAt: new Date() })
+      .where(eq(ordersTable.id, req.params["id"]!))
+      .returning();
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: order.userId,
+      title: "Rider Change 🔄", body: "Your rider had to cancel. We're finding a new rider for you.",
+      type: "order", icon: "refresh-outline",
+    }).catch(() => {});
+    res.json({ ...cancelled, total: safeNum(cancelled?.total || 0), status: "cancelled_by_rider" }); return;
+  }
 
   const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(eq(ordersTable.id, req.params["id"]!)).returning();
 
