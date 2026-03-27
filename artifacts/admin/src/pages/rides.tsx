@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useRidesEnriched, useUpdateRide } from "@/hooks/use-admin";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -11,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   Car, Search, User, MapPin, Navigation, Phone,
   TrendingUp, UserCheck, AlertTriangle, CheckCircle2,
-  MessageCircle, Clock, Zap, History, Activity,
+  MessageCircle, Clock, Zap, History, Activity, Settings2,
 } from "lucide-react";
 
 /* ─── constants ─── */
@@ -396,6 +397,7 @@ export default function Rides() {
   const liveRides   = [...bargaining, ...searching];
 
   /* ── Stats ── */
+  const [, setLocation] = useLocation();
   const activeCount = bargaining.length + searching.length + inProgress.length;
   const totalRevenue = completed.reduce((s: number, r: any) => s + (r.counterFare ?? r.fare ?? 0), 0);
 
@@ -558,9 +560,18 @@ export default function Rides() {
             <p className="text-muted-foreground text-xs">{rides.length} total · {rides.filter((r:any) => r.type === "bike").length} bike · {rides.filter((r:any) => r.type === "car").length} car</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-          <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
-          {isLoading ? "Refreshing..." : `Refreshed ${secAgo}s ago`}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
+            {isLoading ? "Refreshing..." : `Refreshed ${secAgo}s ago`}
+          </span>
+          <button
+            onClick={() => setLocation("/settings?cat=rides")}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Ride Config
+          </button>
         </div>
       </div>
 

@@ -28,9 +28,14 @@ import { Button } from "@/components/ui/button";
 
 const navGroups = [
   {
-    label: "Operations",
+    label: "Overview",
     items: [
       { name: "Dashboard",    href: "/dashboard",   icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Live Operations",
+    items: [
       { name: "Orders",       href: "/orders",       icon: ShoppingBag },
       { name: "Rides",        href: "/rides",        icon: Car },
       { name: "Pharmacy",     href: "/pharmacy",     icon: Pill },
@@ -38,7 +43,7 @@ const navGroups = [
     ],
   },
   {
-    label: "People",
+    label: "People & Accounts",
     items: [
       { name: "Users",        href: "/users",        icon: Users },
       { name: "Vendors",      href: "/vendors",      icon: Store },
@@ -46,7 +51,7 @@ const navGroups = [
     ],
   },
   {
-    label: "Catalog & Promos",
+    label: "Catalog",
     items: [
       { name: "Products",     href: "/products",     icon: PackageSearch },
       { name: "Flash Deals",  href: "/flash-deals",  icon: Zap },
@@ -54,15 +59,25 @@ const navGroups = [
     ],
   },
   {
-    label: "Finance & System",
+    label: "Finance",
     items: [
-      { name: "Transactions",     href: "/transactions",     icon: Receipt },
-      { name: "Withdrawals",      href: "/withdrawals",      icon: BanknoteIcon },
-      { name: "COD Remittances",  href: "/cod-remittances",  icon: Banknote },
-      { name: "Notifications",    href: "/notifications",    icon: BellRing },
-      { name: "Broadcast",       href: "/broadcast",      icon: Megaphone },
-      { name: "App Management",  href: "/app-management", icon: AppWindow },
-      { name: "Settings",        href: "/settings",       icon: Settings2 },
+      { name: "Transactions",    href: "/transactions",    icon: Receipt },
+      { name: "Withdrawals",     href: "/withdrawals",     icon: BanknoteIcon },
+      { name: "COD Remittances", href: "/cod-remittances", icon: Banknote },
+    ],
+  },
+  {
+    label: "Communication",
+    items: [
+      { name: "Notifications",  href: "/notifications",  icon: BellRing },
+      { name: "Broadcast",      href: "/broadcast",      icon: Megaphone },
+    ],
+  },
+  {
+    label: "Platform",
+    items: [
+      { name: "App Management", href: "/app-management", icon: AppWindow },
+      { name: "Settings",       href: "/settings",       icon: Settings2 },
     ],
   },
 ];

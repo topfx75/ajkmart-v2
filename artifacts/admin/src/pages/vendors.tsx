@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
-  Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle,
+  Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
 } from "lucide-react";
 import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -150,6 +151,7 @@ function SuspendModal({ vendor, onClose }: { vendor: any; onClose: () => void })
 
 /* ══════════ Main Vendors Page ══════════ */
 export default function Vendors() {
+  const [, setLocation] = useLocation();
   const { data, isLoading, refetch, isFetching } = useVendors();
   const { data: settingsData } = usePlatformSettings();
   const { toast } = useToast();
@@ -204,9 +206,18 @@ export default function Vendors() {
             <p className="text-sm text-muted-foreground">{vendors.length} total · {activeVendors} active · {suspendedVendors} suspended</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setLocation("/settings?cat=vendor")}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Vendor Config
+          </button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
