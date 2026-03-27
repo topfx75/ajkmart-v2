@@ -276,9 +276,10 @@ router.patch("/orders/:id/status", async (req, res) => {
 
   /* ── Rider Cancel: clear riderId + reset to preparing so another rider can pick it up ── */
   if (status === "cancelled") {
+    /* Include riderId in WHERE to close TOCTOU window — only this rider can release their own assignment */
     const [cancelled] = await db.update(ordersTable)
       .set({ riderId: null, status: "preparing", updatedAt: new Date() })
-      .where(eq(ordersTable.id, req.params["id"]!))
+      .where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId)))
       .returning();
     await db.insert(notificationsTable).values({
       id: generateId(), userId: order.userId,
@@ -288,7 +289,8 @@ router.patch("/orders/:id/status", async (req, res) => {
     res.json({ ...cancelled, total: safeNum(cancelled?.total || 0), status: "cancelled_by_rider" }); return;
   }
 
-  const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(eq(ordersTable.id, req.params["id"]!)).returning();
+  /* Include riderId in WHERE to close the TOCTOU window — only the assigned rider can advance status */
+  const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId))).returning();
 
   if (status === "delivered") {
     const s = await getPlatformSettings();

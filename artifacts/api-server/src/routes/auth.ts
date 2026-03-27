@@ -398,6 +398,16 @@ router.post("/logout", async (req, res) => {
    Returns: { phone: {available,taken}, email: {...}, username: {...} }
 ══════════════════════════════════════════════════════════════ */
 router.post("/check-available", async (req, res) => {
+  /* ── IP-based rate limit: max 20 checks per 10 minutes per IP ──
+     Prevents scraping the entire user registry via phone/email/username probing. */
+  const ip = getClientIp(req);
+  const rlKey = `ip:check-available:${ip}`;
+  const rlStatus = checkLockout(rlKey, 20, 10);
+  if (rlStatus.locked) {
+    res.status(429).json({ error: `Too many requests. Try again in ${rlStatus.minutesLeft} minute(s).` }); return;
+  }
+  recordFailedAttempt(rlKey, 20, 10);
+
   const { phone, email, username } = req.body;
   const result: Record<string, { available: boolean; message: string }> = {};
 

@@ -171,7 +171,8 @@ router.patch("/orders/:id/status", async (req, res) => {
   if (!validStatuses.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.vendorId, vendorId))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(eq(ordersTable.id, req.params["id"]!)).returning();
+  /* Include vendorId in UPDATE WHERE to close the TOCTOU window between SELECT and UPDATE */
+  const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.vendorId, vendorId))).returning();
   const msgs: Record<string, { title: string; body: string }> = {
     confirmed: { title: "Order Confirmed! ✅", body: "Your order has been accepted by the store." },
     preparing: { title: "Being Prepared 🍳",  body: "The store is preparing your order now." },
