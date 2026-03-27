@@ -29,6 +29,15 @@ const C   = Colors.light;
 const W   = Dimensions.get("window").width;
 const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
+/* ─── Haversine distance (km) ─── */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /* ─── Popular spots (quick-fill chips) ─── */
 /* Popular spots — fetched dynamically from admin-managed API */
 type PopularSpot = { id: string; name: string; nameUrdu?: string; lat: number; lng: number; icon?: string; category?: string };
@@ -696,6 +705,22 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
                   </Text>
                 </View>
               </View>
+              {/* ── Rider live distance badge (when accepted/arrived) ── */}
+              {ride.riderLat != null && ride.riderLng != null && ride.pickupLat != null && (status === "accepted" || status === "arrived") && (() => {
+                const km = haversineKm(ride.riderLat, ride.riderLng, ride.pickupLat, ride.pickupLng);
+                const nearby = km < 0.2;
+                const stale  = ride.riderLocAge != null && ride.riderLocAge > 60;
+                return (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: nearby ? "#DCFCE7" : "#EFF6FF", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 15 }}>{nearby ? "📍" : "🚗"}</Text>
+                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: nearby ? "#065F46" : "#1E40AF", flex: 1 }}>
+                      {nearby ? "Driver qareeb hai!" : `Driver ${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`} durr hai`}
+                    </Text>
+                    {stale && <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "#9CA3AF" }}>• purani</Text>}
+                  </View>
+                );
+              })()}
+
               {/* Action buttons */}
               <View style={{ flexDirection: "row", gap: 10 }}>
                 {ride.riderPhone && (

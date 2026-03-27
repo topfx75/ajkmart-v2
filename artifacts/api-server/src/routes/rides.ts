@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { notificationsTable, rideBidsTable, rideServiceTypesTable, ridesTable, usersTable, walletTransactionsTable, popularLocationsTable } from "@workspace/db/schema";
+import { liveLocationsTable, notificationsTable, rideBidsTable, rideServiceTypesTable, ridesTable, usersTable, walletTransactionsTable, popularLocationsTable } from "@workspace/db/schema";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings } from "./admin.js";
@@ -538,7 +538,25 @@ router.get("/:id", async (req, res) => {
     updatedAt: b.updatedAt instanceof Date ? b.updatedAt.toISOString() : b.updatedAt,
   }));
 
-  res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids });
+  /* ── Rider live location (only when ride is active) ── */
+  let riderLat: number | null = null;
+  let riderLng: number | null = null;
+  let riderLocAge: number | null = null;
+  const ACTIVE_STATUSES = ["accepted", "arrived", "in_transit"];
+  if (ride.riderId && ACTIVE_STATUSES.includes(ride.status)) {
+    const [loc] = await db
+      .select()
+      .from(liveLocationsTable)
+      .where(eq(liveLocationsTable.userId, ride.riderId))
+      .limit(1);
+    if (loc) {
+      riderLat    = parseFloat(String(loc.latitude));
+      riderLng    = parseFloat(String(loc.longitude));
+      riderLocAge = Math.floor((Date.now() - new Date(loc.updatedAt).getTime()) / 1000);
+    }
+  }
+
+  res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge });
 });
 
 export default router;

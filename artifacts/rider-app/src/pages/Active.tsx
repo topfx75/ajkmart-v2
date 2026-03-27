@@ -3,6 +3,7 @@ import { AlertTriangle, Camera } from "lucide-react";
 import { api } from "../lib/api";
 import { useState, useRef, useEffect } from "react";
 import { usePlatformConfig } from "../lib/useConfig";
+import { useAuth } from "../lib/auth";
 
 function useElapsedTimer(startIso?: string | null) {
   const [elapsed, setElapsed] = useState(0);
@@ -79,6 +80,7 @@ const RIDE_LABELS = ["Accepted", "At Pickup", "In Transit", "Done"];
 export default function Active() {
   const qc = useQueryClient();
   const { config } = usePlatformConfig();
+  const { user } = useAuth();
   const [toastMsg, setToastMsg]   = useState("");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelTarget, setCancelTarget]           = useState<"order" | "ride">("ride");
@@ -88,6 +90,40 @@ export default function Active() {
   useEffect(() => {
     if (data?.order?.status === "picked_up") _setOrderPickedUp(true);
   }, [data?.order?.status]);
+
+  /* ── Live GPS location tracking — sends rider position to server every 15s ── */
+  useEffect(() => {
+    const hasActiveWork = !!(data?.order || data?.ride);
+    if (!hasActiveWork || !user?.id) return;
+    if (!navigator?.geolocation) return;
+
+    let lastSentTime = 0;
+    const MIN_INTERVAL_MS = 15_000;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const now = Date.now();
+        if (now - lastSentTime < MIN_INTERVAL_MS) return;
+        lastSentTime = now;
+        fetch("/api/locations/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId:    user.id,
+            latitude:  pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy:  pos.coords.accuracy,
+            role:      "rider",
+          }),
+        }).catch(() => {});
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [!!data?.order, !!data?.ride, user?.id]);
+
   const [proofPhoto, setProofPhoto]               = useState<string | null>(null);
   const [proofFileName, setProofFileName]         = useState<string>("");
   const photoInputRef                             = useRef<HTMLInputElement>(null);

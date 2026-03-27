@@ -2466,19 +2466,5 @@ router.get("/school-subscriptions", async (req, res) => {
   res.json({ subscriptions: enriched, total: enriched.length });
 });
 
-/* Public endpoint — GET /api/stops — active popular locations */
-router.get("/public-locations", async (_req, res) => {
-  await ensureDefaultLocations();
-  const locs = await db.select().from(popularLocationsTable)
-    .where(eq(popularLocationsTable.isActive, true))
-    .orderBy(asc(popularLocationsTable.sortOrder));
-  res.json({
-    locations: locs.map(l => ({
-      id: l.id, name: l.name, nameUrdu: l.nameUrdu,
-      lat: parseFloat(String(l.lat)), lng: parseFloat(String(l.lng)),
-      category: l.category, icon: l.icon,
-    })),
-  });
-});
 
 export default router;

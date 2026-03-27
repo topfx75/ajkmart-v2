@@ -1,4 +1,7 @@
 import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { popularLocationsTable } from "@workspace/db/schema";
+import { eq, asc } from "drizzle-orm";
 import { getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
@@ -57,16 +60,48 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
    Returns place suggestions for a search query.
    Falls back to AJK city list if Maps not configured.
 ══════════════════════════════════════════════════════════ */
+/* ── Build combined fallback list: hardcoded AJK + admin-managed popular locations ── */
+async function getFallbackPredictions(input: string) {
+  const query = input.toLowerCase();
+
+  /* Admin-managed popular locations from DB */
+  let dbLocs: typeof AJK_FALLBACK = [];
+  try {
+    const rows = await db.select().from(popularLocationsTable)
+      .where(eq(popularLocationsTable.isActive, true))
+      .orderBy(asc(popularLocationsTable.sortOrder));
+    dbLocs = rows.map(l => ({
+      placeId:     `pop_${l.id}`,
+      description: l.nameUrdu ? `${l.name} — ${l.nameUrdu}` : l.name,
+      mainText:    l.name,
+      lat:         parseFloat(String(l.lat)),
+      lng:         parseFloat(String(l.lng)),
+    }));
+  } catch { /* DB unavailable — use hardcoded only */ }
+
+  /* Merge: DB locations first (admin-curated), then hardcoded as backup */
+  const dbIds = new Set(dbLocs.map(l => l.description.toLowerCase()));
+  const hardcoded = AJK_FALLBACK.filter(l => !dbIds.has(l.description.toLowerCase()));
+  const combined = [...dbLocs, ...hardcoded];
+
+  if (!input) return combined;
+  return combined.filter(l =>
+    l.description.toLowerCase().includes(query) || l.mainText.toLowerCase().includes(query)
+  );
+}
+
 router.get("/autocomplete", async (req, res) => {
   const input = String(req.query.input ?? "").trim();
-  if (!input) { res.json({ predictions: AJK_FALLBACK, source: "fallback" }); return; }
+  if (!input) {
+    const all = await getFallbackPredictions("");
+    res.json({ predictions: all, source: "fallback" });
+    return;
+  }
 
   const { key, enabled, autocomplete } = await getKey();
 
   if (!enabled || !key || !autocomplete) {
-    const filtered = input
-      ? AJK_FALLBACK.filter(l => l.description.toLowerCase().includes(input.toLowerCase()))
-      : AJK_FALLBACK;
+    const filtered = await getFallbackPredictions(input);
     res.json({ predictions: filtered, source: "fallback" });
     return;
   }
@@ -106,10 +141,26 @@ router.get("/geocode", async (req, res) => {
   const placeId = String(req.query.place_id ?? "").trim();
   const address = String(req.query.address ?? "").trim();
 
-  /* Resolve from fallback list by placeId */
+  /* Resolve from hardcoded fallback list by placeId */
   if (placeId.startsWith("ajk_")) {
     const loc = AJK_FALLBACK.find(l => l.placeId === placeId);
     if (loc) { res.json({ lat: loc.lat, lng: loc.lng, formattedAddress: loc.description, source: "fallback" }); return; }
+  }
+
+  /* Resolve admin-managed popular location by placeId (pop_{id}) */
+  if (placeId.startsWith("pop_")) {
+    const id = placeId.slice(4);
+    try {
+      const [row] = await db.select().from(popularLocationsTable)
+        .where(eq(popularLocationsTable.id, id)).limit(1);
+      if (row) {
+        res.json({
+          lat: parseFloat(String(row.lat)), lng: parseFloat(String(row.lng)),
+          formattedAddress: row.name, source: "fallback",
+        });
+        return;
+      }
+    } catch { /* fall through */ }
   }
 
   const { key, enabled, geocoding } = await getKey();
