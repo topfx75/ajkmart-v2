@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, and, gte, sql, isNull, or } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import {
@@ -12,6 +12,8 @@ import {
   addSecurityEvent,
   getClientIp,
   getCachedSettings,
+  signUserJwt,
+  verifyUserJwt,
 } from "../middleware/security.js";
 import { sendOtpSMS } from "../services/sms.js";
 import { sendWhatsAppOTP } from "../services/whatsapp.js";
@@ -169,8 +171,11 @@ router.post("/verify-otp", async (req, res) => {
     return;
   }
 
-  /* ── Inactive check ── */
-  if (!user.isActive) {
+  /* ── Inactive check ──
+     Pending-approval accounts are isActive=false but should NOT be blocked here;
+     they need to pass OTP validation and receive the pendingApproval=true response. ── */
+  const isPendingApproval = (settings["user_require_approval"] ?? "off") === "on" && user.approvalStatus === "pending";
+  if (!user.isActive && !isPendingApproval) {
     res.status(403).json({ error: "Your account is currently inactive. Please contact support." });
     return;
   }
@@ -272,7 +277,7 @@ router.post("/verify-otp", async (req, res) => {
   const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
   if (requireApproval && user.approvalStatus === "pending") {
     addAuditEntry({ action: "user_login_pending", ip, details: `Pending approval login for phone: ${phone}`, result: "pending" });
-    const token = Buffer.from(`${user.id}:${phone}:${Date.now()}`).toString("base64");
+    const token = signUserJwt(user.id, phone, user.role ?? "customer", user.roles ?? "customer", 1);
     res.json({
       token, pendingApproval: true,
       message: "Aapka account admin approval ke liye bheja gaya hai. Approve hone par aap login kar sakenge.",
@@ -292,9 +297,9 @@ router.post("/verify-otp", async (req, res) => {
     ? parseInt(settings["security_rider_token_days"] ?? "30", 10)
     : parseInt(settings["security_session_days"]     ?? "30", 10);
 
-  /* ── Build token: userId:phone:issuedAt ── */
+  /* ── Build signed JWT ── */
+  const token = signUserJwt(user.id, phone, user.role ?? "customer", user.roles ?? user.role ?? "customer", sessionDays);
   const issuedAt = Date.now();
-  const token = Buffer.from(`${user.id}:${phone}:${issuedAt}`).toString("base64");
   const expiresAt = new Date(issuedAt + sessionDays * 24 * 60 * 60 * 1000).toISOString();
 
   res.json({
@@ -323,36 +328,25 @@ router.post("/verify-otp", async (req, res) => {
    Client can use this to check if their token is still valid.
 ───────────────────────────────────────────────────────────── */
 router.post("/validate-token", async (req, res) => {
-  const { token } = req.body;
+  /* Support both body token and Authorization header */
+  const authHeader = req.headers.authorization ?? "";
+  const bodyToken  = req.body?.token ?? "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : bodyToken;
+
   if (!token) { res.status(400).json({ error: "token required" }); return; }
 
   try {
-    const decoded = Buffer.from(token, "base64").toString("utf8");
-    const parts = decoded.split(":");
-    if (parts.length < 3) { res.status(401).json({ valid: false, error: "Invalid token" }); return; }
+    const payload = verifyUserJwt(token);
+    if (!payload) { res.status(401).json({ valid: false, error: "Invalid or expired token" }); return; }
 
-    const userId   = parts[0]!;
-    const issuedAt = parseInt(parts[parts.length - 1]!, 10);
-    if (isNaN(issuedAt)) { res.status(401).json({ valid: false, error: "Invalid token" }); return; }
-
-    const settings = await getCachedSettings();
-
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) { res.status(401).json({ valid: false, error: "User not found" }); return; }
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub)).limit(1);
+    if (!user)         { res.status(401).json({ valid: false, error: "User not found" }); return; }
     if (user.isBanned) { res.status(403).json({ valid: false, error: "Account suspended" }); return; }
-    if (!user.isActive) { res.status(403).json({ valid: false, error: "Account inactive" }); return; }
+    if (!user.isActive){ res.status(403).json({ valid: false, error: "Account inactive" }); return; }
 
-    const sessionDays = user.role === "rider"
-      ? parseInt(settings["security_rider_token_days"] ?? "30", 10)
-      : parseInt(settings["security_session_days"]     ?? "30", 10);
-    const expiryMs = sessionDays * 24 * 60 * 60 * 1000;
-
-    if (Date.now() - issuedAt > expiryMs) {
-      res.status(401).json({ valid: false, error: "Session expired. Please log in again." });
-      return;
-    }
-
-    const expiresAt = new Date(issuedAt + expiryMs).toISOString();
+    const expiresAt = payload.exp ? new Date(payload.exp * 1000).toISOString() : null;
     res.json({ valid: true, expiresAt, userId: user.id, role: user.role });
   } catch {
     res.status(401).json({ valid: false, error: "Token validation failed" });
@@ -361,13 +355,23 @@ router.post("/validate-token", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────
    POST /auth/logout
+   Requires a valid JWT in the Authorization header.
+   The token itself is stateless; logout just clears any pending OTP
+   and records the audit event.  The client must discard the token.
 ───────────────────────────────────────────────────────────── */
 router.post("/logout", async (req, res) => {
-  const { userId } = req.body;
-  if (userId) {
-    await db.update(usersTable).set({ otpCode: null }).where(eq(usersTable.id, userId));
-    addAuditEntry({ action: "user_logout", ip: getClientIp(req), details: `User logout: ${userId}`, result: "success" });
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const tokenHeader = req.headers["x-auth-token"] as string | undefined;
+  const raw = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
+
+  if (raw) {
+    const payload = verifyUserJwt(raw);
+    if (payload) {
+      await db.update(usersTable).set({ otpCode: null }).where(eq(usersTable.id, payload.userId));
+      addAuditEntry({ action: "user_logout", ip: getClientIp(req), details: `User logout: ${payload.userId}`, result: "success" });
+    }
   }
+  /* Always respond 200 — client should discard its token regardless */
   res.json({ success: true, message: "Logged out successfully" });
 });
 
@@ -519,12 +523,12 @@ router.post("/verify-email-otp", async (req, res) => {
   addAuditEntry({ action: "email_login", ip, details: `Email OTP login for: ${normalized}`, result: "success" });
 
   const sessionDays = parseInt(settings["security_session_days"] ?? "30", 10);
-  const issuedAt = Date.now();
-  const token = Buffer.from(`${user.id}:${normalized}:${issuedAt}`).toString("base64");
+  const token = signUserJwt(user.id, user.phone ?? normalized, user.role ?? "customer", user.roles ?? "customer", sessionDays);
+  const expiresAt = new Date(Date.now() + sessionDays * 86400000).toISOString();
 
   res.json({
     token,
-    expiresAt: new Date(issuedAt + sessionDays * 86400000).toISOString(),
+    expiresAt,
     pendingApproval: user.approvalStatus === "pending",
     user: { id: user.id, phone: user.phone, name: user.name, email: user.email, username: user.username, role: user.role, roles: user.roles, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"), emailVerified: true, phoneVerified: user.phoneVerified ?? false },
   });
@@ -584,13 +588,12 @@ router.post("/login/username", async (req, res) => {
   addAuditEntry({ action: "username_login", ip, details: `Username login: ${clean}`, result: "success" });
 
   const sessionDays = parseInt(settings["security_session_days"] ?? "30", 10);
-  const issuedAt = Date.now();
-  const token = Buffer.from(`${user.id}:${user.phone}:${issuedAt}`).toString("base64");
+  const token = signUserJwt(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? "customer", sessionDays);
   const pendingApproval = (settings["user_require_approval"] ?? "off") === "on" && user.approvalStatus === "pending";
 
   res.json({
     token,
-    expiresAt: new Date(issuedAt + sessionDays * 86400000).toISOString(),
+    expiresAt: new Date(Date.now() + sessionDays * 86400000).toISOString(),
     pendingApproval,
     user: { id: user.id, phone: user.phone, name: user.name, email: user.email, username: user.username, role: user.role, roles: user.roles, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"), emailVerified: user.emailVerified ?? false, phoneVerified: user.phoneVerified ?? false },
   });
@@ -599,20 +602,16 @@ router.post("/login/username", async (req, res) => {
 /* ══════════════════════════════════════════════════════════════
    POST /auth/complete-profile
    Set name, email, username, password for first-time setup.
-   Requires auth token. Body: { token, name, email?, username?, password? }
+   Requires valid JWT. Body: { token, name, email?, username?, password? }
 ══════════════════════════════════════════════════════════════ */
 router.post("/complete-profile", async (req, res) => {
   const { token, name, email, username, password } = req.body;
   if (!token) { res.status(401).json({ error: "Token required" }); return; }
 
-  /* Decode token to get userId */
-  let userId: string;
-  try {
-    const decoded = Buffer.from(token, "base64").toString("utf8");
-    userId = decoded.split(":")[0]!;
-  } catch {
-    res.status(401).json({ error: "Invalid token" }); return;
-  }
+  /* Verify JWT to get userId */
+  const payload = verifyUserJwt(token);
+  if (!payload) { res.status(401).json({ error: "Invalid or expired token. Please log in again." }); return; }
+  const userId = payload.userId;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
@@ -674,8 +673,9 @@ router.post("/set-password", async (req, res) => {
   const { token, password, currentPassword } = req.body;
   if (!token || !password) { res.status(400).json({ error: "Token and password required" }); return; }
 
-  let userId: string;
-  try { userId = Buffer.from(token, "base64").toString("utf8").split(":")[0]!; } catch { res.status(401).json({ error: "Invalid token" }); return; }
+  const payload = verifyUserJwt(token);
+  if (!payload) { res.status(401).json({ error: "Invalid or expired token. Please log in again." }); return; }
+  const userId = payload.userId;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }

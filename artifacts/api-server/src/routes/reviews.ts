@@ -4,15 +4,17 @@ import { ordersTable, reviewsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
 /* ── POST /reviews — submit a review ─────────────────────────────────────── */
-router.post("/", async (req, res) => {
-  const { orderId, userId, vendorId, riderId, orderType, rating, comment } = req.body;
+router.post("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
+  const { orderId, vendorId, riderId, orderType, rating, comment } = req.body;
 
-  if (!orderId || !userId || !orderType || !rating) {
-    res.status(400).json({ error: "orderId, userId, orderType, and rating are required" });
+  if (!orderId || !orderType || !rating) {
+    res.status(400).json({ error: "orderId, orderType, and rating are required" });
     return;
   }
   if (typeof rating !== "number" || rating < 1 || rating > 5) {
@@ -30,11 +32,17 @@ router.post("/", async (req, res) => {
 
   /* ── Rating window enforcement: order must be recent enough ── */
   const ratingWindowHours = parseFloat(s["order_rating_window_hours"] ?? "48");
-  const [orderRow] = await db.select({ createdAt: ordersTable.createdAt })
+  const [orderRow] = await db.select({ createdAt: ordersTable.createdAt, userId: ordersTable.userId })
     .from(ordersTable)
     .where(eq(ordersTable.id, orderId))
     .limit(1);
+
   if (orderRow) {
+    /* Verify the order belongs to this user */
+    if (orderRow.userId !== userId) {
+      res.status(403).json({ error: "You can only review your own orders." });
+      return;
+    }
     const ageHours = (Date.now() - new Date(orderRow.createdAt).getTime()) / (3_600_000);
     if (ageHours > ratingWindowHours) {
       res.status(400).json({
@@ -70,10 +78,10 @@ router.post("/", async (req, res) => {
 });
 
 /* ── GET /reviews?orderId= — check if reviewed ────────────────────────────── */
-router.get("/", async (req, res) => {
+router.get("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const orderId = req.query["orderId"] as string;
-  const userId  = req.query["userId"]  as string;
-  if (!orderId || !userId) { res.status(400).json({ error: "orderId and userId required" }); return; }
+  if (!orderId) { res.status(400).json({ error: "orderId required" }); return; }
 
   const rows = await db
     .select()
@@ -84,7 +92,7 @@ router.get("/", async (req, res) => {
   res.json({ reviewed: rows.length > 0, review: rows[0] ?? null });
 });
 
-/* ── GET /reviews/vendor/:vendorId — all reviews for a vendor ─────────────── */
+/* ── GET /reviews/vendor/:vendorId — all reviews for a vendor (public) ────── */
 router.get("/vendor/:vendorId", async (req, res) => {
   const rows = await db
     .select()

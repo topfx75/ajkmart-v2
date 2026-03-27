@@ -4,6 +4,7 @@ import { usersTable, walletTransactionsTable } from "@workspace/db/schema";
 import { eq, and, gte, sum } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -17,10 +18,9 @@ function mapTx(t: typeof walletTransactionsTable.$inferSelect) {
   };
 }
 
-/* ── GET /wallet?userId=xxx ──────────────────────────────────────────────── */
-router.get("/", async (req, res) => {
-  const userId = req.query["userId"] as string;
-  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+/* ── GET /wallet ─────────────────────────────────────────────────────────── */
+router.get("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
@@ -38,16 +38,16 @@ router.get("/", async (req, res) => {
 });
 
 /* ── POST /wallet/topup ──────────────────────────────────────────────────── */
-router.post("/topup", async (req, res) => {
-  const { userId, amount, method } = req.body;
-  if (!userId || !amount) { res.status(400).json({ error: "userId and amount required" }); return; }
+router.post("/topup", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
+  const { amount, method } = req.body;
+  if (!amount) { res.status(400).json({ error: "amount required" }); return; }
 
   const topupAmt = parseFloat(amount);
   if (isNaN(topupAmt) || topupAmt <= 0) {
     res.status(400).json({ error: "Invalid amount" }); return;
   }
 
-  // Fetch platform settings for validation
   const s = await getPlatformSettings();
   const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
   const minTopup      = parseFloat(s["wallet_min_topup"]   ?? "100");
@@ -64,7 +64,6 @@ router.post("/topup", async (req, res) => {
     res.status(400).json({ error: `Maximum single top-up is Rs. ${maxTopup}` }); return;
   }
 
-  // Atomic transaction: read balance → check limit → credit (prevents race condition)
   try {
     const result = await db.transaction(async (tx) => {
       const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -93,10 +92,11 @@ router.post("/topup", async (req, res) => {
 });
 
 /* ── POST /wallet/send ───────────────────────────────────────────────────── */
-router.post("/send", async (req, res) => {
-  const { senderUserId, receiverPhone, amount, note } = req.body;
-  if (!senderUserId || !receiverPhone || !amount) {
-    res.status(400).json({ error: "senderUserId, receiverPhone, and amount are required" }); return;
+router.post("/send", customerAuth, async (req, res) => {
+  const senderUserId = (req as any).customerId as string;
+  const { receiverPhone, amount, note } = req.body;
+  if (!receiverPhone || !amount) {
+    res.status(400).json({ error: "receiverPhone and amount are required" }); return;
   }
 
   const sendAmt = parseFloat(amount);
@@ -104,7 +104,6 @@ router.post("/send", async (req, res) => {
     res.status(400).json({ error: "Invalid amount" }); return;
   }
 
-  // Platform settings validation
   const s = await getPlatformSettings();
   const walletEnabled  = (s["feature_wallet"]      ?? "on") === "on";
   const p2pEnabled     = (s["wallet_p2p_enabled"]   ?? "on") === "on";
@@ -116,7 +115,6 @@ router.post("/send", async (req, res) => {
   if (!p2pEnabled) {
     res.status(403).json({ error: "P2P money transfers are currently disabled by admin." }); return;
   }
-
   if (!walletEnabled) {
     res.status(503).json({ error: "Wallet service is currently disabled" }); return;
   }
@@ -127,7 +125,6 @@ router.post("/send", async (req, res) => {
     res.status(400).json({ error: `Maximum single transfer is Rs. ${maxWithdrawal}` }); return;
   }
 
-  // Use DB transaction to prevent race condition / double-spend
   try {
     const result = await db.transaction(async (tx) => {
       const [sender] = await tx.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
@@ -136,7 +133,6 @@ router.post("/send", async (req, res) => {
       const senderBalance = parseFloat(sender.walletBalance ?? "0");
       if (senderBalance < sendAmt) throw new Error("Insufficient wallet balance");
 
-      /* ── Cumulative daily limit check (sum all today's debits, not just this transaction) ── */
       const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
       const [todayDebits] = await tx
         .select({ total: sum(walletTransactionsTable.amount) })

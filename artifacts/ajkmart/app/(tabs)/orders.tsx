@@ -428,10 +428,11 @@ function ParcelCard({ booking }: { booking: any }) {
 }
 
 /* ─────────────────────────── Review Modal ─────────────────────────── */
-function ReviewModal({ target, userId, apiBase, onClose, onDone }: {
+function ReviewModal({ target, userId, apiBase, token, onClose, onDone }: {
   target: any;
   userId: string;
   apiBase: string;
+  token: string | null;
   onClose: () => void;
   onDone: (orderId: string) => void;
 }) {
@@ -447,10 +448,9 @@ function ReviewModal({ target, userId, apiBase, onClose, onDone }: {
     try {
       const res = await fetch(`${apiBase}/reviews`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           orderId: target.id,
-          userId,
           vendorId: target.vendorId ?? null,
           riderId: target.riderId ?? null,
           orderType: target._type ?? target.type ?? "order",
@@ -560,7 +560,7 @@ function SectionHeader({ title, count, active }: { title: string; count: number;
 /* ─────────────────────────── Main Screen ─────────────────────────── */
 export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { config } = usePlatformConfig();
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -599,61 +599,63 @@ export default function OrdersScreen() {
   const [parcelData, setParcelData] = useState<any>(null);
   const [parcelLoading, setParcelLoading] = useState(false);
 
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
   const handleCancel = useCallback(async (order: any) => {
     try {
       const res = await fetch(`${API_BASE}/orders/${order.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "cancelled", userId: user?.id }),
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ status: "cancelled" }),
       });
       if (!res.ok) throw new Error();
       refetchOrders();
     } catch { /* silent — order list will refresh on next poll */ }
-  }, [user, refetchOrders, API_BASE]);
+  }, [user, token, refetchOrders, API_BASE]);
 
   const fetchRides = useCallback(async () => {
     if (!user?.id) return;
     setRidesLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/rides?userId=${user.id}`);
+      const res = await fetch(`${API_BASE}/rides`, { headers: authHeaders });
       const d = await res.json();
       setRidesData(d);
     } catch {}
     setRidesLoading(false);
-  }, [user?.id]);
+  }, [user?.id, token]);
 
   const fetchPharmacy = useCallback(async () => {
     if (!user?.id) return;
     setPharmLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/pharmacy-orders?userId=${user.id}`);
+      const res = await fetch(`${API_BASE}/pharmacy-orders`, { headers: authHeaders });
       const d = await res.json();
       setPharmData(d);
     } catch {}
     setPharmLoading(false);
-  }, [user?.id]);
+  }, [user?.id, token]);
 
   const fetchParcel = useCallback(async () => {
     if (!user?.id) return;
     setParcelLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/parcel-bookings?userId=${user.id}`);
+      const res = await fetch(`${API_BASE}/parcel-bookings`, { headers: authHeaders });
       const d = await res.json();
       setParcelData(d);
     } catch {}
     setParcelLoading(false);
-  }, [user?.id]);
+  }, [user?.id, token]);
 
   const handleCancelRide = useCallback(async (ride: any) => {
     try {
       await fetch(`${API_BASE}/rides/${ride.id}/cancel`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user?.id }),
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({}),
       });
       fetchRides();
     } catch { /* ride list will refresh on next poll */ }
-  }, [user?.id, fetchRides, API_BASE]);
+  }, [user?.id, token, fetchRides, API_BASE]);
 
   React.useEffect(() => {
     if (user?.id) {
@@ -887,6 +889,7 @@ export default function OrdersScreen() {
           target={reviewTarget}
           userId={user.id}
           apiBase={`https://${process.env.EXPO_PUBLIC_DOMAIN}/api`}
+          token={token}
           onClose={() => setReviewTarget(null)}
           onDone={handleReviewDone}
         />

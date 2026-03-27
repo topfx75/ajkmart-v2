@@ -4,6 +4,7 @@ import { liveLocationsTable, notificationsTable, rideBidsTable, rideServiceTypes
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings } from "./admin.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -139,17 +140,18 @@ router.post("/estimate", async (req, res) => {
 /* ══════════════════════════════════════════════════════
    POST /rides — Book a ride (standard or bargaining)
 ══════════════════════════════════════════════════════ */
-router.post("/", async (req, res) => {
+router.post("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const {
-    userId, type, pickupAddress, dropAddress,
+    type, pickupAddress, dropAddress,
     pickupLat, pickupLng, dropLat, dropLng,
     paymentMethod,
     offeredFare,   /* bargaining: customer's custom price offer */
     bargainNote,   /* bargaining: optional note */
   } = req.body;
 
-  if (!userId || !type || !paymentMethod) {
-    res.status(400).json({ error: "userId, type, and paymentMethod are required" }); return;
+  if (!type || !paymentMethod) {
+    res.status(400).json({ error: "type and paymentMethod are required" }); return;
   }
   if (!pickupAddress || !dropAddress) {
     res.status(400).json({ error: "pickupAddress and dropAddress are required" }); return;
@@ -287,9 +289,8 @@ router.post("/", async (req, res) => {
 /* ══════════════════════════════════════════════════════
    PATCH /rides/:id/cancel — Customer cancels a ride
 ══════════════════════════════════════════════════════ */
-router.patch("/:id/cancel", async (req, res) => {
-  const { userId } = req.body;
-  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+router.patch("/:id/cancel", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
 
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, req.params["id"]!)).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
@@ -374,9 +375,10 @@ router.patch("/:id/cancel", async (req, res) => {
    PATCH /rides/:id/accept-bid — Customer accepts a specific rider's bid
    Body: { userId, bidId }
 ══════════════════════════════════════════════════════ */
-router.patch("/:id/accept-bid", async (req, res) => {
-  const { userId, bidId } = req.body;
-  if (!userId || !bidId) { res.status(400).json({ error: "userId and bidId required" }); return; }
+router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
+  const { bidId } = req.body;
+  if (!bidId) { res.status(400).json({ error: "bidId required" }); return; }
 
   const rideId = req.params["id"]!;
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -449,9 +451,10 @@ router.patch("/:id/accept-bid", async (req, res) => {
    Body: { userId, offeredFare, note? }
    Works anytime during bargaining; rejects all pending bids → riders re-bid
 ══════════════════════════════════════════════════════ */
-router.patch("/:id/customer-counter", async (req, res) => {
-  const { userId, offeredFare: newOffer, note } = req.body;
-  if (!userId || !newOffer) { res.status(400).json({ error: "userId and offeredFare required" }); return; }
+router.patch("/:id/customer-counter", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
+  const { offeredFare: newOffer, note } = req.body;
+  if (!newOffer) { res.status(400).json({ error: "offeredFare required" }); return; }
 
   const rideId = req.params["id"]!;
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -496,9 +499,8 @@ router.patch("/:id/customer-counter", async (req, res) => {
 /* ══════════════════════════════════════════════════════
    GET /rides — List rides for user
 ══════════════════════════════════════════════════════ */
-router.get("/", async (req, res) => {
-  const userId = req.query["userId"] as string;
-  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+router.get("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const rides = await db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(ridesTable.createdAt);
   res.json({
     rides: rides.map(formatRide).reverse(),

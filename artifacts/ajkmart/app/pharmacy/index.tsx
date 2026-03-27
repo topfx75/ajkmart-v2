@@ -106,7 +106,7 @@ function MedCard({ med, qty, onAdd, onRemove }: {
 export default function PharmacyScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
 
   const [activeTab, setActiveTab] = useState("All");
@@ -154,7 +154,6 @@ export default function PharmacyScreen() {
     setLoading(true);
     try {
       const body = {
-        userId: user?.id,
         items: cartItems.map(m => ({ id: m.id, name: m.name, price: m.price, quantity: m.qty })),
         prescriptionNote: prescription || null,
         deliveryAddress: address,
@@ -163,7 +162,7 @@ export default function PharmacyScreen() {
       };
       const res = await fetch(`${API}/pharmacy-orders`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(body),
       });
       const data = await res.json();

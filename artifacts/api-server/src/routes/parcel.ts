@@ -4,6 +4,7 @@ import { notificationsTable, parcelBookingsTable, usersTable, walletTransactions
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -47,12 +48,8 @@ router.post("/estimate", async (req, res) => {
   res.json({ fare, estimatedTime, parcelType, baseFee, perKgRate, weightKg: weight ?? 0 });
 });
 
-router.get("/", async (req, res) => {
-  const userId = req.query["userId"] as string;
-  if (!userId) {
-    res.status(400).json({ error: "userId required" });
-    return;
-  }
+router.get("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const bookings = await db
     .select()
     .from(parcelBookingsTable)
@@ -61,7 +58,8 @@ router.get("/", async (req, res) => {
   res.json({ bookings: bookings.map(mapBooking).reverse(), total: bookings.length });
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const [booking] = await db
     .select()
     .from(parcelBookingsTable)
@@ -71,17 +69,19 @@ router.get("/:id", async (req, res) => {
     res.status(404).json({ error: "Parcel booking not found" });
     return;
   }
+  if (booking.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
   res.json(mapBooking(booking));
 });
 
-router.post("/", async (req, res) => {
+router.post("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const {
-    userId, senderName, senderPhone, pickupAddress,
+    senderName, senderPhone, pickupAddress,
     receiverName, receiverPhone, dropAddress,
     parcelType, weight, description, paymentMethod,
   } = req.body;
 
-  if (!userId || !senderName || !senderPhone || !pickupAddress || !receiverName || !receiverPhone || !dropAddress || !parcelType || !paymentMethod) {
+  if (!senderName || !senderPhone || !pickupAddress || !receiverName || !receiverPhone || !dropAddress || !parcelType || !paymentMethod) {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }

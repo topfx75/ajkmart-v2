@@ -45,10 +45,11 @@ type PopularSpot = { id: string; name: string; nameUrdu?: string; lat: number; l
 
 
 /* ─── Professional Ride Tracker — Careem/Uber style ─── */
-function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: {
+function RideTracker({ rideId, initialType, userId, token, cancellationFee, onReset }: {
   rideId: string;
   initialType: string;
   userId: string;
+  token: string | null;
   cancellationFee: number;
   onReset: () => void;
 }) {
@@ -120,13 +121,15 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
   const [showUpdateOffer,   setShowUpdateOffer]    = useState(false);
   const [acceptBidId,       setAcceptBidId]        = useState<string | null>(null);  /* which bid is loading */
 
+  const authHdrs = token ? { Authorization: `Bearer ${token}` } : {};
+
   const acceptBid = async (bidId: string) => {
     setAcceptBidId(bidId);
     try {
       const r = await fetch(`${API}/rides/${rideId}/accept-bid`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, bidId }),
+        headers: { "Content-Type": "application/json", ...authHdrs },
+        body: JSON.stringify({ bidId }),
       });
       const d = await r.json();
       if (r.ok) setRide(d);
@@ -141,8 +144,8 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
     try {
       const r = await fetch(`${API}/rides/${rideId}/customer-counter`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, offeredFare: amt }),
+        headers: { "Content-Type": "application/json", ...authHdrs },
+        body: JSON.stringify({ offeredFare: amt }),
       });
       const d = await r.json();
       if (r.ok) { setRide(d); setUpdateOfferInput(""); setShowUpdateOffer(false); }
@@ -169,8 +172,8 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
     try {
       await fetch(`${API}/rides/${rideId}/cancel`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
+        headers: { "Content-Type": "application/json", ...authHdrs },
+        body: JSON.stringify({}),
       });
     } catch {}
     setCancelling(false);
@@ -855,7 +858,7 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
 /* ════════════════════ MAIN RIDE SCREEN ════════════════════ */
 export default function RideScreen() {
   const insets = useSafeAreaInsets();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
   const rideCfg = config.rides;
@@ -1045,9 +1048,9 @@ export default function RideScreen() {
     try {
       const res = await fetch(`${API}/school/subscribe`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
-          userId: user.id, routeId: selectedRoute.id,
+          routeId: selectedRoute.id,
           studentName: schoolStudent.trim(), studentClass: schoolClass.trim(),
           paymentMethod: payMethod,
         }),
@@ -1093,9 +1096,9 @@ export default function RideScreen() {
     try {
       const res = await fetch(`${API}/rides`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
-          userId: user.id, type: rideType,
+          type: rideType,
           pickupAddress: pickup, dropAddress: drop,
           pickupLat: pickupObj.lat, pickupLng: pickupObj.lng,
           dropLat:   dropObj.lat,   dropLng:   dropObj.lng,
@@ -1119,9 +1122,8 @@ export default function RideScreen() {
           const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           await fetch(`${API}/locations/update`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
             body: JSON.stringify({
-              userId:    user.id,
               latitude:  pos.coords.latitude,
               longitude: pos.coords.longitude,
               accuracy:  pos.coords.accuracy ?? null,
@@ -1139,7 +1141,7 @@ export default function RideScreen() {
     if (!user) return;
     setHistLoading(true);
     try {
-      const res = await fetch(`${API}/rides?userId=${user.id}`);
+      const res = await fetch(`${API}/rides`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       const data = await res.json();
       setHistory(data.rides || []);
     } catch { setHistory([]); }
@@ -1152,6 +1154,7 @@ export default function RideScreen() {
         rideId={booked.id}
         initialType={booked.type ?? rideType}
         userId={user?.id ?? ""}
+        token={token}
         cancellationFee={rideCfg.cancellationFee ?? 30}
         onReset={() => { setBooked(null); setPickup(""); setDrop(""); setPickupObj(null); setDropObj(null); setEstimate(null); }}
       />

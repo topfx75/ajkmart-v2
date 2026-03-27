@@ -57,7 +57,7 @@ function TxItem({ tx }: { tx: any }) {
 /* ═══════════════════════════ MAIN WALLET SCREEN ═══════════════════════════ */
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const qc = useQueryClient();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -122,8 +122,8 @@ export default function WalletScreen() {
     try {
       const res = await fetch(`${API}/wallet/send`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ senderUserId: user!.id, receiverPhone: sendPhone.trim(), amount: num, note: sendNote || null }),
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ receiverPhone: sendPhone.trim(), amount: num, note: sendNote || null }),
       });
       const data = await res.json();
       if (!res.ok) { showToast(data.error || "Transfer fail ho gaya", "error"); setSendLoading(false); return; }

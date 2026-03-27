@@ -1,5 +1,18 @@
 import type { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
+import { db } from "@workspace/db";
+import { usersTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { getPlatformSettings } from "../routes/admin.js";
+
+/* ══════════════════════════════════════════════════════════════
+   JWT CONFIGURATION
+══════════════════════════════════════════════════════════════ */
+const _jwtSecret = process.env["JWT_SECRET"];
+if (!_jwtSecret) {
+  console.warn("[AUTH] JWT_SECRET env var not set — using insecure dev default. Set JWT_SECRET before deploying to production.");
+}
+export const JWT_SECRET = _jwtSecret ?? "ajkmart-dev-secret-CHANGE-IN-PRODUCTION";
 
 /* ══════════════════════════════════════════════════════════════
    TOR EXIT NODE DETECTION
@@ -127,26 +140,58 @@ export function addSecurityEvent(event: Omit<SecurityEvent, "timestamp">) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   TOKEN HELPERS
+   JWT HELPERS
+   Signed tokens replace the old Base64 scheme.
+   Payload: { sub: userId, phone, role, roles }
+   Expiry is embedded in the JWT — no separate issuedAt check needed.
 ══════════════════════════════════════════════════════════════ */
-export function decodeUserToken(token: string): { userId: string; phone: string; issuedAt: number } | null {
+export interface JwtUserPayload {
+  userId: string;
+  phone: string;
+  role: string;
+  roles: string;
+}
+
+export function signUserJwt(
+  userId: string,
+  phone: string,
+  role: string,
+  roles: string,
+  sessionDays: number,
+): string {
+  return jwt.sign(
+    { sub: userId, phone, role, roles },
+    JWT_SECRET,
+    { expiresIn: `${sessionDays}d` },
+  );
+}
+
+export function verifyUserJwt(token: string): JwtUserPayload | null {
   try {
-    const decoded = Buffer.from(token, "base64").toString("utf8");
-    const parts = decoded.split(":");
-    if (parts.length < 3) return null;
-    const userId = parts[0]!;
-    const issuedAt = parseInt(parts[parts.length - 1]!, 10);
-    const phone = parts.slice(1, parts.length - 1).join(":");
-    if (isNaN(issuedAt) || !userId) return null;
-    return { userId, phone, issuedAt };
+    const payload = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
+    if (!payload.sub) return null;
+    return {
+      userId: payload["sub"] as string,
+      phone:  payload["phone"] as string ?? "",
+      role:   payload["role"]  as string ?? "customer",
+      roles:  payload["roles"] as string ?? "customer",
+    };
   } catch {
     return null;
   }
 }
 
-export function isTokenExpired(issuedAt: number, sessionDays: number): boolean {
-  const expiryMs = sessionDays * 24 * 60 * 60 * 1000;
-  return Date.now() - issuedAt > expiryMs;
+/* ── Legacy decode: kept for internal callers that still use it ── */
+export function decodeUserToken(token: string): { userId: string; phone: string; issuedAt: number } | null {
+  const v = verifyUserJwt(token);
+  if (!v) return null;
+  const raw = jwt.decode(token) as { iat?: number } | null;
+  return { userId: v.userId, phone: v.phone, issuedAt: (raw?.iat ?? 0) * 1000 };
+}
+
+export function isTokenExpired(_issuedAt: number, _sessionDays: number): boolean {
+  /* JWT handles expiry — this is a no-op kept for compatibility */
+  return false;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -212,13 +257,23 @@ export function invalidateSettingsCache() {
 
 /* ══════════════════════════════════════════════════════════════
    ROLE DETECTION
+   Uses JWT claims — never trusts the client-supplied x-user-role header.
 ══════════════════════════════════════════════════════════════ */
 function getRoleKey(req: Request): "admin" | "rider" | "vendor" | "general" {
   const url = req.url || "";
   if (req.headers["x-admin-secret"] || url.includes("/admin")) return "admin";
-  const role = (req.headers["x-user-role"] as string | undefined)?.toLowerCase() || "";
-  if (role === "rider") return "rider";
-  if (role === "vendor") return "vendor";
+
+  /* Decode JWT from Authorization header to get the verified role */
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const tokenHeader = req.headers["x-auth-token"] as string | undefined;
+  const rawToken = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
+  if (rawToken) {
+    const payload = verifyUserJwt(rawToken);
+    if (payload) {
+      if (payload.role === "rider" || (payload.roles && payload.roles.includes("rider"))) return "rider";
+      if (payload.role === "vendor" || (payload.roles && payload.roles.includes("vendor"))) return "vendor";
+    }
+  }
   return "general";
 }
 
@@ -363,33 +418,38 @@ export function detectGPSSpoof(
 }
 
 /* ══════════════════════════════════════════════════════════════
-   USER TOKEN AUTH MIDDLEWARE (for protected user routes)
+   CUSTOMER AUTH MIDDLEWARE
+   Validates JWT, checks DB ban/active status, sets req.customerId.
+   Apply to all customer-facing authenticated routes.
 ══════════════════════════════════════════════════════════════ */
-export async function requireUserAuth(req: Request, res: Response, next: NextFunction) {
+export async function customerAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers["authorization"] as string | undefined;
-  const headerToken = req.headers["x-auth-token"] as string | undefined;
-  const token = headerToken || authHeader?.replace(/^Bearer\s+/i, "");
+  const tokenHeader = req.headers["x-auth-token"] as string | undefined;
+  const token = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
 
   if (!token) {
     res.status(401).json({ error: "Authentication required. Please log in." });
     return;
   }
 
-  const decoded = decodeUserToken(token);
-  if (!decoded) {
-    res.status(401).json({ error: "Invalid authentication token." });
+  const payload = verifyUserJwt(token);
+  if (!payload) {
+    res.status(401).json({ error: "Invalid or expired session. Please log in again." });
     return;
   }
 
-  const settings = await getCachedSettings();
-  const sessionDays = parseInt(settings["security_session_days"] ?? "30", 10);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  if (!user) { res.status(401).json({ error: "Account not found." }); return; }
+  if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
+  if (!user.isActive) { res.status(403).json({ error: "Your account is inactive. Contact support." }); return; }
 
-  if (isTokenExpired(decoded.issuedAt, sessionDays)) {
-    res.status(401).json({ error: "Session expired. Please log in again." });
-    return;
-  }
-
-  (req as any).authenticatedUserId = decoded.userId;
-  (req as any).authenticatedPhone  = decoded.phone;
+  (req as any).customerId    = payload.userId;
+  (req as any).customerPhone = payload.phone;
+  (req as any).customerUser  = user;
   next();
+}
+
+/* ── Legacy middleware alias — kept for any internal usage ── */
+export async function requireUserAuth(req: Request, res: Response, next: NextFunction) {
+  return customerAuth(req, res, next);
 }

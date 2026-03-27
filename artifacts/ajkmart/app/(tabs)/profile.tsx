@@ -41,7 +41,7 @@ function relativeTime(iso: string) {
 const EXPO_CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Poonch","Neelum Valley","Rawalpindi","Islamabad","Other"];
 
 function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const [name,   setName]   = useState(user?.name  || "");
   const [email,  setEmail]  = useState(user?.email || "");
@@ -62,8 +62,8 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
     try {
       const res = await fetch(`${API}/users/profile`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user!.id, name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() }),
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() }),
       });
       if (!res.ok) throw new Error();
       updateUser({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() } as any);
@@ -190,38 +190,40 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
 /* ══════════════════════════════════════════
    NOTIFICATIONS MODAL
 ══════════════════════════════════════════ */
-function NotificationsModal({ visible, userId, onClose }: {
-  visible: boolean; userId: string; onClose: (unread: number) => void;
+function NotificationsModal({ visible, userId, token, onClose }: {
+  visible: boolean; userId: string; token?: string; onClose: (unread: number) => void;
 }) {
   const [notifs,  setNotifs]  = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(false);
 
+  const authHdrs = token ? { Authorization: `Bearer ${token}` } : {};
+
   const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const r = await fetch(`${API}/notifications?userId=${userId}`);
+      const r = await fetch(`${API}/notifications`, { headers: authHdrs });
       const d = await r.json();
       setNotifs(d.notifications || []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [userId]);
+  }, [userId, token]);
 
   useEffect(() => { if (visible) load(); }, [visible, load]);
 
   const markOne = async (id: string) => {
-    await fetch(`${API}/notifications/${id}/read`, { method: "PATCH" });
+    await fetch(`${API}/notifications/${id}/read`, { method: "PATCH", headers: authHdrs });
     setNotifs(p => p.map(n => n.id === id ? { ...n, isRead: true } : n));
   };
   const markAll = async () => {
     setMarking(true);
-    await fetch(`${API}/notifications/read-all`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId }) });
+    await fetch(`${API}/notifications/read-all`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHdrs } });
     setNotifs(p => p.map(n => ({ ...n, isRead: true })));
     setMarking(false);
   };
   const del = async (id: string) => {
-    await fetch(`${API}/notifications/${id}`, { method: "DELETE" });
+    await fetch(`${API}/notifications/${id}`, { method: "DELETE", headers: authHdrs });
     setNotifs(p => p.filter(n => n.id !== id));
   };
 
@@ -294,26 +296,27 @@ function NotificationsModal({ visible, userId, onClose }: {
 /* ══════════════════════════════════════════
    PRIVACY & SECURITY MODAL
 ══════════════════════════════════════════ */
-function PrivacyModal({ visible, userId, onClose }: { visible: boolean; userId: string; onClose: () => void }) {
+function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; userId: string; token?: string; onClose: () => void }) {
   const { showToast } = useToast();
   const [cfg,     setCfg]     = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState<string | null>(null);
+  const authHdrs = token ? { Authorization: `Bearer ${token}` } : {};
 
   useEffect(() => {
     if (!visible || !userId) return;
     setLoading(true);
-    fetch(`${API}/settings?userId=${userId}`)
+    fetch(`${API}/settings`, { headers: authHdrs })
       .then(r => r.json())
       .then(d => setCfg({ notifOrders: d.notifOrders, notifWallet: d.notifWallet, notifDeals: d.notifDeals, notifRides: d.notifRides, locationSharing: d.locationSharing, biometric: d.biometric, twoFactor: d.twoFactor, darkMode: d.darkMode }))
       .finally(() => setLoading(false));
-  }, [visible, userId]);
+  }, [visible, userId, token]);
 
   const toggle = async (k: string, v: boolean) => {
     setSaving(k);
     const upd = { ...cfg, [k]: v };
     setCfg(upd);
-    try { await fetch(`${API}/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, ...upd }) }); }
+    try { await fetch(`${API}/settings`, { method: "PUT", headers: { "Content-Type": "application/json", ...authHdrs }, body: JSON.stringify(upd) }); }
     catch { setCfg(cfg); }
     setSaving(null);
   };
@@ -390,7 +393,7 @@ const LABEL_OPTS = [
 ];
 const AJK_CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Poonch","Neelum Valley"];
 
-function AddressesModal({ visible, userId, onClose }: { visible: boolean; userId: string; onClose: () => void }) {
+function AddressesModal({ visible, userId, token, onClose }: { visible: boolean; userId: string; token?: string; onClose: () => void }) {
   const { showToast } = useToast();
   const [list,    setList]    = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -400,13 +403,15 @@ function AddressesModal({ visible, userId, onClose }: { visible: boolean; userId
   const [city,    setCity]    = useState("Muzaffarabad");
   const [saving,  setSaving]  = useState(false);
 
+  const authHdrs = token ? { Authorization: `Bearer ${token}` } : {};
+
   const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
-    try { const r = await fetch(`${API}/addresses?userId=${userId}`); const d = await r.json(); setList(d.addresses || []); }
+    try { const r = await fetch(`${API}/addresses`, { headers: authHdrs }); const d = await r.json(); setList(d.addresses || []); }
     catch { /* ignore */ }
     setLoading(false);
-  }, [userId]);
+  }, [userId, token]);
 
   useEffect(() => { if (visible) load(); }, [visible, load]);
 
@@ -417,14 +422,14 @@ function AddressesModal({ visible, userId, onClose }: { visible: boolean; userId
     setSaving(true);
     const opt = LABEL_OPTS.find(o => o.label === label)!;
     try {
-      await fetch(`${API}/addresses`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, label, address: addr.trim(), city, icon: opt.icon, isDefault: list.length === 0 }) });
+      await fetch(`${API}/addresses`, { method: "POST", headers: { "Content-Type": "application/json", ...authHdrs }, body: JSON.stringify({ label, address: addr.trim(), city, icon: opt.icon, isDefault: list.length === 0 }) });
       setAddr(""); setCity("Muzaffarabad"); setShowAdd(false); await load();
       showToast("Address save ho gaya!", "success");
     } catch { showToast("Address save nahi ho saka", "error"); }
     setSaving(false);
   };
   const del = async (id: string) => {
-    await fetch(`${API}/addresses/${id}`, { method: "DELETE" });
+    await fetch(`${API}/addresses/${id}`, { method: "DELETE", headers: authHdrs });
     setList(p => p.filter(a => a.id !== id));
     setDeleteConfirmId(null);
     showToast("Address delete ho gaya", "info");
@@ -529,7 +534,7 @@ function AddressesModal({ visible, userId, onClose }: { visible: boolean; userId
 ════════════════════════════════════════════════════ */
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_H  = Platform.OS === "web" ? 84 : 49;
@@ -567,11 +572,12 @@ export default function ProfileScreen() {
 
   const fetchAll = useCallback(async () => {
     if (!user?.id) return;
+    const hdrs = token ? { Authorization: `Bearer ${token}` } : {};
     try {
       const [oR, rR, nR] = await Promise.all([
-        fetch(`${API}/orders?userId=${user.id}`),
-        fetch(`${API}/rides?userId=${user.id}`),
-        fetch(`${API}/notifications?userId=${user.id}`),
+        fetch(`${API}/orders`,        { headers: hdrs }),
+        fetch(`${API}/rides`,         { headers: hdrs }),
+        fetch(`${API}/notifications`, { headers: hdrs }),
       ]);
       const [oD, rD, nD] = await Promise.all([oR.json(), rR.json(), nR.json()]);
       const orders = oD.orders || [];
@@ -908,9 +914,9 @@ export default function ProfileScreen() {
 
       {/* ── Modals ── */}
       <EditProfileModal visible={showEdit} onClose={() => setShowEdit(false)} />
-      <NotificationsModal visible={showNotifs} userId={user?.id || ""} onClose={count => { setUnread(count); setShowNotifs(false); }} />
-      <PrivacyModal       visible={showPrivacy} userId={user?.id || ""} onClose={() => setShowPrivacy(false)} />
-      <AddressesModal     visible={showAddrs}  userId={user?.id || ""} onClose={() => setShowAddrs(false)} />
+      <NotificationsModal visible={showNotifs} userId={user?.id || ""} token={token} onClose={count => { setUnread(count); setShowNotifs(false); }} />
+      <PrivacyModal       visible={showPrivacy} userId={user?.id || ""} token={token} onClose={() => setShowPrivacy(false)} />
+      <AddressesModal     visible={showAddrs}  userId={user?.id || ""} token={token} onClose={() => setShowAddrs(false)} />
     </View>
   );
 }

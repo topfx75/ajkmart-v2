@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 export type UserRole = "customer" | "rider" | "vendor";
 
@@ -31,13 +32,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  /* Register the token getter so all generated API hooks get auth automatically */
+  const registerToken = (tok: string | null) => {
+    setAuthTokenGetter(tok ? () => tok : null);
+  };
+
   useEffect(() => {
     const loadAuth = async () => {
       try {
         const [storedUser, storedToken] = await AsyncStorage.multiGet(["@ajkmart_user", "@ajkmart_token"]);
         if (storedUser[1] && storedToken[1]) {
-          setUser(JSON.parse(storedUser[1]));
-          setToken(storedToken[1]);
+          const parsedUser = JSON.parse(storedUser[1]);
+          const parsedToken = storedToken[1];
+          setUser(parsedUser);
+          setToken(parsedToken);
+          registerToken(parsedToken);
         }
       } catch {}
       setIsLoading(false);
@@ -52,12 +61,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ]);
     setUser(userData);
     setToken(userToken);
+    registerToken(userToken);
   };
 
   const logout = async () => {
     await AsyncStorage.multiRemove(["@ajkmart_user", "@ajkmart_token"]);
     setUser(null);
     setToken(null);
+    registerToken(null);
   };
 
   const updateUser = (updates: Partial<AppUser>) => {

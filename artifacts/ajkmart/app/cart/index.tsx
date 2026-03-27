@@ -103,7 +103,7 @@ function AddressPickerModal({
 
 export default function CartScreen() {
   const insets = useSafeAreaInsets();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, token } = useAuth();
   const { items, total, cartType, updateQuantity, clearCart } = useCart();
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
@@ -211,7 +211,7 @@ export default function CartScreen() {
     if (!user?.id) return;
     const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
     setAddrLoading(true);
-    fetch(`${API}/addresses?userId=${user.id}`)
+    fetch(`${API}/addresses`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(d => {
         const addrs: SavedAddress[] = d.addresses || [];
@@ -263,7 +263,6 @@ export default function CartScreen() {
   // Place order after payment cleared
   const placeOrder = async (finalPayMethod: PayMethod) => {
     const order = await createOrder({
-      userId: user!.id,
       type: cartType === "mixed" ? "mart" : cartType,
       items: items.map(i => ({
         productId: i.productId,
@@ -289,9 +288,8 @@ export default function CartScreen() {
         const API_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
         await fetch(`${API_URL}/locations/update`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({
-            userId:    user!.id,
             latitude:  pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy:  pos.coords.accuracy ?? null,

@@ -7,14 +7,23 @@ import {
   detectGPSSpoof,
   addSecurityEvent,
   getClientIp,
+  verifyUserJwt,
 } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
 router.post("/update", async (req, res) => {
-  const { userId, latitude, longitude, role, accuracy } = req.body;
+  /* Prefer userId from a valid JWT; fall back to body for riders/vendors that send their own token */
+  let userId: string | undefined = req.body.userId;
+  const authHeader = req.headers.authorization ?? "";
+  if (authHeader.startsWith("Bearer ")) {
+    const payload = verifyUserJwt(authHeader.slice(7));
+    if (payload?.sub) userId = payload.sub;
+  }
+
+  const { latitude, longitude, role, accuracy } = req.body;
   if (!userId || !latitude || !longitude) {
-    res.status(400).json({ error: "userId, latitude and longitude are required" });
+    res.status(400).json({ error: "Authentication required (or userId, latitude and longitude are required)" });
     return;
   }
 

@@ -4,45 +4,36 @@ import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransact
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
+import { verifyUserJwt } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
 /* ── Auth Middleware ── */
 async function vendorAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers["authorization"];
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing token" }); return;
-  }
-  try {
-    const token = authHeader.slice(7);
-    const decoded = Buffer.from(token, "base64").toString("utf-8");
-    const parts = decoded.split(":");
-    if (parts.length < 3) { res.status(401).json({ error: "Invalid token format" }); return; }
-    const userId   = parts[0]!;
-    const issuedAt = parseInt(parts[parts.length - 1]!, 10);
+  const tokenHeader = req.headers["x-auth-token"] as string | undefined;
+  const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
 
-    /* ── Token expiry check (uses security_session_days for vendors) ── */
-    const s = await getPlatformSettings();
-    const sessionDays = parseInt(s["security_session_days"] ?? "30", 10);
-    const expiryMs = sessionDays * 24 * 60 * 60 * 1000;
-    if (!isNaN(issuedAt) && Date.now() - issuedAt > expiryMs) {
-      res.status(401).json({ error: "Session expired. Please log in again." }); return;
-    }
+  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
 
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) { res.status(401).json({ error: "User not found" }); return; }
-    if (!user.isActive) { res.status(403).json({ error: "Account suspended by admin" }); return; }
-    if (user.isBanned)  { res.status(403).json({ error: "Account is banned" }); return; }
-    const roles = (user.roles || user.role || "").split(",").map(r => r.trim());
-    if (!roles.includes("vendor")) {
-      res.status(403).json({ error: "Access denied. Vendor role required." }); return;
-    }
-    (req as any).vendorId = user.id;
-    (req as any).vendorUser = user;
-    next();
-  } catch {
-    res.status(401).json({ error: "Invalid token" });
+  const payload = verifyUserJwt(raw);
+  if (!payload) { res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return; }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  if (!user) { res.status(401).json({ error: "User not found" }); return; }
+  if (!user.isActive) { res.status(403).json({ error: "Account suspended by admin" }); return; }
+  if (user.isBanned)  { res.status(403).json({ error: "Account is banned" }); return; }
+
+  /* Enforce vendor role — check BOTH the JWT claim and the DB roles field */
+  const dbRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
+  const jwtRoles = (payload.roles || payload.role || "").split(",").map((r: string) => r.trim());
+  if (!dbRoles.includes("vendor") || !jwtRoles.includes("vendor")) {
+    res.status(403).json({ error: "Access denied. Vendor role required." }); return;
   }
+
+  (req as any).vendorId = user.id;
+  (req as any).vendorUser = user;
+  next();
 }
 router.use(vendorAuth);
 

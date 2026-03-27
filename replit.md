@@ -1,4 +1,40 @@
 # AJKMart Super App — Workspace
+<!-- Last updated: 2026-03-27 — JWT SECURITY OVERHAUL COMPLETE
+
+  SCOPE: Replaced all Base64 token auth with signed JWTs (jsonwebtoken, HS256).
+  Token payload: { sub: userId, phone, role, roles }, expiresIn: ${sessionDays}d
+  JWT_SECRET env var required; dev default = "ajkmart-dev-secret-CHANGE-IN-PRODUCTION"
+  All existing sessions invalidated on deploy (expected behaviour).
+
+  API SERVER CHANGES:
+  - security.ts: verifyUserJwt(), generateUserJwt(), customerAuth middleware added
+  - auth.ts: all 3 login endpoints emit proper JWTs; validate-token, complete-profile,
+    set-password now use verifyUserJwt(); logout reads JWT from Authorization header
+  - rider.ts / vendor.ts: riderAuth/vendorAuth rewritten with verifyUserJwt() + dual role-check
+  - orders.ts, wallet.ts, rides.ts, addresses.ts, notifications.ts, reviews.ts,
+    pharmacy.ts, parcel.ts: all use customerAuth middleware; userId from req.customerId
+  - settings.ts: secured with customerAuth; userId from JWT not body/query
+  - users.ts (GET/PUT /profile): secured with customerAuth
+  - school.ts (subscribe, my-subscriptions): per-route customerAuth
+  - locations.ts: prefers JWT from Authorization header; falls back to body userId
+    for backward compat with riders/vendors
+
+  EXPO APP CHANGES (AuthContext.tsx):
+  - setAuthTokenGetter() called on login/logout/load so all generated API hooks
+    auto-attach Authorization: Bearer <token>
+  - token exported from useAuth()
+
+  EXPO APP RAW FETCH FIXES (all userId removed from body/query, Bearer header added):
+  - ride/index.tsx: ride booking POST, ride history GET, RideTracker token prop,
+    school subscribe POST, GPS location update POST
+  - cart/index.tsx: GPS location update POST
+  - profile.tsx: EditProfileModal PUT, NotificationsModal (GET/PATCH/DELETE),
+    PrivacyModal (GET/PUT), AddressesModal (GET/POST/DELETE), fetchAll stats
+
+  PACKAGE:
+  - lib/api-client-react/package.json: ./custom-fetch subpath export added
+-->
+
 <!-- Last updated: 2026-03-27 — FULL AUTH FRAMEWORK COMPLETE (T001-T006)
   T001: DB Schema — users table extended with:
     username (unique), password_hash, email_verified, phone_verified,

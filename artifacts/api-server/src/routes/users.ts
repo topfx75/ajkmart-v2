@@ -2,15 +2,14 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
+router.use(customerAuth);
+
 router.get("/profile", async (req, res) => {
-  const userId = req.query["userId"] as string;
-  if (!userId) {
-    res.status(400).json({ error: "userId required" });
-    return;
-  }
+  const userId = req.customerId!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
     res.status(404).json({ error: "User not found" });
@@ -30,11 +29,8 @@ router.get("/profile", async (req, res) => {
 });
 
 router.put("/profile", async (req, res) => {
-  const { userId, name, email, avatar, cnic, city, address } = req.body;
-  if (!userId) {
-    res.status(400).json({ error: "userId required" });
-    return;
-  }
+  const userId = req.customerId!;
+  const { userId: _ignored, name, email, avatar, cnic, city, address } = req.body;
   const updates: any = { updatedAt: new Date() };
   if (name    !== undefined) updates.name    = name;
   if (email   !== undefined) updates.email   = email;

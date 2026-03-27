@@ -73,7 +73,7 @@ function Steps({ current }: { current: number }) {
 export default function ParcelScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
   const appName = platformConfig.platform.appName;
@@ -166,7 +166,6 @@ export default function ParcelScreen() {
     try {
       const w = parseFloat(weight) || null;
       const body = {
-        userId: user?.id,
         senderName, senderPhone, pickupAddress,
         receiverName, receiverPhone, dropAddress,
         parcelType, weight: w, description: description || null,
@@ -174,7 +173,7 @@ export default function ParcelScreen() {
       };
       const res = await fetch(`${API}/parcel-bookings`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(body),
       });
       const data = await res.json();

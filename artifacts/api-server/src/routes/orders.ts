@@ -4,7 +4,7 @@ import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable } fro
 import { eq, and, gte, count, SQL } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { addSecurityEvent, getClientIp, getCachedSettings } from "../middleware/security.js";
+import { addSecurityEvent, getClientIp, getCachedSettings, customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -68,11 +68,10 @@ router.get("/validate-promo", async (req, res) => {
   res.json(result);
 });
 
-/* ── GET /orders?userId=&status= ─────────────────────────────────────────── */
-router.get("/", async (req, res) => {
-  const userId = req.query["userId"] as string;
+/* ── GET /orders?status= ─────────────────────────────────────────── */
+router.get("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const status = req.query["status"] as string;
-  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
 
   const conditions: SQL[] = [eq(ordersTable.userId, userId)];
   if (status) conditions.push(eq(ordersTable.status, status));
@@ -81,19 +80,23 @@ router.get("/", async (req, res) => {
 });
 
 /* ── GET /orders/:id ──────────────────────────────────────────────────────── */
-router.get("/:id", async (req, res) => {
+router.get("/:id", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  /* Ensure customers can only view their own orders */
+  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
   res.json(mapOrder(order));
 });
 
 /* ── POST /orders ─────────────────────────────────────────────────────────── */
-router.post("/", async (req, res) => {
-  const { userId, type, items, deliveryAddress, paymentMethod } = req.body;
+router.post("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
+  const { type, items, deliveryAddress, paymentMethod } = req.body;
   const ip = getClientIp(req);
 
-  if (!userId || !items || !Array.isArray(items) || items.length === 0) {
-    res.status(400).json({ error: "userId, items (array) required" }); return;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ error: "items (array) required" }); return;
   }
 
   const itemsTotal = items.reduce(
@@ -355,12 +358,13 @@ router.post("/", async (req, res) => {
   res.status(201).json({ ...mapOrder(order!, deliveryFee, gstAmount, codFee), promoDiscount });
 });
 
-/* ── PATCH /orders/:id ────────────────────────────────────────────────────── */
-router.patch("/:id", async (req, res) => {
-  const { status, riderId, userId } = req.body;
+/* ── PATCH /orders/:id (customer cancel only) ────────────────────────────── */
+router.patch("/:id", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
+  const { status, riderId } = req.body;
 
   /* ── Cancel-window enforcement (only for customer-initiated cancellations) ── */
-  if (status === "cancelled" && userId) {
+  if (status === "cancelled") {
     const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
     if (existingOrder) {
       /* Only the order owner can cancel */

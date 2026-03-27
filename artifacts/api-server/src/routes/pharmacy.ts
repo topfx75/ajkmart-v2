@@ -4,6 +4,7 @@ import { notificationsTable, pharmacyOrdersTable, usersTable, walletTransactions
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -23,12 +24,8 @@ function mapOrder(o: typeof pharmacyOrdersTable.$inferSelect) {
   };
 }
 
-router.get("/", async (req, res) => {
-  const userId = req.query["userId"] as string;
-  if (!userId) {
-    res.status(400).json({ error: "userId required" });
-    return;
-  }
+router.get("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const orders = await db
     .select()
     .from(pharmacyOrdersTable)
@@ -37,7 +34,8 @@ router.get("/", async (req, res) => {
   res.json({ orders: orders.map(mapOrder).reverse(), total: orders.length });
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
   const [order] = await db
     .select()
     .from(pharmacyOrdersTable)
@@ -47,12 +45,14 @@ router.get("/:id", async (req, res) => {
     res.status(404).json({ error: "Pharmacy order not found" });
     return;
   }
+  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
   res.json(mapOrder(order));
 });
 
-router.post("/", async (req, res) => {
-  const { userId, items, prescriptionNote, deliveryAddress, contactPhone, paymentMethod } = req.body;
-  if (!userId || !items || !deliveryAddress || !contactPhone || !paymentMethod) {
+router.post("/", customerAuth, async (req, res) => {
+  const userId = (req as any).customerId as string;
+  const { items, prescriptionNote, deliveryAddress, contactPhone, paymentMethod } = req.body;
+  if (!items || !deliveryAddress || !contactPhone || !paymentMethod) {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }

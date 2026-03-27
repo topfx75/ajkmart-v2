@@ -6,6 +6,7 @@ import {
 } from "@workspace/db/schema";
 import { asc, desc, eq, and, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -46,12 +47,13 @@ router.get("/routes/:id", async (req, res) => {
 
 /* ══════════════════════════════════════════════════════
    POST /school/subscribe — Subscribe a student to a school route
-   Body: { userId, routeId, studentName, studentClass, paymentMethod }
+   Body: { routeId, studentName, studentClass, paymentMethod }
 ══════════════════════════════════════════════════════ */
-router.post("/subscribe", async (req, res) => {
-  const { userId, routeId, studentName, studentClass, paymentMethod = "cash", notes } = req.body;
-  if (!userId || !routeId || !studentName || !studentClass) {
-    res.status(400).json({ error: "userId, routeId, studentName, studentClass required" }); return;
+router.post("/subscribe", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const { routeId, studentName, studentClass, paymentMethod = "cash", notes } = req.body;
+  if (!routeId || !studentName || !studentClass) {
+    res.status(400).json({ error: "routeId, studentName, studentClass required" }); return;
   }
 
   const [route] = await db.select().from(schoolRoutesTable)
@@ -125,11 +127,10 @@ router.post("/subscribe", async (req, res) => {
 });
 
 /* ══════════════════════════════════════════════════════
-   GET /school/my-subscriptions?userId=X
+   GET /school/my-subscriptions — requires JWT
 ══════════════════════════════════════════════════════ */
-router.get("/my-subscriptions", async (req, res) => {
-  const userId = req.query["userId"] as string;
-  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+router.get("/my-subscriptions", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
 
   const subs = await db.select().from(schoolSubscriptionsTable)
     .where(eq(schoolSubscriptionsTable.userId, userId))
