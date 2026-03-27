@@ -341,7 +341,7 @@ router.post("/validate-token", async (req, res) => {
     const payload = verifyUserJwt(token);
     if (!payload) { res.status(401).json({ valid: false, error: "Invalid or expired token" }); return; }
 
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub)).limit(1);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
     if (!user)         { res.status(401).json({ valid: false, error: "User not found" }); return; }
     if (user.isBanned) { res.status(403).json({ valid: false, error: "Account suspended" }); return; }
     if (!user.isActive){ res.status(403).json({ valid: false, error: "Account inactive" }); return; }
@@ -490,8 +490,9 @@ router.post("/verify-email-otp", async (req, res) => {
   if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
   if (!user.isActive) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
 
-  /* Verify OTP */
-  const otpBypass = settings["security_otp_bypass"] === "on";
+  /* Verify OTP — bypass also respects phoneVerifyRequired for consistency */
+  const phoneVerifyRequired = settings["security_phone_verify"] === "on";
+  const otpBypass = settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
   if (!otpBypass && user.emailOtpCode !== otp) {
     const updated = recordFailedAttempt(normalized, maxAttempts, lockoutMinutes);
     const remaining = maxAttempts - updated.attempts;
@@ -605,16 +606,23 @@ router.post("/login/username", async (req, res) => {
    Requires valid JWT. Body: { token, name, email?, username?, password? }
 ══════════════════════════════════════════════════════════════ */
 router.post("/complete-profile", async (req, res) => {
-  const { token, name, email, username, password } = req.body;
-  if (!token) { res.status(401).json({ error: "Token required" }); return; }
+  /* Accept token from body OR Authorization: Bearer header */
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const rawToken = req.body?.token || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
+  const { name, email, username, password } = req.body;
+  if (!rawToken) { res.status(401).json({ error: "Token required" }); return; }
 
   /* Verify JWT to get userId */
-  const payload = verifyUserJwt(token);
+  const payload = verifyUserJwt(rawToken);
   if (!payload) { res.status(401).json({ error: "Invalid or expired token. Please log in again." }); return; }
   const userId = payload.userId;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user)         { res.status(404).json({ error: "User not found" }); return; }
+  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
+  if (!user.isActive && user.approvalStatus !== "pending") {
+    res.status(403).json({ error: "Account inactive. Contact support." }); return;
+  }
 
   const updates: Record<string, any> = { updatedAt: new Date() };
 
@@ -670,18 +678,26 @@ router.post("/complete-profile", async (req, res) => {
    Set or change password. Body: { token, password, currentPassword? }
 ══════════════════════════════════════════════════════════════ */
 router.post("/set-password", async (req, res) => {
-  const { token, password, currentPassword } = req.body;
-  if (!token || !password) { res.status(400).json({ error: "Token and password required" }); return; }
+  /* Accept token from body OR Authorization: Bearer header */
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const rawToken = req.body?.token || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
+  const { password, currentPassword } = req.body;
+  if (!rawToken || !password) { res.status(400).json({ error: "Token and password required" }); return; }
 
-  const payload = verifyUserJwt(token);
+  const payload = verifyUserJwt(rawToken);
   if (!payload) { res.status(401).json({ error: "Invalid or expired token. Please log in again." }); return; }
   const userId = payload.userId;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user)         { res.status(404).json({ error: "User not found" }); return; }
+  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
+  if (!user.isActive){ res.status(403).json({ error: "Account inactive. Contact support." }); return; }
 
-  /* If user already has a password, require current password */
-  if (user.passwordHash && currentPassword) {
+  /* If user already has a password, ALWAYS require the current password — no bypass */
+  if (user.passwordHash) {
+    if (!currentPassword) {
+      res.status(400).json({ error: "Current password required to change password" }); return;
+    }
     if (!verifyPassword(currentPassword, user.passwordHash)) {
       res.status(401).json({ error: "Current password galat hai" }); return;
     }

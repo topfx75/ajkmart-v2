@@ -150,6 +150,10 @@ export interface JwtUserPayload {
   phone: string;
   role: string;
   roles: string;
+  /** JWT expiry — seconds since epoch (same as the JWT "exp" claim) */
+  exp?: number;
+  /** JWT issued-at — seconds since epoch */
+  iat?: number;
 }
 
 export function signUserJwt(
