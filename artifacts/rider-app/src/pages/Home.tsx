@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
@@ -41,7 +41,9 @@ export default function Home() {
   const qc = useQueryClient();
   const [toggling, setToggling] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
-  const [newRequestPulse, setNewRequestPulse] = useState(false);
+  const [newFlash, setNewFlash] = useState(false);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const prevIdsRef = useRef<Set<string>>(new Set());
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -73,17 +75,34 @@ export default function Home() {
   });
   const hasActiveTask = !!(activeData?.order || activeData?.ride);
 
-  const prevCount = useState<number>(0);
   const { data: requestsData } = useQuery({
     queryKey: ["rider-requests"],
     queryFn: () => api.getRequests(),
     refetchInterval: user?.isOnline ? 12000 : 60000,
-    onSuccess: (d: any) => {
-      const total = (d?.orders?.length || 0) + (d?.rides?.length || 0);
-      if (total > (prevCount[0] || 0)) setNewRequestPulse(true);
-      (prevCount[1] as any)(total);
-    },
-  } as any);
+  });
+
+  const allOrders: any[] = requestsData?.orders || [];
+  const allRides:  any[] = requestsData?.rides  || [];
+
+  // Detect truly NEW request IDs to trigger flash
+  useEffect(() => {
+    const currentIds = new Set<string>([...allOrders.map((o: any) => o.id), ...allRides.map((r: any) => r.id)]);
+    const prevIds = prevIdsRef.current;
+    let hasNew = false;
+    currentIds.forEach(id => { if (!prevIds.has(id)) hasNew = true; });
+    if (hasNew && currentIds.size > 0) {
+      setNewFlash(true);
+      setTimeout(() => setNewFlash(false), 2500);
+    }
+    prevIdsRef.current = currentIds;
+  }, [allOrders.length, allRides.length]);
+
+  // Filter out dismissed
+  const orders = allOrders.filter((o: any) => !dismissed.has(o.id));
+  const rides  = allRides.filter((r: any) => !dismissed.has(r.id));
+  const totalRequests = orders.length + rides.length;
+
+  const dismiss = (id: string) => setDismissed(prev => new Set([...prev, id]));
 
   const acceptOrderMut = useMutation({
     mutationFn: (id: string) => api.acceptOrder(id),
@@ -97,6 +116,7 @@ export default function Home() {
       showToast("❌ " + (e.message || "Order accept nahi hua — shayad kisi ne pehle le liya"));
     },
   });
+
   const acceptRideMut = useMutation({
     mutationFn: (id: string) => api.acceptRide(id),
     onSuccess: () => {
@@ -110,14 +130,6 @@ export default function Home() {
     },
   });
 
-  const orders: any[] = requestsData?.orders || [];
-  const rides:  any[] = requestsData?.rides  || [];
-  const totalRequests = orders.length + rides.length;
-
-  useEffect(() => {
-    if (newRequestPulse) { const t = setTimeout(() => setNewRequestPulse(false), 3000); return () => clearTimeout(t); }
-  }, [newRequestPulse]);
-
   const getDeliveryEarn = (type: string) => {
     const fee = (config.deliveryFee as Record<string, number>)[type] ?? config.deliveryFee.mart ?? 100;
     return fee * (config.finance.riderEarningPct / 100);
@@ -125,6 +137,17 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-24">
+
+      {/* ── New request flash overlay ── */}
+      {newFlash && (
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          <div className="absolute inset-0 border-8 border-green-400 rounded-none animate-ping opacity-60"/>
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-green-600 text-white font-extrabold text-base px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2 animate-bounce">
+            <span className="w-2.5 h-2.5 bg-white rounded-full"/>
+            New Request Available!
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div className="bg-gradient-to-br from-green-600 to-emerald-700 text-white px-5 pt-12 pb-20">
@@ -153,8 +176,7 @@ export default function Home() {
                 {user?.isOnline ? "Accepting orders & rides" : "Tap to start working"}
               </p>
             </div>
-            <button
-              onClick={toggleOnline} disabled={toggling}
+            <button onClick={toggleOnline} disabled={toggling}
               className={`w-16 h-9 rounded-full relative transition-all duration-300 shadow-inner ${user?.isOnline ? "bg-green-400" : "bg-white/30"} ${toggling ? "opacity-60" : ""}`}>
               <div className={`w-7 h-7 bg-white rounded-full absolute top-1 shadow-md transition-all duration-300 ${user?.isOnline ? "left-8" : "left-1"}`} />
             </button>
@@ -176,10 +198,10 @@ export default function Home() {
         {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-2">
           {[
-            { icon: "📦", label: "Today", value: String(user?.stats?.deliveriesToday || 0), sub: "deliveries" },
-            { icon: "💰", label: "Earned", value: formatCurrency(user?.stats?.earningsToday || 0), sub: "today" },
-            { icon: "📅", label: "Week", value: formatCurrency(earningsData?.week?.earnings || 0), sub: "earnings" },
-            { icon: "🏆", label: "Total", value: String(user?.stats?.totalDeliveries || 0), sub: "lifetime" },
+            { icon: "📦", label: "Today",  value: String(user?.stats?.deliveriesToday || 0),        sub: "deliveries" },
+            { icon: "💰", label: "Earned", value: formatCurrency(user?.stats?.earningsToday || 0),  sub: "today"      },
+            { icon: "📅", label: "Week",   value: formatCurrency(earningsData?.week?.earnings || 0), sub: "earnings"  },
+            { icon: "🏆", label: "Total",  value: String(user?.stats?.totalDeliveries || 0),         sub: "lifetime"  },
           ].map(s => (
             <div key={s.label} className="bg-white rounded-2xl p-3 shadow-sm text-center">
               <p className="text-base mb-0.5">{s.icon}</p>
@@ -213,7 +235,8 @@ export default function Home() {
               </Link>
             )}
 
-            <div className={`rounded-2xl shadow-sm overflow-hidden transition-all ${newRequestPulse ? "ring-2 ring-green-400 ring-offset-1" : ""}`}>
+            {/* Requests Panel */}
+            <div className={`rounded-2xl shadow-sm overflow-hidden transition-all ${newFlash ? "ring-4 ring-green-400 ring-offset-2" : ""}`}>
               <div className={`px-4 py-3 flex items-center justify-between ${totalRequests > 0 ? "bg-orange-500" : "bg-gray-700"}`}>
                 <div className="flex items-center gap-2">
                   {totalRequests > 0 ? (
@@ -222,7 +245,9 @@ export default function Home() {
                     <span className="text-lg">📡</span>
                   )}
                   <p className="font-extrabold text-white text-sm">
-                    {totalRequests > 0 ? `${totalRequests} New Request${totalRequests > 1 ? "s" : ""} Waiting!` : "Listening for Orders..."}
+                    {totalRequests > 0
+                      ? `${totalRequests} Request${totalRequests > 1 ? "s" : ""} — Accept Karo!`
+                      : "Listening for Requests..."}
                   </p>
                 </div>
                 {totalRequests > 0 && (
@@ -235,6 +260,12 @@ export default function Home() {
                   <p className="text-4xl mb-2">🏍️</p>
                   <p className="text-gray-500 font-semibold">No requests right now</p>
                   <p className="text-gray-400 text-xs mt-1">Auto-refreshes every 12 seconds</p>
+                  {dismissed.size > 0 && (
+                    <button onClick={() => setDismissed(new Set())}
+                      className="mt-3 text-xs text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-xl">
+                      ↺ Show {dismissed.size} hidden request{dismissed.size > 1 ? "s" : ""}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="bg-white divide-y divide-gray-100">
@@ -243,36 +274,51 @@ export default function Home() {
                   {orders.map((o: any) => (
                     <div key={o.id} className="p-4">
                       <div className="flex items-start gap-3">
-                        {/* Icon */}
                         <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-2xl flex-shrink-0">
                           {o.type === "food" ? "🍔" : o.type === "mart" ? "🛒" : o.type === "pharmacy" ? "💊" : "📦"}
                         </div>
-                        {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <p className="font-extrabold text-gray-900 capitalize">{o.type} Delivery</p>
                             <RequestAge createdAt={o.createdAt} />
                           </div>
-                          <p className="text-xs text-gray-500 truncate">📍 {o.deliveryAddress || "Destination"}</p>
+                          {o.vendorStoreName && (
+                            <p className="text-xs text-blue-600 font-semibold truncate">🏪 {o.vendorStoreName}</p>
+                          )}
+                          <p className="text-xs text-gray-500 truncate mt-0.5">📍 {o.deliveryAddress || "Destination"}</p>
                           <div className="flex items-center gap-3 mt-2">
                             <div>
                               <p className="text-lg font-extrabold text-green-600">+{formatCurrency(getDeliveryEarn(o.type))}</p>
                               <p className="text-[10px] text-gray-400">your earnings</p>
                             </div>
+                            {o.total && (
+                              <div>
+                                <p className="text-sm font-bold text-gray-700">{formatCurrency(o.total)}</p>
+                                <p className="text-[10px] text-gray-400">order total</p>
+                              </div>
+                            )}
+                            {o.itemCount && (
+                              <div>
+                                <p className="text-sm font-bold text-gray-700">{o.itemCount} items</p>
+                                <p className="text-[10px] text-gray-400">to collect</p>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
-                      {/* Buttons */}
                       <div className="flex gap-2 mt-3">
                         {o.deliveryAddress && (
                           <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.deliveryAddress)}`}
                             target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2 rounded-xl">
-                            🗺️ Map
+                            className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2.5 rounded-xl">
+                            🗺️
                           </a>
                         )}
-                        <button
-                          onClick={() => acceptOrderMut.mutate(o.id)}
+                        <button onClick={() => dismiss(o.id)}
+                          className="bg-gray-100 text-gray-500 font-bold px-3 py-2.5 rounded-xl text-sm hover:bg-gray-200 transition-colors">
+                          ✕
+                        </button>
+                        <button onClick={() => acceptOrderMut.mutate(o.id)}
                           disabled={acceptOrderMut.isPending || acceptRideMut.isPending}
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white font-extrabold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-colors">
                           {acceptOrderMut.isPending ? "Accepting..." : "✓ Accept Order"}
@@ -285,53 +331,53 @@ export default function Home() {
                   {rides.map((r: any) => (
                     <div key={r.id} className="p-4">
                       <div className="flex items-start gap-3">
-                        {/* Icon */}
                         <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center text-2xl flex-shrink-0">
                           {r.type === "bike" ? "🏍️" : "🚗"}
                         </div>
-                        {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <p className="font-extrabold text-gray-900 capitalize">{r.type} Ride</p>
                             <RequestAge createdAt={r.createdAt} />
                           </div>
-                          <div className="space-y-0.5">
-                            <p className="text-xs text-gray-500 truncate">🟢 {r.pickupAddress}</p>
-                            <p className="text-xs text-gray-400 truncate">🔴 {r.dropAddress}</p>
-                          </div>
+                          <p className="text-xs text-gray-500 truncate">🟢 {r.pickupAddress}</p>
+                          <p className="text-xs text-gray-400 truncate">🔴 {r.dropAddress}</p>
                           <div className="flex items-center gap-4 mt-2">
                             <div>
                               <p className="text-lg font-extrabold text-green-600">+{formatCurrency(r.fare * (config.finance.riderEarningPct / 100))}</p>
                               <p className="text-[10px] text-gray-400">your earnings</p>
                             </div>
+                            {r.distance && (
+                              <div>
+                                <p className="text-sm font-bold text-gray-700">{r.distance} km</p>
+                                <p className="text-[10px] text-gray-400">distance</p>
+                              </div>
+                            )}
                             <div>
-                              <p className="text-base font-bold text-gray-700">{r.distance} km</p>
-                              <p className="text-[10px] text-gray-400">distance</p>
-                            </div>
-                            <div>
-                              <p className="text-base font-bold text-gray-700">{formatCurrency(r.fare)}</p>
+                              <p className="text-sm font-bold text-gray-700">{formatCurrency(r.fare)}</p>
                               <p className="text-[10px] text-gray-400">total fare</p>
                             </div>
                           </div>
                         </div>
                       </div>
-                      {/* Buttons */}
                       <div className="flex gap-2 mt-3">
                         {(r.pickupLat && r.pickupLng) ? (
                           <a href={`https://www.google.com/maps/dir/?api=1&origin=${r.pickupLat},${r.pickupLng}&destination=${r.dropLat},${r.dropLng}&travelmode=driving`}
                             target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2 rounded-xl">
-                            🗺️ Route
+                            className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2.5 rounded-xl">
+                            🗺️
                           </a>
                         ) : r.pickupAddress ? (
                           <a href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(r.pickupAddress)}&destination=${encodeURIComponent(r.dropAddress)}&travelmode=driving`}
                             target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2 rounded-xl">
-                            🗺️ Route
+                            className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2.5 rounded-xl">
+                            🗺️
                           </a>
                         ) : null}
-                        <button
-                          onClick={() => acceptRideMut.mutate(r.id)}
+                        <button onClick={() => dismiss(r.id)}
+                          className="bg-gray-100 text-gray-500 font-bold px-3 py-2.5 rounded-xl text-sm hover:bg-gray-200 transition-colors">
+                          ✕
+                        </button>
+                        <button onClick={() => acceptRideMut.mutate(r.id)}
                           disabled={acceptRideMut.isPending || acceptOrderMut.isPending}
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white font-extrabold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-colors">
                           {acceptRideMut.isPending ? "Accepting..." : "✓ Accept Ride"}
@@ -339,6 +385,16 @@ export default function Home() {
                       </div>
                     </div>
                   ))}
+
+                  {dismissed.size > 0 && (
+                    <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-t border-gray-100">
+                      <p className="text-xs text-gray-400">{dismissed.size} dismissed request{dismissed.size > 1 ? "s" : ""}</p>
+                      <button onClick={() => setDismissed(new Set())}
+                        className="text-xs text-green-600 font-bold">
+                        ↺ Show All
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -370,20 +426,20 @@ export default function Home() {
           ))}
         </div>
 
-        {/* ── Feature disabled notices ── */}
+        {/* Feature disabled notices */}
         {!config.features.liveTracking && (
           <div className="bg-amber-50 border border-amber-300 rounded-2xl px-4 py-3 flex items-center gap-3">
             <span className="text-lg">📍</span>
             <div>
               <p className="text-xs font-bold text-amber-800">Live Tracking Disabled</p>
-              <p className="text-xs text-amber-600">Admin ne GPS tracking band ki hai. Orders manual accept karein.</p>
+              <p className="text-xs text-amber-600">Orders manual accept karein.</p>
             </div>
           </div>
         )}
         {config.rider?.cashAllowed === false && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-start gap-3">
             <span className="text-amber-500 text-base flex-shrink-0 mt-0.5">💵</span>
-            <p className="text-sm text-amber-700 font-medium leading-snug">Cash-on-delivery orders are currently disabled by admin.</p>
+            <p className="text-sm text-amber-700 font-medium leading-snug">Cash-on-delivery disabled by admin.</p>
           </div>
         )}
       </div>
@@ -399,7 +455,7 @@ export default function Home() {
 
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed top-6 left-4 right-4 z-50 bg-gray-900 text-white text-sm font-medium px-4 py-3 rounded-2xl shadow-2xl text-center">
+        <div className="fixed top-6 left-4 right-4 z-50 bg-gray-900 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-2xl text-center">
           {toastMsg}
         </div>
       )}

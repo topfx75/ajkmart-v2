@@ -1,10 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api";
-import { useState, useRef } from "react";
-import { usePlatformConfig } from "../lib/useConfig";
 import { AlertTriangle, Camera } from "lucide-react";
+import { api } from "../lib/api";
+import { useState, useRef, useEffect } from "react";
+import { usePlatformConfig } from "../lib/useConfig";
+
+function useElapsedTimer(startIso?: string | null) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!startIso) return;
+    const base = new Date(startIso).getTime();
+    const tick = () => setElapsed(Math.floor((Date.now() - base) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [startIso]);
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  const label = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+  const urgent = elapsed > 1800;
+  return { label, elapsed, urgent };
+}
 
 function formatCurrency(n: number) { return `Rs. ${Math.round(n).toLocaleString()}`; }
+
+function ElapsedBadge({ startIso }: { startIso?: string | null }) {
+  const { label, urgent } = useElapsedTimer(startIso);
+  if (!startIso) return null;
+  return (
+    <div className={`flex flex-col items-center px-3 py-2 rounded-2xl ${urgent ? "bg-red-500/80" : "bg-white/20"}`}>
+      <span className="text-white text-[10px] font-bold uppercase tracking-wider">Time</span>
+      <span className={`text-white font-extrabold text-base leading-tight ${urgent ? "animate-pulse" : ""}`}>{label}</span>
+    </div>
+  );
+}
 
 function NavButton({ label, lat, lng, address, color = "blue" }: {
   label: string; lat?: number | null; lng?: number | null; address?: string | null; color?: "blue" | "green" | "orange";
@@ -151,14 +180,22 @@ export default function Active() {
   /* ── Ride progress ── */
   const rideStep = ride ? RIDE_STEPS.indexOf(ride.status) : -1;
 
+  /* ── Elapsed timer ── */
+  const startedAt = order?.acceptedAt || order?.updatedAt || ride?.acceptedAt || ride?.updatedAt || null;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-gradient-to-br from-green-600 to-emerald-700 px-5 pt-12 pb-6">
-        <h1 className="text-2xl font-bold text-white">Active {order ? "Delivery" : "Ride"}</h1>
-        <p className="text-green-200 text-sm">
-          {order ? `${order.type} order — ${orderPickedUp ? "Delivering to customer" : "Pick up from store"}` : `${ride?.type} ride in progress`}
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Active {order ? "Delivery" : "Ride"}</h1>
+            <p className="text-green-200 text-sm mt-0.5">
+              {order ? `${order.type} order — ${orderPickedUp ? "Delivering to customer" : "Pick up from store"}` : `${ride?.type} ride in progress`}
+            </p>
+          </div>
+          <ElapsedBadge startIso={startedAt}/>
+        </div>
       </div>
 
       <div className="px-4 py-4 space-y-4">

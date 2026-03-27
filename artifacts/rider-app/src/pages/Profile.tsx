@@ -142,9 +142,9 @@ export default function Profile() {
         {/* Stats Row */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "Deliveries",   value: String(user?.stats?.totalDeliveries || 0),         icon: "📦", bg: "bg-blue-50",   text: "text-blue-700"   },
-            { label: "Total Earned", value: fc(user?.stats?.totalEarnings || 0),               icon: "💰", bg: "bg-green-50",  text: "text-green-700"  },
-            { label: "Wallet",       value: fc(Number(user?.walletBalance || 0)),               icon: "💳", bg: "bg-orange-50", text: "text-orange-700" },
+            { label: "Deliveries",   value: String(user?.stats?.totalDeliveries || 0),    icon: "📦", bg: "bg-blue-50",   text: "text-blue-700"   },
+            { label: "Total Earned", value: fc(user?.stats?.totalEarnings || 0),          icon: "💰", bg: "bg-green-50",  text: "text-green-700"  },
+            { label: "Wallet",       value: fc(Number(user?.walletBalance || 0)),          icon: "💳", bg: "bg-orange-50", text: "text-orange-700" },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-2xl p-3 text-center`}>
               <p className="text-xl">{s.icon}</p>
@@ -153,6 +153,40 @@ export default function Profile() {
             </div>
           ))}
         </div>
+
+        {/* Rating & Achievements */}
+        {((user?.stats?.totalDeliveries || 0) > 0) && (
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <p className="text-sm font-bold text-gray-700 mb-3">⭐ Rating & Achievements</p>
+            <div className="flex items-center gap-4">
+              <div className="text-center">
+                <div className="flex items-center gap-0.5 justify-center">
+                  {[1,2,3,4,5].map(s => (
+                    <span key={s} className={`text-xl ${s <= Math.round(user?.stats?.rating || 5) ? "text-yellow-400" : "text-gray-200"}`}>★</span>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1 font-medium">{(user?.stats?.rating || 5.0).toFixed(1)} / 5.0</p>
+              </div>
+              <div className="flex-1 flex gap-2 flex-wrap">
+                {(user?.stats?.totalDeliveries || 0) >= 1 && (
+                  <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">🚀 First Delivery</span>
+                )}
+                {(user?.stats?.totalDeliveries || 0) >= 50 && (
+                  <span className="text-xs font-bold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">⚡ 50 Deliveries</span>
+                )}
+                {(user?.stats?.totalDeliveries || 0) >= 100 && (
+                  <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2.5 py-1 rounded-full">💎 Century Rider</span>
+                )}
+                {(user?.stats?.totalEarnings || 0) >= 10000 && (
+                  <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full">💰 Rs. 10K+ Earned</span>
+                )}
+                {(user?.stats?.rating || 5) >= 4.8 && (
+                  <span className="text-xs font-bold bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-full">⭐ Top Rated</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Profile Completion */}
         <div className="bg-white rounded-2xl shadow-sm p-4">
