@@ -339,6 +339,33 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
             }
           </Pressable>
         </View>
+
+        {/* ── Cancel Confirmation Modal (Bargaining) ── */}
+        <Modal visible={showCancelModal} transparent animationType="fade" onRequestClose={() => setShowCancelModal(false)}>
+          <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: 24 }} onPress={() => setShowCancelModal(false)}>
+            <Pressable style={{ backgroundColor: "#fff", borderRadius: 24, padding: 24, width: "100%", maxWidth: 400, gap: 18 }} onPress={() => {}}>
+              <View style={{ alignItems: "center", gap: 10 }}>
+                <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="close-circle" size={36} color="#DC2626" />
+                </View>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 19, color: "#111827" }}>Cancel Offer?</Text>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 }}>
+                  Kya aap apna offer cancel karna chahte hain? Sab pending rider bids bhi cancel ho jayenge.
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable onPress={() => setShowCancelModal(false)} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#F3F4F6" }}>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#374151" }}>Back</Text>
+                </Pressable>
+                <Pressable onPress={cancelRide} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
+                  {cancelling
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Yes, Cancel</Text>}
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     );
   }
@@ -397,13 +424,40 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
 
         {/* Cancel */}
         <View style={{ paddingHorizontal: 24, paddingBottom: Math.max(insets.bottom, 24) + 16 }}>
-          <Pressable onPress={cancelRide} disabled={cancelling} style={{ alignItems: "center", padding: 16, borderRadius: 16, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.3)", backgroundColor: "rgba(255,255,255,0.1)" }}>
+          <Pressable onPress={() => setShowCancelModal(true)} disabled={cancelling} style={{ alignItems: "center", padding: 16, borderRadius: 16, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.3)", backgroundColor: "rgba(255,255,255,0.1)" }}>
             {cancelling
               ? <ActivityIndicator color="#fff" size="small" />
               : <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#fff" }}>Cancel Ride</Text>
             }
           </Pressable>
         </View>
+
+        {/* ── Cancel Confirmation Modal (Searching) ── */}
+        <Modal visible={showCancelModal} transparent animationType="fade" onRequestClose={() => setShowCancelModal(false)}>
+          <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: 24 }} onPress={() => setShowCancelModal(false)}>
+            <Pressable style={{ backgroundColor: "#fff", borderRadius: 24, padding: 24, width: "100%", maxWidth: 400, gap: 18 }} onPress={() => {}}>
+              <View style={{ alignItems: "center", gap: 10 }}>
+                <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="close-circle" size={36} color="#DC2626" />
+                </View>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 19, color: "#111827" }}>Cancel Ride?</Text>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 }}>
+                  Kya aap wakai is ride ko cancel karna chahte hain? Driver abhi assign nahi hua isliye cancellation fee nahi hogi.
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable onPress={() => setShowCancelModal(false)} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#F3F4F6" }}>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#374151" }}>Back</Text>
+                </Pressable>
+                <Pressable onPress={cancelRide} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
+                  {cancelling
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Yes, Cancel</Text>}
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     );
   }
