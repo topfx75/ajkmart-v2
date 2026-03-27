@@ -34,6 +34,17 @@ const queryClient = new QueryClient({
   },
 });
 
+/* Auto-logout on any 401 from the API */
+queryClient.getQueryCache().subscribe(event => {
+  if (event.type === "updated" && event.action.type === "error") {
+    const err = event.action.error as any;
+    if (err?.message?.toLowerCase().includes("unauthorized") || err?.status === 401) {
+      localStorage.removeItem("ajkmart_admin_token");
+      window.location.href = window.location.pathname.includes("/admin") ? "/admin/login" : "/login";
+    }
+  }
+});
+
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const [location, setLocation] = useLocation();
   const [isChecking, setIsChecking] = useState(true);

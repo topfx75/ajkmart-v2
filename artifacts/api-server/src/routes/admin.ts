@@ -341,9 +341,38 @@ const router: IRouter = Router();
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "ajkmart-admin-2025";
 
+/* ── Admin login brute-force protection (in-memory, per IP) ── */
+const adminLoginAttempts = new Map<string, { count: number; lockedUntil: number | null }>();
+const ADMIN_MAX_ATTEMPTS  = 5;
+const ADMIN_LOCKOUT_MS    = 15 * 60 * 1000; // 15 minutes
+
+function checkAdminLoginLockout(ip: string): { locked: boolean; minutesLeft: number } {
+  const rec = adminLoginAttempts.get(ip);
+  if (!rec?.lockedUntil) return { locked: false, minutesLeft: 0 };
+  if (Date.now() < rec.lockedUntil) {
+    const minutesLeft = Math.ceil((rec.lockedUntil - Date.now()) / 60_000);
+    return { locked: true, minutesLeft };
+  }
+  adminLoginAttempts.delete(ip);
+  return { locked: false, minutesLeft: 0 };
+}
+
+function recordAdminLoginFailure(ip: string) {
+  const rec = adminLoginAttempts.get(ip) || { count: 0, lockedUntil: null };
+  rec.count += 1;
+  if (rec.count >= ADMIN_MAX_ATTEMPTS) {
+    rec.lockedUntil = Date.now() + ADMIN_LOCKOUT_MS;
+  }
+  adminLoginAttempts.set(ip, rec);
+}
+
+function resetAdminLoginAttempts(ip: string) {
+  adminLoginAttempts.delete(ip);
+}
+
 async function adminAuth(req: Request, res: Response, next: NextFunction) {
   const ip   = getClientIp(req);
-  const auth = String(req.headers["x-admin-secret"] || req.query["secret"] || "");
+  const auth = String(req.headers["x-admin-secret"] || "");
 
   if (!auth) {
     addAuditEntry({ action: "admin_auth_missing", ip, details: `No admin secret provided for ${req.method} ${req.url}`, result: "fail" });
@@ -475,10 +504,31 @@ const PARCEL_NOTIFICATIONS: Record<string, { title: string; body: string; icon: 
 /* ── Auth check ── */
 router.post("/auth", (req, res) => {
   const { secret } = req.body;
+  const ip = getClientIp(req);
+
+  /* ── Check lockout before attempting ── */
+  const lockout = checkAdminLoginLockout(ip);
+  if (lockout.locked) {
+    addSecurityEvent({ type: "admin_login_locked", ip, details: `Locked admin login attempt from ${ip}`, severity: "high" });
+    res.status(429).json({ error: `Too many failed attempts. Try again in ${lockout.minutesLeft} minute(s).` });
+    return;
+  }
+
   if (secret === ADMIN_SECRET) {
+    resetAdminLoginAttempts(ip);
+    addAuditEntry({ action: "admin_login_success", ip, details: "Master admin login", result: "success" });
     res.json({ success: true, token: ADMIN_SECRET });
   } else {
-    res.status(401).json({ error: "Invalid admin password" });
+    recordAdminLoginFailure(ip);
+    const rec = adminLoginAttempts.get(ip);
+    const remaining = Math.max(0, ADMIN_MAX_ATTEMPTS - (rec?.count ?? 0));
+    addAuditEntry({ action: "admin_login_failed", ip, details: "Wrong admin secret", result: "fail" });
+    addSecurityEvent({ type: "admin_login_failed", ip, details: `Failed admin login attempt from ${ip}`, severity: "high" });
+    if (remaining === 0) {
+      res.status(429).json({ error: `Too many failed attempts. Account locked for 15 minutes.` });
+    } else {
+      res.status(401).json({ error: `Invalid admin password. ${remaining} attempt(s) remaining.` });
+    }
   }
 });
 
@@ -556,7 +606,7 @@ router.get("/stats", async (_req, res) => {
 router.get("/users", async (_req, res) => {
   const users = await db.select().from(usersTable).orderBy(desc(usersTable.createdAt));
   res.json({
-    users: users.map(u => ({
+    users: users.map(({ otpCode: _otp, otpExpiry: _exp, ...u }) => ({
       ...u,
       walletBalance: parseFloat(u.walletBalance ?? "0"),
       createdAt: u.createdAt.toISOString(),
