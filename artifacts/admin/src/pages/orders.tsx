@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useOrdersEnriched, useUpdateOrder } from "@/hooks/use-admin";
+import { useOrdersEnriched, useUpdateOrder, useAssignRider, useRiders } from "@/hooks/use-admin";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -7,8 +7,21 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ShoppingBag, Search, User, Package, Phone, TrendingUp, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ShoppingBag, Search, User, Package, Phone, TrendingUp, AlertTriangle, CheckCircle2, Download, CalendarDays, UserCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+
+function exportOrdersCSV(orders: any[]) {
+  const header = "ID,Type,Status,Total,Payment,Customer,Rider,Date";
+  const rows = orders.map((o: any) =>
+    [o.id, o.type, o.status, o.total, o.paymentMethod, o.userName || "", o.riderName || "", o.createdAt?.slice(0,10) || ""].join(",")
+  );
+  const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `orders-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
 
 const STATUS_LABELS: Record<string, string> = {
   pending:          "Pending",
@@ -33,15 +46,21 @@ const ALL_STATUSES = Object.keys(ALLOWED_TRANSITIONS);
 
 export default function Orders() {
   const { data, isLoading } = useOrdersEnriched();
-  const updateMutation = useUpdateOrder();
+  const { data: ridersData } = useRiders();
+  const updateMutation  = useUpdateOrder();
+  const assignMutation  = useAssignRider();
   const { toast } = useToast();
 
   const [search, setSearch]               = useState("");
   const [statusFilter, setStatusFilter]   = useState("all");
   const [typeFilter, setTypeFilter]       = useState("all");
+  const [dateFrom, setDateFrom]           = useState("");
+  const [dateTo, setDateTo]               = useState("");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelling, setCancelling]       = useState(false);
+  const [showAssignRider, setShowAssignRider] = useState(false);
+  const [riderSearch, setRiderSearch]     = useState("");
 
   const handleUpdateStatus = (id: string, status: string, extra?: { localUpdate?: any }) => {
     updateMutation.mutate({ id, status }, {
@@ -69,6 +88,18 @@ export default function Orders() {
     });
   };
 
+  const handleAssignRider = (rider: any) => {
+    if (!selectedOrder) return;
+    assignMutation.mutate({ orderId: selectedOrder.id, riderId: rider.id, riderName: rider.name || rider.phone, riderPhone: rider.phone }, {
+      onSuccess: () => {
+        toast({ title: "Rider assigned ✅", description: `${rider.name || rider.phone} assigned to order` });
+        setSelectedOrder((p: any) => ({ ...p, riderId: rider.id, riderName: rider.name || rider.phone }));
+        setShowAssignRider(false);
+      },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
   const orders = data?.orders || [];
   const q = search.toLowerCase();
   const filtered = orders.filter((o: any) => {
@@ -79,7 +110,9 @@ export default function Orders() {
       || (statusFilter === "active" && ["pending","confirmed","preparing","out_for_delivery"].includes(o.status))
       || o.status === statusFilter;
     const matchesType = typeFilter === "all" || o.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
+    const matchesDate = (!dateFrom || new Date(o.createdAt) >= new Date(dateFrom))
+                     && (!dateTo   || new Date(o.createdAt) <= new Date(dateTo + "T23:59:59"));
+    return matchesSearch && matchesStatus && matchesType && matchesDate;
   });
 
   const totalCount     = orders.length;
@@ -116,9 +149,14 @@ export default function Orders() {
             <p className="text-muted-foreground text-xs sm:text-sm">{totalCount} total · {pendingCount} pending · {deliveredCount} delivered</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-          <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500" : "bg-amber-400"} animate-pulse`} />
-          {isLoading ? "Refreshing..." : `Refreshed ${secAgo}s ago`}
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={() => exportOrdersCSV(filtered)} className="h-9 rounded-xl gap-2">
+            <Download className="w-4 h-4" /> CSV
+          </Button>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500" : "bg-amber-400"} animate-pulse`} />
+            {isLoading ? "Refreshing..." : `${secAgo}s ago`}
+          </div>
         </div>
       </div>
 
@@ -182,6 +220,15 @@ export default function Orders() {
               onChange={e => setSearch(e.target.value)}
               className="pl-9 h-10 sm:h-11 rounded-xl bg-muted/30 border-border/50 text-sm"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 border-border/50 text-xs w-32" />
+            <span className="text-xs text-muted-foreground">–</span>
+            <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="h-9 rounded-xl bg-muted/30 border-border/50 text-xs w-32" />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline shrink-0">Clear</button>
+            )}
           </div>
           <div className="flex gap-2 shrink-0">
             {[
@@ -415,6 +462,60 @@ export default function Orders() {
                   </div>
                 </div>
               )}
+
+              {/* Rider Info + Assign */}
+              <div className="bg-green-50 border border-green-100 rounded-xl p-3 space-y-1">
+                <p className="text-[10px] font-bold text-green-700 uppercase tracking-wide flex items-center gap-1"><UserCheck className="w-3 h-3" /> Rider Assignment</p>
+                {selectedOrder.riderName ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{selectedOrder.riderName}</p>
+                      {selectedOrder.riderPhone && (
+                        <a href={`tel:${selectedOrder.riderPhone}`} className="flex items-center gap-1 text-xs text-green-600 font-medium hover:underline">
+                          <Phone className="w-3 h-3" /> {selectedOrder.riderPhone}
+                        </a>
+                      )}
+                    </div>
+                    <button onClick={() => { setShowAssignRider(true); setRiderSearch(""); }}
+                      className="text-xs text-green-700 border border-green-300 bg-white rounded-lg px-2 py-1 hover:bg-green-50">
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">No rider assigned</span>
+                    <button onClick={() => { setShowAssignRider(true); setRiderSearch(""); }}
+                      className="text-xs text-white bg-green-600 hover:bg-green-700 rounded-lg px-3 py-1.5 font-bold">
+                      Assign Rider
+                    </button>
+                  </div>
+                )}
+
+                {/* Rider picker dropdown */}
+                {showAssignRider && (
+                  <div className="mt-2 space-y-2">
+                    <Input placeholder="Search riders..." value={riderSearch} onChange={e => setRiderSearch(e.target.value)}
+                      className="h-8 rounded-lg text-xs" autoFocus />
+                    <div className="max-h-36 overflow-y-auto space-y-1">
+                      {(ridersData?.users || [])
+                        .filter((r: any) => r.isActive && !r.isBanned)
+                        .filter((r: any) => riderSearch ? ((r.name || r.phone || "").toLowerCase().includes(riderSearch.toLowerCase())) : true)
+                        .slice(0, 8)
+                        .map((r: any) => (
+                          <button key={r.id} onClick={() => handleAssignRider(r)} disabled={assignMutation.isPending}
+                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 bg-white border border-border/50 rounded-lg hover:bg-green-50 text-xs">
+                            <div className="w-6 h-6 rounded-full bg-green-100 text-green-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                              {(r.name || r.phone || "R")[0].toUpperCase()}
+                            </div>
+                            <span className="font-semibold">{r.name || r.phone}</span>
+                            <span className="text-muted-foreground ml-auto font-mono">{r.vehiclePlate || ""}</span>
+                          </button>
+                        ))}
+                    </div>
+                    <button onClick={() => setShowAssignRider(false)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                  </div>
+                )}
+              </div>
 
               {/* Action buttons */}
               {!isTerminal(selectedOrder.status) && (

@@ -6,12 +6,26 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Receipt, TrendingUp, TrendingDown, DollarSign, Search, RefreshCw, User } from "lucide-react";
+import { Receipt, TrendingUp, TrendingDown, DollarSign, Search, RefreshCw, User, Download, CalendarDays } from "lucide-react";
+
+function exportTxnCSV(txns: any[]) {
+  const header = "ID,User,Phone,Type,Amount,Description,Date";
+  const rows = txns.map((t: any) =>
+    [t.id, t.userName || "", t.userPhone || "", t.type, t.amount, (t.description || "").replace(/,/g, ";"), t.createdAt?.slice(0,10) || ""].join(",")
+  );
+  const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `transactions-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
 
 export default function Transactions() {
   const { data, isLoading, refetch, isFetching } = useTransactions();
-  const [search, setSearch] = useState("");
+  const [search, setSearch]     = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]     = useState("");
 
   const transactions = data?.transactions || [];
   const filtered = transactions.filter((t: any) => {
@@ -23,8 +37,13 @@ export default function Transactions() {
       t.userId.toLowerCase().includes(q) ||
       t.id.toLowerCase().includes(q);
     const matchType = typeFilter === "all" || t.type === typeFilter;
-    return matchSearch && matchType;
+    const matchDate = (!dateFrom || new Date(t.createdAt) >= new Date(dateFrom))
+                   && (!dateTo   || new Date(t.createdAt) <= new Date(dateTo + "T23:59:59"));
+    return matchSearch && matchType && matchDate;
   });
+
+  const filteredCredits = filtered.filter((t: any) => t.type === "credit").reduce((s: number, t: any) => s + Number(t.amount), 0);
+  const filteredDebits  = filtered.filter((t: any) => t.type === "debit").reduce((s: number, t: any) => s + Number(t.amount), 0);
 
   return (
     <div className="space-y-6">
@@ -38,10 +57,14 @@ export default function Transactions() {
             <p className="text-muted-foreground text-sm">Complete history of all digital wallet movements</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2 self-start sm:self-auto">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportTxnCSV(filtered)} className="h-9 rounded-xl gap-2 self-start sm:self-auto">
+            <Download className="w-4 h-4" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2 self-start sm:self-auto">
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -81,37 +104,57 @@ export default function Transactions() {
         </Card>
       </div>
 
-      {/* Filters */}
-      <Card className="p-4 rounded-2xl border-border/50 shadow-sm flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by user name, phone, or description..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50"
-          />
+      {/* Filter-scoped summary row */}
+      {(dateFrom || dateTo || typeFilter !== "all" || search) && (
+        <div className="flex items-center gap-4 p-3 bg-sky-50 border border-sky-200 rounded-xl text-sm">
+          <span className="font-semibold text-sky-800">Filtered summary:</span>
+          <span className="text-sky-700">{filtered.length} txns</span>
+          <span className="text-green-700 font-bold">+{formatCurrency(filteredCredits)}</span>
+          <span className="text-red-700 font-bold">−{formatCurrency(filteredDebits)}</span>
+          <span className="text-sky-700 font-bold">Net: {formatCurrency(filteredCredits - filteredDebits)}</span>
         </div>
-        <div className="flex gap-2">
-          {[
-            { value: "all", label: "All" },
-            { value: "credit", label: "▲ Credits" },
-            { value: "debit", label: "▼ Debits" }
-          ].map(t => (
-            <button
-              key={t.value}
-              onClick={() => setTypeFilter(t.value)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors border ${
-                typeFilter === t.value
-                  ? t.value === "credit" ? "bg-green-600 text-white border-green-600"
-                  : t.value === "debit" ? "bg-red-600 text-white border-red-600"
-                  : "bg-primary text-white border-primary"
-                  : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      )}
+
+      {/* Filters */}
+      <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by user name, phone, or description..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50"
+            />
+          </div>
+          <div className="flex gap-2">
+            {[
+              { value: "all", label: "All" },
+              { value: "credit", label: "▲ Credits" },
+              { value: "debit", label: "▼ Debits" }
+            ].map(t => (
+              <button
+                key={t.value}
+                onClick={() => setTypeFilter(t.value)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors border ${
+                  typeFilter === t.value
+                    ? t.value === "credit" ? "bg-green-600 text-white border-green-600"
+                    : t.value === "debit" ? "bg-red-600 text-white border-red-600"
+                    : "bg-primary text-white border-primary"
+                    : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
+          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">Clear</button>}
         </div>
       </Card>
 

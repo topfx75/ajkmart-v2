@@ -1,8 +1,8 @@
 import { useState } from "react";
 import {
-  BanknoteIcon, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock, Filter,
+  BanknoteIcon, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock, Filter, CheckSquare,
 } from "lucide-react";
-import { useWithdrawalRequests, useApproveWithdrawal, useRejectWithdrawal } from "@/hooks/use-admin";
+import { useWithdrawalRequests, useApproveWithdrawal, useRejectWithdrawal, useBatchApproveWithdrawals, useBatchRejectWithdrawals } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -165,16 +165,47 @@ export default function Withdrawals() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<any | null>(null);
   const [rejectTarget,  setRejectTarget]  = useState<any | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchRejectReason, setBatchRejectReason] = useState("");
 
   const { data, isLoading, refetch } = useWithdrawalRequests();
+  const batchApprove = useBatchApproveWithdrawals();
+  const batchReject  = useBatchRejectWithdrawals();
+  const { toast } = useToast();
+
   const withdrawals: any[] = data?.withdrawals || [];
 
   const filtered = statusFilter === "all" ? withdrawals : withdrawals.filter(w => w.status === statusFilter);
+  const pendingFiltered = filtered.filter(w => w.status === "pending");
 
   const pendingCount   = withdrawals.filter(w => w.status === "pending").length;
   const pendingAmt     = withdrawals.filter(w => w.status === "pending").reduce((s: number, w: any) => s + Number(w.amount), 0);
   const paidCount      = withdrawals.filter(w => w.status === "paid").length;
   const rejectedCount  = withdrawals.filter(w => w.status === "rejected").length;
+
+  const toggleSelect = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAll = () => {
+    const pendingIds = pendingFiltered.map((w: any) => w.id);
+    setSelected(prev => prev.size === pendingIds.length ? new Set() : new Set(pendingIds));
+  };
+  const handleBatchApprove = () => {
+    if (selected.size === 0) return;
+    batchApprove.mutate([...selected], {
+      onSuccess: (r: any) => { toast({ title: `✅ Batch Approved ${r.approved?.length || selected.size} withdrawals` }); setSelected(new Set()); },
+      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    });
+  };
+  const handleBatchReject = () => {
+    if (selected.size === 0) return;
+    batchReject.mutate({ ids: [...selected], reason: batchRejectReason || "Batch rejected by admin" }, {
+      onSuccess: (r: any) => { toast({ title: `❌ Batch Rejected ${r.rejected?.length || selected.size} withdrawals` }); setSelected(new Set()); setBatchRejectReason(""); },
+      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    });
+  };
 
   const STATUS_TABS: { id: StatusFilter; label: string; count: number; color: string }[] = [
     { id: "all",      label: "All",      count: withdrawals.length,  color: "text-gray-700" },
@@ -236,6 +267,30 @@ export default function Withdrawals() {
         </div>
       )}
 
+      {/* Batch Action Bar */}
+      {pendingFiltered.length > 0 && (
+        <div className="bg-white border border-border/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-3">
+            <input type="checkbox" className="w-4 h-4 rounded cursor-pointer" checked={selected.size === pendingFiltered.length && pendingFiltered.length > 0} onChange={toggleAll} />
+            <span className="text-sm text-gray-600">{selected.size > 0 ? `${selected.size} selected` : "Select pending to batch-process"}</span>
+          </div>
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
+              <Button size="sm" onClick={handleBatchApprove} disabled={batchApprove.isPending} className="bg-green-600 hover:bg-green-700 text-white rounded-xl gap-1.5 text-xs">
+                <CheckCircle className="w-3.5 h-3.5" /> Batch Approve ({selected.size})
+              </Button>
+              <input
+                type="text" placeholder="Reject reason..." value={batchRejectReason} onChange={e => setBatchRejectReason(e.target.value)}
+                className="h-8 text-xs rounded-lg border border-border/60 px-2 bg-muted/30"
+              />
+              <Button size="sm" variant="outline" onClick={handleBatchReject} disabled={batchReject.isPending} className="border-red-300 text-red-600 hover:bg-red-50 rounded-xl gap-1.5 text-xs">
+                <XCircle className="w-3.5 h-3.5" /> Batch Reject ({selected.size})
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* List */}
       {isLoading ? (
         <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse"/>)}</div>
@@ -253,11 +308,16 @@ export default function Withdrawals() {
             const parsed = parseDesc(w.description || "");
             const expanded = expandedId === w.id;
             return (
-              <Card key={w.id} className="border-0 shadow-sm overflow-hidden">
+              <Card key={w.id} className={`border-0 shadow-sm overflow-hidden ${selected.has(w.id) ? "ring-2 ring-primary/40" : ""}`}>
                 <CardContent className="p-0">
                   <button className="w-full text-left p-4" onClick={() => setExpandedId(expanded ? null : w.id)}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
+                        {w.status === "pending" && (
+                          <div onClick={e => { e.stopPropagation(); toggleSelect(w.id); }} className="flex-shrink-0">
+                            <input type="checkbox" className="w-4 h-4 rounded cursor-pointer" checked={selected.has(w.id)} onChange={() => {}} />
+                          </div>
+                        )}
                         <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl ${w.status === "pending" ? "bg-amber-50" : w.status === "paid" ? "bg-green-50" : "bg-red-50"}`}>
                           {methodIcon(w.paymentMethod || parsed.bank)}
                         </div>

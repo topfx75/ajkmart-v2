@@ -4,8 +4,9 @@ import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
+  Download, CalendarDays, Percent,
 } from "lucide-react";
-import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings } from "@/hooks/use-admin";
+import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -149,6 +150,67 @@ function SuspendModal({ vendor, onClose }: { vendor: any; onClose: () => void })
   );
 }
 
+/* ── Commission Override Modal ── */
+function CommissionModal({ vendor, defaultPct, onClose }: { vendor: any; defaultPct: number; onClose: () => void }) {
+  const { toast } = useToast();
+  const overrideMutation = useVendorCommissionOverride();
+  const [pct, setPct] = useState(String(vendor.commissionOverride ?? defaultPct));
+
+  const handleSave = () => {
+    const v = parseFloat(pct);
+    if (isNaN(v) || v < 0 || v > 100) { toast({ title: "Invalid %", variant: "destructive" }); return; }
+    overrideMutation.mutate({ id: vendor.id, commissionPct: v }, {
+      onSuccess: () => { toast({ title: "Commission override saved ✅" }); onClose(); },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="w-[95vw] max-w-sm rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Percent className="w-5 h-5 text-orange-600" /> Commission — {vendor.storeName || vendor.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-sm">
+            <p className="text-orange-700">Platform default: <strong>{defaultPct}%</strong></p>
+            {vendor.commissionOverride && (
+              <p className="text-orange-700 mt-0.5">Current override: <strong>{vendor.commissionOverride}%</strong></p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Override Commission %</label>
+            <Input type="number" min="0" max="100" step="0.5" value={pct} onChange={e => setPct(e.target.value)} className="h-12 rounded-xl text-lg font-bold" />
+            <p className="text-xs text-muted-foreground">Set to 0–100%. Leave at platform default to reset.</p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancel</Button>
+            <Button onClick={handleSave} disabled={overrideMutation.isPending} className="flex-1 rounded-xl bg-orange-600 hover:bg-orange-700 text-white">
+              {overrideMutation.isPending ? "Saving..." : "Save Override"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function exportVendorsCSV(vendors: any[]) {
+  const header = "ID,Store,Owner,Phone,Status,Orders,Revenue,Wallet,Joined";
+  const rows = vendors.map((v: any) =>
+    [v.id, v.storeName || "", v.name || "", v.phone || "",
+     v.isBanned ? "banned" : !v.isActive ? "blocked" : "active",
+     v.totalOrders || 0, v.totalRevenue || 0, v.walletBalance, v.createdAt?.slice(0,10) || ""].join(",")
+  );
+  const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `vendors-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
 /* ══════════ Main Vendors Page ══════════ */
 export default function Vendors() {
   const [, setLocation] = useLocation();
@@ -158,8 +220,11 @@ export default function Vendors() {
 
   const [search,       setSearch]       = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom]         = useState("");
+  const [dateTo, setDateTo]             = useState("");
   const [walletModal,  setWalletModal]  = useState<any>(null);
   const [suspendModal, setSuspendModal] = useState<any>(null);
+  const [commModal,    setCommModal]    = useState<any>(null);
 
   const settings: any[] = settingsData?.settings || [];
   const vendorCommissionPct = parseFloat(settings.find((s: any) => s.key === "vendor_commission_pct")?.value ?? "15");
@@ -178,7 +243,9 @@ export default function Vendors() {
       (statusFilter === "active"  && v.isActive && !v.isBanned) ||
       (statusFilter === "blocked" && !v.isActive && !v.isBanned) ||
       (statusFilter === "banned"  && v.isBanned);
-    return matchSearch && matchStatus;
+    const matchDate = (!dateFrom || new Date(v.createdAt) >= new Date(dateFrom))
+                   && (!dateTo   || new Date(v.createdAt) <= new Date(dateTo + "T23:59:59"));
+    return matchSearch && matchStatus && matchDate;
   });
 
   const totalEarnings    = vendors.reduce((s: number, v: any) => s + v.totalRevenue * vendorShare, 0);
@@ -207,6 +274,9 @@ export default function Vendors() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportVendorsCSV(filtered)} className="h-9 rounded-xl gap-2">
+            <Download className="w-4 h-4" /> CSV
+          </Button>
           <button
             onClick={() => setLocation("/settings?cat=vendor")}
             className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
@@ -243,22 +313,31 @@ export default function Vendors() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4 rounded-2xl border-border/50 shadow-sm flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search store name, vendor name, phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30" />
+      <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input placeholder="Search store name, vendor name, phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30" />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-11 rounded-xl bg-muted/30 w-full sm:w-44">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">✅ Active</SelectItem>
+              <SelectItem value="blocked">⊘ Blocked</SelectItem>
+              <SelectItem value="banned">🚫 Banned</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-11 rounded-xl bg-muted/30 w-full sm:w-44">
-            <SelectValue placeholder="All Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">✅ Active</SelectItem>
-            <SelectItem value="blocked">⊘ Blocked</SelectItem>
-            <SelectItem value="banned">🚫 Banned</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
+          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">Clear</button>}
+        </div>
       </Card>
 
       {/* Vendors Table/Cards */}
@@ -323,7 +402,11 @@ export default function Vendors() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => setCommModal(v)}
+                      className="h-9 rounded-xl gap-1.5 text-xs border-purple-200 text-purple-700 hover:bg-purple-50">
+                      <Percent className="w-3.5 h-3.5" /> Commission
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => setWalletModal(v)}
                       className="h-9 rounded-xl gap-1.5 text-xs border-orange-200 text-orange-700 hover:bg-orange-50">
                       <Wallet className="w-3.5 h-3.5" /> Wallet
@@ -352,8 +435,9 @@ export default function Vendors() {
       )}
 
       {/* Modals */}
-      {walletModal && <WalletModal vendor={walletModal} onClose={() => setWalletModal(null)} />}
+      {walletModal  && <WalletModal  vendor={walletModal}  onClose={() => setWalletModal(null)} />}
       {suspendModal && <SuspendModal vendor={suspendModal} onClose={() => setSuspendModal(null)} />}
+      {commModal    && <CommissionModal vendor={commModal} defaultPct={vendorCommissionPct} onClose={() => setCommModal(null)} />}
     </div>
   );
 }

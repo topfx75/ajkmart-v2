@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PackageSearch, Plus, Search, Edit, Trash2 } from "lucide-react";
+import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter } from "lucide-react";
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from "@/hooks/use-admin";
 import { formatCurrency } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -23,11 +23,13 @@ export default function Products() {
   const deleteMutation = useDeleteProduct();
   const { toast } = useToast();
 
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const [search, setSearch]         = useState("");
+  const [typeFilter, setTypeFilter]   = useState("all");
+  const [vendorFilter, setVendorFilter] = useState("");
+  const [stockFilter, setStockFilter]   = useState("all");
+  const [isFormOpen, setIsFormOpen]   = useState(false);
+  const [editingId, setEditingId]     = useState<string | null>(null);
+  const [formData, setFormData]       = useState({ ...EMPTY_FORM });
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   const openAdd = () => {
@@ -79,11 +81,33 @@ export default function Products() {
   };
 
   const products = data?.products || [];
+  const vendors = [...new Set(products.filter((p: any) => p.vendorName).map((p: any) => p.vendorName as string))];
   const q = search.toLowerCase();
   const filtered = products.filter((p: any) =>
     (typeFilter === "all" || p.type === typeFilter) &&
+    (stockFilter === "all" || (stockFilter === "in" ? p.inStock : !p.inStock)) &&
+    (!vendorFilter || (p.vendorName || "").toLowerCase().includes(vendorFilter.toLowerCase())) &&
     (p.name.toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q))
   );
+
+  const toggleStock = (prod: any) => {
+    updateMutation.mutate({ id: prod.id, inStock: !prod.inStock }, {
+      onSuccess: () => toast({ title: prod.inStock ? "Marked out of stock" : "Marked in stock ✅" }),
+      onError: err => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+    });
+  };
+
+  const exportCSV = () => {
+    const header = "ID,Name,Category,Type,Price,Vendor,InStock";
+    const rows = filtered.map((p: any) =>
+      [p.id, p.name, p.category, p.type, p.price, p.vendorName || "", p.inStock ? "yes" : "no"].join(",")
+    );
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `products-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  };
 
   const martCount = products.filter((p: any) => p.type === "mart").length;
   const foodCount = products.filter((p: any) => p.type === "food").length;
@@ -100,9 +124,14 @@ export default function Products() {
             <p className="text-muted-foreground text-sm">{martCount} mart · {foodCount} food · {products.length} total</p>
           </div>
         </div>
-        <Button onClick={openAdd} className="h-11 rounded-xl shadow-md">
-          <Plus className="w-5 h-5 mr-2" /> Add Product
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportCSV} className="h-11 rounded-xl gap-2">
+            <Download className="w-4 h-4" /> CSV
+          </Button>
+          <Button onClick={openAdd} className="h-11 rounded-xl shadow-md gap-2">
+            <Plus className="w-5 h-5" /> Add Product
+          </Button>
+        </div>
       </div>
 
       {/* Add/Edit Dialog */}
@@ -205,17 +234,28 @@ export default function Products() {
       </Dialog>
 
       {/* Filters */}
-      <Card className="p-4 rounded-2xl border-border/50 shadow-sm flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or category..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9 h-11 rounded-xl"
-          />
+      <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name or category..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9 h-11 rounded-xl"
+            />
+          </div>
+          <div className="relative sm:w-44">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Filter vendor..."
+              value={vendorFilter}
+              onChange={e => setVendorFilter(e.target.value)}
+              className="pl-9 h-11 rounded-xl"
+            />
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {["all", "mart", "food"].map(t => (
             <button
               key={t}
@@ -225,6 +265,18 @@ export default function Products() {
               }`}
             >
               {t === "mart" ? "🛒 " : t === "food" ? "🍔 " : ""}{t}
+            </button>
+          ))}
+          <div className="w-px bg-border/60 mx-1" />
+          {[{ v: "all", l: "All Stock" }, { v: "in", l: "✓ In Stock" }, { v: "out", l: "✗ Out of Stock" }].map(s => (
+            <button
+              key={s.v}
+              onClick={() => setStockFilter(s.v)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors border ${
+                stockFilter === s.v ? "bg-green-600 text-white border-green-600" : "bg-muted/30 border-border/50 hover:border-green-300 text-muted-foreground"
+              }`}
+            >
+              {s.l}
             </button>
           ))}
         </div>
@@ -269,12 +321,20 @@ export default function Products() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{p.vendorName || "—"}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant={p.inStock ? "outline" : "destructive"}
-                        className={p.inStock ? "bg-green-50 text-green-700 border-green-200" : ""}
+                      <button
+                        onClick={() => toggleStock(p)}
+                        disabled={updateMutation.isPending}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                          p.inStock
+                            ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                            : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                        }`}
                       >
-                        {p.inStock ? "✓ In Stock" : "✗ Out of Stock"}
-                      </Badge>
+                        {p.inStock
+                          ? <><ToggleRight className="w-4 h-4" /> In Stock</>
+                          : <><ToggleLeft  className="w-4 h-4" /> Out of Stock</>
+                        }
+                      </button>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

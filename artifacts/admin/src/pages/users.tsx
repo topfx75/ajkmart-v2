@@ -3,9 +3,10 @@ import {
   Search, CheckCircle2, XCircle, Wallet, RefreshCw, Trash2,
   Activity, ShoppingBag, Car, Pill, Package, Shield, UserCog,
   Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
+  Download, FileText, CalendarDays, Eye, AlertCircle,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers } from "@/hooks/use-admin";
 import { fetcher } from "@/lib/api";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -421,6 +422,113 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
   );
 }
 
+/* ── CSV Export helper ── */
+function exportUsersCSV(users: any[]) {
+  const header = "ID,Name,Phone,Email,Role,Status,Wallet,Joined";
+  const rows = users.map((u: any) =>
+    [u.id, u.name || "", u.phone || "", u.email || "", u.role || "customer",
+     u.isBanned ? "banned" : u.isActive ? "active" : "blocked",
+     u.walletBalance, u.createdAt?.slice(0,10) || ""].join(",")
+  );
+  const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `users-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+/* ── KYC Doc Viewer ── */
+function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
+  const correctionMutation = useRequestUserCorrection();
+  const { toast } = useToast();
+  const [corrField, setCorrField] = useState("");
+  const [corrNote, setCorrNote]   = useState("");
+  const [showCorrForm, setShowCorrForm] = useState(false);
+
+  const docs: { label: string; field: string; value: string | null }[] = [
+    { label: "CNIC Front", field: "cnicFront", value: user.cnicFrontUrl || null },
+    { label: "CNIC Back",  field: "cnicBack",  value: user.cnicBackUrl  || null },
+    { label: "Profile Photo", field: "profilePhoto", value: user.profilePhotoUrl || null },
+    { label: "Vehicle License", field: "vehicleLicense", value: user.vehicleLicenseUrl || null },
+  ].filter(d => d.value);
+
+  const handleRequestCorrection = () => {
+    if (!user.id) return;
+    correctionMutation.mutate({ id: user.id, field: corrField || "document", note: corrNote || undefined }, {
+      onSuccess: () => {
+        toast({ title: "Correction requested", description: "User will be notified to re-upload." });
+        setShowCorrForm(false);
+        onClose();
+      },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="w-[95vw] max-w-lg max-h-[85dvh] overflow-y-auto rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600" /> KYC Documents — {user.name || user.phone}
+          </DialogTitle>
+        </DialogHeader>
+
+        {docs.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground text-sm">No documents uploaded yet.</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            {docs.map(doc => (
+              <div key={doc.field} className="space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{doc.label}</p>
+                <a href={doc.value!} target="_blank" rel="noopener noreferrer" className="block">
+                  <img src={doc.value!} alt={doc.label} className="w-full h-28 object-cover rounded-xl border border-border/50 hover:opacity-80 transition-opacity" />
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Verification Checklist */}
+        <div className="mt-4 space-y-2">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Verification Checklist</p>
+          {["CNIC legible and valid", "Photo matches ID", "Details correct (name, DOB)", "Documents not expired"].map(item => (
+            <label key={item} className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" className="w-4 h-4 rounded" />
+              <span>{item}</span>
+            </label>
+          ))}
+        </div>
+
+        {/* Request Correction */}
+        {!showCorrForm ? (
+          <button onClick={() => setShowCorrForm(true)} className="mt-4 text-xs text-amber-600 flex items-center gap-1 hover:underline font-semibold">
+            <AlertCircle className="w-3.5 h-3.5" /> Request document correction
+          </button>
+        ) : (
+          <div className="mt-4 space-y-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <p className="text-xs font-bold text-amber-800">Request Correction</p>
+            <select value={corrField} onChange={e => setCorrField(e.target.value)} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
+              <option value="">Select document</option>
+              <option value="cnicFront">CNIC Front</option>
+              <option value="cnicBack">CNIC Back</option>
+              <option value="profilePhoto">Profile Photo</option>
+              <option value="vehicleLicense">Vehicle License</option>
+            </select>
+            <Input placeholder="Note to user..." value={corrNote} onChange={e => setCorrNote(e.target.value)} className="h-9 rounded-lg text-sm" />
+            <div className="flex gap-2">
+              <button onClick={() => setShowCorrForm(false)} className="flex-1 h-9 border border-border/50 rounded-lg text-xs font-semibold">Cancel</button>
+              <button onClick={handleRequestCorrection} disabled={correctionMutation.isPending}
+                className="flex-1 h-9 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold disabled:opacity-60">
+                {correctionMutation.isPending ? "Sending..." : "Send Request"}
+              </button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ══════════ Main Users Page ══════════ */
 export default function Users() {
   const { data, isLoading, refetch, isFetching } = useUsers();
@@ -430,11 +538,14 @@ export default function Users() {
   const deleteMutation   = useDeleteUser();
   const approveMutation  = useApproveUser();
   const rejectMutation   = useRejectUser();
+  const bulkBanMutation  = useBulkBanUsers();
   const { toast } = useToast();
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]     = useState("");
   const [topupUser, setTopupUser] = useState<any>(null);
   const [topupAmount, setTopupAmount] = useState("");
   const [topupNote, setTopupNote] = useState("");
@@ -443,6 +554,8 @@ export default function Users() {
   const [securityUser, setSecurityUser] = useState<any>(null);
   const [rejectUser, setRejectUser]     = useState<any>(null);
   const [rejectNote, setRejectNote]     = useState("");
+  const [kycUser, setKycUser]           = useState<any>(null);
+  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
 
   const pendingUsers = pendingData?.users || [];
 
@@ -504,11 +617,34 @@ export default function Users() {
       || (statusFilter === "active"   && u.isActive && !u.isBanned)
       || (statusFilter === "blocked"  && !u.isActive && !u.isBanned)
       || (statusFilter === "banned"   && u.isBanned);
-    return matchSearch && matchRole && matchStatus;
+    const matchDate = (!dateFrom || new Date(u.createdAt) >= new Date(dateFrom))
+                   && (!dateTo   || new Date(u.createdAt) <= new Date(dateTo + "T23:59:59"));
+    return matchSearch && matchRole && matchStatus && matchDate;
   });
 
   const bannedCount  = users.filter((u: any) => u.isBanned).length;
   const blockedCount = users.filter((u: any) => !u.isActive && !u.isBanned).length;
+
+  const allSelected = filtered.length > 0 && filtered.every((u: any) => selectedIds.has(u.id));
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((u: any) => u.id)));
+    }
+  };
+
+  const handleBulkBan = (action: "ban" | "unban") => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    bulkBanMutation.mutate({ ids, action }, {
+      onSuccess: (d: any) => {
+        toast({ title: `${action === "ban" ? "Banned" : "Unbanned"} ${d.affected} user(s)` });
+        setSelectedIds(new Set());
+      },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -520,9 +656,14 @@ export default function Users() {
             {blockedCount > 0 && <span className="text-amber-600 font-semibold">{blockedCount} blocked</span>}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportUsersCSV(filtered)} className="h-9 rounded-xl gap-2">
+            <Download className="w-4 h-4" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* ── Pending Approval Banner ── */}
@@ -618,41 +759,72 @@ export default function Users() {
       )}
 
       {/* Filters */}
-      <Card className="p-4 rounded-2xl border-border/50 shadow-sm flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50" />
+      <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50" />
+          </div>
+          <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-40">
+              <SelectValue placeholder="All Roles" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Roles</SelectItem>
+              <SelectItem value="customer">Customer</SelectItem>
+              <SelectItem value="rider">Rider</SelectItem>
+              <SelectItem value="vendor">Vendor</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-44">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">✓ Active</SelectItem>
+              <SelectItem value="blocked">⊘ Blocked</SelectItem>
+              <SelectItem value="banned">✕ Banned</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-40">
-            <SelectValue placeholder="All Roles" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="customer">Customer</SelectItem>
-            <SelectItem value="rider">Rider</SelectItem>
-            <SelectItem value="vendor">Vendor</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-44">
-            <SelectValue placeholder="All Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">✓ Active</SelectItem>
-            <SelectItem value="blocked">⊘ Blocked</SelectItem>
-            <SelectItem value="banned">✕ Banned</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="flex items-center gap-2 flex-1">
+            <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 border-border/50 text-sm" />
+            <span className="text-muted-foreground text-xs">to</span>
+            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9 rounded-xl bg-muted/30 border-border/50 text-sm" />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline shrink-0">Clear</button>
+            )}
+          </div>
+          {/* Bulk actions */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground font-semibold">{selectedIds.size} selected</span>
+              <button onClick={() => handleBulkBan("ban")} disabled={bulkBanMutation.isPending}
+                className="px-3 py-1.5 bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-200 disabled:opacity-60">
+                Ban All
+              </button>
+              <button onClick={() => handleBulkBan("unban")} disabled={bulkBanMutation.isPending}
+                className="px-3 py-1.5 bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-200 disabled:opacity-60">
+                Unban All
+              </button>
+              <button onClick={() => setSelectedIds(new Set())} className="text-xs text-muted-foreground hover:text-foreground">Deselect</button>
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* Users Table */}
       <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <Table className="min-w-[760px]">
+          <Table className="min-w-[820px]">
             <TableHeader className="bg-muted/50">
               <TableRow>
+                <TableHead className="w-8 px-3">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4 rounded" />
+                </TableHead>
                 <TableHead className="font-semibold">User</TableHead>
                 <TableHead className="font-semibold">Phone</TableHead>
                 <TableHead className="font-semibold">Roles</TableHead>
@@ -664,16 +836,26 @@ export default function Users() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="h-32 text-center text-muted-foreground">Loading users...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">Loading users...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="h-32 text-center text-muted-foreground">No users found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">No users found.</TableCell></TableRow>
               ) : (
                 filtered.map((user: any) => {
                   const userRoles = (user.roles || user.role || "customer").split(",").filter(Boolean);
                   const isBanned  = user.isBanned;
                   const isBlocked = !user.isActive && !isBanned;
+                  const isChecked = selectedIds.has(user.id);
                   return (
-                    <TableRow key={user.id} className={`hover:bg-muted/30 ${isBanned ? "bg-red-50/30" : isBlocked ? "bg-amber-50/30" : ""}`}>
+                    <TableRow key={user.id} className={`hover:bg-muted/30 ${isBanned ? "bg-red-50/30" : isBlocked ? "bg-amber-50/30" : ""} ${isChecked ? "bg-blue-50/40" : ""}`}>
+                      <TableCell className="px-3">
+                        <input type="checkbox" checked={isChecked}
+                          onChange={e => {
+                            const s = new Set(selectedIds);
+                            e.target.checked ? s.add(user.id) : s.delete(user.id);
+                            setSelectedIds(s);
+                          }}
+                          className="w-4 h-4 rounded" />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${isBanned ? "bg-red-100 text-red-600" : isBlocked ? "bg-amber-100 text-amber-600" : "bg-primary/10 text-primary"}`}>
@@ -719,6 +901,9 @@ export default function Users() {
                       <TableCell className="text-right text-sm text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          <Button variant="outline" size="sm" onClick={() => setKycUser(user)} className="h-8 w-8 rounded-lg border-purple-200 text-purple-700 hover:bg-purple-50 p-0 flex items-center justify-center" title="KYC Docs">
+                            <Eye className="w-3.5 h-3.5"/>
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 p-0 flex items-center justify-center" title="Security Settings">
                             <Shield className="w-3.5 h-3.5"/>
                           </Button>
@@ -807,6 +992,9 @@ export default function Users() {
 
       {/* Security Modal */}
       {securityUser && <SecurityModal user={securityUser} onClose={() => setSecurityUser(null)} />}
+
+      {/* KYC Document Modal */}
+      {kycUser && <KycDocModal user={kycUser} onClose={() => setKycUser(null)} />}
     </div>
   );
 }

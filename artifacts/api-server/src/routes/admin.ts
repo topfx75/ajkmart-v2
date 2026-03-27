@@ -1806,6 +1806,48 @@ router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
   res.json({ success: true, txId, status: "rejected", reason: rejReason, refunded: amt });
 });
 
+/* ── PATCH /admin/withdrawal-requests/batch-approve ─── */
+router.patch("/withdrawal-requests/batch-approve", async (req, res) => {
+  const { ids } = req.body as { ids: string[] };
+  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids required" }); return; }
+  const results: any[] = [];
+  for (const txId of ids) {
+    const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
+    if (!tx || (tx.reference && tx.reference !== "pending")) continue;
+    const refNo = `BATCH-${Date.now()}`;
+    await db.update(walletTransactionsTable).set({ reference: refNo }).where(eq(walletTransactionsTable.id, txId));
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: tx.userId,
+      title: "Withdrawal Approved ✅",
+      body: `Rs. ${parseFloat(String(tx.amount)).toFixed(0)} withdrawal approve ho gaya. Ref: ${refNo}`,
+      type: "wallet", icon: "checkmark-circle-outline",
+    }).catch(() => {});
+    results.push(txId);
+  }
+  res.json({ success: true, approved: results });
+});
+
+/* ── PATCH /admin/withdrawal-requests/batch-reject ─── */
+router.patch("/withdrawal-requests/batch-reject", async (req, res) => {
+  const { ids, reason } = req.body as { ids: string[]; reason: string };
+  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids required" }); return; }
+  const rejReason = (reason || "Admin batch rejected").trim();
+  const results: any[] = [];
+  for (const txId of ids) {
+    const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
+    if (!tx || (tx.reference && tx.reference !== "pending")) continue;
+    await db.update(walletTransactionsTable).set({ reference: `rejected:${rejReason}` }).where(eq(walletTransactionsTable.id, txId));
+    const amt = parseFloat(String(tx.amount));
+    await db.update(usersTable).set({ walletBalance: sql`wallet_balance + ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, tx.userId));
+    await db.insert(walletTransactionsTable).values({
+      id: generateId(), userId: tx.userId, type: "credit", amount: amt.toFixed(2),
+      description: `Withdrawal Refunded — ${rejReason}`, reference: `refund:${txId}`, paymentMethod: null,
+    });
+    results.push(txId);
+  }
+  res.json({ success: true, rejected: results });
+});
+
 /* ── GET /admin/all-notifications ─────────── */
 router.get("/all-notifications", async (req, res) => {
   const role = req.query["role"] as string | undefined;
@@ -1834,17 +1876,28 @@ router.get("/all-notifications", async (req, res) => {
 
 /* ── GET /admin/audit-log — view admin action audit trail ── */
 router.get("/audit-log", adminAuth, (req, res) => {
-  const limit  = Math.min(parseInt(String(req.query["limit"]  || "200")), 1000);
+  const page   = Math.max(1, parseInt(String(req.query["page"]  || "1")));
+  const limit  = Math.min(parseInt(String(req.query["limit"]  || "50")), 500);
   const action = req.query["action"] as string | undefined;
   const result = req.query["result"] as string | undefined;
+  const from   = req.query["from"] as string | undefined;
+  const to     = req.query["to"]   as string | undefined;
 
   let entries = [...auditLog];
   if (action) entries = entries.filter(e => e.action.includes(action));
   if (result) entries = entries.filter(e => e.result === result);
+  if (from)   entries = entries.filter(e => new Date(e.timestamp) >= new Date(from));
+  if (to)     entries = entries.filter(e => new Date(e.timestamp) <= new Date(to));
+
+  const total = entries.length;
+  const paginated = entries.slice((page - 1) * limit, page * limit);
 
   res.json({
-    entries: entries.slice(0, limit),
-    total: entries.length,
+    entries: paginated,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
@@ -2170,6 +2223,28 @@ router.patch("/cod-remittances/:id/reject", async (req, res) => {
     "wallet", "close-circle-outline"
   );
   res.json({ success: true, remittance: updated });
+});
+
+/* ── PATCH /admin/cod-remittances/batch-verify ── */
+router.patch("/cod-remittances/batch-verify", async (req, res) => {
+  const { ids } = req.body as { ids: string[] };
+  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids required" }); return; }
+  const results: any[] = [];
+  for (const txId of ids) {
+    const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
+    if (!tx || tx.type !== "cod_remittance") continue;
+    if (tx.reference && tx.reference !== "pending") continue;
+    const [updated] = await db.update(walletTransactionsTable)
+      .set({ reference: `verified:batch-${Date.now()}` })
+      .where(eq(walletTransactionsTable.id, txId)).returning();
+    await sendUserNotification(
+      tx.userId, "COD Remittance Verified ✅",
+      `Rs. ${parseFloat(String(tx.amount)).toLocaleString()} COD remittance verify ho gaya.`,
+      "wallet", "checkmark-circle-outline"
+    );
+    results.push(txId);
+  }
+  res.json({ success: true, verified: results });
 });
 
 /* ── POST /admin/riders/:id/credit — Manual wallet credit for rider ── */
@@ -2693,6 +2768,160 @@ router.get("/search", async (req, res) => {
   ]);
 
   res.json({ users, rides, orders, pharmacy, query: q });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   NEW ENDPOINTS — Task 4: Operations Pages (51–100)
+══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── PATCH /admin/users/:id/request-correction — ask user to re-upload specific doc ── */
+router.patch("/users/:id/request-correction", async (req, res) => {
+  const { field, note } = req.body as { field?: string; note?: string };
+  const [user] = await db.update(usersTable)
+    .set({ approvalStatus: "correction_needed", approvalNote: note || `Please re-upload: ${field || "document"}`, updatedAt: new Date() })
+    .where(eq(usersTable.id, req.params["id"]!))
+    .returning();
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  addAuditEntry({ action: "user_correction_requested", ip: getClientIp(req), adminId: (req as any).adminId, details: `Correction requested for ${user.phone}: ${field}`, result: "success" });
+  await db.insert(notificationsTable).values({
+    id: generateId(), userId: user.id,
+    title: "Document Correction Required 📄",
+    body: note || `Please re-upload your ${field || "document"} for verification.`,
+    type: "system", icon: "document-outline",
+  }).catch(() => {});
+  res.json({ success: true, user: stripUser(user) });
+});
+
+/* ── PATCH /admin/users/:id/bulk-ban — ban/unban multiple users ── */
+router.patch("/users/bulk-ban", async (req, res) => {
+  const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
+  if (!ids?.length) { res.status(400).json({ error: "ids required" }); return; }
+  const updates = action === "ban"
+    ? { isBanned: true, isActive: false, banReason: reason || "Banned by admin", updatedAt: new Date() }
+    : { isBanned: false, isActive: true, banReason: null as any, updatedAt: new Date() };
+  for (const id of ids) {
+    await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).catch(() => {});
+  }
+  addAuditEntry({ action: `bulk_${action}`, ip: getClientIp(req), adminId: (req as any).adminId, details: `Bulk ${action}: ${ids.length} users`, result: "success" });
+  res.json({ success: true, affected: ids.length, action });
+});
+
+/* ── PATCH /admin/orders/:id/assign-rider — manually assign a rider to an order ── */
+router.patch("/orders/:id/assign-rider", async (req, res) => {
+  const { riderId, riderName, riderPhone } = req.body as { riderId?: string; riderName?: string; riderPhone?: string };
+  const [order] = await db.update(ordersTable)
+    .set({ riderId: riderId || null, riderName: riderName || null, riderPhone: riderPhone || null, updatedAt: new Date() })
+    .where(eq(ordersTable.id, req.params["id"]!))
+    .returning();
+  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  addAuditEntry({ action: "order_rider_assigned", ip: getClientIp(req), adminId: (req as any).adminId, details: `Rider ${riderName} assigned to order ${req.params["id"]}`, result: "success" });
+  res.json({ success: true, order: { ...order, total: parseFloat(String(order.total)) } });
+});
+
+/* ── PATCH /admin/vendors/:id/commission — set per-vendor commission override ── */
+router.patch("/vendors/:id/commission", async (req, res) => {
+  const { commissionPct } = req.body as { commissionPct: number };
+  if (commissionPct === undefined || isNaN(Number(commissionPct))) {
+    res.status(400).json({ error: "commissionPct required" }); return;
+  }
+  const [vendor] = await db.update(usersTable)
+    .set({ commissionOverride: String(commissionPct), updatedAt: new Date() } as any)
+    .where(eq(usersTable.id, req.params["id"]!))
+    .returning();
+  if (!vendor) { res.status(404).json({ error: "Vendor not found" }); return; }
+  addAuditEntry({ action: "vendor_commission_override", ip: getClientIp(req), adminId: (req as any).adminId, details: `Commission override ${commissionPct}% for vendor ${req.params["id"]}`, result: "success" });
+  res.json({ success: true, commissionPct });
+});
+
+/* ── PATCH /admin/riders/:id/online — toggle rider online/offline ── */
+router.patch("/riders/:id/online", async (req, res) => {
+  const { isOnline } = req.body as { isOnline: boolean };
+  const [rider] = await db.update(usersTable)
+    .set({ isOnline, updatedAt: new Date() } as any)
+    .where(eq(usersTable.id, req.params["id"]!))
+    .returning();
+  if (!rider) { res.status(404).json({ error: "Rider not found" }); return; }
+  addAuditEntry({ action: "rider_online_toggle", ip: getClientIp(req), adminId: (req as any).adminId, details: `Rider ${req.params["id"]} set ${isOnline ? "online" : "offline"} by admin`, result: "success" });
+  res.json({ success: true, isOnline });
+});
+
+/* ── GET /admin/revenue-trend — 7-day rolling revenue for dashboard sparkline ── */
+router.get("/revenue-trend", async (_req, res) => {
+  const days: { date: string; revenue: number }[] = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const from = new Date(d); from.setHours(0, 0, 0, 0);
+    const to   = new Date(d); to.setHours(23, 59, 59, 999);
+    const [row] = await db.select({ total: sum(ordersTable.total) })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.status, "delivered"), gte(ordersTable.createdAt, from), lte(ordersTable.createdAt, to)));
+    const [rideRow] = await db.select({ total: sum(ridesTable.fare) })
+      .from(ridesTable)
+      .where(and(eq(ridesTable.status, "completed"), gte(ridesTable.createdAt, from), lte(ridesTable.createdAt, to)));
+    days.push({
+      date: d.toISOString().slice(0, 10),
+      revenue: parseFloat(row?.total ?? "0") + parseFloat(rideRow?.total ?? "0"),
+    });
+  }
+  res.json({ trend: days });
+});
+
+/* ── GET /admin/leaderboard — top-5 vendors and riders ── */
+router.get("/leaderboard", async (_req, res) => {
+  const vendors = await db.select({
+    id:     usersTable.id,
+    name:   usersTable.storeName,
+    phone:  usersTable.phone,
+    totalOrders: sql<number>`count(${ordersTable.id})`,
+    totalRevenue: sql<number>`coalesce(sum(${ordersTable.total}),0)`,
+  })
+  .from(usersTable)
+  .leftJoin(ordersTable, and(eq(ordersTable.vendorId, usersTable.id), eq(ordersTable.status, "delivered")))
+  .where(eq(usersTable.role, "vendor"))
+  .groupBy(usersTable.id)
+  .orderBy(sql`coalesce(sum(${ordersTable.total}),0) desc`)
+  .limit(5);
+
+  const riders = await db.select({
+    id:   usersTable.id,
+    name: usersTable.name,
+    phone: usersTable.phone,
+    completedTrips: sql<number>`count(${ridesTable.id})`,
+    totalEarned: sql<number>`coalesce(sum(${ridesTable.fare}),0)`,
+  })
+  .from(usersTable)
+  .leftJoin(ridesTable, and(eq(ridesTable.riderId, usersTable.id), eq(ridesTable.status, "completed")))
+  .where(eq(usersTable.role, "rider"))
+  .groupBy(usersTable.id)
+  .orderBy(sql`count(${ridesTable.id}) desc`)
+  .limit(5);
+
+  res.json({
+    vendors: vendors.map(v => ({ ...v, totalRevenue: parseFloat(String(v.totalRevenue)), totalOrders: Number(v.totalOrders) })),
+    riders:  riders.map(r  => ({ ...r,  totalEarned: parseFloat(String(r.totalEarned)),  completedTrips: Number(r.completedTrips) })),
+  });
+});
+
+/* ── GET /admin/dashboard-export — export current dashboard stats as JSON ── */
+router.get("/dashboard-export", async (_req, res) => {
+  const [userCount] = await db.select({ count: count() }).from(usersTable);
+  const [orderCount] = await db.select({ count: count() }).from(ordersTable);
+  const [rideCount]  = await db.select({ count: count() }).from(ridesTable);
+  const [revenue]    = await db.select({ total: sum(ordersTable.total) }).from(ordersTable).where(eq(ordersTable.status, "delivered"));
+  const [rideRev]    = await db.select({ total: sum(ridesTable.fare) }).from(ridesTable).where(eq(ridesTable.status, "completed"));
+  const snapshot = {
+    exportedAt: new Date().toISOString(),
+    users: userCount?.count ?? 0,
+    orders: orderCount?.count ?? 0,
+    rides: rideCount?.count ?? 0,
+    totalRevenue: parseFloat(revenue?.total ?? "0") + parseFloat(rideRev?.total ?? "0"),
+    orderRevenue: parseFloat(revenue?.total ?? "0"),
+    rideRevenue:  parseFloat(rideRev?.total ?? "0"),
+  };
+  res.setHeader("Content-Disposition", `attachment; filename="dashboard-${new Date().toISOString().slice(0,10)}.json"`);
+  res.json(snapshot);
 });
 
 export default router;

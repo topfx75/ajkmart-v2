@@ -436,6 +436,24 @@ export const useRejectWithdrawal = () => {
   });
 };
 
+export const useBatchApproveWithdrawals = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      fetcher("/withdrawal-requests/batch-approve", { method: "PATCH", body: JSON.stringify({ ids }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-withdrawals"] }),
+  });
+};
+
+export const useBatchRejectWithdrawals = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, reason }: { ids: string[]; reason: string }) =>
+      fetcher("/withdrawal-requests/batch-reject", { method: "PATCH", body: JSON.stringify({ ids, reason }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-withdrawals"] }),
+  });
+};
+
 // COD Remittances
 export const useCodRemittances = () =>
   useQuery({
@@ -458,6 +476,15 @@ export const useRejectCodRemittance = () => {
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       fetcher(`/cod-remittances/${id}/reject`, { method: "PATCH", body: JSON.stringify({ reason }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-cod-remittances"] }),
+  });
+};
+
+export const useBatchVerifyCodRemittances = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      fetcher("/cod-remittances/batch-verify", { method: "PATCH", body: JSON.stringify({ ids }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-cod-remittances"] }),
   });
 };
@@ -610,6 +637,73 @@ export const useCustomerLocations = () => {
   return useQuery({
     queryKey: ["admin-customer-locations"],
     queryFn: () => fetcher("/customer-locations"),
+    refetchInterval: 30_000,
+  });
+};
+
+/* ── Task 4 additions ── */
+
+export const useRequestUserCorrection = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, field, note }: { id: string; field?: string; note?: string }) =>
+      fetcher(`/users/${id}/request-correction`, { method: "PATCH", body: JSON.stringify({ field, note }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-users"] }); qc.invalidateQueries({ queryKey: ["admin-users-pending"] }); },
+  });
+};
+
+export const useBulkBanUsers = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, action, reason }: { ids: string[]; action: "ban" | "unban"; reason?: string }) =>
+      fetcher("/users/bulk-ban", { method: "PATCH", body: JSON.stringify({ ids, action, reason }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
+};
+
+export const useAssignRider = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, riderId, riderName, riderPhone }: { orderId: string; riderId?: string; riderName?: string; riderPhone?: string }) =>
+      fetcher(`/orders/${orderId}/assign-rider`, { method: "PATCH", body: JSON.stringify({ riderId, riderName, riderPhone }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-orders-enriched"] }),
+  });
+};
+
+export const useVendorCommissionOverride = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, commissionPct }: { id: string; commissionPct: number }) =>
+      fetcher(`/vendors/${id}/commission`, { method: "PATCH", body: JSON.stringify({ commissionPct }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-vendors"] }),
+  });
+};
+
+export const useToggleRiderOnline = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isOnline }: { id: string; isOnline: boolean }) =>
+      fetcher(`/riders/${id}/online`, { method: "PATCH", body: JSON.stringify({ isOnline }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-riders"] }),
+  });
+};
+
+export const useRevenueTrend = () =>
+  useQuery({ queryKey: ["admin-revenue-trend"], queryFn: () => fetcher("/revenue-trend"), refetchInterval: 60_000 });
+
+export const useLeaderboard = () =>
+  useQuery({ queryKey: ["admin-leaderboard"], queryFn: () => fetcher("/leaderboard"), refetchInterval: 60_000 });
+
+export const useAuditLog = (params?: { page?: number; action?: string; from?: string; to?: string }) => {
+  const qs = new URLSearchParams();
+  if (params?.page)   qs.set("page",   String(params.page));
+  if (params?.action) qs.set("action", params.action);
+  if (params?.from)   qs.set("from",   params.from);
+  if (params?.to)     qs.set("to",     params.to);
+  const q = qs.toString();
+  return useQuery({
+    queryKey: ["admin-audit-log", params],
+    queryFn: () => fetcher(`/audit-log${q ? `?${q}` : ""}`),
     refetchInterval: 30_000,
   });
 };

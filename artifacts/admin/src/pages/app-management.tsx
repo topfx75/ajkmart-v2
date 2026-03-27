@@ -4,10 +4,11 @@ import {
   AppWindow, Users, ShoppingBag, Car, Pill, Package,
   Wallet, Shield, Plus, Pencil, Trash2, Save, X,
   ToggleRight, ToggleLeft, RefreshCw, CheckCircle2,
-  AlertTriangle, WrenchIcon, Eye, EyeOff,
+  AlertTriangle, WrenchIcon, Eye, EyeOff, ScrollText, CalendarDays, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
+import { useAuditLog } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,11 +52,87 @@ const SERVICE_MAP = [
 
 const EMPTY_ADMIN = { name: "", secret: "", role: "manager", permissions: PERMISSIONS.join(","), isActive: true };
 
-/* ═══════════ Main Page ═══════════ */
+/* ── Audit Log Tab Component ── */
+function AuditLogTab() {
+  const [page, setPage]     = useState(1);
+  const [action, setAction] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]     = useState("");
+  const { data, isLoading, refetch, isFetching } = useAuditLog({ page, action: action || undefined, from: dateFrom || undefined, to: dateTo || undefined });
+
+  const logs: any[]  = data?.logs || [];
+  const total: number = data?.total || 0;
+  const pages: number = data?.pages || 1;
+
+  const fd = (d: string) => new Date(d).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Input placeholder="Filter by action..." value={action} onChange={e => { setAction(e.target.value); setPage(1); }} className="h-9 rounded-xl text-sm sm:w-56" />
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="h-9 rounded-xl text-xs w-32" />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input type="date" value={dateTo}   onChange={e => { setDateTo(e.target.value); setPage(1); }}   className="h-9 rounded-xl text-xs w-32" />
+          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">Clear</button>}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2 ml-auto">
+          <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      <Card className="rounded-2xl border-border/50 overflow-hidden">
+        {isLoading ? (
+          <div className="p-8 text-center text-muted-foreground">Loading audit log...</div>
+        ) : logs.length === 0 ? (
+          <div className="p-12 text-center">
+            <ScrollText className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-muted-foreground">No audit log entries found</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {logs.map((log: any) => (
+              <div key={log.id} className="flex items-start gap-4 p-4 hover:bg-muted/30">
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4 text-slate-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-sm">{log.adminName || "Unknown Admin"}</p>
+                    <Badge variant="outline" className="text-[10px] font-mono bg-blue-50 text-blue-700 border-blue-200">{log.action}</Badge>
+                    {log.targetId && <span className="text-xs text-muted-foreground font-mono">{log.targetId}</span>}
+                  </div>
+                  {log.details && <p className="text-xs text-muted-foreground mt-0.5 truncate">{typeof log.details === "string" ? log.details : JSON.stringify(log.details)}</p>}
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">{fd(log.createdAt)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {pages > 1 && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">{total} entries · page {page} of {pages}</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="h-8 rounded-xl gap-1">
+              <ChevronLeft className="w-3.5 h-3.5" /> Prev
+            </Button>
+            <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="h-8 rounded-xl gap-1">
+              Next <ChevronRight className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AppManagement() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"overview"|"admins"|"maintenance">("overview");
+  const [tab, setTab] = useState<"overview"|"admins"|"maintenance"|"audit-log">("overview");
   const [adminForm, setAdminForm] = useState({ ...EMPTY_ADMIN });
   const [editingAdmin, setEditingAdmin] = useState<AdminAccount | null>(null);
   const [adminDialog, setAdminDialog] = useState(false);
@@ -211,16 +288,17 @@ export default function AppManagement() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-muted p-1 rounded-xl w-fit">
+      <div className="flex gap-1 bg-muted p-1 rounded-xl w-fit overflow-x-auto">
         {[
           { id: "overview",    label: "📊 Overview" },
           { id: "admins",      label: "👥 Admin Accounts" },
           { id: "maintenance", label: "🔧 Services & Maintenance" },
+          { id: "audit-log",   label: "📋 Audit Log" },
         ].map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id as any)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t.id ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab === t.id ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             {t.label}
           </button>
@@ -510,6 +588,9 @@ export default function AppManagement() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ══ Audit Log Tab ══ */}
+      {tab === "audit-log" && <AuditLogTab />}
     </div>
   );
 }

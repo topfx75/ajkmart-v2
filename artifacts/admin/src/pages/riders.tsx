@@ -1,9 +1,10 @@
 import { useState } from "react";
 import {
   Bike, Search, RefreshCw, Wallet, CircleDollarSign, Gift,
-  CheckCircle2, Ban, AlertTriangle, Star, Phone,
+  CheckCircle2, Ban, AlertTriangle, Star, Phone, Download, CalendarDays,
+  WifiOff, Wifi,
 } from "lucide-react";
-import { useRiders, useUpdateRiderStatus, useRiderPayout, useRiderBonus } from "@/hooks/use-admin";
+import { useRiders, useUpdateRiderStatus, useRiderPayout, useRiderBonus, useToggleRiderOnline } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -148,17 +149,41 @@ function RiderSuspendModal({ rider, onClose }: { rider: any; onClose: () => void
   );
 }
 
+function exportRidersCSV(riders: any[]) {
+  const header = "ID,Name,Phone,Status,Wallet,Joined";
+  const rows = riders.map((r: any) =>
+    [r.id, r.name || "", r.phone || "",
+     r.isBanned ? "banned" : !r.isActive ? "blocked" : r.isOnline ? "online" : "offline",
+     r.walletBalance, r.createdAt?.slice(0,10) || ""].join(",")
+  );
+  const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `riders-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
 /* ══════════ Main Riders Page ══════════ */
 export default function Riders() {
   const { data, isLoading, refetch, isFetching } = useRiders();
+  const toggleOnlineMutation = useToggleRiderOnline();
   const { toast } = useToast();
 
   const [search,       setSearch]       = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom]         = useState("");
+  const [dateTo, setDateTo]             = useState("");
   const [walletModal,  setWalletModal]  = useState<any>(null);
   const [suspendModal, setSuspendModal] = useState<any>(null);
 
-  const riders: any[] = data?.riders || [];
+  const riders: any[] = data?.users || data?.riders || [];
+
+  const handleToggleOnline = (r: any) => {
+    toggleOnlineMutation.mutate({ id: r.id, isOnline: !r.isOnline }, {
+      onSuccess: () => toast({ title: r.isOnline ? "Rider set offline" : "Rider set online ✅" }),
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
 
   const filtered = riders.filter((r: any) => {
     const q = search.toLowerCase();
@@ -169,7 +194,9 @@ export default function Riders() {
       (statusFilter === "offline" && !r.isOnline && r.isActive) ||
       (statusFilter === "blocked" && !r.isActive && !r.isBanned) ||
       (statusFilter === "banned"  && r.isBanned);
-    return matchSearch && matchStatus;
+    const matchDate = (!dateFrom || new Date(r.createdAt) >= new Date(dateFrom))
+                   && (!dateTo   || new Date(r.createdAt) <= new Date(dateTo + "T23:59:59"));
+    return matchSearch && matchStatus && matchDate;
   });
 
   const onlineRiders   = riders.filter((r: any) => r.isOnline && r.isActive).length;
@@ -196,9 +223,14 @@ export default function Riders() {
             <p className="text-sm text-muted-foreground">{riders.length} total · {onlineRiders} online now</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => exportRidersCSV(filtered)} className="h-9 rounded-xl gap-2">
+            <Download className="w-4 h-4" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -224,23 +256,32 @@ export default function Riders() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4 rounded-2xl border-border/50 shadow-sm flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30" />
+      <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30" />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-11 rounded-xl bg-muted/30 w-full sm:w-44">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Riders</SelectItem>
+              <SelectItem value="online">🟢 Online</SelectItem>
+              <SelectItem value="offline">⚫ Offline</SelectItem>
+              <SelectItem value="blocked">⊘ Blocked</SelectItem>
+              <SelectItem value="banned">🚫 Banned</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-11 rounded-xl bg-muted/30 w-full sm:w-44">
-            <SelectValue placeholder="All Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Riders</SelectItem>
-            <SelectItem value="online">🟢 Online</SelectItem>
-            <SelectItem value="offline">⚫ Offline</SelectItem>
-            <SelectItem value="blocked">⊘ Blocked</SelectItem>
-            <SelectItem value="banned">🚫 Banned</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
+          <span className="text-xs text-muted-foreground">–</span>
+          <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
+          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">Clear</button>}
+        </div>
       </Card>
 
       {/* Riders List */}
@@ -291,7 +332,14 @@ export default function Riders() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 flex-wrap">
+                    {r.isActive && !r.isBanned && (
+                      <Button size="sm" variant="outline" onClick={() => handleToggleOnline(r)}
+                        disabled={toggleOnlineMutation.isPending}
+                        className={`h-9 rounded-xl gap-1.5 text-xs ${r.isOnline ? "border-amber-200 text-amber-700 hover:bg-amber-50" : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"}`}>
+                        {r.isOnline ? <><WifiOff className="w-3.5 h-3.5" /> Set Offline</> : <><Wifi className="w-3.5 h-3.5" /> Set Online</>}
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => setWalletModal(r)}
                       className="h-9 rounded-xl gap-1.5 text-xs border-green-200 text-green-700 hover:bg-green-50">
                       <Wallet className="w-3.5 h-3.5" /> Wallet

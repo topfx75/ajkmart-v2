@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { RefreshCw, CheckCircle, XCircle, ChevronDown, ChevronUp, Banknote, Search } from "lucide-react";
-import { useCodRemittances, useVerifyCodRemittance, useRejectCodRemittance } from "@/hooks/use-admin";
+import { RefreshCw, CheckCircle, XCircle, ChevronDown, ChevronUp, Banknote, Search, CalendarDays } from "lucide-react";
+import { useCodRemittances, useVerifyCodRemittance, useRejectCodRemittance, useBatchVerifyCodRemittances } from "@/hooks/use-admin";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -214,8 +215,14 @@ function RemittanceCard({ item }: { item: any }) {
 
 export default function CodRemittances() {
   const { data, isLoading, refetch } = useCodRemittances();
-  const [filter, setFilter] = useState<StatusFilter>("all");
-  const [search, setSearch] = useState("");
+  const batchVerify = useBatchVerifyCodRemittances();
+  const { toast } = useToast();
+
+  const [filter, setFilter]   = useState<StatusFilter>("all");
+  const [search, setSearch]   = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]     = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const all: any[] = data?.remittances || [];
 
@@ -223,12 +230,28 @@ export default function CodRemittances() {
     const matchStatus = filter === "all" || r.status === filter;
     const q = search.toLowerCase();
     const matchSearch = !q || r.user?.name?.toLowerCase().includes(q) || r.user?.phone?.includes(q) || r.description?.toLowerCase().includes(q);
-    return matchStatus && matchSearch;
+    const matchDate = (!dateFrom || new Date(r.createdAt) >= new Date(dateFrom))
+                   && (!dateTo   || new Date(r.createdAt) <= new Date(dateTo + "T23:59:59"));
+    return matchStatus && matchSearch && matchDate;
   });
 
-  const totalPending  = all.filter(r => r.status === "pending").reduce((s, r) => s + r.amount, 0);
-  const totalVerified = all.filter(r => r.status === "verified").reduce((s, r) => s + r.amount, 0);
+  const totalPending  = all.filter(r => r.status === "pending").reduce((s: number, r: any) => s + r.amount, 0);
+  const totalVerified = all.filter(r => r.status === "verified").reduce((s: number, r: any) => s + r.amount, 0);
   const pendingCount  = all.filter(r => r.status === "pending").length;
+
+  const pendingFiltered = filtered.filter(r => r.status === "pending");
+  const toggleSelect = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => {
+    const ids = pendingFiltered.map((r: any) => r.id);
+    setSelected(prev => prev.size === ids.length ? new Set() : new Set(ids));
+  };
+  const handleBatchVerify = () => {
+    if (selected.size === 0) return;
+    batchVerify.mutate([...selected], {
+      onSuccess: (r: any) => { toast({ title: `✅ ${r.verified?.length || selected.size} remittances verified` }); setSelected(new Set()); },
+      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    });
+  };
 
   const STATUS_TABS: { key: StatusFilter; label: string; count: number }[] = [
     { key: "all",      label: "All",      count: all.length },
@@ -289,24 +312,51 @@ export default function CodRemittances() {
       </div>
 
       {/* Filter + Search */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-1.5 overflow-x-auto">
-          {STATUS_TABS.map(tab => (
-            <button key={tab.key} onClick={() => setFilter(tab.key)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                filter === tab.key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
-              }`}>
-              {tab.label} ({tab.count})
-            </button>
-          ))}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex gap-1.5 overflow-x-auto">
+            {STATUS_TABS.map(tab => (
+              <button key={tab.key} onClick={() => setFilter(tab.key)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  filter === tab.key ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                }`}>
+                {tab.label} ({tab.count})
+              </button>
+            ))}
+          </div>
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Rider name ya phone..."
+              className="w-full h-9 pl-9 pr-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400"/>
+          </div>
         </div>
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Rider name ya phone..."
-            className="w-full h-9 pl-9 pr-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400"/>
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-gray-400 shrink-0" />
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-gray-50 text-xs w-32 border-gray-200" />
+          <span className="text-xs text-gray-400">–</span>
+          <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="h-9 rounded-xl bg-gray-50 text-xs w-32 border-gray-200" />
+          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-blue-600 hover:underline">Clear</button>}
         </div>
       </div>
+
+      {/* Batch Action Bar */}
+      {pendingFiltered.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-3">
+            <input type="checkbox" className="w-4 h-4 rounded cursor-pointer" checked={selected.size === pendingFiltered.length && pendingFiltered.length > 0} onChange={toggleAll} />
+            <span className="text-sm text-gray-600">{selected.size > 0 ? `${selected.size} selected` : "Select pending to batch-verify"}</span>
+          </div>
+          {selected.size > 0 && (
+            <div className="sm:ml-auto">
+              <Button size="sm" onClick={handleBatchVerify} disabled={batchVerify.isPending}
+                className="bg-green-600 hover:bg-green-700 text-white rounded-xl gap-1.5 text-xs">
+                <CheckCircle className="w-3.5 h-3.5" /> Batch Verify ({selected.size})
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* List */}
       {isLoading ? (
@@ -319,7 +369,18 @@ export default function CodRemittances() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(r => <RemittanceCard key={r.id} item={r}/>)}
+          {filtered.map((r: any) => (
+            <div key={r.id} className="relative">
+              {r.status === "pending" && (
+                <div className="absolute top-4 left-4 z-10" onClick={e => { e.stopPropagation(); toggleSelect(r.id); }}>
+                  <input type="checkbox" className="w-4 h-4 rounded cursor-pointer" checked={selected.has(r.id)} onChange={() => {}} />
+                </div>
+              )}
+              <div className={r.status === "pending" ? "pl-8" : ""}>
+                <RemittanceCard item={r}/>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
