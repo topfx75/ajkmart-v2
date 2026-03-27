@@ -87,8 +87,9 @@ router.post("/subscribe", customerAuth, async (req, res) => {
     if (balance < monthlyAmt) {
       res.status(400).json({ error: `Insufficient wallet balance. Need Rs. ${monthlyAmt.toFixed(0)}` }); return;
     }
+    /* Atomic deduction — prevents double-spend under concurrent requests */
     await db.update(usersTable)
-      .set({ walletBalance: (balance - monthlyAmt).toFixed(2) })
+      .set({ walletBalance: sql`wallet_balance - ${monthlyAmt.toFixed(2)}` })
       .where(eq(usersTable.id, userId));
     await db.insert(walletTransactionsTable).values({
       id: generateId(), userId, type: "debit",
@@ -110,9 +111,9 @@ router.post("/subscribe", customerAuth, async (req, res) => {
     notes: notes || null,
   }).returning();
 
-  /* Increment enrolled count */
+  /* Atomic increment — prevents under-counting under concurrent subscriptions */
   await db.update(schoolRoutesTable)
-    .set({ enrolledCount: route.enrolledCount + 1, updatedAt: new Date() })
+    .set({ enrolledCount: sql`enrolled_count + 1`, updatedAt: new Date() })
     .where(eq(schoolRoutesTable.id, routeId));
 
   /* Notification */
@@ -166,9 +167,15 @@ router.patch("/subscriptions/:id/cancel", customerAuth, async (req, res) => {
   if (!sub) { res.status(404).json({ error: "Subscription not found" }); return; }
   if (sub.status !== "active") { res.status(400).json({ error: "Subscription is already inactive" }); return; }
 
+  /* TOCTOU guard: include userId in UPDATE WHERE so the ownership check
+     and the mutation are atomic — a token swap between SELECT and UPDATE
+     cannot cancel another user's subscription */
   const [updated] = await db.update(schoolSubscriptionsTable)
     .set({ status: "cancelled", updatedAt: new Date() })
-    .where(eq(schoolSubscriptionsTable.id, req.params["id"]!))
+    .where(and(
+      eq(schoolSubscriptionsTable.id, req.params["id"]!),
+      eq(schoolSubscriptionsTable.userId, userId),
+    ))
     .returning();
 
   /* Decrement enrolled count on the route */

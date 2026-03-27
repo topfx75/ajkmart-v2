@@ -203,6 +203,14 @@ router.post("/", customerAuth, async (req, res) => {
 
 router.patch("/:id/status", riderAuth, async (req, res) => {
   const { status } = req.body;
+
+  /* Whitelist: prevent arbitrary string injection into the status column */
+  const ALLOWED_STATUSES = ["accepted", "picked_up", "in_transit", "delivered", "cancelled"] as const;
+  if (!ALLOWED_STATUSES.includes(status)) {
+    res.status(400).json({ error: `Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}` });
+    return;
+  }
+
   const [order] = await db
     .update(pharmacyOrdersTable)
     .set({ status, updatedAt: new Date() })
