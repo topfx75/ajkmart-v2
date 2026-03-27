@@ -54,7 +54,7 @@ function calcFareFromConfig(
   return Math.round(withMin * (cfg.surgeEnabled ? cfg.surgeMultiplier : 1));
 }
 
-/* ─── Live Ride Tracker (replaces fake SearchingOverlay + ConfirmedScreen) ─── */
+/* ─── Professional Ride Tracker — Careem/Uber style ─── */
 function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: {
   rideId: string;
   initialType: "bike" | "car";
@@ -64,45 +64,70 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
 }) {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const pulse   = useRef(new Animated.Value(1)).current;
-  const slideUp = useRef(new Animated.Value(40)).current;
-  const op      = useRef(new Animated.Value(0)).current;
 
-  const [dots,      setDots]      = useState(".");
-  const [ride,      setRide]      = useState<any>(null);
-  const [cancelling,setCancelling]= useState(false);
-  const prevStatus  = useRef<string>("");
+  /* ── Animation refs ── */
+  const ring1     = useRef(new Animated.Value(1)).current;
+  const ring2     = useRef(new Animated.Value(1)).current;
+  const ring3     = useRef(new Animated.Value(1)).current;
+  const ring1Op   = useRef(new Animated.Value(0.55)).current;
+  const ring2Op   = useRef(new Animated.Value(0.38)).current;
+  const ring3Op   = useRef(new Animated.Value(0.22)).current;
+  const slideUp   = useRef(new Animated.Value(50)).current;
+  const fadeIn    = useRef(new Animated.Value(0)).current;
 
-  /* Pulse animation — always running (used on searching screen) */
+  /* ── State ── */
+  const [ride,           setRide]           = useState<any>(null);
+  const [cancelling,     setCancelling]     = useState(false);
+  const [showCancelModal,setShowCancelModal]= useState(false);
+  const [rating,         setRating]         = useState(0);
+  const [ratingDone,     setRatingDone]     = useState(false);
+  const [elapsed,        setElapsed]        = useState(0);
+  const prevStatus   = useRef<string>("");
+
+  /* ── Triple concentric pulse (staggered) ── */
   useEffect(() => {
-    const anim = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 1.18, duration: 600, useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 1,    duration: 600, useNativeDriver: true }),
-    ]));
-    anim.start();
-    const dotTimer = setInterval(() => setDots(d => d.length >= 3 ? "." : d + "."), 400);
-    return () => { anim.stop(); clearInterval(dotTimer); };
+    const pulse = (scale: Animated.Value, op: Animated.Value, delay: number, resetOp: number) =>
+      Animated.loop(Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(scale, { toValue: 1.55, duration: 1300, useNativeDriver: true }),
+          Animated.timing(op,    { toValue: 0,    duration: 1300, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(scale, { toValue: 1, duration: 0, useNativeDriver: true }),
+          Animated.timing(op,    { toValue: resetOp, duration: 0, useNativeDriver: true }),
+        ]),
+      ]));
+    const a1 = pulse(ring1, ring1Op, 0,   0.55);
+    const a2 = pulse(ring2, ring2Op, 350, 0.38);
+    const a3 = pulse(ring3, ring3Op, 700, 0.22);
+    a1.start(); a2.start(); a3.start();
+    const timer = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => { a1.stop(); a2.stop(); a3.stop(); clearInterval(timer); };
   }, []);
 
-  /* Slide-in when driver accepts (searching → accepted) */
+  /* ── Slide-in on status change ── */
   useEffect(() => {
     const st = ride?.status;
     if (st && st !== "searching" && prevStatus.current === "searching") {
-      slideUp.setValue(40); op.setValue(0);
+      slideUp.setValue(50); fadeIn.setValue(0);
       Animated.parallel([
-        Animated.spring(slideUp, { toValue: 0, useNativeDriver: true, bounciness: 8 }),
-        Animated.timing(op,      { toValue: 1, duration: 400,        useNativeDriver: true }),
+        Animated.spring(slideUp, { toValue: 0, useNativeDriver: true, bounciness: 6 }),
+        Animated.timing(fadeIn,  { toValue: 1, duration: 500, useNativeDriver: true }),
       ]).start();
+    }
+    if (!prevStatus.current && st && st !== "searching") {
+      slideUp.setValue(0); fadeIn.setValue(1);
     }
     prevStatus.current = st || "";
   }, [ride?.status]);
 
-  /* Poll GET /rides/:id every 5 seconds */
+  /* ── Poll every 5s ── */
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch(`${API}/rides/${rideId}`);
-        if (res.ok) setRide(await res.json());
+        const r = await fetch(`${API}/rides/${rideId}`);
+        if (r.ok) setRide(await r.json());
       } catch {}
     };
     poll();
@@ -112,6 +137,7 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
 
   const cancelRide = async () => {
     setCancelling(true);
+    setShowCancelModal(false);
     try {
       await fetch(`${API}/rides/${rideId}/cancel`, {
         method: "PATCH",
@@ -123,52 +149,76 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
   };
 
   const openInMaps = () => {
-    const oLat = ride?.pickupLat ?? 34.37;
-    const oLng = ride?.pickupLng ?? 73.47;
-    const dLat = ride?.dropLat   ?? 33.14;
-    const dLng = ride?.dropLng   ?? 73.75;
-    Linking.openURL(
-      `https://www.google.com/maps/dir/?api=1&origin=${oLat},${oLng}&destination=${dLat},${dLng}&travelmode=driving`
-    );
+    const oLat = ride?.pickupLat ?? 34.37, oLng = ride?.pickupLng ?? 73.47;
+    const dLat = ride?.dropLat   ?? 33.14, dLng = ride?.dropLng   ?? 73.75;
+    Linking.openURL(`https://www.google.com/maps/dir/?api=1&origin=${oLat},${oLng}&destination=${dLat},${dLng}&travelmode=driving`);
   };
 
   const status   = ride?.status ?? "searching";
-  const rideType = ride?.type ?? initialType;
+  const rideType = ride?.type   ?? initialType;
+  const STEPS    = ["accepted", "arrived", "in_transit", "completed"];
+  const LABELS   = ["Accepted", "Arrived", "On Route", "Done"];
+  const stepIdx  = STEPS.indexOf(status);
+  const elapsedStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
 
-  const TRACK_STEPS  = ["accepted", "arrived", "in_transit", "completed"];
-  const TRACK_LABELS = ["Accepted", "Arrived", "In Transit", "Done"];
-  const currentStep  = TRACK_STEPS.indexOf(status);
-
-  /* ── Searching screen ── */
+  /* ════════════════ SEARCHING ════════════════ */
   if (status === "searching") {
     return (
-      <View style={ov.root}>
-        <LinearGradient colors={["#0F3BA8", "#1A56DB"]} style={ov.bg} />
-        <View style={ov.content}>
-          <Animated.View style={[ov.pulseRing, { transform: [{ scale: pulse }] }]}>
-            <View style={ov.pulseInner}>
-              <Ionicons name={rideType === "bike" ? "bicycle" : "car"} size={48} color="#fff" />
-            </View>
-          </Animated.View>
-          <Text style={ov.title}>Driver Dhund Rahe Hain{dots}</Text>
-          <Text style={ov.sub}>AJK mein qareeb se qareeb driver assign ho raha hai</Text>
-          <View style={ov.statsRow}>
-            <View style={ov.statBox}>
-              <Text style={ov.statVal}>50+</Text>
-              <Text style={ov.statLbl}>Active Drivers</Text>
-            </View>
-            <View style={[ov.statBox, { borderLeftWidth: 1, borderLeftColor: "rgba(255,255,255,0.2)" }]}>
-              <Text style={ov.statVal}>2-5</Text>
-              <Text style={ov.statLbl}>Min ETA</Text>
+      <View style={{ flex: 1 }}>
+        <LinearGradient colors={["#0D47C0", "#1565C0", "#1E88E5"]} style={StyleSheet.absoluteFillObject} />
+        <View style={{ position: "absolute", top: -70, right: -70, width: 240, height: 240, borderRadius: 120, backgroundColor: "rgba(255,255,255,0.05)" }} />
+        <View style={{ position: "absolute", bottom: 100, left: -50, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.04)" }} />
+
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
+          {/* Ride badge */}
+          <View style={{ backgroundColor: "rgba(255,255,255,0.13)", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, marginBottom: 44 }}>
+            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: "rgba(255,255,255,0.9)", letterSpacing: 1 }}>
+              RIDE #{rideId.slice(-8).toUpperCase()}
+            </Text>
+          </View>
+
+          {/* Triple pulse rings */}
+          <View style={{ width: 230, height: 230, alignItems: "center", justifyContent: "center" }}>
+            <Animated.View style={{ position: "absolute", width: 230, height: 230, borderRadius: 115, backgroundColor: "rgba(255,255,255,0.07)", transform: [{ scale: ring3 }], opacity: ring3Op }} />
+            <Animated.View style={{ position: "absolute", width: 176, height: 176, borderRadius: 88,  backgroundColor: "rgba(255,255,255,0.11)", transform: [{ scale: ring2 }], opacity: ring2Op }} />
+            <Animated.View style={{ position: "absolute", width: 122, height: 122, borderRadius: 61,  backgroundColor: "rgba(255,255,255,0.17)", transform: [{ scale: ring1 }], opacity: ring1Op }} />
+            <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: "rgba(255,255,255,0.24)", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.35)" }}>
+              <Ionicons name={rideType === "bike" ? "bicycle" : "car"} size={42} color="#fff" />
             </View>
           </View>
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: -8 }}>
-            Ride #{rideId.slice(-8).toUpperCase()}
+
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: "#fff", marginTop: 36, textAlign: "center" }}>
+            Driver Dhund Rahe Hain
           </Text>
-          <Pressable onPress={cancelRide} disabled={cancelling} style={ov.cancelBtn}>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.75)", marginTop: 8, textAlign: "center", lineHeight: 21 }}>
+            AJK mein qareeb driver assign ho raha hai
+          </Text>
+
+          {/* Elapsed timer */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginTop: 18, backgroundColor: "rgba(255,255,255,0.12)", paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20 }}>
+            <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.8)" />
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.8)" }}>
+              Searching for {elapsedStr}
+            </Text>
+          </View>
+
+          {/* Stats */}
+          <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.11)", borderRadius: 16, overflow: "hidden", marginTop: 36, width: "100%" }}>
+            {[{ val: "50+", lbl: "Active Drivers" }, { val: "2–5", lbl: "Min ETA" }].map((s, i) => (
+              <View key={i} style={{ flex: 1, alignItems: "center", padding: 16, borderLeftWidth: i > 0 ? 1 : 0, borderLeftColor: "rgba(255,255,255,0.15)" }}>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff" }}>{s.val}</Text>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 4 }}>{s.lbl}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Cancel */}
+        <View style={{ paddingHorizontal: 24, paddingBottom: Math.max(insets.bottom, 24) + 16 }}>
+          <Pressable onPress={cancelRide} disabled={cancelling} style={{ alignItems: "center", padding: 16, borderRadius: 16, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.3)", backgroundColor: "rgba(255,255,255,0.1)" }}>
             {cancelling
               ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={ov.cancelTxt}>Cancel Ride</Text>
+              : <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#fff" }}>Cancel Ride</Text>
             }
           </Pressable>
         </View>
@@ -176,91 +226,43 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
     );
   }
 
-  /* ── Cancelled screen ── */
+  /* ════════════════ CANCELLED ════════════════ */
   if (status === "cancelled") {
+    const wasWallet = ride?.paymentMethod === "wallet";
     return (
-      <View style={{ flex: 1, backgroundColor: C.background, alignItems: "center", justifyContent: "center", padding: 32, gap: 16 }}>
-        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name="close-circle" size={48} color="#DC2626" />
-        </View>
-        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: C.text }}>Ride Cancelled</Text>
-        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, textAlign: "center" }}>
-          Aapki ride cancel ho gayi.{ride?.paymentMethod !== "cash" ? " Cancellation fee apply ho sakti hai." : ""}
-        </Text>
-        <View style={{ flexDirection: "row", gap: 12, marginTop: 8, width: "100%" }}>
-          <Pressable onPress={() => router.push("/(tabs)")} style={[cf.homeBtn, { flex: 1 }]}>
-            <Ionicons name="home-outline" size={17} color={C.primary} />
-            <Text style={cf.homeBtnTxt}>Home</Text>
-          </Pressable>
-          <Pressable onPress={onReset} style={cf.newBtn}>
-            <Ionicons name="add" size={17} color="#fff" />
-            <Text style={cf.newBtnTxt}>New Ride</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  /* ── Completed screen ── */
-  if (status === "completed") {
-    return (
-      <View style={{ flex: 1, backgroundColor: C.background }}>
-        <LinearGradient colors={["#065F46", "#059669"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[cf.header, { paddingTop: topPad + 16 }]}>
-          <View style={cf.checkCircle}>
-            <Ionicons name="checkmark" size={34} color="#fff" />
+      <View style={{ flex: 1, backgroundColor: "#FFF5F5" }}>
+        <LinearGradient colors={["#B91C1C", "#DC2626"]} style={{ paddingTop: topPad + 20, paddingBottom: 32, alignItems: "center", gap: 10, paddingHorizontal: 24 }}>
+          <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="close-circle" size={44} color="#fff" />
           </View>
-          <Text style={cf.headerTitle}>Ride Complete! 🎉</Text>
-          <Text style={cf.headerSub}>Rs. {ride?.fare} · {ride?.distance} km</Text>
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff" }}>Ride Cancelled</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.85)", textAlign: "center" }}>Aapki ride cancel ho gayi hai</Text>
         </LinearGradient>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 14 }}>
-          <View style={cf.card}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <Text style={cf.cardTitle}>Route Details</Text>
-              <Pressable onPress={openInMaps} style={cf.mapsBtn}>
-                <Ionicons name="navigate-outline" size={13} color="#4285F4" />
-                <Text style={cf.mapsBtnTxt}>Google Maps</Text>
-              </Pressable>
-            </View>
-            <View style={cf.routeRow}>
-              <View style={{ alignItems: "center", gap: 4 }}>
-                <View style={[cf.routeDot, { backgroundColor: "#10B981" }]} />
-                <View style={cf.routeLine} />
-                <View style={[cf.routeDot, { backgroundColor: "#EF4444" }]} />
+        <ScrollView contentContainerStyle={{ margin: 16, gap: 12 }}>
+          {wasWallet && (
+            <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 16, borderLeftWidth: 4, borderLeftColor: "#10B981", gap: 6, borderWidth: 1, borderColor: "#D1FAE5" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="wallet-outline" size={18} color="#10B981" />
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#065F46" }}>Refund Initiated</Text>
               </View>
-              <View style={{ flex: 1, gap: 12 }}>
-                <View><Text style={cf.routeLabel}>Pickup</Text><Text style={cf.routeVal}>{ride?.pickupAddress}</Text></View>
-                <View><Text style={cf.routeLabel}>Drop</Text><Text style={cf.routeVal}>{ride?.dropAddress}</Text></View>
-              </View>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#374151", lineHeight: 19 }}>
+                Rs. {ride?.fare} aapki wallet mein refund ho raha hai.{cancellationFee > 0 ? ` Agar rider assign tha to Rs. ${cancellationFee} cancellation fee apply hogi.` : ""}
+              </Text>
             </View>
+          )}
+          <View style={{ backgroundColor: "#fff", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#F3F4F6", alignItems: "center" }}>
+            <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#9CA3AF" }}>
+              Ride ID: #{rideId.slice(-8).toUpperCase()}
+            </Text>
           </View>
-          <View style={cf.card}>
-            <Text style={cf.cardTitle}>Fare Breakdown</Text>
-            <View style={cf.fareRows}>
-              <View style={cf.fareRow}><Text style={cf.fareLbl}>Vehicle</Text><Text style={cf.fareVal}>{rideType === "bike" ? "🏍️ Bike" : "🚗 Car"}</Text></View>
-              <View style={cf.fareRow}><Text style={cf.fareLbl}>Distance</Text><Text style={cf.fareVal}>{ride?.distance} km</Text></View>
-              <View style={cf.fareRow}><Text style={cf.fareLbl}>Payment</Text><Text style={cf.fareVal}>{ride?.paymentMethod === "wallet" ? "💳 Wallet" : "💵 Cash"}</Text></View>
-              <View style={[cf.fareRow, cf.fareTotalRow]}>
-                <Text style={cf.fareTotalLbl}>Total Fare</Text>
-                <Text style={cf.fareTotalVal}>Rs. {ride?.fare}</Text>
-              </View>
-            </View>
-          </View>
-          <View style={cf.rideIdRow}>
-            <Ionicons name="receipt-outline" size={14} color={C.textMuted} />
-            <Text style={cf.rideIdTxt}>Ride ID: #{rideId?.slice(-8).toUpperCase()}</Text>
-          </View>
-          <View style={cf.safetyRow}>
-            <Ionicons name="shield-checkmark" size={14} color="#059669" />
-            <Text style={cf.safetyTxt}>Insured ride • Verified driver • GPS tracked</Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-            <Pressable onPress={() => router.push("/(tabs)")} style={cf.homeBtn}>
-              <Ionicons name="home-outline" size={17} color={C.primary} />
-              <Text style={cf.homeBtnTxt}>Home</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable onPress={() => router.push("/(tabs)")} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 15, borderRadius: 14, backgroundColor: "#EFF6FF" }}>
+              <Ionicons name="home-outline" size={17} color="#2563EB" />
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#2563EB" }}>Home</Text>
             </Pressable>
-            <Pressable onPress={onReset} style={cf.newBtn}>
+            <Pressable onPress={onReset} style={{ flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 15, borderRadius: 14, backgroundColor: "#059669" }}>
               <Ionicons name="add" size={17} color="#fff" />
-              <Text style={cf.newBtnTxt}>New Ride</Text>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>New Ride</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -268,58 +270,176 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
     );
   }
 
-  /* ── Active tracking: accepted / arrived / in_transit ── */
-  const canCancel = status === "accepted";
-  const statusHeaders: Record<string, { title: string; sub: string; icon: string }> = {
-    accepted:   { title: "Driver Aa Raha Hai! 🚗", sub: "Driver ne aapki ride accept kar li",  icon: "person" },
-    arrived:    { title: "Driver Pahunch Gaya! 📍", sub: "Driver aapke pickup point pe hai",    icon: "location" },
-    in_transit: { title: "Aap Route Mein Hain 🛣",  sub: "Aapki ride chal rahi hai",            icon: "car" },
+  /* ════════════════ COMPLETED ════════════════ */
+  if (status === "completed") {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#F0FDF4" }}>
+        <LinearGradient colors={["#065F46", "#059669"]} style={{ paddingTop: topPad + 16, paddingBottom: 28, alignItems: "center", gap: 8, paddingHorizontal: 24 }}>
+          <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="checkmark-circle" size={44} color="#fff" />
+          </View>
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff" }}>Ride Manzil Pe! 🎉</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.85)" }}>Rs. {ride?.fare} · {ride?.distance} km</Text>
+        </LinearGradient>
+
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 14, gap: 12 }}>
+          {/* Rating */}
+          {!ratingDone ? (
+            <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 18, alignItems: "center", gap: 10, borderWidth: 1.5, borderColor: "#D1FAE5" }}>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#065F46" }}>Driver ko Rate Karein</Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                {[1,2,3,4,5].map(s => (
+                  <Pressable key={s} onPress={() => { setRating(s); setTimeout(() => setRatingDone(true), 500); }}>
+                    <Ionicons name={s <= rating ? "star" : "star-outline"} size={36} color={s <= rating ? "#F59E0B" : "#D1D5DB"} />
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#6B7280" }}>
+                {rating === 0 ? "Tap to rate" : rating === 5 ? "Zabardast! ⭐⭐⭐⭐⭐" : rating >= 4 ? "Acha tha! 👍" : rating >= 3 ? "Theek tha" : "Masail the"}
+              </Text>
+            </View>
+          ) : (
+            <View style={{ backgroundColor: "#D1FAE5", borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="checkmark-circle" size={22} color="#059669" />
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#065F46" }}>Shukriya! Rating de di ✨</Text>
+            </View>
+          )}
+
+          {/* Receipt */}
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E2E8F0", overflow: "hidden" }}>
+            <View style={{ backgroundColor: "#F8FAFC", padding: 12, borderBottomWidth: 1, borderBottomColor: "#E2E8F0", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#374151" }}>Ride Receipt</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons name="receipt-outline" size={13} color="#9CA3AF" />
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#9CA3AF" }}>#{rideId.slice(-8).toUpperCase()}</Text>
+              </View>
+            </View>
+            <View style={{ padding: 14, gap: 10 }}>
+              {[
+                { lbl: "Vehicle",  val: rideType === "bike" ? "🏍️  Bike" : "🚗  Car" },
+                { lbl: "Distance", val: `${ride?.distance} km` },
+                { lbl: "Payment",  val: ride?.paymentMethod === "wallet" ? "💳  Wallet" : "💵  Cash" },
+                { lbl: "Driver",   val: ride?.riderName || "AJK Driver" },
+              ].map(r => (
+                <View key={r.lbl} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280" }}>{r.lbl}</Text>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#111827" }}>{r.val}</Text>
+                </View>
+              ))}
+              <View style={{ height: 1, backgroundColor: "#E5E7EB", marginVertical: 4 }} />
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#111827" }}>Total</Text>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#059669" }}>Rs. {ride?.fare}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Route */}
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 16, gap: 12, borderWidth: 1, borderColor: "#E2E8F0" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#374151" }}>Route</Text>
+              <Pressable onPress={openInMaps} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#EFF6FF", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 }}>
+                <Ionicons name="navigate-outline" size={12} color="#4285F4" />
+                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#4285F4" }}>Google Maps</Text>
+              </Pressable>
+            </View>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <View style={{ alignItems: "center", gap: 4 }}>
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#10B981" }} />
+                <View style={{ flex: 1, width: 2, backgroundColor: "#E2E8F0", minHeight: 22 }} />
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#EF4444" }} />
+              </View>
+              <View style={{ flex: 1, gap: 14 }}>
+                <View>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#9CA3AF" }}>Pickup</Text>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#111827", marginTop: 2 }}>{ride?.pickupAddress}</Text>
+                </View>
+                <View>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#9CA3AF" }}>Drop</Text>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#111827", marginTop: 2 }}>{ride?.dropAddress}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Safety */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#D1FAE5", padding: 12, borderRadius: 12 }}>
+            <Ionicons name="shield-checkmark" size={14} color="#059669" />
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#065F46" }}>Insured ride · Verified driver · GPS tracked</Text>
+          </View>
+
+          {/* Buttons */}
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <Pressable onPress={() => router.push("/(tabs)")} style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 15, borderRadius: 14, backgroundColor: "#EFF6FF" }}>
+              <Ionicons name="home-outline" size={17} color="#2563EB" />
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#2563EB" }}>Home</Text>
+            </Pressable>
+            <Pressable onPress={onReset} style={{ flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 15, borderRadius: 14, backgroundColor: "#059669" }}>
+              <Ionicons name="add" size={17} color="#fff" />
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>New Ride</Text>
+            </Pressable>
+          </View>
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  /* ════════════════ ACTIVE (accepted / arrived / in_transit) ════════════════ */
+  type StatusCfg = { colors: [string,string]; icon: string; title: string; sub: string };
+  const statusCfgs: Record<string, StatusCfg> = {
+    accepted:   { colors: ["#1565C0","#1976D2"],  icon: "car",      title: "Driver Aa Raha Hai! 🚗",  sub: "Driver ne ride accept kar li"       },
+    arrived:    { colors: ["#B45309","#D97706"],  icon: "location", title: "Driver Pahunch Gaya! 📍", sub: "Driver aapke pickup point pe hai"   },
+    in_transit: { colors: ["#065F46","#059669"],  icon: "navigate", title: "Aap Route Mein Hain! 🛣", sub: "Safar jari — manzil qareeb hai"     },
   };
-  const hdr = statusHeaders[status] ?? statusHeaders["accepted"]!;
+  const hdrCfg  = statusCfgs[status] ?? statusCfgs["accepted"]!;
+  const canCancel = status === "accepted";
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.background }}>
-      <LinearGradient colors={["#065F46", "#059669"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[cf.header, { paddingTop: topPad + 16 }]}>
-        <View style={cf.checkCircle}>
-          <Ionicons name={hdr.icon as any} size={34} color="#fff" />
+    <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
+      {/* ── Status Header ── */}
+      <LinearGradient colors={hdrCfg.colors} style={{ paddingTop: topPad + 14, paddingBottom: 22, paddingHorizontal: 20 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name={hdrCfg.icon as any} size={28} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: "#fff" }}>{hdrCfg.title}</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 3 }}>{hdrCfg.sub}</Text>
+          </View>
         </View>
-        <Text style={cf.headerTitle}>{hdr.title}</Text>
-        <Text style={cf.headerSub}>{hdr.sub}</Text>
       </LinearGradient>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 14 }}>
-        <Animated.View style={{ opacity: op, transform: [{ translateY: slideUp }] }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 14, gap: 12 }}>
+        <Animated.View style={{ opacity: fadeIn, transform: [{ translateY: slideUp }], gap: 12 }}>
 
-          {/* Status Progress */}
-          <View style={cf.card}>
-            <Text style={[cf.cardTitle, { marginBottom: 16 }]}>Ride Progress</Text>
+          {/* ── Progress stepper ── */}
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#E2E8F0" }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#374151", marginBottom: 16 }}>Ride Progress</Text>
             <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-              {TRACK_STEPS.map((step, i) => {
-                const done   = currentStep >= i;
-                const active = currentStep === i;
-                const isLast = i === TRACK_STEPS.length - 1;
+              {STEPS.map((step, i) => {
+                const done   = stepIdx >= i;
+                const active = stepIdx === i;
+                const isLast = i === STEPS.length - 1;
                 return (
                   <React.Fragment key={step}>
-                    <View style={{ alignItems: "center", flex: 1, gap: 6 }}>
+                    <View style={{ alignItems: "center", flex: 1, gap: 5 }}>
                       <View style={{
-                        width: 30, height: 30, borderRadius: 15,
-                        backgroundColor: done ? "#059669" : "#E2E8F0",
+                        width: 32, height: 32, borderRadius: 16,
+                        backgroundColor: done ? (active ? hdrCfg.colors[0] : "#10B981") : "#E5E7EB",
                         alignItems: "center", justifyContent: "center",
-                        borderWidth: active ? 3 : 0, borderColor: "#065F46",
+                        borderWidth: active ? 3 : 0, borderColor: "rgba(0,0,0,0.1)",
                       }}>
                         {done
-                          ? <Ionicons name="checkmark" size={14} color="#fff" />
-                          : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#CBD5E1" }} />
-                        }
+                          ? <Ionicons name="checkmark" size={15} color="#fff" />
+                          : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#CBD5E1" }} />}
                       </View>
-                      <Text style={{
-                        fontSize: 9, textAlign: "center",
-                        color: done ? "#059669" : "#94A3B8",
-                        fontFamily: active ? "Inter_700Bold" : "Inter_400Regular",
-                      }}>{TRACK_LABELS[i]}</Text>
+                      <Text style={{ fontSize: 9, textAlign: "center", color: done ? "#374151" : "#9CA3AF", fontFamily: active ? "Inter_700Bold" : "Inter_400Regular" }}>
+                        {LABELS[i]}
+                      </Text>
                     </View>
                     {!isLast && (
-                      <View style={{ height: 2, flex: 0.3, backgroundColor: currentStep > i ? "#059669" : "#E2E8F0", marginTop: 14 }} />
+                      <View style={{ height: 2, flex: 0.4, backgroundColor: stepIdx > i ? "#10B981" : "#E5E7EB", marginTop: 15 }} />
                     )}
                   </React.Fragment>
                 );
@@ -327,103 +447,155 @@ function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: 
             </View>
           </View>
 
-          {/* Rider info — shown once driver accepts */}
+          {/* ── Rider Card ── */}
           {ride?.riderName && (
-            <View style={cf.card}>
-              <View style={cf.driverRow}>
-                <View style={cf.driverAvatar}>
-                  <Text style={{ fontSize: 28 }}>{rideType === "bike" ? "🏍" : "🚗"}</Text>
+            <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#E2E8F0" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: hdrCfg.colors[0], alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: "#fff" }}>
+                    {ride.riderName.charAt(0).toUpperCase()}
+                  </Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={cf.driverName}>{ride.riderName}</Text>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#111827" }}>{ride.riderName}</Text>
                   {ride.riderPhone && (
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-                      {ride.riderPhone}
-                    </Text>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#6B7280", marginTop: 2 }}>{ride.riderPhone}</Text>
                   )}
-                  <View style={cf.plateRow}>
-                    <Ionicons name="shield-checkmark-outline" size={13} color="#059669" />
-                    <Text style={cf.plateTxt}>Verified Driver</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 5 }}>
+                    {[1,2,3,4,5].map(s => <Ionicons key={s} name={s <= 4 ? "star" : "star-outline"} size={11} color="#F59E0B" />)}
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "#9CA3AF", marginLeft: 4 }}>4.0 · Verified</Text>
                   </View>
                 </View>
+                <View style={{ backgroundColor: "#F1F5F9", paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, alignItems: "center" }}>
+                  <Ionicons name={rideType === "bike" ? "bicycle" : "car"} size={20} color="#475569" />
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#475569", marginTop: 3 }}>
+                    {rideType === "bike" ? "Bike" : "Car"}
+                  </Text>
+                </View>
+              </View>
+              {/* Action buttons */}
+              <View style={{ flexDirection: "row", gap: 10 }}>
                 {ride.riderPhone && (
-                  <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)} style={cf.actionBtn}>
-                    <Ionicons name="call-outline" size={20} color={C.primary} />
+                  <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
+                    style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 14, backgroundColor: "#059669" }}>
+                    <Ionicons name="call" size={18} color="#fff" />
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Call Driver</Text>
+                  </Pressable>
+                )}
+                {ride.riderPhone && (
+                  <Pressable onPress={() => Linking.openURL(`https://wa.me/92${ride.riderPhone.replace(/^(\+92|0)/, "")}`)}
+                    style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: "#25D366", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="logo-whatsapp" size={24} color="#fff" />
                   </Pressable>
                 )}
               </View>
             </View>
           )}
 
-          {/* Route */}
-          <View style={cf.card}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <Text style={cf.cardTitle}>Route</Text>
-              <Pressable onPress={openInMaps} style={cf.mapsBtn}>
-                <Ionicons name="navigate-outline" size={13} color="#4285F4" />
-                <Text style={cf.mapsBtnTxt}>Google Maps</Text>
+          {/* ── Route ── */}
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#E2E8F0" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#374151" }}>Route</Text>
+              <Pressable onPress={openInMaps} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#EFF6FF", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 }}>
+                <Ionicons name="navigate-outline" size={12} color="#4285F4" />
+                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#4285F4" }}>Open in Maps</Text>
               </Pressable>
             </View>
-            <View style={cf.routeRow}>
+            <View style={{ flexDirection: "row", gap: 12 }}>
               <View style={{ alignItems: "center", gap: 4 }}>
-                <View style={[cf.routeDot, { backgroundColor: "#10B981" }]} />
-                <View style={cf.routeLine} />
-                <View style={[cf.routeDot, { backgroundColor: "#EF4444" }]} />
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#10B981" }} />
+                <View style={{ flex: 1, width: 2, backgroundColor: "#E2E8F0", minHeight: 22 }} />
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#EF4444" }} />
               </View>
-              <View style={{ flex: 1, gap: 12 }}>
-                <View><Text style={cf.routeLabel}>Pickup</Text><Text style={cf.routeVal}>{ride?.pickupAddress}</Text></View>
-                <View><Text style={cf.routeLabel}>Drop</Text><Text style={cf.routeVal}>{ride?.dropAddress}</Text></View>
-              </View>
-            </View>
-          </View>
-
-          {/* Fare */}
-          <View style={cf.card}>
-            <View style={cf.fareRows}>
-              <View style={cf.fareRow}>
-                <Text style={cf.fareLbl}>Fare</Text>
-                <Text style={[cf.fareVal, { color: "#059669", fontFamily: "Inter_700Bold", fontSize: 18 }]}>Rs. {ride?.fare}</Text>
-              </View>
-              <View style={cf.fareRow}>
-                <Text style={cf.fareLbl}>Payment</Text>
-                <Text style={cf.fareVal}>{ride?.paymentMethod === "wallet" ? "💳 Wallet" : "💵 Cash"}</Text>
+              <View style={{ flex: 1, gap: 14 }}>
+                <View>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#9CA3AF" }}>Pickup</Text>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#111827", marginTop: 2 }}>{ride?.pickupAddress}</Text>
+                </View>
+                <View>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#9CA3AF" }}>Drop</Text>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#111827", marginTop: 2 }}>{ride?.dropAddress}</Text>
+                </View>
               </View>
             </View>
           </View>
 
-          {/* Safety */}
-          <View style={cf.safetyRow}>
+          {/* ── Fare & Payment ── */}
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#E2E8F0" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#9CA3AF" }}>Total Fare</Text>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 26, color: "#059669", marginTop: 2 }}>Rs. {ride?.fare}</Text>
+              </View>
+              <View style={{ alignItems: "flex-end", gap: 4 }}>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#9CA3AF" }}>Payment</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#F1F5F9", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}>
+                  <Ionicons name={ride?.paymentMethod === "wallet" ? "wallet-outline" : "cash-outline"} size={14} color="#374151" />
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#374151" }}>
+                    {ride?.paymentMethod === "wallet" ? "Wallet" : "Cash"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* ── Safety ── */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#ECFDF5", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#D1FAE5" }}>
             <Ionicons name="shield-checkmark" size={14} color="#059669" />
-            <Text style={cf.safetyTxt}>Insured ride • Verified driver • GPS tracked</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#065F46", flex: 1 }}>
+              Insured ride · Verified driver · GPS tracked · ID: #{rideId.slice(-6).toUpperCase()}
+            </Text>
           </View>
 
-          {/* Cancel — only available when accepted (cancellation fee applies) */}
+          {/* ── Cancel (only when accepted) ── */}
           {canCancel && (
-            <Pressable onPress={cancelRide} disabled={cancelling} style={{
-              flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: 6, padding: 14, borderRadius: 14,
-              backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA",
-            }}>
-              {cancelling
-                ? <ActivityIndicator color="#DC2626" size="small" />
-                : <>
-                    <Ionicons name="close-circle-outline" size={18} color="#DC2626" />
-                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#DC2626" }}>
-                      Cancel Ride (Rs. {cancellationFee} fee may apply)
-                    </Text>
-                  </>
-              }
+            <Pressable onPress={() => setShowCancelModal(true)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 14, borderRadius: 14, backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA" }}>
+              <Ionicons name="close-circle-outline" size={18} color="#DC2626" />
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#DC2626" }}>
+                Cancel Ride{cancellationFee > 0 ? ` (Rs. ${cancellationFee} fee applies)` : ""}
+              </Text>
             </Pressable>
           )}
 
-          {/* Orders tab shortcut */}
-          <Pressable onPress={() => router.push("/(tabs)/orders")} style={cf.homeBtn}>
-            <Ionicons name="list-outline" size={17} color={C.primary} />
-            <Text style={cf.homeBtnTxt}>Track from Orders Tab</Text>
-          </Pressable>
+          <View style={{ height: 24 }} />
         </Animated.View>
-        <View style={{ height: 30 }} />
       </ScrollView>
+
+      {/* ── Cancel Confirmation Modal ── */}
+      <Modal visible={showCancelModal} transparent animationType="fade" onRequestClose={() => setShowCancelModal(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", padding: 24 }} onPress={() => setShowCancelModal(false)}>
+          <Pressable style={{ backgroundColor: "#fff", borderRadius: 24, padding: 24, width: "100%", maxWidth: 400, gap: 18 }} onPress={() => {}}>
+            <View style={{ alignItems: "center", gap: 10 }}>
+              <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="close-circle" size={36} color="#DC2626" />
+              </View>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 19, color: "#111827" }}>Cancel Ride?</Text>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 }}>
+                {cancellationFee > 0
+                  ? `Driver pehle se assign ho chuka hai. Cancel karne par Rs. ${cancellationFee} cancellation fee apply hogi.`
+                  : "Kya aap wakai is ride ko cancel karna chahte hain?"}
+              </Text>
+              {ride?.paymentMethod === "wallet" && (
+                <View style={{ backgroundColor: "#ECFDF5", borderRadius: 12, padding: 12, width: "100%" }}>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#065F46", textAlign: "center" }}>
+                    💚 Baaki rakam aapki wallet mein refund ho jayega
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pressable onPress={() => setShowCancelModal(false)} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#F3F4F6" }}>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#374151" }}>Back</Text>
+              </Pressable>
+              <Pressable onPress={cancelRide} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
+                {cancelling
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Yes, Cancel</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -885,65 +1057,6 @@ export default function RideScreen() {
     </View>
   );
 }
-
-/* ── Searching Overlay Styles ── */
-const ov = StyleSheet.create({
-  root: { flex: 1 },
-  bg: { ...StyleSheet.absoluteFillObject },
-  content: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 20 },
-  pulseRing: { width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
-  pulseInner: { width: 100, height: 100, borderRadius: 50, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  title: { fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff", textAlign: "center" },
-  sub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.8)", textAlign: "center", lineHeight: 19 },
-  statsRow: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 14, overflow: "hidden" },
-  statBox: { flex: 1, alignItems: "center", padding: 14, gap: 3 },
-  statVal: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff" },
-  statLbl: { fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.75)" },
-  cancelBtn: { backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 14, paddingHorizontal: 24, paddingVertical: 13, borderWidth: 1, borderColor: "rgba(255,255,255,0.25)" },
-  cancelTxt: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#fff" },
-});
-
-/* ── Confirmed Screen Styles ── */
-const cf = StyleSheet.create({
-  header: { paddingHorizontal: 20, paddingBottom: 24, alignItems: "center", gap: 8 },
-  checkCircle: { width: 72, height: 72, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff" },
-  headerSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.85)" },
-  card: { backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border },
-  driverRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  driverAvatar: { width: 56, height: 56, borderRadius: 16, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center" },
-  driverName: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, marginBottom: 3 },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 5 },
-  ratingTxt: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginLeft: 4 },
-  plateRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  plateTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textSecondary },
-  etaBadge: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#D1FAE5", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
-  etaTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#059669" },
-  actionBtn: { width: 38, height: 38, borderRadius: 11, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
-  cardTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text },
-  mapsBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#EFF6FF", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8 },
-  mapsBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#4285F4" },
-  routeRow: { flexDirection: "row", gap: 12, alignItems: "stretch" },
-  routeDot: { width: 12, height: 12, borderRadius: 6 },
-  routeLine: { flex: 1, width: 2, backgroundColor: C.border, alignSelf: "center" },
-  routeLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
-  routeVal: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 },
-  fareRows: { gap: 8 },
-  fareRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  fareLbl: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted },
-  fareVal: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text },
-  fareTotalRow: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
-  fareTotalLbl: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text },
-  fareTotalVal: { fontFamily: "Inter_700Bold", fontSize: 18, color: "#059669" },
-  rideIdRow: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "center" },
-  rideIdTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
-  safetyRow: { flexDirection: "row", alignItems: "center", gap: 6, justifyContent: "center", backgroundColor: "#D1FAE5", padding: 10, borderRadius: 12 },
-  safetyTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#065F46" },
-  homeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 14, borderRadius: 14, backgroundColor: "#EFF6FF" },
-  homeBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.primary },
-  newBtn: { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, padding: 14, borderRadius: 14, backgroundColor: "#059669" },
-  newBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
-});
 
 /* ── Main Screen Styles ── */
 const rs = StyleSheet.create({
