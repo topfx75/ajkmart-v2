@@ -25,7 +25,7 @@ function mapOrder(o: typeof pharmacyOrdersTable.$inferSelect) {
 }
 
 router.get("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const orders = await db
     .select()
     .from(pharmacyOrdersTable)
@@ -35,11 +35,11 @@ router.get("/", customerAuth, async (req, res) => {
 });
 
 router.get("/:id", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const [order] = await db
     .select()
     .from(pharmacyOrdersTable)
-    .where(eq(pharmacyOrdersTable.id, req.params["id"]!))
+    .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
     .limit(1);
   if (!order) {
     res.status(404).json({ error: "Pharmacy order not found" });
@@ -50,7 +50,7 @@ router.get("/:id", customerAuth, async (req, res) => {
 });
 
 router.post("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const { items, prescriptionNote, deliveryAddress, contactPhone, paymentMethod } = req.body;
   if (!items || !deliveryAddress || !contactPhone || !paymentMethod) {
     res.status(400).json({ error: "Missing required fields" });
@@ -227,7 +227,7 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
   const [order] = await db
     .update(pharmacyOrdersTable)
     .set({ status, updatedAt: new Date() })
-    .where(eq(pharmacyOrdersTable.id, req.params["id"]!))
+    .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
     .returning();
   if (!order) {
     res.status(404).json({ error: "Pharmacy order not found" });

@@ -450,9 +450,9 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
   if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
   if (!user.isActive) { res.status(403).json({ error: "Your account is inactive. Contact support." }); return; }
 
-  (req as any).customerId    = payload.userId;
-  (req as any).customerPhone = payload.phone;
-  (req as any).customerUser  = user;
+  req.customerId = payload.userId;
+  req.customerPhone = payload.phone;
+  req.customerUser = user;
   next();
 }
 
@@ -489,8 +489,8 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
     return;
   }
 
-  (req as any).riderId   = user.id;
-  (req as any).riderUser = user;
+  req.riderId = user.id;
+  req.riderUser = user;
   next();
 }
 

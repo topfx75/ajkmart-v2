@@ -70,19 +70,19 @@ router.get("/validate-promo", customerAuth, async (req, res) => {
 
 /* ── GET /orders?status= ─────────────────────────────────────────── */
 router.get("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const status = req.query["status"] as string;
 
   const conditions: SQL[] = [eq(ordersTable.userId, userId)];
   if (status) conditions.push(eq(ordersTable.status, status));
   const orders = await db.select().from(ordersTable).where(and(...conditions));
-  res.json({ orders: orders.map(mapOrder), total: orders.length });
+  res.json({ orders: orders.map(o => mapOrder(o)), total: orders.length });
 });
 
 /* ── GET /orders/:id ──────────────────────────────────────────────────────── */
 router.get("/:id", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
-  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
+  const userId = req.customerId!;
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
   /* Ensure customers can only view their own orders */
   if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
@@ -91,7 +91,7 @@ router.get("/:id", customerAuth, async (req, res) => {
 
 /* ── POST /orders ─────────────────────────────────────────────────────────── */
 router.post("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const { type, items, deliveryAddress, paymentMethod } = req.body;
   const ip = getClientIp(req);
 
@@ -379,9 +379,9 @@ router.post("/", customerAuth, async (req, res) => {
 
 /* ── PATCH /orders/:id/cancel — customer cancel only ────────────────────── */
 router.patch("/:id/cancel", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
 
-  const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
+  const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
   if (!existingOrder) { res.status(404).json({ error: "Order not found" }); return; }
 
   /* Only the order owner can cancel */
@@ -407,7 +407,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
 
   const [order] = await db.update(ordersTable)
     .set({ status: "cancelled", updatedAt: new Date() })
-    .where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.userId, userId)))
+    .where(and(eq(ordersTable.id, String(req.params["id"])), eq(ordersTable.userId, userId)))
     .returning();
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
   res.json(mapOrder(order));

@@ -11,7 +11,7 @@ const router: IRouter = Router();
 router.use(customerAuth);
 
 router.get("/", async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const addresses = await db.select().from(savedAddressesTable)
     .where(eq(savedAddressesTable.userId, userId))
     .orderBy(savedAddressesTable.createdAt);
@@ -19,7 +19,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const { label, address, city, icon, isDefault } = req.body;
   if (!label || !address) { res.status(400).json({ error: "label and address required" }); return; }
   if (isDefault) {
@@ -37,7 +37,7 @@ router.post("/", async (req, res) => {
 });
 
 router.put("/:id", async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const { label, address, city, icon, isDefault } = req.body;
   const { id } = req.params;
 
@@ -54,7 +54,7 @@ router.put("/:id", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
 
   /* Verify ownership before deleting */
   const [existing] = await db.select().from(savedAddressesTable).where(eq(savedAddressesTable.id, req.params["id"]!)).limit(1);

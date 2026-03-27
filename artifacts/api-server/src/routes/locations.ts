@@ -126,7 +126,7 @@ router.get("/:userId", customerAuth, async (req, res) => {
   const [loc] = await db
     .select()
     .from(liveLocationsTable)
-    .where(eq(liveLocationsTable.userId, req.params["userId"]!))
+    .where(eq(liveLocationsTable.userId, String(req.params["userId"])))
     .limit(1);
   if (!loc) { res.status(404).json({ error: "Location not found" }); return; }
   res.json({

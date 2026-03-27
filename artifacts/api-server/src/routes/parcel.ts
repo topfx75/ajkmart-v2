@@ -49,7 +49,7 @@ router.post("/estimate", async (req, res) => {
 });
 
 router.get("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const bookings = await db
     .select()
     .from(parcelBookingsTable)
@@ -59,11 +59,11 @@ router.get("/", customerAuth, async (req, res) => {
 });
 
 router.get("/:id", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const [booking] = await db
     .select()
     .from(parcelBookingsTable)
-    .where(eq(parcelBookingsTable.id, req.params["id"]!))
+    .where(eq(parcelBookingsTable.id, String(req.params["id"])))
     .limit(1);
   if (!booking) {
     res.status(404).json({ error: "Parcel booking not found" });
@@ -74,7 +74,7 @@ router.get("/:id", customerAuth, async (req, res) => {
 });
 
 router.post("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const {
     senderName, senderPhone, pickupAddress,
     receiverName, receiverPhone, dropAddress,
@@ -221,7 +221,7 @@ router.post("/", customerAuth, async (req, res) => {
 });
 
 router.patch("/:id/status", riderAuth, async (req, res) => {
-  const riderId = (req as any).riderId as string;
+  const riderId = req.riderId!;
   const { status } = req.body;
 
   /* Whitelist allowed status transitions — prevents arbitrary string injection */
@@ -234,7 +234,7 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
   const [booking] = await db
     .select()
     .from(parcelBookingsTable)
-    .where(eq(parcelBookingsTable.id, req.params["id"]!))
+    .where(eq(parcelBookingsTable.id, String(req.params["id"])))
     .limit(1);
   if (!booking) { res.status(404).json({ error: "Parcel booking not found" }); return; }
 
@@ -247,7 +247,7 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
   const [updated] = await db
     .update(parcelBookingsTable)
     .set({ status, riderId, updatedAt: new Date() })
-    .where(eq(parcelBookingsTable.id, req.params["id"]!))
+    .where(eq(parcelBookingsTable.id, String(req.params["id"])))
     .returning();
 
   res.json(mapBooking(updated!));

@@ -295,7 +295,7 @@ router.post("/verify-otp", async (req, res) => {
   /* ── Admin approval check ── */
   const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
   if (requireApproval && user.approvalStatus === "pending") {
-    addAuditEntry({ action: "user_login_pending", ip, details: `Pending approval login for phone: ${phone}`, result: "pending" });
+    addAuditEntry({ action: "user_login_pending", ip, details: `Pending approval login for phone: ${phone}`, result: "warn" });
     const token = signUserJwt(user.id, phone, user.role ?? "customer", user.roles ?? "customer", 1);
     res.json({
       token, pendingApproval: true,

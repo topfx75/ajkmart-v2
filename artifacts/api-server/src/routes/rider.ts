@@ -33,8 +33,8 @@ async function riderAuth(req: Request, res: Response, next: NextFunction) {
     res.status(403).json({ error: "Access denied. This portal is for riders only." }); return;
   }
 
-  (req as any).riderId = user.id;
-  (req as any).riderUser = user;
+  req.riderId! = user.id;
+  req.riderUser! = user;
   next();
 }
 
@@ -42,7 +42,7 @@ router.use(riderAuth);
 
 /* ── GET /rider/me — Profile ── */
 router.get("/me", async (req, res) => {
-  const user = (req as any).riderUser;
+  const user = req.riderUser!;
   const riderId = user.id;
   const today = new Date(); today.setHours(0,0,0,0);
 
@@ -88,7 +88,7 @@ router.get("/me", async (req, res) => {
 
 /* ── PATCH /rider/online — Toggle online status ── */
 router.patch("/online", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const { isOnline } = req.body;
   await db.update(usersTable).set({ isOnline: !!isOnline, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
   res.json({ success: true, isOnline: !!isOnline });
@@ -96,7 +96,7 @@ router.patch("/online", async (req, res) => {
 
 /* ── PATCH /rider/profile — Update profile ── */
 router.patch("/profile", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const { name, email, cnic, address, city, emergencyContact, vehicleType, vehiclePlate, bankName, bankAccount, bankAccountTitle } = req.body;
   const updates: any = { updatedAt: new Date() };
   if (name             !== undefined) updates.name             = name;
@@ -124,7 +124,7 @@ router.patch("/profile", async (req, res) => {
 
 /* ── GET /rider/requests — Available orders + rides (incl. bargaining, with own bid info) ── */
 router.get("/requests", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const [orders, rides, myBids] = await Promise.all([
     db.select().from(ordersTable)
       .where(or(eq(ordersTable.status, "confirmed"), eq(ordersTable.status, "preparing")))
@@ -165,7 +165,7 @@ router.get("/requests", async (req, res) => {
 
 /* ── GET /rider/active — Current active delivery ── */
 router.get("/active", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const [order, ride] = await Promise.all([
     db.select().from(ordersTable).where(and(eq(ordersTable.riderId, riderId), or(eq(ordersTable.status, "out_for_delivery"), eq(ordersTable.status, "picked_up")))).orderBy(desc(ordersTable.updatedAt)).limit(1),
     db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "accepted"), eq(ridesTable.status, "arrived"), eq(ridesTable.status, "in_transit")))).orderBy(desc(ridesTable.updatedAt)).limit(1),
@@ -214,7 +214,7 @@ router.get("/active", async (req, res) => {
 /* ── POST /rider/orders/:id/accept — Accept an order ──
    Uses WHERE riderId IS NULL to prevent two riders accepting the same order (race condition) */
 router.post("/orders/:id/accept", async (req, res) => {
-  const riderId   = (req as any).riderId;
+  const riderId   = req.riderId!;
   const orderId   = req.params["id"]!;
 
   const s = await getPlatformSettings();
@@ -266,7 +266,7 @@ router.post("/orders/:id/accept", async (req, res) => {
 
 /* ── PATCH /rider/orders/:id/status — Update order status (delivered) ── */
 router.patch("/orders/:id/status", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const { status } = req.body;
   const validStatuses = ["out_for_delivery", "delivered", "cancelled"];
   if (!validStatuses.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
@@ -382,8 +382,8 @@ router.patch("/orders/:id/status", async (req, res) => {
 /* ── POST /rider/rides/:id/accept — Accept a ride ──
    Uses WHERE riderId IS NULL to prevent two riders accepting same ride (race condition) */
 router.post("/rides/:id/accept", async (req, res) => {
-  const riderId   = (req as any).riderId;
-  const riderUser = (req as any).riderUser;
+  const riderId   = req.riderId!;
+  const riderUser = req.riderUser!;
   const rideId    = req.params["id"]!;
 
   // Check max simultaneous deliveries limit
@@ -490,7 +490,7 @@ router.post("/rides/:id/accept", async (req, res) => {
 
 /* ── PATCH /rider/rides/:id/status — Update ride status (completed/cancelled) ── */
 router.patch("/rides/:id/status", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const { status } = req.body;
   if (!["arrived", "in_transit", "completed", "cancelled"].includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
 
@@ -537,8 +537,8 @@ router.patch("/rides/:id/status", async (req, res) => {
 
 /* ── POST /rider/rides/:id/counter — Rider submits a bid on a bargaining ride (InDrive multi-bid) ── */
 router.post("/rides/:id/counter", async (req, res) => {
-  const riderId   = (req as any).riderId;
-  const riderUser = (req as any).riderUser;
+  const riderId   = req.riderId!;
+  const riderUser = req.riderUser!;
   const rideId    = req.params["id"]!;
   const { counterFare, note } = req.body;
 
@@ -607,7 +607,7 @@ router.post("/rides/:id/counter", async (req, res) => {
 router.post("/rides/:id/reject-offer", async (req, res) => {
   /* InDrive model: riders don't lock the ride anymore, so "rejection" is purely a local dismiss.
      If this rider had submitted a pending bid, we cancel it. */
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const rideId  = req.params["id"]!;
 
   /* Cancel any pending bid this rider submitted */
@@ -620,7 +620,7 @@ router.post("/rides/:id/reject-offer", async (req, res) => {
 
 /* ── GET /rider/history — Delivery history ── */
 router.get("/history", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const s = await getPlatformSettings();
   const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
 
@@ -639,7 +639,7 @@ router.get("/history", async (req, res) => {
 
 /* ── GET /rider/earnings — Earnings summary ── */
 router.get("/earnings", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const today = new Date(); today.setHours(0,0,0,0);
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate() - 30);
@@ -669,8 +669,8 @@ router.get("/earnings", async (req, res) => {
 
 /* ── GET /rider/wallet/transactions ── */
 router.get("/wallet/transactions", async (req, res) => {
-  const riderId = (req as any).riderId;
-  const user = (req as any).riderUser;
+  const riderId = req.riderId!;
+  const user = req.riderUser!;
   const limit = Math.min(parseInt(String(req.query["limit"] || "50")), 100);
   const txns = await db.select().from(walletTransactionsTable)
     .where(eq(walletTransactionsTable.userId, riderId))
@@ -684,7 +684,7 @@ router.get("/wallet/transactions", async (req, res) => {
 
 /* ── POST /rider/wallet/withdraw — Atomic withdrawal (prevents race condition) ── */
 router.post("/wallet/withdraw", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const { amount, accountTitle, accountNumber, bankName, paymentMethod, note } = req.body;
   const amt = safeNum(amount);
 
@@ -741,7 +741,7 @@ router.post("/wallet/withdraw", async (req, res) => {
 
 /* ── GET /rider/cod-summary — COD balance + remittance history ── */
 router.get("/cod-summary", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const [codAgg, verifiedAgg, remittances] = await Promise.all([
     db.select({ total: sum(ordersTable.total), count: count() }).from(ordersTable)
       .where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), eq(ordersTable.paymentMethod, "cod"))),
@@ -764,7 +764,7 @@ router.get("/cod-summary", async (req, res) => {
 
 /* ── POST /rider/cod/remit — Submit a COD remittance ── */
 router.post("/cod/remit", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const { amount, paymentMethod, accountNumber, transactionId, note } = req.body;
   const amt = safeNum(amount);
   if (!amt || amt <= 0) { res.status(400).json({ error: "Valid amount required" }); return; }
@@ -789,7 +789,7 @@ router.post("/cod/remit", async (req, res) => {
 
 /* ── GET /rider/notifications ── */
 router.get("/notifications", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   const notifs = await db.select().from(notificationsTable)
     .where(eq(notificationsTable.userId, riderId))
     .orderBy(desc(notificationsTable.createdAt))
@@ -799,7 +799,7 @@ router.get("/notifications", async (req, res) => {
 
 /* ── PATCH /rider/notifications/read-all ── */
 router.patch("/notifications/read-all", async (req, res) => {
-  const riderId = (req as any).riderId;
+  const riderId = req.riderId!;
   await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.userId, riderId));
   res.json({ success: true });
 });

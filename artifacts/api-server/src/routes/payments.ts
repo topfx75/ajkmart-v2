@@ -250,7 +250,7 @@ router.get("/test-connection/:gateway", async (req, res) => {
 //  Body: { gateway, amount, orderId, mobileNumber?, returnUrl? }
 // ═══════════════════════════════════════════════════════════════════════════════
 router.post("/initiate", customerAuth, async (req, res) => {
-  const callerId = (req as any).customerId as string;
+  const callerId = req.customerId!;
   const { gateway, amount, orderId, mobileNumber } = req.body;
   if (!gateway || !amount || !orderId) {
     res.status(400).json({ error: "gateway, amount and orderId are required" }); return;

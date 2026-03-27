@@ -31,8 +31,8 @@ async function vendorAuth(req: Request, res: Response, next: NextFunction) {
     res.status(403).json({ error: "Access denied. Vendor role required." }); return;
   }
 
-  (req as any).vendorId = user.id;
-  (req as any).vendorUser = user;
+  req.vendorId! = user.id;
+  req.vendorUser! = user;
   next();
 }
 router.use(vendorAuth);
@@ -61,7 +61,7 @@ function formatUser(user: any) {
 
 /* ── GET /vendor/me ── */
 router.get("/me", async (req, res) => {
-  const user = (req as any).vendorUser;
+  const user = req.vendorUser!;
   const vendorId = user.id;
   const today = new Date(); today.setHours(0,0,0,0);
 
@@ -87,7 +87,7 @@ router.get("/me", async (req, res) => {
 
 /* ── PATCH /vendor/profile ── */
 router.patch("/profile", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const { name, email, cnic, address, city, bankName, bankAccount, bankAccountTitle, businessType } = req.body;
   const updates: any = { updatedAt: new Date() };
   if (name             !== undefined) updates.name             = name;
@@ -105,13 +105,13 @@ router.patch("/profile", async (req, res) => {
 
 /* ── GET /vendor/store ── */
 router.get("/store", async (req, res) => {
-  const user = (req as any).vendorUser;
+  const user = req.vendorUser!;
   res.json(formatUser(user));
 });
 
 /* ── PATCH /vendor/store ── */
 router.patch("/store", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const body = req.body;
   const updates: any = { updatedAt: new Date() };
   const fields = ["storeName","storeCategory","storeBanner","storeDescription","storeAnnouncement","storeDeliveryTime","storeIsOpen","storeMinOrder"];
@@ -125,7 +125,7 @@ router.patch("/store", async (req, res) => {
 
 /* ── GET /vendor/stats ── */
 router.get("/stats", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const today = new Date(); today.setHours(0,0,0,0);
   const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
   const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate() - 30);
@@ -151,7 +151,7 @@ router.get("/stats", async (req, res) => {
 
 /* ── GET /vendor/orders ── */
 router.get("/orders", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const status = req.query["status"] as string | undefined;
   const conditions: any[] = [eq(ordersTable.vendorId, vendorId)];
   if (status && status !== "all") {
@@ -165,7 +165,7 @@ router.get("/orders", async (req, res) => {
 
 /* ── PATCH /vendor/orders/:id/status ── */
 router.patch("/orders/:id/status", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const { status } = req.body;
   const validStatuses = ["confirmed","preparing","ready","cancelled"];
   if (!validStatuses.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
@@ -196,7 +196,7 @@ router.patch("/orders/:id/status", async (req, res) => {
 
 /* ── GET /vendor/products ── */
 router.get("/products", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const q = req.query["q"] as string | undefined;
   const cat = req.query["category"] as string | undefined;
   const conditions: any[] = [eq(productsTable.vendorId, vendorId)];
@@ -208,8 +208,8 @@ router.get("/products", async (req, res) => {
 
 /* ── POST /vendor/products ── Add single product ── */
 router.post("/products", async (req, res) => {
-  const vendorId = (req as any).vendorId;
-  const user = (req as any).vendorUser;
+  const vendorId = req.vendorId!;
+  const user = req.vendorUser!;
   const body = req.body;
   if (!body.name || !body.price) { res.status(400).json({ error: "name and price required" }); return; }
   if (!isFinite(Number(body.price)) || Number(body.price) <= 0) {
@@ -238,8 +238,8 @@ router.post("/products", async (req, res) => {
 
 /* ── POST /vendor/products/bulk ── Bulk add products ── */
 router.post("/products/bulk", async (req, res) => {
-  const vendorId = (req as any).vendorId;
-  const user = (req as any).vendorUser;
+  const vendorId = req.vendorId!;
+  const user = req.vendorUser!;
   const { products } = req.body;
   if (!Array.isArray(products) || products.length === 0) { res.status(400).json({ error: "products array required" }); return; }
   if (products.length > 50) { res.status(400).json({ error: "Max 50 products at a time" }); return; }
@@ -269,7 +269,7 @@ router.post("/products/bulk", async (req, res) => {
 
 /* ── PATCH /vendor/products/:id ── Update product ── */
 router.patch("/products/:id", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const body = req.body;
   const updates: any = { updatedAt: new Date() };
   const fields = ["name","description","category","type","unit","deliveryTime"];
@@ -291,7 +291,7 @@ router.patch("/products/:id", async (req, res) => {
 
 /* ── DELETE /vendor/products/:id ── */
 router.delete("/products/:id", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const [del] = await db.delete(productsTable).where(and(eq(productsTable.id, req.params["id"]!), eq(productsTable.vendorId, vendorId))).returning();
   if (!del) { res.status(404).json({ error: "Product not found" }); return; }
   res.json({ success: true });
@@ -299,14 +299,14 @@ router.delete("/products/:id", async (req, res) => {
 
 /* ── GET /vendor/promos ── Vendor promo codes ── */
 router.get("/promos", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const promos = await db.select().from(promoCodesTable).where(eq(promoCodesTable.vendorId, vendorId)).orderBy(desc(promoCodesTable.createdAt));
   res.json({ promos: promos.map(p => ({ ...p, discountPct: safeNum(p.discountPct), discountFlat: safeNum(p.discountFlat), minOrderAmount: safeNum(p.minOrderAmount) })) });
 });
 
 /* ── POST /vendor/promos ── Create promo ── */
 router.post("/promos", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const body = req.body;
   if (!body.code || (!body.discountPct && !body.discountFlat)) {
     res.status(400).json({ error: "code + discount (% or flat) required" }); return;
@@ -336,7 +336,7 @@ router.post("/promos", async (req, res) => {
 
 /* ── PATCH /vendor/promos/:id/toggle ── */
 router.patch("/promos/:id/toggle", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const [promo] = await db.select().from(promoCodesTable).where(and(eq(promoCodesTable.id, req.params["id"]!), eq(promoCodesTable.vendorId, vendorId))).limit(1);
   if (!promo) { res.status(404).json({ error: "Promo not found" }); return; }
   const [updated] = await db.update(promoCodesTable).set({ isActive: !promo.isActive }).where(eq(promoCodesTable.id, promo.id)).returning();
@@ -345,20 +345,20 @@ router.patch("/promos/:id/toggle", async (req, res) => {
 
 /* ── DELETE /vendor/promos/:id ── */
 router.delete("/promos/:id", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   await db.delete(promoCodesTable).where(and(eq(promoCodesTable.id, req.params["id"]!), eq(promoCodesTable.vendorId, vendorId)));
   res.json({ success: true });
 });
 
 /* ── GET /vendor/wallet/transactions ── */
 router.get("/wallet/transactions", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const limit = Math.min(parseInt(String(req.query["limit"] || "50")), 100);
   const txns = await db.select().from(walletTransactionsTable)
     .where(eq(walletTransactionsTable.userId, vendorId))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(limit);
-  const user = (req as any).vendorUser;
+  const user = req.vendorUser!;
   res.json({
     balance: safeNum(user.walletBalance),
     transactions: txns.map(t => ({
@@ -370,7 +370,7 @@ router.get("/wallet/transactions", async (req, res) => {
 
 /* ── POST /vendor/wallet/withdraw ── Atomic Withdrawal Request ── */
 router.post("/wallet/withdraw", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const { amount, accountTitle, accountNumber, bankName, note } = req.body;
   const amt = safeNum(amount);
 
@@ -428,7 +428,7 @@ router.post("/wallet/withdraw", async (req, res) => {
 
 /* ── GET /vendor/notifications ── */
 router.get("/notifications", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const notifs = await db.select().from(notificationsTable)
     .where(eq(notificationsTable.userId, vendorId))
     .orderBy(desc(notificationsTable.createdAt))
@@ -438,14 +438,14 @@ router.get("/notifications", async (req, res) => {
 
 /* ── PATCH /vendor/notifications/read-all ── */
 router.patch("/notifications/read-all", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.userId, vendorId));
   res.json({ success: true });
 });
 
 /* ── GET /vendor/analytics ── ── */
 router.get("/analytics", async (req, res) => {
-  const vendorId = (req as any).vendorId;
+  const vendorId = req.vendorId!;
   const days = parseInt(String(req.query["days"] || "7"));
   const since = new Date(); since.setDate(since.getDate() - days); since.setHours(0,0,0,0);
   const [revenueData, topProducts, ordersByStatus] = await Promise.all([

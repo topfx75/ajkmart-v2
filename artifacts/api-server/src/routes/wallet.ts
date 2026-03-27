@@ -23,7 +23,7 @@ function mapTx(t: typeof walletTransactionsTable.$inferSelect) {
 
 /* ── GET /wallet ─────────────────────────────────────────────────────────── */
 router.get("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
@@ -106,7 +106,7 @@ router.post("/topup", async (req, res) => {
 
 /* ── POST /wallet/send ───────────────────────────────────────────────────── */
 router.post("/send", customerAuth, async (req, res) => {
-  const senderUserId = (req as any).customerId as string;
+  const senderUserId = req.customerId!;
   const { receiverPhone, amount, note } = req.body;
   if (!receiverPhone || !amount) {
     res.status(400).json({ error: "receiverPhone and amount are required" }); return;

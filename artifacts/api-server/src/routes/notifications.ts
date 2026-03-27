@@ -12,7 +12,7 @@ const router: IRouter = Router();
 
 /* GET /notifications — list notifications for the authenticated user */
 router.get("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
 
   let notifs = await db.select().from(notificationsTable)
     .where(eq(notificationsTable.userId, userId))
@@ -53,29 +53,29 @@ router.post("/", async (req, res) => {
 
 /* PATCH /notifications/read-all — mark all as read for auth user */
 router.patch("/read-all", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   await db.update(notificationsTable).set({ isRead: true }).where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.isRead, false)));
   res.json({ success: true });
 });
 
 /* PATCH /notifications/:id/read */
 router.patch("/:id/read", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   /* Verify ownership */
-  const [notif] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, req.params["id"]!)).limit(1);
+  const [notif] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, String(req.params["id"]))).limit(1);
   if (!notif) { res.status(404).json({ error: "Not found" }); return; }
   if (notif.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
-  await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.id, req.params["id"]!));
+  await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.id, String(req.params["id"])));
   res.json({ success: true });
 });
 
 /* DELETE /notifications/:id */
 router.delete("/:id", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
-  const [notif] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, req.params["id"]!)).limit(1);
+  const userId = req.customerId!;
+  const [notif] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, String(req.params["id"]))).limit(1);
   if (!notif) { res.status(404).json({ error: "Not found" }); return; }
   if (notif.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
-  await db.delete(notificationsTable).where(eq(notificationsTable.id, req.params["id"]!));
+  await db.delete(notificationsTable).where(eq(notificationsTable.id, String(req.params["id"])));
   res.json({ success: true });
 });
 

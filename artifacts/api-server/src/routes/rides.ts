@@ -141,7 +141,7 @@ router.post("/estimate", async (req, res) => {
    POST /rides — Book a ride (standard or bargaining)
 ══════════════════════════════════════════════════════ */
 router.post("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const {
     type, pickupAddress, dropAddress,
     pickupLat, pickupLng, dropLat, dropLng,
@@ -290,9 +290,9 @@ router.post("/", customerAuth, async (req, res) => {
    PATCH /rides/:id/cancel — Customer cancels a ride
 ══════════════════════════════════════════════════════ */
 router.patch("/:id/cancel", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
 
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, req.params["id"]!)).limit(1);
+  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, String(req.params["id"]))).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
   if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
   if (!["searching", "bargaining", "accepted", "arrived", "in_transit"].includes(ride.status)) {
@@ -326,13 +326,13 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   /* Include userId in WHERE to close the TOCTOU window between ownership check and update */
   const [updated] = await db.update(ridesTable)
     .set({ status: "cancelled", updatedAt: new Date() })
-    .where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.userId, userId)))
+    .where(and(eq(ridesTable.id, String(req.params["id"])), eq(ridesTable.userId, userId)))
     .returning();
 
   /* Reject all pending bids (InDrive multi-bid) */
   await db.update(rideBidsTable)
     .set({ status: "rejected", updatedAt: new Date() })
-    .where(and(eq(rideBidsTable.rideId, req.params["id"]!), eq(rideBidsTable.status, "pending")));
+    .where(and(eq(rideBidsTable.rideId, String(req.params["id"])), eq(rideBidsTable.status, "pending")));
 
   /* Refund wallet fare if wallet payment + not bargaining (bargaining rides haven't charged yet) */
   if (ride.paymentMethod === "wallet" && ride.status !== "bargaining" && ride.bargainStatus !== "customer_offered") {
@@ -377,11 +377,11 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
    Body: { userId, bidId }
 ══════════════════════════════════════════════════════ */
 router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const { bidId } = req.body;
   if (!bidId) { res.status(400).json({ error: "bidId required" }); return; }
 
-  const rideId = req.params["id"]!;
+  const rideId = String(req.params["id"]);
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
   if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
@@ -454,11 +454,11 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
    Works anytime during bargaining; rejects all pending bids → riders re-bid
 ══════════════════════════════════════════════════════ */
 router.patch("/:id/customer-counter", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const { offeredFare: newOffer, note } = req.body;
   if (!newOffer) { res.status(400).json({ error: "offeredFare required" }); return; }
 
-  const rideId = req.params["id"]!;
+  const rideId = String(req.params["id"]);
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
   if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
@@ -503,7 +503,7 @@ router.patch("/:id/customer-counter", customerAuth, async (req, res) => {
    GET /rides — List rides for user
 ══════════════════════════════════════════════════════ */
 router.get("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const rides = await db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(ridesTable.createdAt);
   res.json({
     rides: rides.map(formatRide).reverse(),
@@ -525,7 +525,7 @@ router.get("/:id", async (req, res) => {
   if (!payload) { res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return; }
   const callerId = payload.userId;
 
-  const rideId = req.params["id"]!;
+  const rideId = String(req.params["id"]);
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
 
@@ -589,8 +589,8 @@ router.get("/:id", async (req, res) => {
    Professional journey audit trail — used by admin.
 ════════════════════════════════════════════════════════ */
 router.post("/:id/event-log", riderAuth, async (req, res) => {
-  const rideId  = req.params["id"]!;
-  const riderId = (req as any).riderId as string;
+  const rideId  = String(req.params["id"]);
+  const riderId = req.riderId!;
   const { event, lat, lng, notes } = req.body;
 
   if (!event) {
@@ -632,7 +632,7 @@ router.get("/:id/event-logs", async (req, res) => {
     res.status(401).json({ error: "Admin authentication required" }); return;
   }
   const logs = await db.select().from(rideEventLogsTable)
-    .where(eq(rideEventLogsTable.rideId, req.params["id"]!))
+    .where(eq(rideEventLogsTable.rideId, String(req.params["id"])))
     .orderBy(asc(rideEventLogsTable.createdAt));
 
   const formatted = logs.map(l => ({

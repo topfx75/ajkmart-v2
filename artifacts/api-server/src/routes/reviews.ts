@@ -10,7 +10,7 @@ const router: IRouter = Router();
 
 /* ── POST /reviews — submit a review ─────────────────────────────────────── */
 router.post("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const { orderId, vendorId, riderId, orderType, rating, comment } = req.body;
 
   if (!orderId || !orderType || !rating) {
@@ -79,7 +79,7 @@ router.post("/", customerAuth, async (req, res) => {
 
 /* ── GET /reviews?orderId= — check if reviewed ────────────────────────────── */
 router.get("/", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
+  const userId = req.customerId!;
   const orderId = req.query["orderId"] as string;
   if (!orderId) { res.status(400).json({ error: "orderId required" }); return; }
 

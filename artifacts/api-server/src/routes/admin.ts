@@ -460,8 +460,8 @@ async function adminAuth(req: Request, res: Response, next: NextFunction) {
 
   /* ── Super admin via master secret ── */
   if (auth === ADMIN_SECRET) {
-    (req as any).adminRole = "super";
-    (req as any).adminIp   = ip;
+    req.adminRole = "super";
+    req.adminIp!   = ip;
     addAuditEntry({ action: "admin_login", ip, details: `Super admin accessed ${req.method} ${req.url}`, result: "success" });
     next();
     return;
@@ -510,10 +510,10 @@ async function adminAuth(req: Request, res: Response, next: NextFunction) {
       }
     }
 
-    (req as any).adminRole = sub.role;
-    (req as any).adminId   = sub.id;
-    (req as any).adminName = sub.name;
-    (req as any).adminIp   = ip;
+    req.adminRole = sub.role;
+    req.adminId!   = sub.id;
+    req.adminName = sub.name;
+    req.adminIp!   = ip;
     await db.update(adminAccountsTable).set({ lastLoginAt: new Date() }).where(eq(adminAccountsTable.id, sub.id));
     addAuditEntry({ action: "admin_login", ip, adminId: sub.id, details: `Sub-admin ${sub.name} (${sub.role}) accessed ${req.method} ${req.url}`, result: "success" });
     next();
@@ -1887,7 +1887,7 @@ router.post("/blocked-ips", adminAuth, (req, res) => {
   addAuditEntry({
     action: "manual_block_ip",
     ip: getClientIp(req),
-    adminId: (req as any).adminId,
+    adminId: req.adminId!,
     details: `IP ${ip} manually blocked. Reason: ${reason || "No reason given"}`,
     result: "success",
   });
@@ -1897,13 +1897,13 @@ router.post("/blocked-ips", adminAuth, (req, res) => {
 
 /* ── DELETE /admin/blocked-ips/:ip — unblock an IP ── */
 router.delete("/blocked-ips/:ip", adminAuth, (req, res) => {
-  const ip = decodeURIComponent(req.params["ip"]!);
+  const ip = decodeURIComponent(String(req.params["ip"]));
   const wasBlocked = blockedIPs.has(ip);
   blockedIPs.delete(ip);
   addAuditEntry({
     action: "unblock_ip",
     ip: getClientIp(req),
-    adminId: (req as any).adminId,
+    adminId: req.adminId!,
     details: `IP ${ip} unblocked`,
     result: "success",
   });
@@ -1935,12 +1935,12 @@ router.get("/login-lockouts", adminAuth, (_req, res) => {
 
 /* ── DELETE /admin/login-lockouts/:phone — unlock a phone ── */
 router.delete("/login-lockouts/:phone", adminAuth, (req, res) => {
-  const phone = decodeURIComponent(req.params["phone"]!);
+  const phone = decodeURIComponent(String(req.params["phone"]));
   unlockPhone(phone);
   addAuditEntry({
     action: "admin_unlock_phone",
     ip: getClientIp(req),
-    adminId: (req as any).adminId,
+    adminId: req.adminId!,
     details: `Admin manually unlocked phone: ${phone}`,
     result: "success",
   });
@@ -2002,7 +2002,7 @@ router.post("/invalidate-cache", adminAuth, (_req, res) => {
 
 /* GET /admin/mfa/status — check if MFA is set up for the current sub-admin */
 router.get("/mfa/status", adminAuth, async (req, res) => {
-  const adminId = (req as any).adminId;
+  const adminId = req.adminId!;
   if (!adminId) {
     res.json({ mfaEnabled: false, note: "Super admin does not use TOTP." });
     return;
@@ -2017,8 +2017,8 @@ router.get("/mfa/status", adminAuth, async (req, res) => {
 
 /* POST /admin/mfa/setup — generate a TOTP secret and QR code (step 1 of MFA setup) */
 router.post("/mfa/setup", adminAuth, async (req, res) => {
-  const adminId   = (req as any).adminId;
-  const adminName = (req as any).adminName ?? "Admin";
+  const adminId   = req.adminId!;
+  const adminName = req.adminName! ?? "Admin";
   if (!adminId) {
     res.status(400).json({ error: "Super admin does not need TOTP setup." });
     return;
@@ -2033,7 +2033,7 @@ router.post("/mfa/setup", adminAuth, async (req, res) => {
     .set({ totpSecret: secret, totpEnabled: false })
     .where(eq(adminAccountsTable.id, adminId));
 
-  addAuditEntry({ action: "mfa_setup_initiated", ip: (req as any).adminIp, adminId, details: `MFA setup started for ${adminName}`, result: "success" });
+  addAuditEntry({ action: "mfa_setup_initiated", ip: req.adminIp!, adminId, details: `MFA setup started for ${adminName}`, result: "success" });
 
   res.json({
     secret,
@@ -2045,8 +2045,8 @@ router.post("/mfa/setup", adminAuth, async (req, res) => {
 
 /* POST /admin/mfa/verify — verify a TOTP token to activate MFA */
 router.post("/mfa/verify", adminAuth, async (req, res) => {
-  const adminId   = (req as any).adminId;
-  const adminName = (req as any).adminName ?? "Admin";
+  const adminId   = req.adminId!;
+  const adminName = req.adminName! ?? "Admin";
   if (!adminId) {
     res.status(400).json({ error: "Super admin does not use TOTP." });
     return;
@@ -2071,7 +2071,7 @@ router.post("/mfa/verify", adminAuth, async (req, res) => {
 
   const valid = verifyTotpToken(token, admin.totpSecret);
   if (!valid) {
-    addAuditEntry({ action: "mfa_verify_failed", ip: (req as any).adminIp, adminId, details: `MFA verify failed for ${adminName}`, result: "fail" });
+    addAuditEntry({ action: "mfa_verify_failed", ip: req.adminIp!, adminId, details: `MFA verify failed for ${adminName}`, result: "fail" });
     res.status(401).json({ error: "Invalid TOTP token. Please try again." });
     return;
   }
@@ -2080,15 +2080,15 @@ router.post("/mfa/verify", adminAuth, async (req, res) => {
     .set({ totpEnabled: true })
     .where(eq(adminAccountsTable.id, adminId));
 
-  addAuditEntry({ action: "mfa_activated", ip: (req as any).adminIp, adminId, details: `MFA activated for ${adminName}`, result: "success" });
+  addAuditEntry({ action: "mfa_activated", ip: req.adminIp!, adminId, details: `MFA activated for ${adminName}`, result: "success" });
 
   res.json({ success: true, message: "MFA successfully activated. You must now provide x-admin-totp with every request when global MFA is enabled." });
 });
 
 /* DELETE /admin/mfa/disable — disable MFA (requires current valid TOTP or super admin) */
 router.delete("/mfa/disable", adminAuth, async (req, res) => {
-  const adminId   = (req as any).adminId;
-  const adminName = (req as any).adminName ?? "Admin";
+  const adminId   = req.adminId!;
+  const adminName = req.adminName! ?? "Admin";
   if (!adminId) {
     res.status(400).json({ error: "Super admin does not use TOTP." });
     return;
@@ -2109,7 +2109,7 @@ router.delete("/mfa/disable", adminAuth, async (req, res) => {
     .set({ totpSecret: null, totpEnabled: false })
     .where(eq(adminAccountsTable.id, adminId));
 
-  addAuditEntry({ action: "mfa_disabled", ip: (req as any).adminIp, adminId, details: `MFA disabled for ${adminName}`, result: "warn" });
+  addAuditEntry({ action: "mfa_disabled", ip: req.adminIp!, adminId, details: `MFA disabled for ${adminName}`, result: "warn" });
 
   res.json({ success: true, message: "MFA has been disabled for your account." });
 });
@@ -2663,7 +2663,6 @@ router.get("/search", async (req, res) => {
       type:            ordersTable.type,
       total:           ordersTable.total,
       deliveryAddress: ordersTable.deliveryAddress,
-      riderName:       ordersTable.riderName,
       createdAt:       ordersTable.createdAt,
     })
     .from(ordersTable)
@@ -2671,7 +2670,6 @@ router.get("/search", async (req, res) => {
       ilike(ordersTable.id, pattern),
       ilike(ordersTable.deliveryAddress, pattern),
       ilike(ordersTable.status, pattern),
-      ilike(ordersTable.riderName, pattern),
     ))
     .orderBy(desc(ordersTable.createdAt))
     .limit(5),

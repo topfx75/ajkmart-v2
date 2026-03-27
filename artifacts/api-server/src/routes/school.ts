@@ -40,7 +40,7 @@ router.get("/routes", async (_req, res) => {
 ══════════════════════════════════════════════════════ */
 router.get("/routes/:id", async (req, res) => {
   const [route] = await db.select().from(schoolRoutesTable)
-    .where(eq(schoolRoutesTable.id, req.params["id"]!)).limit(1);
+    .where(eq(schoolRoutesTable.id, String(req.params["id"]))).limit(1);
   if (!route) { res.status(404).json({ error: "Route not found" }); return; }
   res.json(formatRoute(route));
 });
@@ -166,7 +166,7 @@ router.patch("/subscriptions/:id/cancel", customerAuth, async (req, res) => {
   const userId = req.customerId!;
 
   const [sub] = await db.select().from(schoolSubscriptionsTable)
-    .where(and(eq(schoolSubscriptionsTable.id, req.params["id"]!), eq(schoolSubscriptionsTable.userId, userId)))
+    .where(and(eq(schoolSubscriptionsTable.id, String(req.params["id"])), eq(schoolSubscriptionsTable.userId, userId)))
     .limit(1);
   if (!sub) { res.status(404).json({ error: "Subscription not found" }); return; }
   if (sub.status !== "active") { res.status(400).json({ error: "Subscription is already inactive" }); return; }
@@ -177,7 +177,7 @@ router.patch("/subscriptions/:id/cancel", customerAuth, async (req, res) => {
   const [updated] = await db.update(schoolSubscriptionsTable)
     .set({ status: "cancelled", updatedAt: new Date() })
     .where(and(
-      eq(schoolSubscriptionsTable.id, req.params["id"]!),
+      eq(schoolSubscriptionsTable.id, String(req.params["id"])),
       eq(schoolSubscriptionsTable.userId, userId),
     ))
     .returning();
