@@ -4,6 +4,7 @@ import {
   Activity, ShoppingBag, Car, Pill, Package, Shield, UserCog,
   Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
   Download, FileText, CalendarDays, Eye, AlertCircle,
+  Users as UsersIcon, Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers } from "@/hooks/use-admin";
@@ -19,24 +20,43 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-/* ── Activity Modal ── */
+const ROLE_COLORS: Record<string, string> = {
+  customer: "bg-blue-100 text-blue-700 border-blue-200",
+  rider:    "bg-emerald-100 text-emerald-700 border-emerald-200",
+  vendor:   "bg-orange-100 text-orange-700 border-orange-200",
+  admin:    "bg-purple-100 text-purple-700 border-purple-200",
+};
+
+function SkeletonRow() {
+  return (
+    <TableRow className="animate-pulse">
+      <TableCell><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-muted" /><div className="space-y-1.5"><div className="h-4 w-28 bg-muted rounded" /><div className="h-3 w-20 bg-muted rounded" /></div></div></TableCell>
+      <TableCell><div className="h-4 w-24 bg-muted rounded" /></TableCell>
+      <TableCell><div className="h-5 w-16 bg-muted rounded-full" /></TableCell>
+      <TableCell className="text-right"><div className="h-4 w-16 bg-muted rounded ml-auto" /></TableCell>
+      <TableCell className="text-center"><div className="h-5 w-12 bg-muted rounded-full mx-auto" /></TableCell>
+      <TableCell className="text-right"><div className="h-4 w-20 bg-muted rounded ml-auto" /></TableCell>
+      <TableCell className="text-right"><div className="h-8 w-32 bg-muted rounded ml-auto" /></TableCell>
+    </TableRow>
+  );
+}
+
 function UserActivityModal({ userId, userName, user: userData, onClose }: { userId: string; userName: string; user: any; onClose: () => void }) {
-  const { data, isLoading } = useUserActivity(userId);
+  const { data, isLoading, isError } = useUserActivity(userId);
   const userRoles = (userData.roles || userData.role || "customer").split(",").filter(Boolean);
   const isRider  = userRoles.includes("rider");
   const isVendor = userRoles.includes("vendor");
 
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-3xl">
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-primary" /> Activity — {userName}
+          <DialogTitle className="flex items-center gap-2 text-[#1A56DB]">
+            <Activity className="w-5 h-5" /> Activity — {userName}
           </DialogTitle>
         </DialogHeader>
 
-        {/* Profile Info Section */}
-        <div className="bg-muted/40 rounded-2xl p-3 space-y-2 border border-border/50">
+        <div className="bg-gradient-to-r from-[#1A56DB]/5 to-blue-50 rounded-xl p-3 space-y-2 border border-blue-100">
           <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Profile Details</p>
           <div className="grid grid-cols-2 gap-2 text-sm">
             {userData.email && (
@@ -54,7 +74,7 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
             )}
             {userData.city && (
               <div className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                <MapPin className="w-3.5 h-3.5 text-[#1A56DB] flex-shrink-0" />
                 <span className="text-muted-foreground text-xs">City:</span>
                 <span className="font-semibold text-xs">{userData.city}</span>
               </div>
@@ -67,14 +87,14 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
             )}
             {isRider && userData.vehicleType && (
               <div className="flex items-center gap-2">
-                <Truck className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                <Truck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                 <span className="text-muted-foreground text-xs">Vehicle:</span>
                 <span className="font-semibold text-xs capitalize">{userData.vehicleType}</span>
               </div>
             )}
             {isRider && userData.vehiclePlate && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono font-bold bg-green-100 text-green-800 px-2 py-0.5 rounded">{userData.vehiclePlate}</span>
+                <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">{userData.vehiclePlate}</span>
               </div>
             )}
             {isRider && userData.emergencyContact && (
@@ -102,15 +122,23 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
         </div>
 
         {isLoading ? (
-          <div className="h-40 flex items-center justify-center text-muted-foreground">Loading...</div>
+          <div className="h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="w-6 h-6 animate-spin text-[#1A56DB]" />
+            <span className="text-sm">Loading activity...</span>
+          </div>
+        ) : isError ? (
+          <div className="h-40 flex flex-col items-center justify-center gap-2 text-red-500">
+            <AlertTriangle className="w-6 h-6" />
+            <span className="text-sm">Failed to load activity data.</span>
+          </div>
         ) : (
           <div className="space-y-5 mt-2">
             <div>
               <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><ShoppingBag className="w-4 h-4 text-indigo-600" /> Recent Orders ({data?.orders?.length || 0})</h3>
-              {data?.orders?.length === 0 ? <p className="text-xs text-muted-foreground">No orders yet.</p> : (
+              {data?.orders?.length === 0 ? <p className="text-xs text-muted-foreground italic">No orders yet.</p> : (
                 <div className="space-y-2">
                   {data?.orders?.map((o: any) => (
-                    <div key={o.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2">
+                    <div key={o.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <div><span className="font-mono font-bold text-xs">{o.id.slice(-6).toUpperCase()}</span><span className="ml-2 text-muted-foreground capitalize">{o.type}</span></div>
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(o.status)}`}>{o.status.replace('_',' ')}</span>
@@ -122,11 +150,11 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
               )}
             </div>
             <div>
-              <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><Car className="w-4 h-4 text-green-600" /> Recent Rides ({data?.rides?.length || 0})</h3>
-              {data?.rides?.length === 0 ? <p className="text-xs text-muted-foreground">No rides yet.</p> : (
+              <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><Car className="w-4 h-4 text-emerald-600" /> Recent Rides ({data?.rides?.length || 0})</h3>
+              {data?.rides?.length === 0 ? <p className="text-xs text-muted-foreground italic">No rides yet.</p> : (
                 <div className="space-y-2">
                   {data?.rides?.map((r: any) => (
-                    <div key={r.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2">
+                    <div key={r.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <div><span className="font-mono font-bold text-xs">{r.id.slice(-6).toUpperCase()}</span><span className="ml-2 text-muted-foreground capitalize">{r.type}</span><span className="ml-2 text-muted-foreground">{r.distance}km</span></div>
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(r.status)}`}>{r.status.replace('_',' ')}</span>
@@ -142,7 +170,7 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                 <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><Pill className="w-4 h-4 text-pink-600" /> Pharmacy Orders ({data.pharmacy.length})</h3>
                 <div className="space-y-2">
                   {data.pharmacy.map((p: any) => (
-                    <div key={p.id} className="flex justify-between text-sm bg-muted/30 rounded-xl px-3 py-2">
+                    <div key={p.id} className="flex justify-between text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <span className="font-mono text-xs">{p.id.slice(-6).toUpperCase()}</span>
                       <div className="flex gap-2">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(p.status)}`}>{p.status}</span>
@@ -158,7 +186,7 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                 <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><Package className="w-4 h-4 text-orange-600" /> Parcel Bookings ({data.parcels.length})</h3>
                 <div className="space-y-2">
                   {data.parcels.map((p: any) => (
-                    <div key={p.id} className="flex justify-between text-sm bg-muted/30 rounded-xl px-3 py-2">
+                    <div key={p.id} className="flex justify-between text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <span className="font-mono text-xs">{p.id.slice(-6).toUpperCase()}</span>
                       <div className="flex gap-2">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(p.status)}`}>{p.status}</span>
@@ -171,12 +199,12 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
             )}
             <div>
               <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><Wallet className="w-4 h-4 text-sky-600" /> Wallet History ({data?.transactions?.length || 0})</h3>
-              {data?.transactions?.length === 0 ? <p className="text-xs text-muted-foreground">No wallet activity.</p> : (
+              {data?.transactions?.length === 0 ? <p className="text-xs text-muted-foreground italic">No wallet activity.</p> : (
                 <div className="space-y-1.5">
                   {data?.transactions?.map((t: any) => (
-                    <div key={t.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2">
+                    <div key={t.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <span className="text-muted-foreground truncate max-w-[180px]">{t.description}</span>
-                      <span className={`font-bold ${t.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'credit' ? '+' : '-'}{formatCurrency(t.amount)}</span>
+                      <span className={`font-bold ${t.type === 'credit' ? 'text-emerald-600' : 'text-red-600'}`}>{t.type === 'credit' ? '+' : '-'}{formatCurrency(t.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -189,18 +217,17 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
   );
 }
 
-/* ── Security Modal ── */
 const ALL_SERVICES = [
-  { key: "mart",     label: "🛒 Mart",      color: "blue" },
-  { key: "food",     label: "🍔 Food",      color: "orange" },
-  { key: "rides",    label: "🚗 Rides",     color: "green" },
-  { key: "pharmacy", label: "💊 Pharmacy",  color: "pink" },
-  { key: "parcel",   label: "📦 Parcel",    color: "amber" },
+  { key: "mart",     label: "Mart",      icon: "🛒" },
+  { key: "food",     label: "Food",      icon: "🍔" },
+  { key: "rides",    label: "Rides",     icon: "🚗" },
+  { key: "pharmacy", label: "Pharmacy",  icon: "💊" },
+  { key: "parcel",   label: "Parcel",    icon: "📦" },
 ];
 const ALL_ROLES = [
-  { key: "customer", label: "👤 Customer", desc: "Can place orders, book rides" },
-  { key: "rider",    label: "🚴 Rider",    desc: "Can accept & deliver orders" },
-  { key: "vendor",   label: "🏪 Vendor",   desc: "Can manage a store/menu" },
+  { key: "customer", label: "Customer", icon: "👤", desc: "Can place orders, book rides" },
+  { key: "rider",    label: "Rider",    icon: "🚴", desc: "Can accept & deliver orders" },
+  { key: "vendor",   label: "Vendor",   icon: "🏪", desc: "Can manage a store/menu" },
 ];
 
 function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
@@ -221,7 +248,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
     mutationFn: (body: any) => fetcher(`/users/${user.id}/security`, { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-users"] });
-      toast({ title: "Security settings saved ✅" });
+      toast({ title: "Security settings saved" });
       onClose();
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
@@ -229,7 +256,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
 
   const resetOtpMutation = useMutation({
     mutationFn: () => fetcher(`/users/${user.id}/reset-otp`, { method: "POST", body: "{}" }),
-    onSuccess: () => toast({ title: "OTP cleared ✅", description: "User must re-authenticate on next login." }),
+    onSuccess: () => toast({ title: "OTP cleared", description: "User must re-authenticate on next login." }),
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
@@ -258,39 +285,37 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
       <DialogContent className="w-[95vw] max-w-lg max-h-[90dvh] overflow-y-auto rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-blue-600" />
+          <DialogTitle className="flex items-center gap-2 text-[#1A56DB]">
+            <Shield className="w-5 h-5" />
             Security — {user.name || user.phone}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5 mt-2">
-          {/* User info strip */}
-          <div className="bg-muted/50 rounded-xl px-4 py-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-              {(user.name || "U")[0].toUpperCase()}
+          <div className="bg-gradient-to-r from-[#1A56DB]/5 to-blue-50 rounded-xl px-4 py-3 flex items-center gap-3 border border-blue-100">
+            <div className="w-10 h-10 rounded-full bg-[#1A56DB]/10 flex items-center justify-center text-[#1A56DB] font-bold">
+              {(user.name || user.phone || "U")[0].toUpperCase()}
             </div>
             <div>
-              <p className="font-semibold text-sm">{user.name || "Unknown"}</p>
+              <p className="font-semibold text-sm">{user.name || user.phone}</p>
               <p className="text-xs text-muted-foreground">{user.phone} · Wallet: <strong>{formatCurrency(user.walletBalance)}</strong></p>
             </div>
           </div>
 
-          {/* ─ Account Status ─ */}
           <div className="space-y-2">
-            <h3 className="text-sm font-bold text-foreground flex items-center gap-2"><UserCog className="w-4 h-4"/> Account Status</h3>
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2"><UserCog className="w-4 h-4 text-[#1A56DB]"/> Account Status</h3>
             <div className="grid grid-cols-2 gap-2">
               <div
                 onClick={() => { setIsActive(true); setIsBanned(false); }}
-                className={`p-3 rounded-xl border cursor-pointer transition-all ${isActive && !isBanned ? "bg-green-50 border-green-400" : "bg-muted/30 border-border hover:border-green-300"}`}
+                className={`p-3 rounded-xl border cursor-pointer transition-all ${isActive && !isBanned ? "bg-emerald-50 border-emerald-400 shadow-sm" : "bg-muted/30 border-border hover:border-emerald-300"}`}
               >
-                <CheckCircle2 className={`w-5 h-5 mb-1 ${isActive && !isBanned ? "text-green-600" : "text-muted-foreground"}`}/>
+                <CheckCircle2 className={`w-5 h-5 mb-1 ${isActive && !isBanned ? "text-emerald-600" : "text-muted-foreground"}`}/>
                 <p className="text-sm font-bold">Active</p>
                 <p className="text-xs text-muted-foreground">Full access</p>
               </div>
               <div
                 onClick={() => { setIsActive(false); setIsBanned(false); }}
-                className={`p-3 rounded-xl border cursor-pointer transition-all ${!isActive && !isBanned ? "bg-amber-50 border-amber-400" : "bg-muted/30 border-border hover:border-amber-300"}`}
+                className={`p-3 rounded-xl border cursor-pointer transition-all ${!isActive && !isBanned ? "bg-amber-50 border-amber-400 shadow-sm" : "bg-muted/30 border-border hover:border-amber-300"}`}
               >
                 <XCircle className={`w-5 h-5 mb-1 ${!isActive && !isBanned ? "text-amber-600" : "text-muted-foreground"}`}/>
                 <p className="text-sm font-bold">Blocked</p>
@@ -298,7 +323,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
               </div>
               <div
                 onClick={() => { setIsBanned(true); setIsActive(false); }}
-                className={`p-3 rounded-xl border cursor-pointer transition-all col-span-2 ${isBanned ? "bg-red-50 border-red-400" : "bg-muted/30 border-border hover:border-red-300"}`}
+                className={`p-3 rounded-xl border cursor-pointer transition-all col-span-2 ${isBanned ? "bg-red-50 border-red-400 shadow-sm" : "bg-muted/30 border-border hover:border-red-300"}`}
               >
                 <div className="flex items-center gap-2">
                   <Ban className={`w-5 h-5 ${isBanned ? "text-red-600" : "text-muted-foreground"}`}/>
@@ -314,12 +339,11 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                 placeholder="Ban reason (required — shown to user)"
                 value={banReason}
                 onChange={e => setBanReason(e.target.value)}
-                className="h-11 rounded-xl border-red-200"
+                className="h-11 rounded-xl border-red-200 focus:ring-red-300"
               />
             )}
           </div>
 
-          {/* ─ Role Management ─ */}
           <div className="space-y-2">
             <h3 className="text-sm font-bold text-foreground">Roles <span className="text-xs font-normal text-muted-foreground ml-1">Multiple roles allowed</span></h3>
             <div className="space-y-2">
@@ -327,13 +351,13 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                 <div
                   key={r.key}
                   onClick={() => toggleRole(r.key)}
-                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${roles.includes(r.key) ? "bg-blue-50 border-blue-300" : "bg-muted/30 border-border hover:border-blue-200"}`}
+                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${roles.includes(r.key) ? "bg-[#1A56DB]/5 border-[#1A56DB]/30 shadow-sm" : "bg-muted/30 border-border hover:border-[#1A56DB]/20"}`}
                 >
-                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${roles.includes(r.key) ? "bg-blue-600 border-blue-600" : "border-gray-300"}`}>
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${roles.includes(r.key) ? "bg-[#1A56DB] border-[#1A56DB]" : "border-gray-300"}`}>
                     {roles.includes(r.key) && <span className="text-white text-xs font-bold">✓</span>}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">{r.label}</p>
+                    <p className="text-sm font-semibold">{r.icon} {r.label}</p>
                     <p className="text-xs text-muted-foreground">{r.desc}</p>
                   </div>
                 </div>
@@ -341,7 +365,6 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
             </div>
           </div>
 
-          {/* ─ Service Restrictions ─ */}
           <div className="space-y-2">
             <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
               Service Restrictions
@@ -354,12 +377,12 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                   <div
                     key={s.key}
                     onClick={() => toggleService(s.key)}
-                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${isBlocked ? "bg-red-50 border-red-300" : "bg-muted/30 border-border hover:border-red-200"}`}
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${isBlocked ? "bg-red-50 border-red-300 shadow-sm" : "bg-muted/30 border-border hover:border-red-200"}`}
                   >
                     <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${isBlocked ? "bg-red-500 border-red-500" : "border-gray-300"}`}>
                       {isBlocked && <span className="text-white text-xs font-bold">✕</span>}
                     </div>
-                    <span className="text-sm font-semibold">{s.label}</span>
+                    <span className="text-sm font-semibold">{s.icon} {s.label}</span>
                     {isBlocked && <Badge variant="outline" className="ml-auto text-[10px] bg-red-50 text-red-600 border-red-200">BLOCKED</Badge>}
                   </div>
                 );
@@ -367,7 +390,6 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
             </div>
           </div>
 
-          {/* ─ Security Note ─ */}
           <div className="space-y-1.5">
             <h3 className="text-sm font-bold text-foreground">Admin Security Note <span className="text-xs font-normal text-muted-foreground">(internal)</span></h3>
             <textarea
@@ -375,11 +397,10 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
               placeholder="e.g. Suspected fraud — monitor activity. Or: VIP user — do not block."
               value={securityNote}
               onChange={e => setSecurityNote(e.target.value)}
-              className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/30"
             />
           </div>
 
-          {/* ─ Reset OTP ─ */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
             <KeyRound className="w-5 h-5 text-amber-600 flex-shrink-0"/>
             <div className="flex-1">
@@ -393,11 +414,10 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
               onClick={() => resetOtpMutation.mutate()}
               disabled={resetOtpMutation.isPending}
             >
-              {resetOtpMutation.isPending ? "Clearing..." : "Reset OTP"}
+              {resetOtpMutation.isPending ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Clearing...</> : "Reset OTP"}
             </Button>
           </div>
 
-          {/* Warning for ban */}
           {isBanned && !user.isBanned && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex gap-2">
               <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"/>
@@ -410,9 +430,9 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
             <Button
               onClick={handleSave}
               disabled={securityMutation.isPending || (isBanned && !banReason)}
-              className="flex-1 rounded-xl gap-2"
+              className="flex-1 rounded-xl gap-2 bg-[#1A56DB] hover:bg-[#1A56DB]/90"
             >
-              <Save className="w-4 h-4"/>
+              {securityMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4"/>}
               {securityMutation.isPending ? "Saving..." : "Save Security"}
             </Button>
           </div>
@@ -530,8 +550,9 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
 }
 
 /* ══════════ Main Users Page ══════════ */
+
 export default function Users() {
-  const { data, isLoading, refetch, isFetching } = useUsers();
+  const { data, isLoading, refetch, isFetching, isError } = useUsers();
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const updateMutation   = useUpdateUser();
   const topupMutation    = useWalletTopup();
@@ -561,7 +582,7 @@ export default function Users() {
 
   const handleApprove = (userId: string) => {
     approveMutation.mutate({ id: userId }, {
-      onSuccess: () => { toast({ title: "✅ User approved!", description: "User can now log in." }); },
+      onSuccess: () => { toast({ title: "User approved!", description: "User can now log in." }); },
       onError: err => toast({ title: "Failed to approve", description: err.message, variant: "destructive" }),
     });
   };
@@ -591,7 +612,7 @@ export default function Users() {
       { id: topupUser.id, amount: amt, description: topupNote || `Admin top-up: Rs. ${amt}` },
       {
         onSuccess: (d: any) => {
-          toast({ title: "Wallet Topped Up! 💰", description: `Rs. ${amt} added. New balance: ${formatCurrency(d.newBalance)}` });
+          toast({ title: "Wallet Topped Up!", description: `Rs. ${amt} added. New balance: ${formatCurrency(d.newBalance)}` });
           setTopupUser(null); setTopupAmount(""); setTopupNote("");
         },
         onError: err => toast({ title: "Top-up failed", description: err.message, variant: "destructive" })
@@ -611,7 +632,8 @@ export default function Users() {
   const filtered = users.filter((u: any) => {
     const matchSearch =
       (u.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (u.phone || "").includes(search);
+      (u.phone || "").includes(search) ||
+      (u.email?.toLowerCase() || "").includes(search.toLowerCase());
     const matchRole = roleFilter === "all" || u.role === roleFilter || (u.roles || "").includes(roleFilter);
     const matchStatus = statusFilter === "all"
       || (statusFilter === "active"   && u.isActive && !u.isBanned)
@@ -624,6 +646,7 @@ export default function Users() {
 
   const bannedCount  = users.filter((u: any) => u.isBanned).length;
   const blockedCount = users.filter((u: any) => !u.isActive && !u.isBanned).length;
+  const activeCount  = users.filter((u: any) => u.isActive && !u.isBanned).length;
 
   const allSelected = filtered.length > 0 && filtered.every((u: any) => selectedIds.has(u.id));
   const toggleAll = () => {
@@ -648,25 +671,41 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Users</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {users.length} total · {bannedCount > 0 && <span className="text-red-600 font-semibold">{bannedCount} banned · </span>}
-            {blockedCount > 0 && <span className="text-amber-600 font-semibold">{blockedCount} blocked</span>}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportUsersCSV(filtered)} className="h-9 rounded-xl gap-2">
-            <Download className="w-4 h-4" /> CSV
+      <div className="bg-gradient-to-r from-[#1A56DB] to-[#2563EB] rounded-2xl p-6 text-white shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+              <UsersIcon className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Users</h1>
+              <p className="text-sm text-blue-100 mt-0.5">
+                {users.length} total
+                {activeCount > 0 && <span> · {activeCount} active</span>}
+                {bannedCount > 0 && <span className="text-red-200"> · {bannedCount} banned</span>}
+                {blockedCount > 0 && <span className="text-amber-200"> · {blockedCount} blocked</span>}
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportUsersCSV(filtered)}
+            className="h-9 rounded-xl gap-2 bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white"
+          >
+            <Download className="w-4 h-4" /> Export CSV
           </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="h-9 rounded-xl gap-2 bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white"
+          >
             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-        </div>
       </div>
 
-      {/* ── Pending Approval Banner ── */}
       {pendingUsers.length > 0 && (
         <Card className="p-4 rounded-2xl border-amber-200 bg-amber-50/60 shadow-sm">
           <div className="flex items-center justify-between mb-3">
@@ -681,7 +720,7 @@ export default function Users() {
           </div>
           <div className="space-y-2">
             {pendingUsers.map((u: any) => (
-              <div key={u.id} className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-amber-100 shadow-sm">
+              <div key={u.id} className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-amber-100 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
                     {(u.name || u.phone || "U")[0].toUpperCase()}
@@ -691,7 +730,7 @@ export default function Users() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-xs text-muted-foreground font-mono">{u.phone}</p>
                       {u.email && <p className="text-xs text-muted-foreground">· {u.email}</p>}
-                      <Badge variant="secondary" className="text-[10px] capitalize px-1.5">{u.role || "customer"}</Badge>
+                      <Badge variant="outline" className={`text-[10px] capitalize px-1.5 border ${ROLE_COLORS[u.role] || ROLE_COLORS.customer}`}>{u.role || "customer"}</Badge>
                       <p className="text-xs text-amber-600">{formatDate(u.createdAt)}</p>
                     </div>
                   </div>
@@ -701,7 +740,7 @@ export default function Users() {
                     size="sm"
                     onClick={() => handleApprove(u.id)}
                     disabled={approveMutation.isPending}
-                    className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs gap-1"
+                    className="h-8 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs gap-1"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Approve
@@ -723,7 +762,6 @@ export default function Users() {
         </Card>
       )}
 
-      {/* ── Reject Confirmation Dialog ── */}
       {rejectUser && (
         <Dialog open onOpenChange={open => { if (!open) { setRejectUser(null); setRejectNote(""); } }}>
           <DialogContent className="max-w-sm rounded-2xl">
@@ -749,7 +787,7 @@ export default function Users() {
               <div className="flex gap-3">
                 <Button variant="outline" className="flex-1 rounded-xl" onClick={() => { setRejectUser(null); setRejectNote(""); }}>Cancel</Button>
                 <Button onClick={handleReject} disabled={rejectMutation.isPending} className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 text-white gap-2">
-                  <XCircle className="w-4 h-4" />
+                  {rejectMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                   {rejectMutation.isPending ? "Rejecting..." : "Confirm Reject"}
                 </Button>
               </div>
@@ -758,12 +796,11 @@ export default function Users() {
         </Dialog>
       )}
 
-      {/* Filters */}
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50" />
+            <Input placeholder="Search by name, phone, or email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50 focus:ring-[#1A56DB]/30" />
           </div>
           <Select value={roleFilter} onValueChange={setRoleFilter}>
             <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-40">
@@ -782,9 +819,9 @@ export default function Users() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">✓ Active</SelectItem>
-              <SelectItem value="blocked">⊘ Blocked</SelectItem>
-              <SelectItem value="banned">✕ Banned</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="blocked">Blocked</SelectItem>
+              <SelectItem value="banned">Banned</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -795,7 +832,7 @@ export default function Users() {
             <span className="text-muted-foreground text-xs">to</span>
             <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9 rounded-xl bg-muted/30 border-border/50 text-sm" />
             {(dateFrom || dateTo) && (
-              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline shrink-0">Clear</button>
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-[#1A56DB] hover:underline shrink-0">Clear</button>
             )}
           </div>
           {/* Bulk actions */}
@@ -803,153 +840,191 @@ export default function Users() {
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs text-muted-foreground font-semibold">{selectedIds.size} selected</span>
               <button onClick={() => handleBulkBan("ban")} disabled={bulkBanMutation.isPending}
-                className="px-3 py-1.5 bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-200 disabled:opacity-60">
+                className="px-3 py-1.5 bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-200 disabled:opacity-60 transition-colors">
                 Ban All
               </button>
               <button onClick={() => handleBulkBan("unban")} disabled={bulkBanMutation.isPending}
-                className="px-3 py-1.5 bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-200 disabled:opacity-60">
+                className="px-3 py-1.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-200 disabled:opacity-60 transition-colors">
                 Unban All
               </button>
-              <button onClick={() => setSelectedIds(new Set())} className="text-xs text-muted-foreground hover:text-foreground">Deselect</button>
+              <button onClick={() => setSelectedIds(new Set())} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Deselect</button>
             </div>
           )}
         </div>
       </Card>
 
-      {/* Users Table */}
-      <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table className="min-w-[820px]">
-            <TableHeader className="bg-muted/50">
-              <TableRow>
-                <TableHead className="w-8 px-3">
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4 rounded" />
-                </TableHead>
-                <TableHead className="font-semibold">User</TableHead>
-                <TableHead className="font-semibold">Phone</TableHead>
-                <TableHead className="font-semibold">Roles</TableHead>
-                <TableHead className="font-semibold text-right">Wallet</TableHead>
-                <TableHead className="font-semibold text-center">Status</TableHead>
-                <TableHead className="font-semibold text-right">Joined</TableHead>
-                <TableHead className="font-semibold text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">Loading users...</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">No users found.</TableCell></TableRow>
-              ) : (
-                filtered.map((user: any) => {
-                  const userRoles = (user.roles || user.role || "customer").split(",").filter(Boolean);
-                  const isBanned  = user.isBanned;
-                  const isBlocked = !user.isActive && !isBanned;
-                  const isChecked = selectedIds.has(user.id);
-                  return (
-                    <TableRow key={user.id} className={`hover:bg-muted/30 ${isBanned ? "bg-red-50/30" : isBlocked ? "bg-amber-50/30" : ""} ${isChecked ? "bg-blue-50/40" : ""}`}>
-                      <TableCell className="px-3">
-                        <input type="checkbox" checked={isChecked}
-                          onChange={e => {
-                            const s = new Set(selectedIds);
-                            e.target.checked ? s.add(user.id) : s.delete(user.id);
-                            setSelectedIds(s);
-                          }}
-                          className="w-4 h-4 rounded" />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${isBanned ? "bg-red-100 text-red-600" : isBlocked ? "bg-amber-100 text-amber-600" : "bg-primary/10 text-primary"}`}>
-                            {(user.name || "U")[0].toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-semibold text-foreground">{user.name || "Unknown"}</p>
-                              {isBanned && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200 px-1">BANNED</Badge>}
-                              {isBlocked && <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-600 border-amber-200 px-1">BLOCKED</Badge>}
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-xs text-muted-foreground font-mono">{user.id.slice(-8).toUpperCase()}</p>
-                              {user.city && <span className="flex items-center gap-0.5 text-[10px] text-blue-600"><MapPin className="w-2.5 h-2.5"/>{user.city}</span>}
-                              {userRoles.includes("rider") && user.vehiclePlate && <span className="text-[10px] font-mono font-bold bg-green-100 text-green-700 px-1.5 rounded">{user.vehiclePlate}</span>}
-                              {userRoles.includes("vendor") && user.businessType && <span className="text-[10px] text-orange-600 capitalize">{user.businessType}</span>}
-                              {user.cnic && <span className="flex items-center gap-0.5 text-[10px] text-amber-700"><CreditCard className="w-2.5 h-2.5"/>ID✓</span>}
-                            </div>
-                          </div>
+      {isError ? (
+        <Card className="rounded-2xl border-red-200 bg-red-50/60 shadow-sm p-8">
+          <div className="flex flex-col items-center justify-center gap-3 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-red-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-red-800">Failed to load users</p>
+              <p className="text-sm text-red-600 mt-1">Check your connection and try again.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-2 rounded-xl border-red-200 text-red-700 hover:bg-red-100">
+              <RefreshCw className="w-4 h-4 mr-2" /> Retry
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table className="min-w-[820px]">
+              <TableHeader>
+                <TableRow className="bg-gradient-to-r from-[#1A56DB]/5 to-blue-50/50 border-b border-blue-100">
+                  <TableHead className="w-8 px-3">
+                    <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4 rounded" />
+                  </TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80">User</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80">Phone</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80">Roles</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Wallet</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-center">Status</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Joined</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <>
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
+                  </>
+                ) : filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-40">
+                      <div className="flex flex-col items-center justify-center gap-2 text-center">
+                        <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                          <UsersIcon className="w-6 h-6 text-muted-foreground" />
                         </div>
-                      </TableCell>
-                      <TableCell className="font-medium">{user.phone}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 flex-wrap">
-                          {userRoles.map((r: string) => (
-                            <Badge key={r} variant="secondary" className="text-[10px] capitalize px-1.5 py-0.5">{r}</Badge>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className="font-bold text-foreground">{formatCurrency(user.walletBalance)}</span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {isBanned ? (
-                          <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">Banned</Badge>
-                        ) : (
-                          <div className="flex items-center justify-center gap-2">
-                            <Switch checked={user.isActive} onCheckedChange={(val) => handleUpdate(user.id, { isActive: val })} />
-                            {user.isActive ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-500" />}
-                          </div>
+                        <p className="font-medium text-muted-foreground">No users found</p>
+                        {(search || roleFilter !== "all" || statusFilter !== "all" || dateFrom || dateTo) && (
+                          <p className="text-xs text-muted-foreground">Try adjusting your filters</p>
                         )}
-                      </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="outline" size="sm" onClick={() => setKycUser(user)} className="h-8 w-8 rounded-lg border-purple-200 text-purple-700 hover:bg-purple-50 p-0 flex items-center justify-center" title="KYC Docs">
-                            <Eye className="w-3.5 h-3.5"/>
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 p-0 flex items-center justify-center" title="Security Settings">
-                            <Shield className="w-3.5 h-3.5"/>
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setActivityUser(user)} className="h-8 w-8 rounded-lg border-blue-200 text-blue-700 hover:bg-blue-50 p-0 flex items-center justify-center" title="Activity">
-                            <Activity className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => { setTopupUser(user); setTopupAmount(""); setTopupNote(""); }} className="h-8 rounded-lg text-xs gap-1.5 border-green-200 text-green-700 hover:bg-green-50">
-                            <Wallet className="w-3.5 h-3.5" /> Top Up
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => setDeleteUser(user)} className="h-8 w-8 rounded-lg border-red-200 text-red-600 hover:bg-red-50 p-0 flex items-center justify-center">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filtered.map((user: any) => {
+                    const userRoles = (user.roles || user.role || "customer").split(",").filter(Boolean);
+                    const isBanned  = user.isBanned;
+                    const isBlocked = !user.isActive && !isBanned;
+                    const isChecked = selectedIds.has(user.id);
+                    return (
+                      <TableRow key={user.id} className={`hover:bg-muted/40 transition-colors ${isBanned ? "bg-red-50/40" : isBlocked ? "bg-amber-50/40" : ""} ${isChecked ? "bg-blue-50/40" : ""}`}>
+                        <TableCell className="px-3">
+                          <input type="checkbox" checked={isChecked}
+                            onChange={e => {
+                              const s = new Set(selectedIds);
+                              e.target.checked ? s.add(user.id) : s.delete(user.id);
+                              setSelectedIds(s);
+                            }}
+                            className="w-4 h-4 rounded" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${isBanned ? "bg-red-100 text-red-600" : isBlocked ? "bg-amber-100 text-amber-600" : "bg-[#1A56DB]/10 text-[#1A56DB]"}`}>
+                              {(user.name || user.phone || "U")[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-semibold text-foreground truncate">{user.name || user.phone}</p>
+                                {isBanned && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200 px-1">BANNED</Badge>}
+                                {isBlocked && <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-600 border-amber-200 px-1">BLOCKED</Badge>}
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-xs text-muted-foreground font-mono">{user.id.slice(-8).toUpperCase()}</p>
+                                {user.city && <span className="flex items-center gap-0.5 text-[10px] text-[#1A56DB]"><MapPin className="w-2.5 h-2.5"/>{user.city}</span>}
+                                {userRoles.includes("rider") && user.vehiclePlate && <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-700 px-1.5 rounded">{user.vehiclePlate}</span>}
+                                {userRoles.includes("vendor") && user.businessType && <span className="text-[10px] text-orange-600 capitalize">{user.businessType}</span>}
+                                {user.cnic && <span className="flex items-center gap-0.5 text-[10px] text-amber-700"><CreditCard className="w-2.5 h-2.5"/>ID✓</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium text-sm">{user.phone}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 flex-wrap">
+                            {userRoles.map((r: string) => (
+                              <Badge key={r} variant="outline" className={`text-[10px] capitalize px-1.5 py-0.5 border ${ROLE_COLORS[r] || "bg-gray-100 text-gray-700 border-gray-200"}`}>{r}</Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="font-bold text-foreground">{formatCurrency(user.walletBalance)}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {isBanned ? (
+                            <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">Banned</Badge>
+                          ) : (
+                            <div className="flex items-center justify-center gap-2">
+                              <Switch checked={user.isActive} onCheckedChange={(val) => handleUpdate(user.id, { isActive: val })} />
+                              {user.isActive ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="outline" size="sm" onClick={() => setKycUser(user)} className="h-8 w-8 rounded-lg border-purple-200 text-purple-700 hover:bg-purple-50 hover:border-purple-300 p-0 flex items-center justify-center transition-colors" title="KYC Docs">
+                              <Eye className="w-3.5 h-3.5"/>
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 p-0 flex items-center justify-center transition-colors" title="Security Settings">
+                              <Shield className="w-3.5 h-3.5"/>
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setActivityUser(user)} className="h-8 w-8 rounded-lg border-[#1A56DB]/20 text-[#1A56DB] hover:bg-[#1A56DB]/5 hover:border-[#1A56DB]/30 p-0 flex items-center justify-center transition-colors" title="Activity">
+                              <Activity className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => { setTopupUser(user); setTopupAmount(""); setTopupNote(""); }} className="h-8 rounded-lg text-xs gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
+                              <Wallet className="w-3.5 h-3.5" /> Top Up
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setDeleteUser(user)} className="h-8 w-8 rounded-lg border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 p-0 flex items-center justify-center transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {!isLoading && filtered.length > 0 && (
+            <div className="border-t border-border/50 px-4 py-3 bg-muted/20 text-xs text-muted-foreground">
+              Showing {filtered.length} of {users.length} users
+            </div>
+          )}
+        </Card>
+      )}
 
-      {/* Wallet Top-up Modal */}
       <Dialog open={!!topupUser} onOpenChange={(open) => { if (!open) setTopupUser(null); }}>
-        <DialogContent className="w-[95vw] max-w-md rounded-3xl p-4 sm:p-6">
+        <DialogContent className="w-[95vw] max-w-md rounded-2xl p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="font-display text-xl flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-green-600" /> Wallet Top-up
+            <DialogTitle className="text-xl flex items-center gap-2 text-emerald-700">
+              <Wallet className="w-5 h-5" /> Wallet Top-up
             </DialogTitle>
           </DialogHeader>
           {topupUser && (
             <div className="mt-4 space-y-5">
-              <div className="bg-muted/50 rounded-2xl p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">{(topupUser.name || "U")[0].toUpperCase()}</div>
+              <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl p-4 flex items-center gap-3 border border-emerald-100">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">{(topupUser.name || topupUser.phone || "U")[0].toUpperCase()}</div>
                 <div>
-                  <p className="font-semibold">{topupUser.name}</p>
-                  <p className="text-sm text-muted-foreground">Balance: <span className="font-bold text-green-600">{formatCurrency(topupUser.walletBalance)}</span></p>
+                  <p className="font-semibold">{topupUser.name || topupUser.phone}</p>
+                  <p className="text-sm text-muted-foreground">Balance: <span className="font-bold text-emerald-600">{formatCurrency(topupUser.walletBalance)}</span></p>
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-bold">Amount (Rs.)</label>
-                <Input type="number" min="1" placeholder="e.g. 500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="h-12 rounded-xl text-lg font-bold" autoFocus />
+                <Input type="number" min="1" placeholder="e.g. 500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="h-12 rounded-xl text-lg font-bold focus:ring-emerald-300" autoFocus />
                 <div className="flex gap-2 mt-2">
                   {[100, 200, 500, 1000].map(amt => (
-                    <button key={amt} type="button" onClick={() => setTopupAmount(String(amt))} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${topupAmount === String(amt) ? 'bg-primary text-white border-primary' : 'bg-muted/50 border-border/50 hover:border-primary hover:text-primary'}`}>+{amt}</button>
+                    <button key={amt} type="button" onClick={() => setTopupAmount(String(amt))} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${topupAmount === String(amt) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-muted/50 border-border/50 hover:border-emerald-400 hover:text-emerald-700'}`}>+{amt}</button>
                   ))}
                 </div>
               </div>
@@ -958,13 +1033,14 @@ export default function Users() {
                 <Input placeholder="e.g. Bonus for referral" value={topupNote} onChange={e => setTopupNote(e.target.value)} className="h-11 rounded-xl" />
               </div>
               {topupAmount && Number(topupAmount) > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm">
-                  <p className="text-green-700 font-semibold">New balance: <span className="text-green-800 font-bold">{formatCurrency(topupUser.walletBalance + Number(topupAmount))}</span></p>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm">
+                  <p className="text-emerald-700 font-semibold">New balance: <span className="text-emerald-800 font-bold">{formatCurrency(topupUser.walletBalance + Number(topupAmount))}</span></p>
                 </div>
               )}
               <div className="flex gap-3">
                 <Button variant="outline" className="flex-1 h-11 rounded-xl" onClick={() => setTopupUser(null)}>Cancel</Button>
-                <Button className="flex-1 h-11 rounded-xl bg-green-600 hover:bg-green-700 font-bold" onClick={handleTopup} disabled={topupMutation.isPending || !topupAmount || Number(topupAmount) <= 0}>
+                <Button className="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold gap-2" onClick={handleTopup} disabled={topupMutation.isPending || !topupAmount || Number(topupAmount) <= 0}>
+                  {topupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   {topupMutation.isPending ? "Processing..." : `Add ${topupAmount ? formatCurrency(Number(topupAmount)) : ""}`}
                 </Button>
               </div>
@@ -973,24 +1049,22 @@ export default function Users() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
       <Dialog open={!!deleteUser} onOpenChange={open => { if (!open) setDeleteUser(null); }}>
-        <DialogContent className="w-[95vw] max-w-sm rounded-3xl p-6">
-          <DialogHeader><DialogTitle className="text-red-600">Delete User?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground mt-2">Are you sure you want to permanently delete <strong>"{deleteUser?.name}"</strong> ({deleteUser?.phone})? This cannot be undone.</p>
+        <DialogContent className="w-[95vw] max-w-sm rounded-2xl p-6">
+          <DialogHeader><DialogTitle className="text-red-600 flex items-center gap-2"><Trash2 className="w-5 h-5" /> Delete User?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground mt-2">Are you sure you want to permanently delete <strong>"{deleteUser?.name || deleteUser?.phone}"</strong>? This cannot be undone.</p>
           <div className="flex gap-3 mt-6">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDeleteUser(null)}>Cancel</Button>
-            <Button variant="destructive" className="flex-1 rounded-xl" onClick={handleDelete} disabled={deleteMutation.isPending}>
+            <Button variant="destructive" className="flex-1 rounded-xl gap-2" onClick={handleDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               {deleteMutation.isPending ? "Deleting..." : "Delete User"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Activity Modal */}
       {activityUser && <UserActivityModal userId={activityUser.id} userName={activityUser.name || activityUser.phone} user={activityUser} onClose={() => setActivityUser(null)} />}
 
-      {/* Security Modal */}
       {securityUser && <SecurityModal user={securityUser} onClose={() => setSecurityUser(null)} />}
 
       {/* KYC Document Modal */}
