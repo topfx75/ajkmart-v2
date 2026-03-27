@@ -455,6 +455,44 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
   next();
 }
 
+/* ══════════════════════════════════════════════════════════════
+   RIDER AUTH MIDDLEWARE
+   Requires a valid JWT whose DB + JWT role both include "rider".
+   Sets req.riderId and req.riderUser on success.
+══════════════════════════════════════════════════════════════ */
+export async function riderAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const tokenHeader = req.headers["x-auth-token"] as string | undefined;
+  const token = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
+
+  if (!token) {
+    res.status(401).json({ error: "Authentication required." });
+    return;
+  }
+
+  const payload = verifyUserJwt(token);
+  if (!payload) {
+    res.status(401).json({ error: "Invalid or expired session. Please log in again." });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  if (!user) { res.status(401).json({ error: "Account not found." }); return; }
+  if (user.isBanned) { res.status(403).json({ error: "Account is banned." }); return; }
+  if (!user.isActive) { res.status(403).json({ error: "Account is inactive." }); return; }
+
+  const dbRoles  = (user.roles  || user.role  || "").split(",").map((r: string) => r.trim());
+  const jwtRoles = (payload.roles || payload.role || "").split(",").map((r: string) => r.trim());
+  if (!dbRoles.includes("rider") || !jwtRoles.includes("rider")) {
+    res.status(403).json({ error: "Access denied. Rider account required." });
+    return;
+  }
+
+  (req as any).riderId   = user.id;
+  (req as any).riderUser = user;
+  next();
+}
+
 /* ── Legacy middleware alias — kept for any internal usage ── */
 export async function requireUserAuth(req: Request, res: Response, next: NextFunction) {
   return customerAuth(req, res, next);

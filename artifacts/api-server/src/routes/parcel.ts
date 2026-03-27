@@ -4,7 +4,7 @@ import { notificationsTable, parcelBookingsTable, usersTable, walletTransactions
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { customerAuth } from "../middleware/security.js";
+import { customerAuth, riderAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -216,10 +216,10 @@ router.post("/", customerAuth, async (req, res) => {
   res.status(201).json({ ...mapBooking(booking!), gstAmount });
 });
 
-router.patch("/:id/status", async (req, res) => {
-  const { status, riderId } = req.body;
-  const updateData: Partial<typeof parcelBookingsTable.$inferInsert> = { status, updatedAt: new Date() };
-  if (riderId) updateData.riderId = riderId;
+router.patch("/:id/status", riderAuth, async (req, res) => {
+  const riderId = (req as any).riderId as string;
+  const { status } = req.body;
+  const updateData: Partial<typeof parcelBookingsTable.$inferInsert> = { status, riderId, updatedAt: new Date() };
   const [booking] = await db
     .update(parcelBookingsTable)
     .set(updateData)

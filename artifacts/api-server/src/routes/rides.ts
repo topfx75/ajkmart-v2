@@ -4,7 +4,7 @@ import { liveLocationsTable, notificationsTable, rideBidsTable, rideServiceTypes
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings } from "./admin.js";
-import { customerAuth } from "../middleware/security.js";
+import { customerAuth, riderAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -568,12 +568,13 @@ router.get("/:id", async (req, res) => {
    Saves rider GPS + event type with the ride reference.
    Professional journey audit trail — used by admin.
 ════════════════════════════════════════════════════════ */
-router.post("/:id/event-log", async (req, res) => {
+router.post("/:id/event-log", riderAuth, async (req, res) => {
   const rideId  = req.params["id"]!;
-  const { riderId, event, lat, lng, notes } = req.body;
+  const riderId = (req as any).riderId as string;
+  const { event, lat, lng, notes } = req.body;
 
-  if (!riderId || !event) {
-    res.status(400).json({ error: "riderId and event are required" });
+  if (!event) {
+    res.status(400).json({ error: "event is required" });
     return;
   }
 

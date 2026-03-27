@@ -4,7 +4,7 @@ import { notificationsTable, pharmacyOrdersTable, usersTable, walletTransactions
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { customerAuth } from "../middleware/security.js";
+import { customerAuth, riderAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -201,7 +201,7 @@ router.post("/", customerAuth, async (req, res) => {
   res.status(201).json({ ...mapOrder(order!), deliveryFee, gstAmount });
 });
 
-router.patch("/:id/status", async (req, res) => {
+router.patch("/:id/status", riderAuth, async (req, res) => {
   const { status } = req.body;
   const [order] = await db
     .update(pharmacyOrdersTable)
