@@ -6,6 +6,9 @@ import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { customerAuth } from "../middleware/security.js";
 
+/* Only the admin panel may credit wallets — prevents self-top-up exploits */
+const ADMIN_SECRET = process.env["ADMIN_SECRET"] || "ajkmart-admin-2025";
+
 const router: IRouter = Router();
 
 function mapTx(t: typeof walletTransactionsTable.$inferSelect) {
@@ -37,10 +40,20 @@ router.get("/", customerAuth, async (req, res) => {
   });
 });
 
-/* ── POST /wallet/topup ──────────────────────────────────────────────────── */
-router.post("/topup", customerAuth, async (req, res) => {
-  const userId = (req as any).customerId as string;
-  const { amount, method } = req.body;
+/* ── POST /wallet/topup — ADMIN ONLY ────────────────────────────────────────
+   Restricted to admin panel. Requires x-admin-secret header.
+   Body: { userId, amount, method? }
+   Customers cannot self-credit — all credits must go through payment verification.
+─────────────────────────────────────────────────────────────────────────── */
+router.post("/topup", async (req, res) => {
+  const incomingSecret = req.headers["x-admin-secret"] as string | undefined;
+  if (!incomingSecret || incomingSecret !== ADMIN_SECRET) {
+    res.status(401).json({ error: "Unauthorized. Admin secret required for wallet top-up." });
+    return;
+  }
+
+  const { userId, amount, method } = req.body;
+  if (!userId) { res.status(400).json({ error: "userId required" }); return; }
   if (!amount) { res.status(400).json({ error: "amount required" }); return; }
 
   const topupAmt = parseFloat(amount);

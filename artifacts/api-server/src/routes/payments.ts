@@ -13,6 +13,7 @@ import { ordersTable, usersTable, walletTransactionsTable } from "@workspace/db/
 import { eq } from "drizzle-orm";
 import { getPlatformSettings } from "./admin.js";
 import { generateId } from "../lib/id.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -245,13 +246,21 @@ router.get("/test-connection/:gateway", async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  POST /api/payments/initiate
+//  Requires auth. Verifies orderId belongs to the calling user.
 //  Body: { gateway, amount, orderId, mobileNumber?, returnUrl? }
 // ═══════════════════════════════════════════════════════════════════════════════
-router.post("/initiate", async (req, res) => {
+router.post("/initiate", customerAuth, async (req, res) => {
+  const callerId = (req as any).customerId as string;
   const { gateway, amount, orderId, mobileNumber } = req.body;
   if (!gateway || !amount || !orderId) {
     res.status(400).json({ error: "gateway, amount and orderId are required" }); return;
   }
+
+  /* Verify the order belongs to the authenticated user */
+  const [order] = await db.select({ userId: ordersTable.userId })
+    .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (order.userId !== callerId) { res.status(403).json({ error: "Access denied — order does not belong to you" }); return; }
 
   const s = await getPlatformSettings();
   const amountPaisa = Math.round(parseFloat(amount) * 100);
@@ -439,12 +448,20 @@ router.post("/verify-manual", async (req, res) => {
   res.json({ success: true, orderId, gateway, transactionId, message: "Manual payment verified — order confirmed ✅" });
 });
 
+const _ADMIN_SECRET = process.env["ADMIN_SECRET"] || "ajkmart-admin-2025";
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  GET /api/payments/simulate/:gateway/:txnRef/:orderId
 //  Sandbox simulation — marks order confirmed (ONLY in sandbox/dev mode)
+//  Requires x-admin-secret header to prevent abuse.
 // ═══════════════════════════════════════════════════════════════════════════════
 // With orderId — confirms the order
 router.get("/simulate/:gateway/:txnRef/:orderId", async (req, res) => {
+  const secret = req.headers["x-admin-secret"] as string | undefined;
+  if (!secret || secret !== _ADMIN_SECRET) {
+    res.status(401).json({ error: "Admin secret required to simulate payments" }); return;
+  }
+
   const s = await getPlatformSettings();
   const gw = req.params["gateway"];
   const orderId = req.params["orderId"]!;
@@ -460,6 +477,11 @@ router.get("/simulate/:gateway/:txnRef/:orderId", async (req, res) => {
 
 // Without orderId — just simulate success response
 router.get("/simulate/:gateway/:txnRef", async (req, res) => {
+  const secret = req.headers["x-admin-secret"] as string | undefined;
+  if (!secret || secret !== _ADMIN_SECRET) {
+    res.status(401).json({ error: "Admin secret required to simulate payments" }); return;
+  }
+
   const s = await getPlatformSettings();
   const gw = req.params["gateway"];
   const mode = gw === "jazzcash" ? (s["jazzcash_mode"] ?? "sandbox") : (s["easypaisa_mode"] ?? "sandbox");

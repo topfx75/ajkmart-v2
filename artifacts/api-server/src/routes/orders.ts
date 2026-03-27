@@ -59,7 +59,7 @@ async function validatePromoCode(code: string, orderTotal: number, orderType: st
 }
 
 /* ── GET /orders/validate-promo?code=&total=&type= ───────────────────────── */
-router.get("/validate-promo", async (req, res) => {
+router.get("/validate-promo", customerAuth, async (req, res) => {
   const code  = String(req.query["code"]  || "").trim();
   const total = parseFloat(String(req.query["total"] || "0"));
   const type  = String(req.query["type"]  || "mart");
