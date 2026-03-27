@@ -70,6 +70,7 @@ const TOGGLE_KEYS = new Set([
   "security_fake_order_detect","security_auto_block_ip","security_phone_verify","security_single_phone",
   "security_audit_log",
   "upload_payment_proof","upload_kyc_docs","upload_rider_docs","upload_vendor_docs","upload_product_imgs","upload_cod_proof",
+  "notif_new_order","notif_order_ready","notif_ride_request","notif_promo",
   "integration_push_notif","integration_sms","integration_analytics","integration_email","integration_sentry","integration_whatsapp",
   "integration_maps","analytics_debug_mode","maps_distance_matrix","maps_places_autocomplete","maps_geocoding",
   "jazzcash_enabled","jazzcash_proof_required",
@@ -3281,48 +3282,69 @@ function renderSection(
   }
 
   if (cat === "rides") {
-    const BIKE_KEYS   = new Set(["ride_bike_base_fare","ride_bike_per_km","ride_bike_min_fare"]);
-    const CAR_KEYS    = new Set(["ride_car_base_fare","ride_car_per_km","ride_car_min_fare"]);
-    const RULES_KEYS   = new Set(["ride_surge_enabled","ride_surge_multiplier","ride_cancellation_fee"]);
-    const BARGAIN_KEYS = new Set(["ride_bargaining_enabled","ride_bargaining_min_pct","ride_bargaining_max_rounds"]);
+    const BIKE_KEYS     = new Set(["ride_bike_base_fare","ride_bike_per_km","ride_bike_min_fare"]);
+    const CAR_KEYS      = new Set(["ride_car_base_fare","ride_car_per_km","ride_car_min_fare"]);
+    const RICKSHAW_KEYS = new Set(["ride_rickshaw_base_fare","ride_rickshaw_per_km","ride_rickshaw_min_fare"]);
+    const DABA_KEYS     = new Set(["ride_daba_base_fare","ride_daba_per_km","ride_daba_min_fare"]);
+    const RULES_KEYS    = new Set(["ride_surge_enabled","ride_surge_multiplier","ride_cancellation_fee"]);
+    const BARGAIN_KEYS  = new Set(["ride_bargaining_enabled","ride_bargaining_min_pct","ride_bargaining_max_rounds"]);
 
-    const bikeFields    = catSettings.filter(s => BIKE_KEYS.has(s.key));
-    const carFields     = catSettings.filter(s => CAR_KEYS.has(s.key));
-    const rulesFields   = catSettings.filter(s => RULES_KEYS.has(s.key));
-    const bargainFields = catSettings.filter(s => BARGAIN_KEYS.has(s.key));
+    const bikeFields     = catSettings.filter(s => BIKE_KEYS.has(s.key));
+    const carFields      = catSettings.filter(s => CAR_KEYS.has(s.key));
+    const rickshawFields = catSettings.filter(s => RICKSHAW_KEYS.has(s.key));
+    const dabaFields     = catSettings.filter(s => DABA_KEYS.has(s.key));
+    const rulesFields    = catSettings.filter(s => RULES_KEYS.has(s.key));
+    const bargainFields  = catSettings.filter(s => BARGAIN_KEYS.has(s.key));
 
     const SUFFIX: Record<string,string> = {
       ride_bike_base_fare: "Rs.", ride_bike_per_km: "Rs./km", ride_bike_min_fare: "Rs.",
       ride_car_base_fare: "Rs.", ride_car_per_km: "Rs./km", ride_car_min_fare: "Rs.",
+      ride_rickshaw_base_fare: "Rs.", ride_rickshaw_per_km: "Rs./km", ride_rickshaw_min_fare: "Rs.",
+      ride_daba_base_fare: "Rs.", ride_daba_per_km: "Rs./km", ride_daba_min_fare: "Rs.",
       ride_surge_multiplier: "×", ride_cancellation_fee: "Rs.",
       ride_bargaining_min_pct: "%", ride_bargaining_max_rounds: "rounds",
     };
     const HINT: Record<string,string> = {
-      ride_bike_base_fare:         "Fixed starting fare charged on every bike ride, regardless of distance",
-      ride_bike_per_km:            "Additional charge per kilometre for bike rides, added on top of base fare",
-      ride_bike_min_fare:          "Floor fare for bike rides — short trips will never cost less than this",
-      ride_car_base_fare:          "Fixed starting fare charged on every car ride, regardless of distance",
-      ride_car_per_km:             "Additional charge per kilometre for car rides, added on top of base fare",
-      ride_car_min_fare:           "Floor fare for car rides — short trips will never cost less than this",
-      ride_surge_enabled:          "When ON, all ride fares are multiplied by the surge multiplier below. Use during peak hours or high demand",
-      ride_surge_multiplier:       "Multiplier applied to the calculated fare when surge is active. 1.5 = 50% premium",
-      ride_cancellation_fee:       "Fee charged to the customer if they cancel a ride after a driver has already accepted it",
-      ride_bargaining_enabled:     "Allow customers to offer a custom price below the platform fare. Riders can accept, counter, or reject",
-      ride_bargaining_min_pct:     "Minimum offer as % of platform fare. Offers below this threshold are automatically rejected (e.g. 70 = customer can offer as low as Rs.70 for a Rs.100 fare)",
-      ride_bargaining_max_rounds:  "Maximum back-and-forth counter offers allowed per ride before bargaining expires",
+      ride_bike_base_fare:           "Fixed starting fare charged on every bike ride, regardless of distance",
+      ride_bike_per_km:              "Additional charge per kilometre for bike rides, added on top of base fare",
+      ride_bike_min_fare:            "Floor fare for bike rides — short trips will never cost less than this",
+      ride_car_base_fare:            "Fixed starting fare charged on every car ride, regardless of distance",
+      ride_car_per_km:               "Additional charge per kilometre for car rides, added on top of base fare",
+      ride_car_min_fare:             "Floor fare for car rides — short trips will never cost less than this",
+      ride_rickshaw_base_fare:       "Fixed starting fare charged on every rickshaw ride, regardless of distance",
+      ride_rickshaw_per_km:          "Additional charge per kilometre for rickshaw rides, added on top of base fare",
+      ride_rickshaw_min_fare:        "Floor fare for rickshaw rides — short trips will never cost less than this",
+      ride_daba_base_fare:           "Fixed starting fare charged on every daba/van ride, regardless of distance",
+      ride_daba_per_km:              "Additional charge per kilometre for daba/van rides, added on top of base fare",
+      ride_daba_min_fare:            "Floor fare for daba/van rides — short trips will never cost less than this",
+      ride_surge_enabled:            "When ON, all ride fares are multiplied by the surge multiplier below. Use during peak hours or high demand",
+      ride_surge_multiplier:         "Multiplier applied to the calculated fare when surge is active. 1.5 = 50% premium",
+      ride_cancellation_fee:         "Fee charged to the customer if they cancel a ride after a driver has already accepted it",
+      ride_bargaining_enabled:       "Allow customers to offer a custom price below the platform fare. Riders can accept, counter, or reject",
+      ride_bargaining_min_pct:       "Minimum offer as % of platform fare. Offers below this threshold are automatically rejected (e.g. 70 = customer can offer as low as Rs.70 for a Rs.100 fare)",
+      ride_bargaining_max_rounds:    "Maximum back-and-forth counter offers allowed per ride before bargaining expires",
     };
+
+    const gv = (key: string, fallback: string) =>
+      parseFloat(localValues[key] ?? catSettings.find(s=>s.key===key)?.value ?? fallback);
 
     const surgeOn    = (localValues["ride_surge_enabled"]      ?? catSettings.find(s=>s.key==="ride_surge_enabled")?.value      ?? "off") === "on";
     const bargainOn  = (localValues["ride_bargaining_enabled"] ?? catSettings.find(s=>s.key==="ride_bargaining_enabled")?.value ?? "on")  === "on";
-    const bargainMin = parseFloat(localValues["ride_bargaining_min_pct"] ?? catSettings.find(s=>s.key==="ride_bargaining_min_pct")?.value ?? "70");
-    const bikeBase  = parseFloat(localValues["ride_bike_base_fare"] ?? catSettings.find(s=>s.key==="ride_bike_base_fare")?.value ?? "15");
-    const bikeKm    = parseFloat(localValues["ride_bike_per_km"]    ?? catSettings.find(s=>s.key==="ride_bike_per_km")?.value    ?? "8");
-    const bikeMin   = parseFloat(localValues["ride_bike_min_fare"]  ?? catSettings.find(s=>s.key==="ride_bike_min_fare")?.value  ?? "50");
-    const carBase   = parseFloat(localValues["ride_car_base_fare"]  ?? catSettings.find(s=>s.key==="ride_car_base_fare")?.value  ?? "25");
-    const carKm     = parseFloat(localValues["ride_car_per_km"]     ?? catSettings.find(s=>s.key==="ride_car_per_km")?.value     ?? "12");
-    const carMin    = parseFloat(localValues["ride_car_min_fare"]   ?? catSettings.find(s=>s.key==="ride_car_min_fare")?.value   ?? "80");
-    const surge     = parseFloat(localValues["ride_surge_multiplier"] ?? catSettings.find(s=>s.key==="ride_surge_multiplier")?.value ?? "1.5");
-    const riderKeep = parseFloat(localValues["rider_keep_pct"] ?? settings.find(s=>s.key==="rider_keep_pct")?.value ?? "80");
+    const bargainMin = gv("ride_bargaining_min_pct", "70");
+    const bikeBase   = gv("ride_bike_base_fare", "15");
+    const bikeKm     = gv("ride_bike_per_km", "8");
+    const bikeMin    = gv("ride_bike_min_fare", "50");
+    const carBase    = gv("ride_car_base_fare", "25");
+    const carKm      = gv("ride_car_per_km", "12");
+    const carMin     = gv("ride_car_min_fare", "80");
+    const rkBase     = gv("ride_rickshaw_base_fare", "20");
+    const rkKm       = gv("ride_rickshaw_per_km", "10");
+    const rkMin      = gv("ride_rickshaw_min_fare", "60");
+    const dbBase     = gv("ride_daba_base_fare", "30");
+    const dbKm       = gv("ride_daba_per_km", "14");
+    const dbMin      = gv("ride_daba_min_fare", "100");
+    const surge      = gv("ride_surge_multiplier", "1.5");
+    const riderKeep  = parseFloat(localValues["rider_keep_pct"] ?? settings.find(s=>s.key==="rider_keep_pct")?.value ?? "80");
 
     const exampleFare = (base: number, perKm: number, minF: number, km: number) => {
       const raw = Math.round(base + km * perKm);
@@ -3403,7 +3425,76 @@ function renderSection(
           </div>
         </div>
 
-        {/* ── Group 3: Surge & Ride Rules ── */}
+        {/* ── Group 3: Rickshaw Pricing ── */}
+        <div className="space-y-3 border-t border-border/40 pt-6">
+          <SLabel>🛺 Rickshaw Pricing</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">3-wheel rickshaw fares — cheaper option for short city trips. Bargaining is allowed by default for this vehicle type.</p>
+          {rickshawFields.length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {rickshawFields.map(s => <RideNumField key={s.key} s={s} />)}
+              </div>
+              <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3.5 flex gap-2.5">
+                <Info className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-yellow-700 leading-relaxed">
+                  <strong>Rickshaw fare example:</strong>{" "}
+                  3 km trip → Rs.{exampleFare(rkBase, rkKm, rkMin, 3)} &nbsp;|&nbsp;
+                  5 km → Rs.{exampleFare(rkBase, rkKm, rkMin, 5)} &nbsp;|&nbsp;
+                  10 km → Rs.{exampleFare(rkBase, rkKm, rkMin, 10)}
+                  {surgeOn && <strong className="text-orange-600"> (surge ×{surge} active)</strong>}
+                  &nbsp;· Rider earns {riderKeep}% of each fare
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3.5 text-xs text-yellow-800 flex gap-2">
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              Settings database mein sync ho rahi hain — page dobara load karein.
+            </div>
+          )}
+        </div>
+
+        {/* ── Group 4: Daba / Van Pricing ── */}
+        <div className="space-y-3 border-t border-border/40 pt-6">
+          <SLabel>🚐 Daba / Van Pricing</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Multi-passenger van/daba fares — school trips, group rides and cargo. Bargaining is allowed. Higher minimum fare than individual rides.</p>
+          {dabaFields.length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {dabaFields.map(s => <RideNumField key={s.key} s={s} />)}
+              </div>
+              <div className="bg-purple-50 border border-purple-100 rounded-xl p-3.5 flex gap-2.5">
+                <Info className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-purple-700 leading-relaxed">
+                  <strong>Daba fare example:</strong>{" "}
+                  3 km trip → Rs.{exampleFare(dbBase, dbKm, dbMin, 3)} &nbsp;|&nbsp;
+                  5 km → Rs.{exampleFare(dbBase, dbKm, dbMin, 5)} &nbsp;|&nbsp;
+                  10 km → Rs.{exampleFare(dbBase, dbKm, dbMin, 10)}
+                  {surgeOn && <strong className="text-orange-600"> (surge ×{surge} active)</strong>}
+                  &nbsp;· Rider earns {riderKeep}% of each fare
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-3.5 text-xs text-purple-800 flex gap-2">
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              Settings database mein sync ho rahi hain — page dobara load karein.
+            </div>
+          )}
+        </div>
+
+        {/* ── School Shift notice ── */}
+        <div className="border-t border-border/40 pt-6">
+          <div className="bg-pink-50 border border-pink-200 rounded-xl p-4 flex gap-3">
+            <span className="text-2xl flex-shrink-0">🚌</span>
+            <div>
+              <p className="text-sm font-bold text-pink-800">School Shift — Monthly Subscription</p>
+              <p className="text-xs text-pink-700 mt-1">School Shift per-ride nahi, per-route monthly subscription hai. Iske routes aur fares Rides → School Shift tab se manage hote hain. Is section mein koi fare setting nahi hai.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Group 5: Surge & Ride Rules ── */}
         <div className="space-y-3 border-t border-border/40 pt-6">
           <SLabel icon={Zap}>Surge &amp; Ride Rules</SLabel>
           <p className="text-xs text-muted-foreground -mt-1">Surge pricing multiplies all fares during peak demand. Cancellation fee is charged when a customer cancels after a driver has accepted.</p>

@@ -58,6 +58,14 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "ride_bargaining_enabled",     value: "on",  label: "Enable Price Bargaining",                  category: "rides" },
   { key: "ride_bargaining_min_pct",     value: "70",  label: "Minimum Offer % of Platform Fare",         category: "rides" },
   { key: "ride_bargaining_max_rounds",  value: "3",   label: "Max Bargaining Rounds",                    category: "rides" },
+  /* Rickshaw */
+  { key: "ride_rickshaw_base_fare",     value: "20",  label: "Rickshaw Base Fare (Rs.)",                 category: "rides" },
+  { key: "ride_rickshaw_per_km",        value: "10",  label: "Rickshaw Per KM Rate (Rs.)",               category: "rides" },
+  { key: "ride_rickshaw_min_fare",      value: "60",  label: "Rickshaw Minimum Fare (Rs.)",              category: "rides" },
+  /* Daba / Van */
+  { key: "ride_daba_base_fare",         value: "30",  label: "Daba / Van Base Fare (Rs.)",               category: "rides" },
+  { key: "ride_daba_per_km",            value: "14",  label: "Daba / Van Per KM Rate (Rs.)",             category: "rides" },
+  { key: "ride_daba_min_fare",          value: "100", label: "Daba / Van Minimum Fare (Rs.)",            category: "rides" },
   /* Finance */
   { key: "platform_commission_pct", value: "10",  label: "Platform Commission % (Global Override)", category: "finance" },
   { key: "finance_gst_enabled",     value: "off", label: "Collect GST / Sales Tax",                 category: "finance" },

@@ -19,18 +19,26 @@ function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): n
 async function calcFare(distance: number, type: string): Promise<{ baseFare: number; gstAmount: number; total: number }> {
   const s = await getPlatformSettings();
 
-  /* ── Try DB-driven service type pricing first ── */
+  /* ── Platform settings take priority: ride_{type}_base_fare / _per_km / _min_fare ── */
   let baseRate: number, perKm: number, minFare: number;
-  const [svc] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, type)).limit(1);
-  if (svc) {
-    baseRate = parseFloat(svc.baseFare  ?? "15");
-    perKm    = parseFloat(svc.perKm     ?? "8");
-    minFare  = parseFloat(svc.minFare   ?? "50");
+  const psBase = s[`ride_${type}_base_fare`];
+  const psKm   = s[`ride_${type}_per_km`];
+  const psMin  = s[`ride_${type}_min_fare`];
+
+  if (psBase !== undefined && psKm !== undefined && psMin !== undefined) {
+    baseRate = parseFloat(psBase);
+    perKm    = parseFloat(psKm);
+    minFare  = parseFloat(psMin);
   } else {
-    /* Fallback: legacy platform_settings for bike/car */
-    baseRate = type === "bike" ? parseFloat(s["ride_bike_base_fare"] ?? "15") : parseFloat(s["ride_car_base_fare"] ?? "25");
-    perKm    = type === "bike" ? parseFloat(s["ride_bike_per_km"]    ?? "8")  : parseFloat(s["ride_car_per_km"]   ?? "12");
-    minFare  = type === "bike" ? parseFloat(s["ride_bike_min_fare"]  ?? "50") : parseFloat(s["ride_car_min_fare"] ?? "80");
+    /* Fallback: DB-driven service type table */
+    const [svc] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, type)).limit(1);
+    if (svc) {
+      baseRate = parseFloat(svc.baseFare  ?? "15");
+      perKm    = parseFloat(svc.perKm     ?? "8");
+      minFare  = parseFloat(svc.minFare   ?? "50");
+    } else {
+      baseRate = 25; perKm = 12; minFare = 80;
+    }
   }
 
   const surgeEnabled    = (s["ride_surge_enabled"] ?? "off") === "on";
