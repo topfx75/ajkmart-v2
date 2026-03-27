@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X,
 } from "lucide-react";
-import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit } from "@/hooks/use-admin";
+import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -151,12 +151,17 @@ function SuspendModal({ vendor, onClose }: { vendor: any; onClose: () => void })
 /* ══════════ Main Vendors Page ══════════ */
 export default function Vendors() {
   const { data, isLoading, refetch, isFetching } = useVendors();
+  const { data: settingsData } = usePlatformSettings();
   const { toast } = useToast();
 
   const [search,       setSearch]       = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [walletModal,  setWalletModal]  = useState<any>(null);
   const [suspendModal, setSuspendModal] = useState<any>(null);
+
+  const settings: any[] = settingsData?.settings || [];
+  const vendorCommissionPct = parseFloat(settings.find((s: any) => s.key === "vendor_commission_pct")?.value ?? "15");
+  const vendorShare = 1 - vendorCommissionPct / 100;
 
   const vendors: any[] = data?.vendors || [];
 
@@ -174,7 +179,7 @@ export default function Vendors() {
     return matchSearch && matchStatus;
   });
 
-  const totalEarnings    = vendors.reduce((s: number, v: any) => s + v.totalRevenue * 0.85, 0);
+  const totalEarnings    = vendors.reduce((s: number, v: any) => s + v.totalRevenue * vendorShare, 0);
   const totalWallet      = vendors.reduce((s: number, v: any) => s + v.walletBalance, 0);
   const activeVendors    = vendors.filter((v: any) => v.isActive && !v.isBanned).length;
   const suspendedVendors = vendors.filter((v: any) => !v.isActive || v.isBanned).length;
@@ -289,7 +294,7 @@ export default function Vendors() {
                     </div>
                     <div className="text-center">
                       <p className="text-xs text-muted-foreground">Revenue</p>
-                      <p className="font-bold text-sm text-green-600">{formatCurrency(v.totalRevenue * 0.85)}</p>
+                      <p className="font-bold text-sm text-green-600">{formatCurrency(v.totalRevenue * vendorShare)}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-xs text-muted-foreground">Wallet</p>

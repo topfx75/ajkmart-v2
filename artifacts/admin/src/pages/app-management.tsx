@@ -83,7 +83,7 @@ export default function AppManagement() {
   const admins: AdminAccount[] = adminsData?.accounts || [];
   const settings: any[] = settingsData?.settings || [];
   const appStatus = settings.find((s: any) => s.key === "app_status")?.value || "active";
-  const maintenanceMsgSaved = settings.find((s: any) => s.key === "maintenance_message")?.value || "";
+  const maintenanceMsgSaved = settings.find((s: any) => s.key === "content_maintenance_msg")?.value || "";
 
   /* ── Admin Mutations ── */
   const saveAdmin = useMutation({

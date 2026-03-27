@@ -73,7 +73,7 @@ export default function Active() {
               </div>
               <div className="ml-auto text-right">
                 <p className="font-bold text-green-600">{formatCurrency(order.total)}</p>
-                <p className="text-xs text-gray-500">Your cut: {formatCurrency(order.total * 0.8)}</p>
+                <p className="text-xs text-gray-500">Your cut: {formatCurrency(order.total * (config.finance.riderEarningPct / 100))}</p>
               </div>
             </div>
             <div className="p-4 space-y-3">
