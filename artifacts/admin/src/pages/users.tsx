@@ -5,7 +5,7 @@ import {
   Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser } from "@/hooks/use-admin";
 import { fetcher } from "@/lib/api";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -424,9 +424,12 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
 /* ══════════ Main Users Page ══════════ */
 export default function Users() {
   const { data, isLoading, refetch, isFetching } = useUsers();
-  const updateMutation = useUpdateUser();
-  const topupMutation = useWalletTopup();
-  const deleteMutation = useDeleteUser();
+  const { data: pendingData, refetch: refetchPending } = usePendingUsers();
+  const updateMutation   = useUpdateUser();
+  const topupMutation    = useWalletTopup();
+  const deleteMutation   = useDeleteUser();
+  const approveMutation  = useApproveUser();
+  const rejectMutation   = useRejectUser();
   const { toast } = useToast();
 
   const [search, setSearch] = useState("");
@@ -438,6 +441,28 @@ export default function Users() {
   const [deleteUser, setDeleteUser] = useState<any>(null);
   const [activityUser, setActivityUser] = useState<any>(null);
   const [securityUser, setSecurityUser] = useState<any>(null);
+  const [rejectUser, setRejectUser]     = useState<any>(null);
+  const [rejectNote, setRejectNote]     = useState("");
+
+  const pendingUsers = pendingData?.users || [];
+
+  const handleApprove = (userId: string) => {
+    approveMutation.mutate({ id: userId }, {
+      onSuccess: () => { toast({ title: "✅ User approved!", description: "User can now log in." }); },
+      onError: err => toast({ title: "Failed to approve", description: err.message, variant: "destructive" }),
+    });
+  };
+
+  const handleReject = () => {
+    if (!rejectUser) return;
+    rejectMutation.mutate({ id: rejectUser.id, note: rejectNote || "Rejected by admin" }, {
+      onSuccess: () => {
+        toast({ title: "User rejected", description: "Account rejected and user notified." });
+        setRejectUser(null); setRejectNote("");
+      },
+      onError: err => toast({ title: "Failed to reject", description: err.message, variant: "destructive" }),
+    });
+  };
 
   const handleUpdate = (id: string, updates: any) => {
     updateMutation.mutate({ id, ...updates }, {
@@ -499,6 +524,98 @@ export default function Users() {
           <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
         </Button>
       </div>
+
+      {/* ── Pending Approval Banner ── */}
+      {pendingUsers.length > 0 && (
+        <Card className="p-4 rounded-2xl border-amber-200 bg-amber-50/60 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <h3 className="font-semibold text-amber-800 text-sm">Pending Approval ({pendingUsers.length})</h3>
+              <span className="text-xs text-amber-600 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">Action Required</span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => refetchPending()} className="h-7 text-xs text-amber-700 hover:bg-amber-100">
+              Refresh
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {pendingUsers.map((u: any) => (
+              <div key={u.id} className="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-amber-100 shadow-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
+                    {(u.name || u.phone || "U")[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-foreground truncate">{u.name || "New User"}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-muted-foreground font-mono">{u.phone}</p>
+                      {u.email && <p className="text-xs text-muted-foreground">· {u.email}</p>}
+                      <Badge variant="secondary" className="text-[10px] capitalize px-1.5">{u.role || "customer"}</Badge>
+                      <p className="text-xs text-amber-600">{formatDate(u.createdAt)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                  <Button
+                    size="sm"
+                    onClick={() => handleApprove(u.id)}
+                    disabled={approveMutation.isPending}
+                    className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs gap-1"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setRejectUser(u); setRejectNote(""); }}
+                    disabled={rejectMutation.isPending}
+                    className="h-8 px-3 border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs gap-1"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ── Reject Confirmation Dialog ── */}
+      {rejectUser && (
+        <Dialog open onOpenChange={open => { if (!open) { setRejectUser(null); setRejectNote(""); } }}>
+          <DialogContent className="max-w-sm rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <XCircle className="w-5 h-5" /> Reject User
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to reject <strong>{rejectUser.name || rejectUser.phone}</strong>? They will not be able to log in.
+              </p>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Rejection Reason (optional)</label>
+                <textarea
+                  value={rejectNote}
+                  onChange={e => setRejectNote(e.target.value)}
+                  placeholder="e.g. Documents incomplete, suspicious activity..."
+                  rows={3}
+                  className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" className="flex-1 rounded-xl" onClick={() => { setRejectUser(null); setRejectNote(""); }}>Cancel</Button>
+                <Button onClick={handleReject} disabled={rejectMutation.isPending} className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 text-white gap-2">
+                  <XCircle className="w-4 h-4" />
+                  {rejectMutation.isPending ? "Rejecting..." : "Confirm Reject"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Filters */}
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm flex flex-col sm:flex-row gap-3">

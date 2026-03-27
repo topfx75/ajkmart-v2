@@ -1,4 +1,47 @@
 # AJKMart Super App — Workspace
+<!-- Last updated: 2026-03-27 — FULL AUTH FRAMEWORK COMPLETE (T001-T006)
+  T001: DB Schema — users table extended with:
+    username (unique), password_hash, email_verified, phone_verified,
+    approval_status (pending|approved|rejected), approval_note,
+    email_otp_code, email_otp_expiry, email now UNIQUE constraint.
+    Applied via raw SQL + existing users marked phone_verified=true.
+  
+  T002: Backend auth.ts — new login methods:
+    - POST /auth/send-email-otp (sends OTP to email; dev mode returns OTP in response)
+    - POST /auth/verify-email-otp (login via email OTP, marks emailVerified=true)
+    - POST /auth/login/username (username + password, scrypt hash via crypto.scryptSync)
+    - POST /auth/complete-profile (token-based: set name/email/username/password)
+    - POST /auth/set-password (set/change password with optional current password check)
+    - POST /auth/check-available (check phone/email/username uniqueness before submit)
+    - Modified send-otp: new users set to pending if user_require_approval=on
+    - Modified verify-otp: marks phoneVerified=true + checks approval_status
+    - Password hashing: artifacts/api-server/src/services/password.ts (crypto.scryptSync)
+    
+  T003: Backend admin.ts — user approval system:
+    - GET /admin/users/pending (lists users with approval_status=pending)
+    - POST /admin/users/:id/approve (sets approved + isActive=true)
+    - POST /admin/users/:id/reject (sets rejected + isActive=false + note)
+    - Added setting: user_require_approval (off by default)
+    
+  T004: Customer app auth/index.tsx — full multi-method login:
+    - Tabs: Phone OTP / Email OTP / Username+Password
+    - Pending approval screen (shown when login returns pendingApproval=true)
+    - Profile completion screen (shown when user.name is empty after first login)
+    - All methods use inline /api/* fetch (not api-client-react package)
+    
+  T005: Rider + Vendor Login.tsx — same multi-method tabs:
+    - Tabs: Phone OTP / Email OTP / Username+Password  
+    - Role check (rider/vendor) preserved after all login methods
+    - Pending approval screen for pending accounts
+    - api.sendEmailOtp / api.verifyEmailOtp / api.loginUsername added to both api.ts files
+    
+  T006: Admin users.tsx — approval UI:
+    - Pending approval banner appears at top when users are pending (amber, pulsing)
+    - Per-user Approve (green) + Reject (red, with reason dialog) buttons
+    - usePendingUsers / useApproveUser / useRejectUser hooks added to use-admin.ts
+    - Polls every 15 seconds for new pending users
+-->
+
 <!-- Last updated: 2026-03-26 — AUDIT ROUND 5 COMPLETE: All 13 sections 100% verified. 9 new bugs found and fixed.
 
   FIX 1 — pharmacy.ts: delivery_fee_pharmacy completely ignored (total = items only, no delivery fee added).

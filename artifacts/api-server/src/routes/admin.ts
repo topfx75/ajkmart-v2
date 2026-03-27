@@ -131,6 +131,7 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "feature_wallet",         value: "on",    label: "Digital Wallet",                category: "features" },
   { key: "feature_referral",       value: "on",    label: "Referral Program",              category: "features" },
   { key: "feature_new_users",      value: "on",    label: "New User Registration",         category: "features" },
+  { key: "user_require_approval",  value: "off",   label: "Require Admin Approval for New Users", category: "features" },
   /* Content & Messaging */
   { key: "content_show_banner",    value: "on",    label: "Show Promotional Banner Carousel",     category: "content" },
   { key: "content_banner",         value: "Free delivery on your first order! 🎉", label: "Promo Ribbon Text (below services)", category: "content" },
@@ -702,6 +703,46 @@ router.patch("/users/:id", async (req, res) => {
 
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json({ ...user, walletBalance: parseFloat(user.walletBalance ?? "0") });
+});
+
+/* ── Pending Approval Users ── */
+router.get("/users/pending", async (_req, res) => {
+  const users = await db.select().from(usersTable)
+    .where(eq(usersTable.approvalStatus, "pending"))
+    .orderBy(desc(usersTable.createdAt));
+  res.json({
+    users: users.map(({ otpCode: _otp, otpExpiry: _exp, passwordHash: _ph, emailOtpCode: _eotp, emailOtpExpiry: _eexp, ...u }) => ({
+      ...u,
+      walletBalance: parseFloat(u.walletBalance ?? "0"),
+      createdAt: u.createdAt.toISOString(),
+      updatedAt: u.updatedAt.toISOString(),
+    })),
+    total: users.length,
+  });
+});
+
+/* ── Approve User ── */
+router.post("/users/:id/approve", async (req, res) => {
+  const { note } = req.body;
+  const [user] = await db.update(usersTable)
+    .set({ approvalStatus: "approved", approvalNote: note || null, isActive: true, updatedAt: new Date() })
+    .where(eq(usersTable.id, req.params["id"]!))
+    .returning();
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  addAuditEntry({ action: "user_approved", ip: "admin", details: `User approved: ${user.phone} — ${user.name || "unnamed"}`, result: "success" });
+  res.json({ success: true, user: { ...user, walletBalance: parseFloat(user.walletBalance ?? "0") } });
+});
+
+/* ── Reject User ── */
+router.post("/users/:id/reject", async (req, res) => {
+  const { note } = req.body;
+  const [user] = await db.update(usersTable)
+    .set({ approvalStatus: "rejected", approvalNote: note || "Rejected by admin", isActive: false, updatedAt: new Date() })
+    .where(eq(usersTable.id, req.params["id"]!))
+    .returning();
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  addAuditEntry({ action: "user_rejected", ip: "admin", details: `User rejected: ${user.phone} — ${note || "no reason"}`, result: "success" });
+  res.json({ success: true, user: { ...user, walletBalance: parseFloat(user.walletBalance ?? "0") } });
 });
 
 /* ── Wallet Top-up ── */

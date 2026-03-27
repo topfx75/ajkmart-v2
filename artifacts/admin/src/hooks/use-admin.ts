@@ -32,6 +32,38 @@ export const useUsers = () => {
   });
 };
 
+export const usePendingUsers = () => {
+  return useQuery({
+    queryKey: ["admin-users-pending"],
+    queryFn: () => fetcher("/users/pending"),
+    refetchInterval: 15_000,
+  });
+};
+
+export const useApproveUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      fetcher(`/users/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users-pending"] });
+    },
+  });
+};
+
+export const useRejectUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      fetcher(`/users/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users-pending"] });
+    },
+  });
+};
+
 export const useUpdateUser = () => {
   const queryClient = useQueryClient();
   return useMutation({

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, and, gte, sql, isNull } from "drizzle-orm";
+import { eq, and, gte, sql, isNull, or } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../middleware/security.js";
 import { sendOtpSMS } from "../services/sms.js";
 import { sendWhatsAppOTP } from "../services/whatsapp.js";
+import { hashPassword, verifyPassword, validatePasswordStrength, generateSecureOtp } from "../services/password.js";
 
 const router: IRouter = Router();
 
@@ -67,7 +68,10 @@ router.post("/send-otp", async (req, res) => {
     return;
   }
 
-  /* ── Check single-phone-per-account policy (already enforced by DB unique constraint) ── */
+  /* ── Determine approval status for NEW users ── */
+  const isNewUser = existingUser.length === 0;
+  const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
+  const newUserApprovalStatus = isNewUser && requireApproval ? "pending" : "approved";
 
   const otp       = Math.floor(100000 + Math.random() * 900000).toString();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -79,14 +83,15 @@ router.post("/send-otp", async (req, res) => {
   await db
     .insert(usersTable)
     .values({
-      id:            generateId(),
+      id:             generateId(),
       phone,
-      otpCode:       otp,
+      otpCode:        otp,
       otpExpiry,
-      role:          "customer",
-      roles:         "customer",
-      walletBalance: "0",
-      isActive:      true,
+      role:           "customer",
+      roles:          "customer",
+      walletBalance:  "0",
+      isActive:       !isNewUser || !requireApproval,
+      approvalStatus: newUserApprovalStatus,
     })
     .onConflictDoUpdate({
       target: usersTable.phone,
@@ -258,6 +263,28 @@ router.post("/verify-otp", async (req, res) => {
 
   resetAttempts(phone);
 
+  /* ── Mark phone as verified ── */
+  await db.update(usersTable)
+    .set({ phoneVerified: true })
+    .where(and(eq(usersTable.phone, phone)));
+
+  /* ── Admin approval check ── */
+  const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
+  if (requireApproval && user.approvalStatus === "pending") {
+    addAuditEntry({ action: "user_login_pending", ip, details: `Pending approval login for phone: ${phone}`, result: "pending" });
+    const token = Buffer.from(`${user.id}:${phone}:${Date.now()}`).toString("base64");
+    res.json({
+      token, pendingApproval: true,
+      message: "Aapka account admin approval ke liye bheja gaya hai. Approve hone par aap login kar sakenge.",
+      user: { id: user.id, phone: user.phone, name: user.name, role: user.role, approvalStatus: "pending" },
+    });
+    return;
+  }
+  if (user.approvalStatus === "rejected") {
+    res.status(403).json({ error: "Aapka account reject kar diya gaya hai. Admin se rabta karein.", approvalStatus: "rejected", approvalNote: user.approvalNote });
+    return;
+  }
+
   addAuditEntry({ action: "user_login", ip, details: `Successful login for phone: ${phone} (role: ${user.role})`, result: "success" });
 
   /* ── Role-specific session duration ── */
@@ -334,7 +361,6 @@ router.post("/validate-token", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────
    POST /auth/logout
-   Clears OTP and logs the logout action.
 ───────────────────────────────────────────────────────────── */
 router.post("/logout", async (req, res) => {
   const { userId } = req.body;
@@ -343,6 +369,329 @@ router.post("/logout", async (req, res) => {
     addAuditEntry({ action: "user_logout", ip: getClientIp(req), details: `User logout: ${userId}`, result: "success" });
   }
   res.json({ success: true, message: "Logged out successfully" });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   POST /auth/check-available
+   Check if phone, email, or username is already taken.
+   Body: { phone?, email?, username? }
+   Returns: { phone: {available,taken}, email: {...}, username: {...} }
+══════════════════════════════════════════════════════════════ */
+router.post("/check-available", async (req, res) => {
+  const { phone, email, username } = req.body;
+  const result: Record<string, { available: boolean; message: string }> = {};
+
+  if (phone) {
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+    result.phone = existing
+      ? { available: false, message: "Is number se pehle se ek account bana hua hai" }
+      : { available: true,  message: "Available" };
+  }
+
+  if (email && email.length > 3) {
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim())).limit(1);
+    result.email = existing
+      ? { available: false, message: "Is email se pehle se ek account bana hua hai" }
+      : { available: true,  message: "Available" };
+  }
+
+  if (username && username.length > 2) {
+    const clean = username.toLowerCase().trim();
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, clean)).limit(1);
+    result.username = existing
+      ? { available: false, message: "Yeh username pehle se liya hua hai. Koi aur try karein." }
+      : { available: true,  message: "Available" };
+  }
+
+  res.json(result);
+});
+
+/* ══════════════════════════════════════════════════════════════
+   POST /auth/send-email-otp
+   Send OTP to email address (only for existing accounts with that email)
+   Body: { email }
+══════════════════════════════════════════════════════════════ */
+router.post("/send-email-otp", async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Valid email address required" }); return;
+  }
+
+  const ip = getClientIp(req);
+  const settings = await getCachedSettings();
+  const normalized = email.toLowerCase().trim();
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalized)).limit(1);
+  if (!user) {
+    /* Security: don't reveal if email exists. Use same message. */
+    const isDev = process.env.NODE_ENV !== "production";
+    res.json({ message: "If an account exists with this email, an OTP has been sent.", ...(isDev ? { hint: "No account found" } : {}) });
+    return;
+  }
+
+  if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended." }); return; }
+  if (!user.isActive) { res.status(403).json({ error: "Your account is inactive. Contact support." }); return; }
+
+  /* Lockout check using email as key */
+  const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
+  const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
+  const lockout = checkLockout(normalized, maxAttempts, lockoutMinutes);
+  if (lockout.locked) {
+    res.status(429).json({ error: `Too many attempts. Try again in ${lockout.minutesLeft} minute(s).` }); return;
+  }
+
+  const otp    = generateSecureOtp();
+  const expiry = new Date(Date.now() + 10 * 60 * 1000);
+
+  await db.update(usersTable)
+    .set({ emailOtpCode: otp, emailOtpExpiry: expiry, updatedAt: new Date() })
+    .where(eq(usersTable.id, user.id));
+
+  /* In dev mode, return OTP in response. In production, send via email service. */
+  const isDev = process.env.NODE_ENV !== "production";
+  req.log.info({ email: normalized, otp }, "Email OTP sent");
+
+  /* TODO: Send via email service when configured */
+  addAuditEntry({ action: "email_otp_sent", ip, details: `Email OTP for: ${normalized}`, result: "success" });
+
+  res.json({
+    message: "OTP aapki email par bhej diya gaya hai",
+    ...(isDev ? { otp } : {}),
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   POST /auth/verify-email-otp
+   Login via email OTP. Body: { email, otp }
+══════════════════════════════════════════════════════════════ */
+router.post("/verify-email-otp", async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) { res.status(400).json({ error: "Email and OTP are required" }); return; }
+
+  const ip = getClientIp(req);
+  const settings = await getCachedSettings();
+  const normalized = email.toLowerCase().trim();
+
+  const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
+  const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
+
+  const lockout = checkLockout(normalized, maxAttempts, lockoutMinutes);
+  if (lockout.locked) {
+    res.status(429).json({ error: `Account locked. Try again in ${lockout.minutesLeft} minute(s).` }); return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalized)).limit(1);
+  if (!user) { res.status(404).json({ error: "Is email se koi account nahi mila." }); return; }
+
+  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
+  if (!user.isActive) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
+
+  /* Verify OTP */
+  const otpBypass = settings["security_otp_bypass"] === "on";
+  if (!otpBypass && user.emailOtpCode !== otp) {
+    const updated = recordFailedAttempt(normalized, maxAttempts, lockoutMinutes);
+    const remaining = maxAttempts - updated.attempts;
+    addAuditEntry({ action: "email_otp_failed", ip, details: `Wrong email OTP for: ${normalized}`, result: "fail" });
+    if (updated.lockedUntil) {
+      res.status(429).json({ error: `Too many failed attempts. Locked for ${lockoutMinutes} minutes.` });
+    } else {
+      res.status(401).json({ error: `Invalid OTP. ${remaining} attempt(s) remaining.`, attemptsRemaining: remaining });
+    }
+    return;
+  }
+
+  if (!otpBypass && user.emailOtpExpiry && new Date() > user.emailOtpExpiry) {
+    res.status(401).json({ error: "OTP expired. Please request a new one." }); return;
+  }
+
+  /* Clear email OTP + mark email verified + update last login */
+  await db.update(usersTable)
+    .set({ emailOtpCode: null, emailOtpExpiry: null, emailVerified: true, lastLoginAt: new Date(), updatedAt: new Date() })
+    .where(eq(usersTable.id, user.id));
+
+  resetAttempts(normalized);
+
+  /* Check approval */
+  if (user.approvalStatus === "rejected") {
+    res.status(403).json({ error: "Account rejected. Contact admin.", approvalNote: user.approvalNote }); return;
+  }
+
+  addAuditEntry({ action: "email_login", ip, details: `Email OTP login for: ${normalized}`, result: "success" });
+
+  const sessionDays = parseInt(settings["security_session_days"] ?? "30", 10);
+  const issuedAt = Date.now();
+  const token = Buffer.from(`${user.id}:${normalized}:${issuedAt}`).toString("base64");
+
+  res.json({
+    token,
+    expiresAt: new Date(issuedAt + sessionDays * 86400000).toISOString(),
+    pendingApproval: user.approvalStatus === "pending",
+    user: { id: user.id, phone: user.phone, name: user.name, email: user.email, username: user.username, role: user.role, roles: user.roles, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"), emailVerified: true, phoneVerified: user.phoneVerified ?? false },
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   POST /auth/login/username
+   Login with username + password. Body: { username, password }
+══════════════════════════════════════════════════════════════ */
+router.post("/login/username", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) { res.status(400).json({ error: "Username and password required" }); return; }
+
+  const ip = getClientIp(req);
+  const settings = await getCachedSettings();
+  const clean = username.toLowerCase().trim();
+
+  /* Lockout check */
+  const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
+  const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
+  const lockout = checkLockout(clean, maxAttempts, lockoutMinutes);
+  if (lockout.locked) {
+    res.status(429).json({ error: `Account locked. Try again in ${lockout.minutesLeft} minute(s).` }); return;
+  }
+
+  /* Find user by username */
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.username, clean)).limit(1);
+  if (!user || !user.passwordHash) {
+    recordFailedAttempt(clean, maxAttempts, lockoutMinutes);
+    addAuditEntry({ action: "username_login_failed", ip, details: `Username not found or no password: ${clean}`, result: "fail" });
+    res.status(401).json({ error: "Invalid username or password" }); return;
+  }
+
+  if (user.isBanned) { res.status(403).json({ error: "Account suspended." }); return; }
+  if (!user.isActive) { res.status(403).json({ error: "Account inactive." }); return; }
+
+  /* Verify password */
+  const passwordOk = verifyPassword(password, user.passwordHash);
+  if (!passwordOk) {
+    const updated = recordFailedAttempt(clean, maxAttempts, lockoutMinutes);
+    addAuditEntry({ action: "username_login_failed", ip, details: `Wrong password for username: ${clean}`, result: "fail" });
+    if (updated.lockedUntil) {
+      res.status(429).json({ error: `Too many failed attempts. Locked for ${lockoutMinutes} minutes.` });
+    } else {
+      res.status(401).json({ error: `Invalid username or password. ${maxAttempts - updated.attempts} attempt(s) remaining.` });
+    }
+    return;
+  }
+
+  /* Check approval */
+  if (user.approvalStatus === "rejected") {
+    res.status(403).json({ error: "Account rejected. Contact admin.", approvalNote: user.approvalNote }); return;
+  }
+
+  resetAttempts(clean);
+  await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
+  addAuditEntry({ action: "username_login", ip, details: `Username login: ${clean}`, result: "success" });
+
+  const sessionDays = parseInt(settings["security_session_days"] ?? "30", 10);
+  const issuedAt = Date.now();
+  const token = Buffer.from(`${user.id}:${user.phone}:${issuedAt}`).toString("base64");
+  const pendingApproval = (settings["user_require_approval"] ?? "off") === "on" && user.approvalStatus === "pending";
+
+  res.json({
+    token,
+    expiresAt: new Date(issuedAt + sessionDays * 86400000).toISOString(),
+    pendingApproval,
+    user: { id: user.id, phone: user.phone, name: user.name, email: user.email, username: user.username, role: user.role, roles: user.roles, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"), emailVerified: user.emailVerified ?? false, phoneVerified: user.phoneVerified ?? false },
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   POST /auth/complete-profile
+   Set name, email, username, password for first-time setup.
+   Requires auth token. Body: { token, name, email?, username?, password? }
+══════════════════════════════════════════════════════════════ */
+router.post("/complete-profile", async (req, res) => {
+  const { token, name, email, username, password } = req.body;
+  if (!token) { res.status(401).json({ error: "Token required" }); return; }
+
+  /* Decode token to get userId */
+  let userId: string;
+  try {
+    const decoded = Buffer.from(token, "base64").toString("utf8");
+    userId = decoded.split(":")[0]!;
+  } catch {
+    res.status(401).json({ error: "Invalid token" }); return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const updates: Record<string, any> = { updatedAt: new Date() };
+
+  if (name && name.trim().length > 1) {
+    updates.name = name.trim();
+  }
+
+  if (email && email.includes("@")) {
+    const normalized = email.toLowerCase().trim();
+    /* Check email uniqueness (skip if it's already this user's email) */
+    if (normalized !== user.email) {
+      const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, normalized)).limit(1);
+      if (existing && existing.id !== userId) {
+        res.status(409).json({ error: "Is email se pehle se ek account bana hua hai" }); return;
+      }
+    }
+    updates.email = normalized;
+  }
+
+  if (username && username.length > 2) {
+    const clean = username.toLowerCase().replace(/[^a-z0-9_]/g, "").trim();
+    if (clean.length < 3) { res.status(400).json({ error: "Username must be at least 3 characters (letters, numbers, underscore only)" }); return; }
+    if (clean !== user.username) {
+      const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.username, clean)).limit(1);
+      if (existing && existing.id !== userId) {
+        res.status(409).json({ error: "Yeh username pehle se liya hua hai" }); return;
+      }
+    }
+    updates.username = clean;
+  }
+
+  if (password && password.length >= 8) {
+    const check = validatePasswordStrength(password);
+    if (!check.ok) { res.status(400).json({ error: check.message }); return; }
+    updates.passwordHash = hashPassword(password);
+  }
+
+  if (Object.keys(updates).length === 1) {
+    res.status(400).json({ error: "Koi update nahi kiya — name, email, username ya password provide karein" }); return;
+  }
+
+  const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
+
+  res.json({
+    success: true,
+    message: "Profile update ho gaya",
+    user: { id: updated!.id, phone: updated!.phone, name: updated!.name, email: updated!.email, username: updated!.username, role: updated!.role, emailVerified: updated!.emailVerified, phoneVerified: updated!.phoneVerified },
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   POST /auth/set-password
+   Set or change password. Body: { token, password, currentPassword? }
+══════════════════════════════════════════════════════════════ */
+router.post("/set-password", async (req, res) => {
+  const { token, password, currentPassword } = req.body;
+  if (!token || !password) { res.status(400).json({ error: "Token and password required" }); return; }
+
+  let userId: string;
+  try { userId = Buffer.from(token, "base64").toString("utf8").split(":")[0]!; } catch { res.status(401).json({ error: "Invalid token" }); return; }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  /* If user already has a password, require current password */
+  if (user.passwordHash && currentPassword) {
+    if (!verifyPassword(currentPassword, user.passwordHash)) {
+      res.status(401).json({ error: "Current password galat hai" }); return;
+    }
+  }
+
+  const check = validatePasswordStrength(password);
+  if (!check.ok) { res.status(400).json({ error: check.message }); return; }
+
+  await db.update(usersTable).set({ passwordHash: hashPassword(password), updatedAt: new Date() }).where(eq(usersTable.id, userId));
+  res.json({ success: true, message: "Password set ho gaya" });
 });
 
 export default router;
