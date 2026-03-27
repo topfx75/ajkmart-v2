@@ -767,6 +767,17 @@ router.patch("/orders/:id/status", async (req, res) => {
 
   // NOTE: Wallet is already debited when order is PLACED (orders.ts).
   // Do NOT deduct again here. Only credit the rider's share on delivery.
+
+  // Wallet refund on admin cancellation (atomic)
+  if (status === "cancelled" && order.paymentMethod === "wallet") {
+    const refundAmt = parseFloat(String(order.total));
+    await db.transaction(async (tx) => {
+      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, order.userId));
+      await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Order #${order.id.slice(-6).toUpperCase()} cancelled by admin` });
+    }).catch(() => {});
+    await sendUserNotification(order.userId, "Order Refund 💰", `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya — Order #${order.id.slice(-6).toUpperCase()}`, "mart", "wallet-outline");
+  }
+
   if (status === "delivered") {
     const total = parseFloat(String(order.total));
     const riderKeepPct = parseFloat((await getPlatformSettings())["rider_keep_pct"] ?? "80") / 100;
@@ -842,6 +853,16 @@ router.patch("/rides/:id/status", async (req, res) => {
         await sendUserNotification(rider.id, "Ride Payment Received 💰", `Rs. ${riderEarning} wallet mein add ho gaya!`, "ride", "wallet-outline");
       }
     }
+  }
+
+  // Wallet refund on admin cancellation (atomic)
+  if (status === "cancelled" && ride.paymentMethod === "wallet") {
+    const refundAmt = parseFloat(ride.fare);
+    await db.transaction(async (tx) => {
+      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, ride.userId));
+      await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: ride.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Ride #${ride.id.slice(-6).toUpperCase()} cancelled by admin` });
+    }).catch(() => {});
+    await sendUserNotification(ride.userId, "Ride Refund 💰", `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya.`, "ride", "wallet-outline");
   }
 
   res.json({ ...ride, fare: parseFloat(ride.fare), distance: parseFloat(ride.distance) });

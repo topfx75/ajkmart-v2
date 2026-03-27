@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { notificationsTable, ridesTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 
@@ -243,11 +243,29 @@ router.patch("/:id/cancel", async (req, res) => {
     .where(eq(ridesTable.id, req.params["id"]!))
     .returning();
 
+  // Refund the original wallet fare (cancel fee already deducted above if applicable)
+  if (ride.paymentMethod === "wallet") {
+    const refundAmt = parseFloat(ride.fare);
+    await db.update(usersTable)
+      .set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
+    await db.insert(walletTransactionsTable).values({
+      id: generateId(), userId, type: "credit", amount: refundAmt.toFixed(2),
+      description: `Ride refund — #${ride.id.slice(-6).toUpperCase()} cancelled`,
+    }).catch(() => {});
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId,
+      title: "Ride Refund 💰",
+      body: `Rs. ${refundAmt.toFixed(0)} refunded to your wallet.${["accepted","arrived","in_transit"].includes(ride.status) && cancelFee > 0 ? ` Cancellation fee of Rs. ${cancelFee} applied.` : ""}`,
+      type: "ride", icon: "wallet-outline",
+    }).catch(() => {});
+  }
+
   res.json({
     ...updated,
     fare: parseFloat(updated!.fare),
     distance: parseFloat(updated!.distance),
-    cancellationFee: ride.status === "ongoing" ? cancelFee : 0,
+    cancellationFee: ["accepted","arrived","in_transit"].includes(ride.status) ? cancelFee : 0,
   });
 });
 
