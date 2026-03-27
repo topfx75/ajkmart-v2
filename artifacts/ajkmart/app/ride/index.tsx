@@ -41,15 +41,6 @@ const POPULAR_SPOTS = [
   { name: "AJK University",     lat: 34.3601, lng: 73.5088 },
 ];
 
-/* ─── Driver Profiles ─── */
-const DRIVERS = [
-  { name: "Imran Khan",     plate: "AJK 2341", rating: 4.9, trips: 412, eta: "4 min",  type: "bike" as const },
-  { name: "Tariq Mahmood",  plate: "AJK 7892", rating: 4.8, trips: 287, eta: "5 min",  type: "bike" as const },
-  { name: "Shahid Ali",     plate: "AJK 5531", rating: 4.9, trips: 198, eta: "3 min",  type: "bike" as const },
-  { name: "Adnan Farooq",   plate: "AJK 4421", rating: 4.7, trips: 623, eta: "7 min",  type: "car"  as const },
-  { name: "Bilal Hussain",  plate: "AJK 8876", rating: 4.8, trips: 349, eta: "6 min",  type: "car"  as const },
-  { name: "Faisal Anwar",   plate: "AJK 3356", rating: 4.9, trips: 511, eta: "5 min",  type: "car"  as const },
-];
 
 function calcFareFromConfig(
   dist: number, type: "bike" | "car",
@@ -63,130 +54,165 @@ function calcFareFromConfig(
   return Math.round(withMin * (cfg.surgeEnabled ? cfg.surgeMultiplier : 1));
 }
 
-/* ─── Searching Overlay ─── */
-function SearchingOverlay({ rideType, onFound, onCancel }: {
-  rideType: "bike" | "car"; onFound: (driver: typeof DRIVERS[0]) => void; onCancel: () => void;
+/* ─── Live Ride Tracker (replaces fake SearchingOverlay + ConfirmedScreen) ─── */
+function RideTracker({ rideId, initialType, userId, cancellationFee, onReset }: {
+  rideId: string;
+  initialType: "bike" | "car";
+  userId: string;
+  cancellationFee: number;
+  onReset: () => void;
 }) {
-  const pulse = useRef(new Animated.Value(1)).current;
-  const [dots, setDots] = useState(".");
+  const insets = useSafeAreaInsets();
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const pulse   = useRef(new Animated.Value(1)).current;
+  const slideUp = useRef(new Animated.Value(40)).current;
+  const op      = useRef(new Animated.Value(0)).current;
 
+  const [dots,      setDots]      = useState(".");
+  const [ride,      setRide]      = useState<any>(null);
+  const [cancelling,setCancelling]= useState(false);
+  const prevStatus  = useRef<string>("");
+
+  /* Pulse animation — always running (used on searching screen) */
   useEffect(() => {
     const anim = Animated.loop(Animated.sequence([
       Animated.timing(pulse, { toValue: 1.18, duration: 600, useNativeDriver: true }),
       Animated.timing(pulse, { toValue: 1,    duration: 600, useNativeDriver: true }),
     ]));
     anim.start();
-
     const dotTimer = setInterval(() => setDots(d => d.length >= 3 ? "." : d + "."), 400);
-    const foundTimer = setTimeout(() => {
-      const driverPool = DRIVERS.filter(d => d.type === rideType);
-      const driver = driverPool[Math.floor(Math.random() * driverPool.length)]!;
-      onFound(driver);
-    }, 3500);
-
-    return () => { anim.stop(); clearInterval(dotTimer); clearTimeout(foundTimer); };
+    return () => { anim.stop(); clearInterval(dotTimer); };
   }, []);
 
-  return (
-    <View style={ov.root}>
-      <LinearGradient colors={["#0F3BA8", "#1A56DB"]} style={ov.bg} />
-      <View style={ov.content}>
-        <Animated.View style={[ov.pulseRing, { transform: [{ scale: pulse }] }]}>
-          <View style={ov.pulseInner}>
-            <Ionicons name={rideType === "bike" ? "bicycle" : "car"} size={48} color="#fff" />
-          </View>
-        </Animated.View>
-        <Text style={ov.title}>Driver Dhund Rahe Hain{dots}</Text>
-        <Text style={ov.sub}>AJK mein qareeb se qareeb driver assign ho raha hai</Text>
-        <View style={ov.statsRow}>
-          <View style={ov.statBox}>
-            <Text style={ov.statVal}>50+</Text>
-            <Text style={ov.statLbl}>Active Drivers</Text>
-          </View>
-          <View style={[ov.statBox, { borderLeftWidth: 1, borderLeftColor: "rgba(255,255,255,0.2)" }]}>
-            <Text style={ov.statVal}>2-5</Text>
-            <Text style={ov.statLbl}>Min ETA</Text>
-          </View>
-        </View>
-        <Pressable onPress={onCancel} style={ov.cancelBtn}>
-          <Text style={ov.cancelTxt}>Cancel Ride</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-/* ─── Confirmed Ride Screen ─── */
-function ConfirmedScreen({ booked, driver, onReset }: { booked: any; driver: typeof DRIVERS[0]; onReset: () => void }) {
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const slideUp = useRef(new Animated.Value(40)).current;
-  const op = useRef(new Animated.Value(0)).current;
-
+  /* Slide-in when driver accepts (searching → accepted) */
   useEffect(() => {
-    Animated.parallel([
-      Animated.spring(slideUp, { toValue: 0, useNativeDriver: true, bounciness: 8 }),
-      Animated.timing(op, { toValue: 1, duration: 400, useNativeDriver: true }),
-    ]).start();
-  }, []);
+    const st = ride?.status;
+    if (st && st !== "searching" && prevStatus.current === "searching") {
+      slideUp.setValue(40); op.setValue(0);
+      Animated.parallel([
+        Animated.spring(slideUp, { toValue: 0, useNativeDriver: true, bounciness: 8 }),
+        Animated.timing(op,      { toValue: 1, duration: 400,        useNativeDriver: true }),
+      ]).start();
+    }
+    prevStatus.current = st || "";
+  }, [ride?.status]);
 
-  const openInMaps = () => {
-    const oLat = booked.pickupLat ?? 34.37;
-    const oLng = booked.pickupLng ?? 73.47;
-    const dLat = booked.dropLat   ?? 33.14;
-    const dLng = booked.dropLng   ?? 73.75;
-    const url   = `https://www.google.com/maps/dir/?api=1&origin=${oLat},${oLng}&destination=${dLat},${dLng}&travelmode=driving`;
-    Linking.openURL(url);
+  /* Poll GET /rides/:id every 5 seconds */
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API}/rides/${rideId}`);
+        if (res.ok) setRide(await res.json());
+      } catch {}
+    };
+    poll();
+    const iv = setInterval(poll, 5000);
+    return () => clearInterval(iv);
+  }, [rideId]);
+
+  const cancelRide = async () => {
+    setCancelling(true);
+    try {
+      await fetch(`${API}/rides/${rideId}/cancel`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+    } catch {}
+    setCancelling(false);
   };
 
-  return (
-    <View style={{ flex: 1, backgroundColor: C.background }}>
-      <LinearGradient colors={["#065F46", "#059669"]} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={[cf.header, { paddingTop: topPad + 16 }]}>
-        <View style={cf.checkCircle}>
-          <Ionicons name="checkmark" size={34} color="#fff" />
-        </View>
-        <Text style={cf.headerTitle}>Ride Confirmed! 🎉</Text>
-        <Text style={cf.headerSub}>Driver aapki taraf aa raha hai</Text>
-      </LinearGradient>
+  const openInMaps = () => {
+    const oLat = ride?.pickupLat ?? 34.37;
+    const oLng = ride?.pickupLng ?? 73.47;
+    const dLat = ride?.dropLat   ?? 33.14;
+    const dLng = ride?.dropLng   ?? 73.75;
+    Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&origin=${oLat},${oLng}&destination=${dLat},${dLng}&travelmode=driving`
+    );
+  };
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 14 }}>
-        <Animated.View style={{ opacity: op, transform: [{ translateY: slideUp }] }}>
+  const status   = ride?.status ?? "searching";
+  const rideType = ride?.type ?? initialType;
 
-          {/* Driver Card */}
-          <View style={cf.card}>
-            <View style={cf.driverRow}>
-              <View style={cf.driverAvatar}>
-                <Text style={{ fontSize: 28 }}>{booked.type === "bike" ? "🏍" : "🚗"}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={cf.driverName}>{driver.name}</Text>
-                <View style={cf.ratingRow}>
-                  {[1,2,3,4,5].map(i => (
-                    <Ionicons key={i} name={i <= Math.floor(driver.rating) ? "star" : "star-outline"} size={12} color="#F59E0B" />
-                  ))}
-                  <Text style={cf.ratingTxt}>{driver.rating} • {driver.trips} trips</Text>
-                </View>
-                <View style={cf.plateRow}>
-                  <Ionicons name="car-outline" size={13} color={C.textMuted} />
-                  <Text style={cf.plateTxt}>{driver.plate}</Text>
-                  <View style={cf.etaBadge}>
-                    <Ionicons name="time-outline" size={11} color="#059669" />
-                    <Text style={cf.etaTxt}>ETA: {driver.eta}</Text>
-                  </View>
-                </View>
-              </View>
-              <View style={{ gap: 8 }}>
-                <Pressable style={cf.actionBtn}>
-                  <Ionicons name="call-outline" size={20} color={C.primary} />
-                </Pressable>
-                <Pressable style={cf.actionBtn}>
-                  <Ionicons name="chatbubble-outline" size={19} color={C.primary} />
-                </Pressable>
-              </View>
+  const TRACK_STEPS  = ["accepted", "arrived", "in_transit", "completed"];
+  const TRACK_LABELS = ["Accepted", "Arrived", "In Transit", "Done"];
+  const currentStep  = TRACK_STEPS.indexOf(status);
+
+  /* ── Searching screen ── */
+  if (status === "searching") {
+    return (
+      <View style={ov.root}>
+        <LinearGradient colors={["#0F3BA8", "#1A56DB"]} style={ov.bg} />
+        <View style={ov.content}>
+          <Animated.View style={[ov.pulseRing, { transform: [{ scale: pulse }] }]}>
+            <View style={ov.pulseInner}>
+              <Ionicons name={rideType === "bike" ? "bicycle" : "car"} size={48} color="#fff" />
+            </View>
+          </Animated.View>
+          <Text style={ov.title}>Driver Dhund Rahe Hain{dots}</Text>
+          <Text style={ov.sub}>AJK mein qareeb se qareeb driver assign ho raha hai</Text>
+          <View style={ov.statsRow}>
+            <View style={ov.statBox}>
+              <Text style={ov.statVal}>50+</Text>
+              <Text style={ov.statLbl}>Active Drivers</Text>
+            </View>
+            <View style={[ov.statBox, { borderLeftWidth: 1, borderLeftColor: "rgba(255,255,255,0.2)" }]}>
+              <Text style={ov.statVal}>2-5</Text>
+              <Text style={ov.statLbl}>Min ETA</Text>
             </View>
           </View>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: -8 }}>
+            Ride #{rideId.slice(-8).toUpperCase()}
+          </Text>
+          <Pressable onPress={cancelRide} disabled={cancelling} style={ov.cancelBtn}>
+            {cancelling
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={ov.cancelTxt}>Cancel Ride</Text>
+            }
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
-          {/* Route Card */}
+  /* ── Cancelled screen ── */
+  if (status === "cancelled") {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background, alignItems: "center", justifyContent: "center", padding: 32, gap: 16 }}>
+        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="close-circle" size={48} color="#DC2626" />
+        </View>
+        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: C.text }}>Ride Cancelled</Text>
+        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, textAlign: "center" }}>
+          Aapki ride cancel ho gayi.{ride?.paymentMethod !== "cash" ? " Cancellation fee apply ho sakti hai." : ""}
+        </Text>
+        <View style={{ flexDirection: "row", gap: 12, marginTop: 8, width: "100%" }}>
+          <Pressable onPress={() => router.push("/(tabs)")} style={[cf.homeBtn, { flex: 1 }]}>
+            <Ionicons name="home-outline" size={17} color={C.primary} />
+            <Text style={cf.homeBtnTxt}>Home</Text>
+          </Pressable>
+          <Pressable onPress={onReset} style={cf.newBtn}>
+            <Ionicons name="add" size={17} color="#fff" />
+            <Text style={cf.newBtnTxt}>New Ride</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  /* ── Completed screen ── */
+  if (status === "completed") {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background }}>
+        <LinearGradient colors={["#065F46", "#059669"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[cf.header, { paddingTop: topPad + 16 }]}>
+          <View style={cf.checkCircle}>
+            <Ionicons name="checkmark" size={34} color="#fff" />
+          </View>
+          <Text style={cf.headerTitle}>Ride Complete! 🎉</Text>
+          <Text style={cf.headerSub}>Rs. {ride?.fare} · {ride?.distance} km</Text>
+        </LinearGradient>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 14 }}>
           <View style={cf.card}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <Text style={cf.cardTitle}>Route Details</Text>
@@ -202,45 +228,31 @@ function ConfirmedScreen({ booked, driver, onReset }: { booked: any; driver: typ
                 <View style={[cf.routeDot, { backgroundColor: "#EF4444" }]} />
               </View>
               <View style={{ flex: 1, gap: 12 }}>
-                <View>
-                  <Text style={cf.routeLabel}>Pickup</Text>
-                  <Text style={cf.routeVal}>{booked.pickupAddress}</Text>
-                </View>
-                <View>
-                  <Text style={cf.routeLabel}>Drop</Text>
-                  <Text style={cf.routeVal}>{booked.dropAddress}</Text>
-                </View>
+                <View><Text style={cf.routeLabel}>Pickup</Text><Text style={cf.routeVal}>{ride?.pickupAddress}</Text></View>
+                <View><Text style={cf.routeLabel}>Drop</Text><Text style={cf.routeVal}>{ride?.dropAddress}</Text></View>
               </View>
             </View>
           </View>
-
-          {/* Fare Card */}
           <View style={cf.card}>
             <Text style={cf.cardTitle}>Fare Breakdown</Text>
             <View style={cf.fareRows}>
-              <View style={cf.fareRow}><Text style={cf.fareLbl}>Vehicle</Text><Text style={cf.fareVal}>{booked.type === "bike" ? "🏍️ Bike" : "🚗 Car"}</Text></View>
-              <View style={cf.fareRow}><Text style={cf.fareLbl}>Distance</Text><Text style={cf.fareVal}>{booked.distance} km</Text></View>
-              <View style={cf.fareRow}><Text style={cf.fareLbl}>Payment</Text><Text style={cf.fareVal}>{booked.paymentMethod === "wallet" ? "💳 Wallet" : "💵 Cash"}</Text></View>
+              <View style={cf.fareRow}><Text style={cf.fareLbl}>Vehicle</Text><Text style={cf.fareVal}>{rideType === "bike" ? "🏍️ Bike" : "🚗 Car"}</Text></View>
+              <View style={cf.fareRow}><Text style={cf.fareLbl}>Distance</Text><Text style={cf.fareVal}>{ride?.distance} km</Text></View>
+              <View style={cf.fareRow}><Text style={cf.fareLbl}>Payment</Text><Text style={cf.fareVal}>{ride?.paymentMethod === "wallet" ? "💳 Wallet" : "💵 Cash"}</Text></View>
               <View style={[cf.fareRow, cf.fareTotalRow]}>
                 <Text style={cf.fareTotalLbl}>Total Fare</Text>
-                <Text style={cf.fareTotalVal}>Rs. {booked.fare}</Text>
+                <Text style={cf.fareTotalVal}>Rs. {ride?.fare}</Text>
               </View>
             </View>
           </View>
-
-          {/* Ride ID */}
           <View style={cf.rideIdRow}>
             <Ionicons name="receipt-outline" size={14} color={C.textMuted} />
-            <Text style={cf.rideIdTxt}>Ride ID: #{booked.id?.slice(-8).toUpperCase()}</Text>
+            <Text style={cf.rideIdTxt}>Ride ID: #{rideId?.slice(-8).toUpperCase()}</Text>
           </View>
-
-          {/* Safety */}
           <View style={cf.safetyRow}>
             <Ionicons name="shield-checkmark" size={14} color="#059669" />
             <Text style={cf.safetyTxt}>Insured ride • Verified driver • GPS tracked</Text>
           </View>
-
-          {/* Buttons */}
           <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
             <Pressable onPress={() => router.push("/(tabs)")} style={cf.homeBtn}>
               <Ionicons name="home-outline" size={17} color={C.primary} />
@@ -251,6 +263,164 @@ function ConfirmedScreen({ booked, driver, onReset }: { booked: any; driver: typ
               <Text style={cf.newBtnTxt}>New Ride</Text>
             </Pressable>
           </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  /* ── Active tracking: accepted / arrived / in_transit ── */
+  const canCancel = status === "accepted";
+  const statusHeaders: Record<string, { title: string; sub: string; icon: string }> = {
+    accepted:   { title: "Driver Aa Raha Hai! 🚗", sub: "Driver ne aapki ride accept kar li",  icon: "person" },
+    arrived:    { title: "Driver Pahunch Gaya! 📍", sub: "Driver aapke pickup point pe hai",    icon: "location" },
+    in_transit: { title: "Aap Route Mein Hain 🛣",  sub: "Aapki ride chal rahi hai",            icon: "car" },
+  };
+  const hdr = statusHeaders[status] ?? statusHeaders["accepted"]!;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.background }}>
+      <LinearGradient colors={["#065F46", "#059669"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[cf.header, { paddingTop: topPad + 16 }]}>
+        <View style={cf.checkCircle}>
+          <Ionicons name={hdr.icon as any} size={34} color="#fff" />
+        </View>
+        <Text style={cf.headerTitle}>{hdr.title}</Text>
+        <Text style={cf.headerSub}>{hdr.sub}</Text>
+      </LinearGradient>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, gap: 14 }}>
+        <Animated.View style={{ opacity: op, transform: [{ translateY: slideUp }] }}>
+
+          {/* Status Progress */}
+          <View style={cf.card}>
+            <Text style={[cf.cardTitle, { marginBottom: 16 }]}>Ride Progress</Text>
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+              {TRACK_STEPS.map((step, i) => {
+                const done   = currentStep >= i;
+                const active = currentStep === i;
+                const isLast = i === TRACK_STEPS.length - 1;
+                return (
+                  <React.Fragment key={step}>
+                    <View style={{ alignItems: "center", flex: 1, gap: 6 }}>
+                      <View style={{
+                        width: 30, height: 30, borderRadius: 15,
+                        backgroundColor: done ? "#059669" : "#E2E8F0",
+                        alignItems: "center", justifyContent: "center",
+                        borderWidth: active ? 3 : 0, borderColor: "#065F46",
+                      }}>
+                        {done
+                          ? <Ionicons name="checkmark" size={14} color="#fff" />
+                          : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#CBD5E1" }} />
+                        }
+                      </View>
+                      <Text style={{
+                        fontSize: 9, textAlign: "center",
+                        color: done ? "#059669" : "#94A3B8",
+                        fontFamily: active ? "Inter_700Bold" : "Inter_400Regular",
+                      }}>{TRACK_LABELS[i]}</Text>
+                    </View>
+                    {!isLast && (
+                      <View style={{ height: 2, flex: 0.3, backgroundColor: currentStep > i ? "#059669" : "#E2E8F0", marginTop: 14 }} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Rider info — shown once driver accepts */}
+          {ride?.riderName && (
+            <View style={cf.card}>
+              <View style={cf.driverRow}>
+                <View style={cf.driverAvatar}>
+                  <Text style={{ fontSize: 28 }}>{rideType === "bike" ? "🏍" : "🚗"}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={cf.driverName}>{ride.riderName}</Text>
+                  {ride.riderPhone && (
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                      {ride.riderPhone}
+                    </Text>
+                  )}
+                  <View style={cf.plateRow}>
+                    <Ionicons name="shield-checkmark-outline" size={13} color="#059669" />
+                    <Text style={cf.plateTxt}>Verified Driver</Text>
+                  </View>
+                </View>
+                {ride.riderPhone && (
+                  <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)} style={cf.actionBtn}>
+                    <Ionicons name="call-outline" size={20} color={C.primary} />
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Route */}
+          <View style={cf.card}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <Text style={cf.cardTitle}>Route</Text>
+              <Pressable onPress={openInMaps} style={cf.mapsBtn}>
+                <Ionicons name="navigate-outline" size={13} color="#4285F4" />
+                <Text style={cf.mapsBtnTxt}>Google Maps</Text>
+              </Pressable>
+            </View>
+            <View style={cf.routeRow}>
+              <View style={{ alignItems: "center", gap: 4 }}>
+                <View style={[cf.routeDot, { backgroundColor: "#10B981" }]} />
+                <View style={cf.routeLine} />
+                <View style={[cf.routeDot, { backgroundColor: "#EF4444" }]} />
+              </View>
+              <View style={{ flex: 1, gap: 12 }}>
+                <View><Text style={cf.routeLabel}>Pickup</Text><Text style={cf.routeVal}>{ride?.pickupAddress}</Text></View>
+                <View><Text style={cf.routeLabel}>Drop</Text><Text style={cf.routeVal}>{ride?.dropAddress}</Text></View>
+              </View>
+            </View>
+          </View>
+
+          {/* Fare */}
+          <View style={cf.card}>
+            <View style={cf.fareRows}>
+              <View style={cf.fareRow}>
+                <Text style={cf.fareLbl}>Fare</Text>
+                <Text style={[cf.fareVal, { color: "#059669", fontFamily: "Inter_700Bold", fontSize: 18 }]}>Rs. {ride?.fare}</Text>
+              </View>
+              <View style={cf.fareRow}>
+                <Text style={cf.fareLbl}>Payment</Text>
+                <Text style={cf.fareVal}>{ride?.paymentMethod === "wallet" ? "💳 Wallet" : "💵 Cash"}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Safety */}
+          <View style={cf.safetyRow}>
+            <Ionicons name="shield-checkmark" size={14} color="#059669" />
+            <Text style={cf.safetyTxt}>Insured ride • Verified driver • GPS tracked</Text>
+          </View>
+
+          {/* Cancel — only available when accepted (cancellation fee applies) */}
+          {canCancel && (
+            <Pressable onPress={cancelRide} disabled={cancelling} style={{
+              flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: 6, padding: 14, borderRadius: 14,
+              backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA",
+            }}>
+              {cancelling
+                ? <ActivityIndicator color="#DC2626" size="small" />
+                : <>
+                    <Ionicons name="close-circle-outline" size={18} color="#DC2626" />
+                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#DC2626" }}>
+                      Cancel Ride (Rs. {cancellationFee} fee may apply)
+                    </Text>
+                  </>
+              }
+            </Pressable>
+          )}
+
+          {/* Orders tab shortcut */}
+          <Pressable onPress={() => router.push("/(tabs)/orders")} style={cf.homeBtn}>
+            <Ionicons name="list-outline" size={17} color={C.primary} />
+            <Text style={cf.homeBtnTxt}>Track from Orders Tab</Text>
+          </Pressable>
         </Animated.View>
         <View style={{ height: 30 }} />
       </ScrollView>
@@ -278,9 +448,7 @@ export default function RideScreen() {
   const [estimate,   setEstimate]  = useState<{ fare: number; dist: number; dur: string } | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [booking,    setBooking]   = useState(false);
-  const [searching,  setSearching] = useState(false);
   const [booked,     setBooked]    = useState<any>(null);
-  const [driver,     setDriver]    = useState<typeof DRIVERS[0] | null>(null);
   const [showHistory,setShowHistory] = useState(false);
   const [history,    setHistory]   = useState<any[]>([]);
   const [histLoading,setHistLoading] = useState(false);
@@ -380,7 +548,6 @@ export default function RideScreen() {
       if (!res.ok) { showToast(data.error || "Booking fail ho gayi", "error"); return; }
       if (payMethod === "wallet") updateUser({ walletBalance: (user.walletBalance ?? 0) - data.fare });
       setBooked(data);
-      setSearching(true);
     } catch { showToast("Network error. Dobara try karein.", "error"); }
     finally { setBooking(false); }
   };
@@ -396,16 +563,16 @@ export default function RideScreen() {
     finally { setHistLoading(false); }
   };
 
-  const onDriverFound = (d: typeof DRIVERS[0]) => {
-    setSearching(false);
-    setDriver(d);
-  };
-
-  if (searching && booked) {
-    return <SearchingOverlay rideType={rideType} onFound={onDriverFound} onCancel={() => { setSearching(false); setBooked(null); }} />;
-  }
-  if (booked && driver) {
-    return <ConfirmedScreen booked={booked} driver={driver} onReset={() => { setBooked(null); setDriver(null); setPickup(""); setDrop(""); setPickupObj(null); setDropObj(null); setEstimate(null); }} />;
+  if (booked) {
+    return (
+      <RideTracker
+        rideId={booked.id}
+        initialType={booked.type ?? rideType}
+        userId={user?.id ?? ""}
+        cancellationFee={rideCfg.cancellationFee ?? 30}
+        onReset={() => { setBooked(null); setPickup(""); setDrop(""); setPickupObj(null); setDropObj(null); setEstimate(null); }}
+      />
+    );
   }
 
   const bikeFeatures = [
@@ -702,8 +869,10 @@ export default function RideScreen() {
                   </View>
                   <View style={{ alignItems: "flex-end", gap: 4 }}>
                     <Text style={rs.histFare}>Rs. {ride.fare}</Text>
-                    <View style={[rs.histStatus, { backgroundColor: ride.status === "completed" ? "#D1FAE5" : "#FEF3C7" }]}>
-                      <Text style={[rs.histStatusTxt, { color: ride.status === "completed" ? "#059669" : "#D97706" }]}>{ride.status}</Text>
+                    <View style={[rs.histStatus, { backgroundColor: ride.status === "completed" ? "#D1FAE5" : ride.status === "cancelled" ? "#FEE2E2" : "#FEF3C7" }]}>
+                      <Text style={[rs.histStatusTxt, { color: ride.status === "completed" ? "#059669" : ride.status === "cancelled" ? "#DC2626" : "#D97706" }]}>
+                        {{ searching: "Finding Rider", accepted: "Accepted", arrived: "Arrived", in_transit: "In Transit", completed: "Completed", cancelled: "Cancelled", ongoing: "In Transit" }[ride.status as string] ?? ride.status}
+                      </Text>
                     </View>
                   </View>
                 </View>

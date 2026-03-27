@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import React, { useState, useCallback } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -38,6 +39,7 @@ const RIDE_STATUS: Record<string, { color: string; bg: string; icon: string; lab
   accepted:   { color: "#2563EB", bg: "#DBEAFE", icon: "person-outline",            label: "Rider Accepted" },
   arrived:    { color: "#7C3AED", bg: "#EDE9FE", icon: "location-outline",          label: "Rider Arrived" },
   in_transit: { color: "#059669", bg: "#D1FAE5", icon: "car-outline",               label: "In Transit" },
+  ongoing:    { color: "#059669", bg: "#D1FAE5", icon: "car-outline",               label: "In Transit" },
   completed:  { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",    label: "Completed" },
   cancelled:  { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",      label: "Cancelled" },
 };
@@ -180,15 +182,18 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
 }
 
 /* ─────────────────────────── Ride Card ─────────────────────────── */
-function RideCard({ ride, liveTracking, reviews, onRate }: {
+function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
   ride: any;
   liveTracking: boolean;
   reviews: boolean;
   onRate: (o: any) => void;
+  onCancel: (o: any) => void;
 }) {
   const cfg = RIDE_STATUS[ride.status] || RIDE_STATUS["searching"]!;
-  const isActive = !["completed", "cancelled"].includes(ride.status);
+  const isActive    = !["completed", "cancelled"].includes(ride.status);
   const isCompleted = ride.status === "completed";
+  const canCancel   = ["searching", "accepted"].includes(ride.status);
+  const hasRider    = ["accepted", "arrived", "in_transit", "ongoing"].includes(ride.status);
 
   return (
     <View style={styles.card}>
@@ -228,20 +233,39 @@ function RideCard({ ride, liveTracking, reviews, onRate }: {
         </View>
       </View>
 
-      {isActive && liveTracking && (
+      {/* Rider info — show name & phone once a rider accepts */}
+      {hasRider && ride.riderName && (
         <View style={styles.etaBar}>
-          <Ionicons name="navigate-outline" size={12} color={C.primary} />
+          <Ionicons name="person-outline" size={12} color="#2563EB" />
+          <Text style={[styles.etaText, { flex: 1 }]}>
+            Driver: {ride.riderName}{ride.riderPhone ? ` · ${ride.riderPhone}` : ""}
+          </Text>
+          {ride.riderPhone && (
+            <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}>
+              <Ionicons name="call-outline" size={14} color="#2563EB" />
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      {/* Payment info bar */}
+      {isActive && (
+        <View style={styles.etaBar}>
+          <Ionicons name={ride.paymentMethod === "wallet" ? "wallet-outline" : "cash-outline"} size={12} color={C.primary} />
           <Text style={styles.etaText}>
             {ride.paymentMethod === "wallet" ? "Paid via Wallet" : "Cash Payment"}
           </Text>
         </View>
       )}
 
-      {isActive && !liveTracking && (
-        <View style={[styles.etaBar, { backgroundColor: "#FFF8E1", borderRadius: 8, paddingHorizontal: 10 }]}>
-          <Ionicons name="navigate-circle-outline" size={13} color="#D97706" />
-          <Text style={[styles.etaText, { color: "#92400E" }]}>Live tracking temporarily unavailable</Text>
-        </View>
+      {/* Cancel button for searching/accepted rides */}
+      {canCancel && (
+        <Pressable style={styles.cancelBtn} onPress={() => onCancel(ride)}>
+          <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
+          <Text style={styles.cancelBtnText}>
+            {ride.status === "accepted" ? "Cancel Ride (fee may apply)" : "Cancel Ride"}
+          </Text>
+        </Pressable>
       )}
 
       {reviews && isCompleted && !ride._reviewed && (
@@ -594,6 +618,17 @@ export default function OrdersScreen() {
     setParcelLoading(false);
   }, [user?.id]);
 
+  const handleCancelRide = useCallback(async (ride: any) => {
+    try {
+      await fetch(`${API_BASE}/rides/${ride.id}/cancel`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user?.id }),
+      });
+      fetchRides();
+    } catch { /* ride list will refresh on next poll */ }
+  }, [user?.id, fetchRides, API_BASE]);
+
   React.useEffect(() => {
     if (user?.id) {
       fetchRides();
@@ -748,7 +783,7 @@ export default function OrdersScreen() {
           <>
             <SectionHeader title="Active" count={anyActive} active />
             {activeOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} />)}
-            {activeRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} />)}
+            {activeRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
             {activePharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
             {activeParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
           </>
@@ -758,7 +793,7 @@ export default function OrdersScreen() {
           <>
             <SectionHeader title="History" count={anyPast} />
             {pastOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} />)}
-            {pastRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} />)}
+            {pastRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
             {pastPharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
             {pastParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
           </>
