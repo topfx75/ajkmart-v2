@@ -1,27 +1,43 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usersTable, refreshTokensTable, authAuditLogTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 import { getPlatformSettings } from "../routes/admin.js";
+import { generateId } from "../lib/id.js";
 
 /* ══════════════════════════════════════════════════════════════
-   JWT CONFIGURATION
+   JWT CONFIGURATION — fail-fast if secret is absent or too short
 ══════════════════════════════════════════════════════════════ */
 const _jwtSecret = process.env["JWT_SECRET"];
-if (!_jwtSecret) {
-  console.warn("[AUTH] JWT_SECRET env var not set — using insecure dev default. Set JWT_SECRET before deploying to production.");
+if (!_jwtSecret || _jwtSecret.length < 32) {
+  const msg = !_jwtSecret
+    ? "[AUTH] FATAL: JWT_SECRET environment variable is not set. Minimum 32 characters required."
+    : `[AUTH] FATAL: JWT_SECRET too short (${_jwtSecret.length} chars, need ≥32).`;
+  console.error(msg);
+  process.exit(1);
 }
-export const JWT_SECRET = _jwtSecret ?? "ajkmart-dev-secret-CHANGE-IN-PRODUCTION";
+export const JWT_SECRET: string = _jwtSecret;
+
+/* Access token TTL: 15 minutes */
+export const ACCESS_TOKEN_TTL_SEC = 15 * 60;
+/* Refresh token TTL: 30 days */
+export const REFRESH_TOKEN_TTL_DAYS = 30;
+
+/* ══════════════════════════════════════════════════════════════
+   ADMIN JWT CONFIGURATION — separate from user JWT
+══════════════════════════════════════════════════════════════ */
+const _adminJwtSecret = process.env["ADMIN_JWT_SECRET"] || JWT_SECRET + "-admin";
+export const ADMIN_JWT_SECRET: string = _adminJwtSecret;
+export const ADMIN_TOKEN_TTL_HRS = 4;
 
 /* ══════════════════════════════════════════════════════════════
    TOR EXIT NODE DETECTION
-   Fetches the public TOR exit node list every hour (free, no API key).
-   Source: https://check.torproject.org/torbulkexitlist
 ══════════════════════════════════════════════════════════════ */
 let torExitNodes: Set<string> = new Set();
 let torListFetchedAt = 0;
-const TOR_LIST_TTL_MS = 60 * 60 * 1000; // 1 hour
+const TOR_LIST_TTL_MS = 60 * 60 * 1000;
 
 async function refreshTorExitNodes(): Promise<void> {
   try {
@@ -48,12 +64,9 @@ async function isTorExitNode(ip: string): Promise<boolean> {
 
 /* ══════════════════════════════════════════════════════════════
    VPN / PROXY DETECTION
-   Uses ip-api.com free tier — returns proxy/hosting flags.
-   Rate limit: 45 requests/minute (per IP of our server). We cache
-   results for 10 minutes to stay well within limits.
 ══════════════════════════════════════════════════════════════ */
 const vpnCache: Map<string, { isVpn: boolean; cachedAt: number }> = new Map();
-const VPN_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const VPN_CACHE_TTL_MS = 10 * 60 * 1000;
 
 async function isVpnOrProxy(ip: string): Promise<boolean> {
   const cached = vpnCache.get(ip);
@@ -82,28 +95,20 @@ async function isVpnOrProxy(ip: string): Promise<boolean> {
 /* ══════════════════════════════════════════════════════════════
    IN-MEMORY STORES
 ══════════════════════════════════════════════════════════════ */
-
-/* Rate limiter: "ip:roleKey" -> { count, windowStart } */
 const ipRateStore = new Map<string, { count: number; windowStart: number }>();
-
-/* Blocked IPs */
 export const blockedIPs = new Set<string>();
-
-/* Login lockout: phone -> { attempts, lockedUntil } */
 export const loginAttempts = new Map<string, { attempts: number; lockedUntil: number | null }>();
 
-/* Audit log — in-memory ring buffer (last 2000 entries) */
 export interface AuditEntry {
   timestamp: string;
   action: string;
   adminId?: string;
   ip: string;
   details: string;
-  result: "success" | "fail" | "warn";
+  result: "success" | "fail" | "warn" | "pending";
 }
 export const auditLog: AuditEntry[] = [];
 
-/* Security events — suspicious activity ring buffer */
 export interface SecurityEvent {
   timestamp: string;
   type: string;
@@ -126,7 +131,7 @@ export function getClientIp(req: Request): string {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   AUDIT LOG
+   AUDIT LOG (in-memory ring buffer)
 ══════════════════════════════════════════════════════════════ */
 export function addAuditEntry(entry: Omit<AuditEntry, "timestamp">) {
   if (settingsCache["security_audit_log"] === "off") return;
@@ -140,19 +145,42 @@ export function addSecurityEvent(event: Omit<SecurityEvent, "timestamp">) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   JWT HELPERS
-   Signed tokens replace the old Base64 scheme.
-   Payload: { sub: userId, phone, role, roles }
-   Expiry is embedded in the JWT — no separate issuedAt check needed.
+   PERSISTENT AUTH AUDIT LOG
+   Writes to the auth_audit_log DB table for cross-session durability.
+══════════════════════════════════════════════════════════════ */
+export async function writeAuthAuditLog(
+  event: string,
+  opts: {
+    userId?: string;
+    ip?: string;
+    userAgent?: string;
+    metadata?: Record<string, unknown>;
+  } = {}
+): Promise<void> {
+  try {
+    await db.insert(authAuditLogTable).values({
+      id:        generateId(),
+      userId:    opts.userId ?? null,
+      event,
+      ip:        opts.ip ?? "unknown",
+      userAgent: opts.userAgent ?? null,
+      metadata:  opts.metadata ? JSON.stringify(opts.metadata) : null,
+    });
+  } catch {
+    /* Non-fatal — never let audit log writes crash the main flow */
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   JWT HELPERS — HS256 pinned, iat validation, algorithm confusion prevention
 ══════════════════════════════════════════════════════════════ */
 export interface JwtUserPayload {
   userId: string;
   phone: string;
   role: string;
   roles: string;
-  /** JWT expiry — seconds since epoch (same as the JWT "exp" claim) */
+  tokenVersion?: number;
   exp?: number;
-  /** JWT issued-at — seconds since epoch */
   iat?: number;
 }
 
@@ -166,29 +194,56 @@ export function signUserJwt(
   return jwt.sign(
     { sub: userId, phone, role, roles },
     JWT_SECRET,
-    { expiresIn: `${sessionDays}d` },
+    { algorithm: "HS256", expiresIn: `${sessionDays}d` },
   );
+}
+
+/** Sign a short-lived access token (15 minutes), embedding tokenVersion for revocation checks. */
+export function signAccessToken(userId: string, phone: string, role: string, roles: string, tokenVersion = 0): string {
+  return jwt.sign(
+    { sub: userId, phone, role, roles, tokenVersion, type: "access" },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: ACCESS_TOKEN_TTL_SEC },
+  );
+}
+
+/** Sign a refresh token (opaque random value). Returns the raw token and its hash. */
+export function generateRefreshToken(): { raw: string; hash: string } {
+  const raw = crypto.randomBytes(40).toString("hex");
+  const hash = crypto.createHash("sha256").update(raw).digest("hex");
+  return { raw, hash };
+}
+
+export function hashRefreshToken(raw: string): string {
+  return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
 export function verifyUserJwt(token: string): JwtUserPayload | null {
   try {
-    /* Pin to HS256 — prevents algorithm-confusion attacks (e.g. alg:none, RS256 key-confusion) */
     const payload = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as jwt.JwtPayload;
     if (!payload.sub) return null;
+
+    /* Reject tokens with future iat (clock skew > 60 seconds) */
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (typeof payload.iat === "number" && payload.iat > nowSec + 60) {
+      return null;
+    }
+
     return {
-      userId: payload["sub"] as string,
-      phone:  payload["phone"] as string ?? "",
-      role:   payload["role"]  as string ?? "customer",
-      roles:  payload["roles"] as string ?? "customer",
-      exp:    typeof payload.exp === "number" ? payload.exp : undefined,
-      iat:    typeof payload.iat === "number" ? payload.iat : undefined,
+      userId:       payload["sub"] as string,
+      phone:        payload["phone"] as string ?? "",
+      role:         payload["role"]  as string ?? "customer",
+      roles:        payload["roles"] as string ?? "customer",
+      tokenVersion: typeof payload["tokenVersion"] === "number" ? payload["tokenVersion"] : undefined,
+      exp:          typeof payload.exp === "number" ? payload.exp : undefined,
+      iat:          typeof payload.iat === "number" ? payload.iat : undefined,
     };
   } catch {
     return null;
   }
 }
 
-/* ── Legacy decode: kept for internal callers that still use it ── */
+/* ── Legacy decode: kept for internal callers ── */
 export function decodeUserToken(token: string): { userId: string; phone: string; issuedAt: number } | null {
   const v = verifyUserJwt(token);
   if (!v) return null;
@@ -197,8 +252,44 @@ export function decodeUserToken(token: string): { userId: string; phone: string;
 }
 
 export function isTokenExpired(_issuedAt: number, _sessionDays: number): boolean {
-  /* JWT handles expiry — this is a no-op kept for compatibility */
   return false;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ADMIN JWT HELPERS — time-limited signed tokens (4-hour TTL)
+══════════════════════════════════════════════════════════════ */
+export interface AdminJwtPayload {
+  adminId: string | null;
+  role: string;
+  name: string;
+  iat?: number;
+  exp?: number;
+}
+
+export function signAdminJwt(adminId: string | null, role: string, name: string, ttlHrs = ADMIN_TOKEN_TTL_HRS): string {
+  return jwt.sign(
+    { adminId, role, name, type: "admin" },
+    ADMIN_JWT_SECRET,
+    { algorithm: "HS256", expiresIn: `${ttlHrs}h` },
+  );
+}
+
+export function verifyAdminJwt(token: string): AdminJwtPayload | null {
+  try {
+    const payload = jwt.verify(token, ADMIN_JWT_SECRET, { algorithms: ["HS256"] }) as jwt.JwtPayload;
+    if ((payload as any).type !== "admin") return null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (typeof payload.iat === "number" && payload.iat > nowSec + 60) return null;
+    return {
+      adminId: payload["adminId"] as string | null,
+      role:    payload["role"]    as string ?? "manager",
+      name:    payload["name"]    as string ?? "Admin",
+      iat:     payload.iat,
+      exp:     payload.exp,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -244,7 +335,7 @@ export function unlockPhone(phone: string) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   SETTINGS CACHE (avoid hitting DB on every request)
+   SETTINGS CACHE
 ══════════════════════════════════════════════════════════════ */
 let settingsCache: Record<string, string> = {};
 let settingsCacheExpiry = 0;
@@ -264,13 +355,11 @@ export function invalidateSettingsCache() {
 
 /* ══════════════════════════════════════════════════════════════
    ROLE DETECTION
-   Uses JWT claims — never trusts the client-supplied x-user-role header.
 ══════════════════════════════════════════════════════════════ */
 function getRoleKey(req: Request): "admin" | "rider" | "vendor" | "general" {
   const url = req.url || "";
-  if (req.headers["x-admin-secret"] || url.includes("/admin")) return "admin";
+  if (req.headers["x-admin-secret"] || req.headers["x-admin-token"] || url.includes("/admin")) return "admin";
 
-  /* Decode JWT from Authorization header to get the verified role */
   const authHeader = req.headers["authorization"] as string | undefined;
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const rawToken = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
@@ -290,10 +379,8 @@ function getRoleKey(req: Request): "admin" | "rider" | "vendor" | "general" {
 export async function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
   const ip = getClientIp(req);
 
-  /* Health check — always pass */
   if (req.url === "/" || req.url.endsWith("/health")) { next(); return; }
 
-  /* Blocked IP check */
   if (blockedIPs.has(ip)) {
     addSecurityEvent({ type: "blocked_ip_access", ip, details: `Blocked IP attempted access to ${req.url}`, severity: "high" });
     res.status(403).json({ error: "Access denied. Your IP address has been blocked due to suspicious activity." });
@@ -302,7 +389,6 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
 
   const settings = await getCachedSettings();
 
-  /* TOR exit node check */
   if (settings["security_block_tor"] === "on") {
     const isTor = await isTorExitNode(ip);
     if (isTor) {
@@ -314,7 +400,6 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
     }
   }
 
-  /* VPN / Proxy check */
   if (settings["security_block_vpn"] === "on") {
     const isVpn = await isVpnOrProxy(ip);
     if (isVpn) {
@@ -347,7 +432,6 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
   } else {
     entry.count++;
 
-    /* Auto-block persistent abusers */
     if (settings["security_auto_block_ip"] === "on" && entry.count > hardLimit * 3) {
       blockedIPs.add(ip);
       addAuditEntry({ action: "auto_block_ip", ip, details: `Auto-blocked: ${entry.count} req/min far exceeds limit of ${hardLimit}`, result: "warn" });
@@ -400,7 +484,7 @@ export function checkAdminIPWhitelist(req: Request, settings: Record<string, str
 /* ══════════════════════════════════════════════════════════════
    GPS SPOOF DETECTION
 ══════════════════════════════════════════════════════════════ */
-const R = 6371; // km
+const R = 6371;
 export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
@@ -425,14 +509,40 @@ export function detectGPSSpoof(
 }
 
 /* ══════════════════════════════════════════════════════════════
+   TOKEN REVOCATION CHECK
+   Checks if a refresh token has been revoked or expired.
+══════════════════════════════════════════════════════════════ */
+export async function isRefreshTokenValid(tokenHash: string): Promise<boolean> {
+  const [rt] = await db.select().from(refreshTokensTable)
+    .where(and(eq(refreshTokensTable.tokenHash, tokenHash)))
+    .limit(1);
+  if (!rt) return false;
+  if (rt.revokedAt) return false;
+  if (new Date() > rt.expiresAt) return false;
+  return true;
+}
+
+export async function revokeRefreshToken(tokenHash: string): Promise<void> {
+  await db.update(refreshTokensTable)
+    .set({ revokedAt: new Date() })
+    .where(eq(refreshTokensTable.tokenHash, tokenHash));
+}
+
+export async function revokeAllUserRefreshTokens(userId: string): Promise<void> {
+  await db.update(refreshTokensTable)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokensTable.userId, userId)));
+}
+
+/* ══════════════════════════════════════════════════════════════
    CUSTOMER AUTH MIDDLEWARE
    Validates JWT, checks DB ban/active status, sets req.customerId.
-   Apply to all customer-facing authenticated routes.
 ══════════════════════════════════════════════════════════════ */
 export async function customerAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers["authorization"] as string | undefined;
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const token = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
+  const ip = getClientIp(req);
 
   if (!token) {
     res.status(401).json({ error: "Authentication required. Please log in." });
@@ -441,30 +551,45 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
 
   const payload = verifyUserJwt(token);
   if (!payload) {
+    writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url } });
     res.status(401).json({ error: "Invalid or expired session. Please log in again." });
     return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ error: "Account not found." }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended. Contact support." }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Your account is inactive. Contact support." }); return; }
+  if (user.isBanned) {
+    writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip });
+    res.status(403).json({ error: "Your account has been suspended. Contact support." });
+    return;
+  }
+  if (!user.isActive) {
+    writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip });
+    res.status(403).json({ error: "Your account is inactive. Contact support." });
+    return;
+  }
 
-  req.customerId = payload.userId;
+  /* Token version check — invalidates access JWTs on logout/ban/role change */
+  if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
+    writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url } });
+    res.status(401).json({ error: "Session revoked. Please log in again." });
+    return;
+  }
+
+  req.customerId    = payload.userId;
   req.customerPhone = payload.phone;
-  req.customerUser = user;
+  req.customerUser  = user;
   next();
 }
 
 /* ══════════════════════════════════════════════════════════════
    RIDER AUTH MIDDLEWARE
-   Requires a valid JWT whose DB + JWT role both include "rider".
-   Sets req.riderId and req.riderUser on success.
 ══════════════════════════════════════════════════════════════ */
 export async function riderAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers["authorization"] as string | undefined;
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const token = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
+  const ip = getClientIp(req);
 
   if (!token) {
     res.status(401).json({ error: "Authentication required." });
@@ -473,18 +598,33 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
 
   const payload = verifyUserJwt(token);
   if (!payload) {
+    writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, role: "rider" } });
     res.status(401).json({ error: "Invalid or expired session. Please log in again." });
     return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ error: "Account not found." }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Account is banned." }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account is inactive." }); return; }
+  if (user.isBanned) {
+    writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
+    res.status(403).json({ error: "Account is banned." }); return;
+  }
+  if (!user.isActive) {
+    writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
+    res.status(403).json({ error: "Account is inactive." }); return;
+  }
 
-  const dbRoles  = (user.roles  || user.role  || "").split(",").map((r: string) => r.trim());
-  const jwtRoles = (payload.roles || payload.role || "").split(",").map((r: string) => r.trim());
-  if (!dbRoles.includes("rider") || !jwtRoles.includes("rider")) {
+  /* Token version check — invalidates access JWTs on logout/ban/role change */
+  if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
+    writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
+    res.status(401).json({ error: "Session revoked. Please log in again." });
+    return;
+  }
+
+  /* Use the authoritative roles field from DB — catches immediate role changes/bans */
+  const dbRoles = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
+  if (!dbRoles.includes("rider")) {
+    writeAuthAuditLog("auth_denied_role", { userId: user.id, ip, metadata: { required: "rider", actual: user.roles } });
     res.status(403).json({ error: "Access denied. Rider account required." });
     return;
   }
@@ -494,7 +634,7 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-/* ── Legacy middleware alias — kept for any internal usage ── */
+/* ── Legacy middleware alias ── */
 export async function requireUserAuth(req: Request, res: Response, next: NextFunction) {
   return customerAuth(req, res, next);
 }

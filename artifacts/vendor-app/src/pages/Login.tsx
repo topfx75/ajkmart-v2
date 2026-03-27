@@ -54,9 +54,9 @@ export default function Login() {
   const doLogin = async (res: any) => {
     if (!checkVendorRole(res)) return;
     if (res.pendingApproval) { setStep("pending"); return; }
-    localStorage.setItem("vendor_token", res.token);
+    api.storeTokens(res.token, res.refreshToken);
     const profile = await api.getMe();
-    login(res.token, profile);
+    login(res.token, profile, res.refreshToken);
   };
 
   /* Phone OTP */

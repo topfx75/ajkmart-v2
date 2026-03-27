@@ -20,3 +20,5 @@ export * from "./ride_service_types";
 export * from "./popular_locations";
 export * from "./school_routes";
 export * from "./ride_event_logs";
+export * from "./refresh_tokens";
+export * from "./auth_audit_log";

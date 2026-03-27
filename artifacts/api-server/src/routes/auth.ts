@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable } from "@workspace/db/schema";
+import { eq, and, sql, lt } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import {
@@ -13,7 +13,15 @@ import {
   getClientIp,
   getCachedSettings,
   signUserJwt,
+  signAccessToken,
+  generateRefreshToken,
+  hashRefreshToken,
+  isRefreshTokenValid,
+  revokeRefreshToken,
+  revokeAllUserRefreshTokens,
   verifyUserJwt,
+  writeAuthAuditLog,
+  REFRESH_TOKEN_TTL_DAYS,
 } from "../middleware/security.js";
 import { sendOtpSMS } from "../services/sms.js";
 import { sendWhatsAppOTP } from "../services/whatsapp.js";
@@ -94,10 +102,8 @@ router.post("/send-otp", async (req, res) => {
   const otp       = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-  /* Atomic upsert — prevents duplicate accounts even under concurrent
-     requests because the DB unique constraint on phone is the final
-     authority.  If a row with this phone already exists, we ONLY update
-     the OTP fields; we never touch role, wallet, or any other data. */
+  /* Atomic upsert — any previously issued OTP is overwritten (invalidated),
+     so it cannot be used after a new OTP is requested. */
   await db
     .insert(usersTable)
     .values({
@@ -105,6 +111,7 @@ router.post("/send-otp", async (req, res) => {
       phone,
       otpCode:        otp,
       otpExpiry,
+      otpUsed:        false,
       role:           "customer",
       roles:          "customer",
       walletBalance:  "0",
@@ -116,10 +123,12 @@ router.post("/send-otp", async (req, res) => {
       set: {
         otpCode:   otp,
         otpExpiry,
+        otpUsed:   false,
         updatedAt: new Date(),
       },
     });
 
+  writeAuthAuditLog("otp_sent", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
   req.log.info({ phone, otp }, "OTP sent");
 
   /* ── Send OTP via SMS ── */
@@ -201,102 +210,103 @@ router.post("/verify-otp", async (req, res) => {
   const phoneVerifyRequired = settings["security_phone_verify"] === "on";
   const otpBypass = settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
 
-  /* ── OTP expiry check FIRST — prevents timing oracle.
-     If expiry is checked after the code comparison, a correct-but-expired OTP
-     yields a different error than a wrong OTP, leaking that the attacker has
-     the right code (same fix already applied to the email OTP flow). ── */
-  if (!otpBypass && user.otpExpiry && new Date() > user.otpExpiry) {
-    res.status(401).json({ error: "OTP expired. Please request a new one." });
-    return;
-  }
-
-  /* ── OTP code check ── */
-  if (!otpBypass && user.otpCode !== otp) {
-    const updated = recordFailedAttempt(phone, maxAttempts, lockoutMinutes);
-    const remaining = maxAttempts - updated.attempts;
-
-    addAuditEntry({ action: "verify_otp_failed", ip, details: `Wrong OTP for phone: ${phone}, attempt ${updated.attempts}/${maxAttempts}`, result: "fail" });
-
-    if (updated.lockedUntil) {
-      addSecurityEvent({ type: "account_locked", ip, userId: user.id, details: `Account locked after ${maxAttempts} failed OTP attempts`, severity: "high" });
-      res.status(429).json({
-        error: `Too many failed attempts. Account locked for ${lockoutMinutes} minutes.`,
-        lockedMinutes: lockoutMinutes,
-      });
-    } else {
-      res.status(401).json({
-        error: `Invalid OTP. ${remaining > 0 ? `${remaining} attempt(s) remaining before lockout.` : "Next failure will lock your account."}`,
-        attemptsRemaining: Math.max(0, remaining),
-      });
-    }
-    return;
-  }
-
-  /* ── Multi-device check ── */
-  if (settings["security_multi_device"] === "off") {
-    /* Single-device: invalidate existing sessions by rotating the token seed.
-       We achieve this by storing a session seed in the OTP field temporarily.
-       On future token validation, we can check this. For now, we clear
-       any pending OTP which signals last-login is this session. */
-  }
-
-  /* ── Success: clear OTP + update last login atomically ──
-     Using lastLoginAt IS NULL as an atomic gate to detect and credit the
-     signup bonus exactly once — prevents double-credit from concurrent OTP
-     verify requests.  SQL arithmetic (wallet_balance + N) ensures the
-     credit uses the current DB value, not a stale in-memory snapshot. ── */
+  /* ── Atomic OTP consumption via a single conditional UPDATE ──
+     The WHERE clause combines: correct code + not-yet-used + not-expired.
+     Concurrency-safe: only the first concurrent caller gets rows back.
+     On bypass mode we skip the OTP check entirely. ── */
   const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
   const now = new Date();
 
-  await db.transaction(async (tx) => {
-    /* Atomically mark first login — only succeeds once (WHERE lastLoginAt IS NULL) */
-    const updated = await tx
-      .update(usersTable)
-      .set({ otpCode: null, otpExpiry: null, lastLoginAt: now })
-      .where(and(eq(usersTable.phone, phone), isNull(usersTable.lastLoginAt)))
-      .returning({ id: usersTable.id });
+  let isActualFirstLogin = false;
 
-    const isActualFirstLogin = updated.length > 0;
-
-    if (!isActualFirstLogin) {
-      /* Not first login — just clear OTP without touching lastLoginAt */
-      await tx
+  if (!otpBypass) {
+    const consumed = await db.transaction(async (tx) => {
+      /* Single atomic UPDATE: marks OTP as used ONLY if code matches, unused, and unexpired.
+         Returns the row if consumed, empty if already used / wrong code / expired. */
+      const rows = await tx
         .update(usersTable)
-        .set({ otpCode: null, otpExpiry: null })
-        .where(eq(usersTable.phone, phone));
-    }
+        .set({ otpCode: null, otpExpiry: null, otpUsed: true, phoneVerified: true, lastLoginAt: now })
+        .where(and(
+          eq(usersTable.phone, phone),
+          eq(usersTable.otpCode, otp),
+          eq(usersTable.otpUsed, false),
+          sql`otp_expiry > now()`,
+        ))
+        .returning({ id: usersTable.id, lastLoginAt: usersTable.lastLoginAt });
 
-    /* Credit signup bonus only on verified first login */
-    if (isActualFirstLogin && signupBonus > 0) {
-      await tx
-        .update(usersTable)
-        .set({ walletBalance: sql`wallet_balance + ${signupBonus}` })
-        .where(eq(usersTable.id, user.id));
-      await tx.insert(walletTransactionsTable).values({
-        id: generateId(), userId: user.id, type: "bonus",
-        amount: signupBonus.toFixed(2),
-        description: `Welcome bonus — Thanks for joining AJKMart!`,
-      });
-      await tx.insert(notificationsTable).values({
-        id: generateId(), userId: user.id,
-        title: "Welcome Bonus! 🎁", body: `Rs. ${signupBonus} has been added to your wallet as a welcome bonus!`,
-        type: "wallet", icon: "gift-outline",
-      });
+      if (rows.length === 0) return null;
+
+      /* This is the first login if lastLoginAt was NULL before we set it now.
+         We detect first login by checking if no prior refresh tokens exist. */
+      const [existingToken] = await tx.select({ id: refreshTokensTable.id })
+        .from(refreshTokensTable)
+        .where(eq(refreshTokensTable.userId, rows[0]!.id))
+        .limit(1);
+      isActualFirstLogin = !existingToken;
+
+      /* Credit signup bonus only on verified first login */
+      if (isActualFirstLogin && signupBonus > 0) {
+        await tx
+          .update(usersTable)
+          .set({ walletBalance: sql`wallet_balance + ${signupBonus}` })
+          .where(eq(usersTable.id, rows[0]!.id));
+        await tx.insert(walletTransactionsTable).values({
+          id: generateId(), userId: rows[0]!.id, type: "bonus",
+          amount: signupBonus.toFixed(2),
+          description: `Welcome bonus — Thanks for joining AJKMart!`,
+        });
+        await tx.insert(notificationsTable).values({
+          id: generateId(), userId: rows[0]!.id,
+          title: "Welcome Bonus! 🎁", body: `Rs. ${signupBonus} has been added to your wallet as a welcome bonus!`,
+          type: "wallet", icon: "gift-outline",
+        });
+      }
+
+      return rows[0];
+    });
+
+    if (!consumed) {
+      /* OTP was wrong, already used, or expired — determine reason from fresh row */
+      const [fresh] = await db.select({ otpUsed: usersTable.otpUsed, otpExpiry: usersTable.otpExpiry })
+        .from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+
+      if (fresh?.otpUsed) {
+        writeAuthAuditLog("otp_reuse_attempt", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
+        res.status(401).json({ error: "This OTP has already been used. Please request a new one." });
+      } else if (!fresh?.otpExpiry || new Date() > fresh.otpExpiry) {
+        writeAuthAuditLog("otp_expired", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
+        res.status(401).json({ error: "OTP expired. Please request a new one." });
+      } else {
+        const updated = recordFailedAttempt(phone, maxAttempts, lockoutMinutes);
+        const remaining = maxAttempts - updated.attempts;
+        addAuditEntry({ action: "verify_otp_failed", ip, details: `Wrong OTP for phone: ${phone}, attempt ${updated.attempts}/${maxAttempts}`, result: "fail" });
+        writeAuthAuditLog("otp_failed", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
+        if (updated.lockedUntil) {
+          addSecurityEvent({ type: "account_locked", ip, userId: user.id, details: `Account locked after ${maxAttempts} failed OTP attempts`, severity: "high" });
+          res.status(429).json({ error: `Too many failed attempts. Account locked for ${lockoutMinutes} minutes.`, lockedMinutes: lockoutMinutes });
+        } else {
+          res.status(401).json({
+            error: `Invalid OTP. ${remaining > 0 ? `${remaining} attempt(s) remaining before lockout.` : "Next failure will lock your account."}`,
+            attemptsRemaining: Math.max(0, remaining),
+          });
+        }
+      }
+      return;
     }
-  });
+  } else {
+    /* OTP bypass mode — still mark verified and update last login */
+    await db.update(usersTable)
+      .set({ phoneVerified: true, lastLoginAt: now })
+      .where(eq(usersTable.phone, phone));
+  }
 
   resetAttempts(phone);
-
-  /* ── Mark phone as verified ── */
-  await db.update(usersTable)
-    .set({ phoneVerified: true })
-    .where(and(eq(usersTable.phone, phone)));
 
   /* ── Admin approval check ── */
   const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
   if (requireApproval && user.approvalStatus === "pending") {
-    addAuditEntry({ action: "user_login_pending", ip, details: `Pending approval login for phone: ${phone}`, result: "warn" });
-    const token = signUserJwt(user.id, phone, user.role ?? "customer", user.roles ?? "customer", 1);
+    addAuditEntry({ action: "user_login_pending", ip, details: `Pending approval login for phone: ${phone}`, result: "pending" });
+    const token = signAccessToken(user.id, phone, user.role ?? "customer", user.roles ?? "customer", user.tokenVersion ?? 0);
     res.json({
       token, pendingApproval: true,
       message: "Aapka account admin approval ke liye bheja gaya hai. Approve hone par aap login kar sakenge.",
@@ -310,21 +320,30 @@ router.post("/verify-otp", async (req, res) => {
   }
 
   addAuditEntry({ action: "user_login", ip, details: `Successful login for phone: ${phone} (role: ${user.role})`, result: "success" });
+  writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone, role: user.role } });
 
-  /* ── Role-specific session duration ── */
-  const sessionDays = user.role === "rider"
-    ? parseInt(settings["security_rider_token_days"] ?? "30", 10)
-    : parseInt(settings["security_session_days"]     ?? "30", 10);
+  /* ── Issue short-lived access token + long-lived refresh token ── */
+  const accessToken  = signAccessToken(user.id, phone, user.role ?? "customer", user.roles ?? user.role ?? "customer", user.tokenVersion ?? 0);
+  const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  /* ── Build signed JWT ── */
-  const token = signUserJwt(user.id, phone, user.role ?? "customer", user.roles ?? user.role ?? "customer", sessionDays);
-  const issuedAt = Date.now();
-  const expiresAt = new Date(issuedAt + sessionDays * 24 * 60 * 60 * 1000).toISOString();
+  await db.insert(refreshTokensTable).values({
+    id:        generateId(),
+    userId:    user.id,
+    tokenHash: refreshHash,
+    expiresAt: refreshExpiresAt,
+  });
+
+  /* Clean up expired refresh tokens for this user (housekeeping) */
+  db.delete(refreshTokensTable)
+    .where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date())))
+    .catch(() => {});
 
   res.json({
-    token,
-    expiresAt,
-    sessionDays,
+    token:        accessToken,
+    refreshToken: refreshRaw,
+    expiresAt:    new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    sessionDays:  REFRESH_TOKEN_TTL_DAYS,
     user: {
       id:            user.id,
       phone:         user.phone,
@@ -373,24 +392,106 @@ router.post("/validate-token", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────
+   POST /auth/refresh
+   Exchange a valid refresh token for a new access token.
+   Body: { refreshToken }
+   On success: returns { token, expiresAt }
+   Refresh tokens are rotated on use (old one revoked, new one issued).
+───────────────────────────────────────────────────────────── */
+router.post("/refresh", async (req, res) => {
+  const { refreshToken } = req.body;
+  const ip = getClientIp(req);
+
+  if (!refreshToken) {
+    res.status(400).json({ error: "refreshToken required" });
+    return;
+  }
+
+  const tokenHash = hashRefreshToken(refreshToken);
+  const [rt] = await db.select().from(refreshTokensTable).where(eq(refreshTokensTable.tokenHash, tokenHash)).limit(1);
+
+  if (!rt) {
+    writeAuthAuditLog("refresh_failed_not_found", { ip, userAgent: req.headers["user-agent"] ?? undefined });
+    res.status(401).json({ error: "Invalid refresh token. Please log in again." });
+    return;
+  }
+
+  if (rt.revokedAt) {
+    /* Token reuse detected — revoke all tokens for this user (possible token theft) */
+    await revokeAllUserRefreshTokens(rt.userId);
+    writeAuthAuditLog("refresh_token_reuse", { userId: rt.userId, ip, userAgent: req.headers["user-agent"] ?? undefined });
+    addSecurityEvent({ type: "refresh_token_reuse", ip, userId: rt.userId, details: "Refresh token reuse detected — all sessions revoked", severity: "high" });
+    res.status(401).json({ error: "Session invalidated for security. Please log in again." });
+    return;
+  }
+
+  if (new Date() > rt.expiresAt) {
+    await revokeRefreshToken(tokenHash);
+    writeAuthAuditLog("refresh_token_expired", { userId: rt.userId, ip });
+    res.status(401).json({ error: "Session expired. Please log in again." });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, rt.userId)).limit(1);
+  if (!user || user.isBanned || !user.isActive) {
+    await revokeRefreshToken(tokenHash);
+    res.status(401).json({ error: "Account not available. Please log in again." });
+    return;
+  }
+
+  /* Rotate: revoke old token and issue a new one */
+  await revokeRefreshToken(tokenHash);
+
+  const newAccessToken = signAccessToken(user.id, user.phone, user.role ?? "customer", user.roles ?? user.role ?? "customer", user.tokenVersion ?? 0);
+  const { raw: newRefreshRaw, hash: newRefreshHash } = generateRefreshToken();
+  const newRefreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  await db.insert(refreshTokensTable).values({
+    id:        generateId(),
+    userId:    user.id,
+    tokenHash: newRefreshHash,
+    expiresAt: newRefreshExpiresAt,
+  });
+
+  writeAuthAuditLog("token_refresh", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
+
+  res.json({
+    token:        newAccessToken,
+    refreshToken: newRefreshRaw,
+    expiresAt:    new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+  });
+});
+
+/* ─────────────────────────────────────────────────────────────
    POST /auth/logout
-   Requires a valid JWT in the Authorization header.
-   The token itself is stateless; logout just clears any pending OTP
-   and records the audit event.  The client must discard the token.
+   Revokes the refresh token and clears OTP. Client must discard tokens.
 ───────────────────────────────────────────────────────────── */
 router.post("/logout", async (req, res) => {
   const authHeader = req.headers["authorization"] as string | undefined;
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const raw = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
+  const { refreshToken } = req.body ?? {};
+  const ip = getClientIp(req);
 
   if (raw) {
     const payload = verifyUserJwt(raw);
     if (payload) {
-      await db.update(usersTable).set({ otpCode: null }).where(eq(usersTable.id, payload.userId));
-      addAuditEntry({ action: "user_logout", ip: getClientIp(req), details: `User logout: ${payload.userId}`, result: "success" });
+      /* Increment tokenVersion to immediately invalidate ALL outstanding access JWTs for this user */
+      await db.update(usersTable)
+        .set({ otpCode: null, tokenVersion: sql`token_version + 1` })
+        .where(eq(usersTable.id, payload.userId));
+      addAuditEntry({ action: "user_logout", ip, details: `User logout: ${payload.userId}`, result: "success" });
+      writeAuthAuditLog("logout", { userId: payload.userId, ip, userAgent: req.headers["user-agent"] ?? undefined });
     }
   }
-  /* Always respond 200 — client should discard its token regardless */
+
+  /* Revoke all refresh tokens for this user if refreshToken provided */
+  if (refreshToken) {
+    const tokenHash = hashRefreshToken(refreshToken);
+    await revokeRefreshToken(tokenHash).catch(() => {});
+    writeAuthAuditLog("token_revoked", { ip });
+  }
+
   res.json({ success: true, message: "Logged out successfully" });
 });
 
@@ -573,23 +674,31 @@ router.post("/verify-email-otp", async (req, res) => {
   const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
   const isPendingApproval = requireApproval && user.approvalStatus === "pending";
 
-  /* Pending-approval users get a short-lived 1-day token — same as phone OTP flow */
-  const sessionDays = isPendingApproval ? 1 : parseInt(settings["security_session_days"] ?? "30", 10);
-  const token = signUserJwt(user.id, user.phone ?? normalized, user.role ?? "customer", user.roles ?? "customer", sessionDays);
-  const expiresAt = new Date(Date.now() + sessionDays * 86400000).toISOString();
+  /* Issue short-lived access token + refresh token (consistent with OTP flow) */
+  const accessToken = signAccessToken(user.id, user.phone ?? normalized, user.role ?? "customer", user.roles ?? "customer", user.tokenVersion ?? 0);
+  const expiresAt   = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   if (isPendingApproval) {
     res.json({
-      token, expiresAt, pendingApproval: true,
+      token: accessToken, expiresAt, pendingApproval: true,
       message: "Aapka account admin approval ke liye bheja gaya hai.",
       user: { id: user.id, phone: user.phone, name: user.name, role: user.role, approvalStatus: "pending" },
     });
     return;
   }
 
+  const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+  await db.insert(refreshTokensTable).values({ id: generateId(), userId: user.id, tokenHash: refreshHash, expiresAt: refreshExpiresAt });
+  db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch(() => {});
+
+  writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { method: "email_otp" } });
+
   res.json({
-    token,
+    token:        accessToken,
+    refreshToken: refreshRaw,
     expiresAt,
+    sessionDays:  REFRESH_TOKEN_TTL_DAYS,
     pendingApproval: false,
     user: { id: user.id, phone: user.phone, name: user.name, email: user.email, username: user.username, role: user.role, roles: user.roles, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"), emailVerified: true, phoneVerified: user.phoneVerified ?? false },
   });
@@ -650,22 +759,30 @@ router.post("/login/username", async (req, res) => {
 
   const isPendingApproval = (settings["user_require_approval"] ?? "off") === "on" && user.approvalStatus === "pending";
 
-  /* Pending-approval users get a short-lived 1-day token — consistent with OTP flows */
-  const sessionDays = isPendingApproval ? 1 : parseInt(settings["security_session_days"] ?? "30", 10);
-  const token = signUserJwt(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? "customer", sessionDays);
+  const accessToken = signAccessToken(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? "customer", user.tokenVersion ?? 0);
+  const expiresAt   = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   if (isPendingApproval) {
     res.json({
-      token, expiresAt: new Date(Date.now() + 86400000).toISOString(), pendingApproval: true,
+      token: accessToken, expiresAt, pendingApproval: true,
       message: "Aapka account admin approval ke liye bheja gaya hai.",
       user: { id: user.id, phone: user.phone, name: user.name, role: user.role, approvalStatus: "pending" },
     });
     return;
   }
 
+  const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+  await db.insert(refreshTokensTable).values({ id: generateId(), userId: user.id, tokenHash: refreshHash, expiresAt: refreshExpiresAt });
+  db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch(() => {});
+
+  writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { method: "username_password" } });
+
   res.json({
-    token,
-    expiresAt: new Date(Date.now() + sessionDays * 86400000).toISOString(),
+    token:        accessToken,
+    refreshToken: refreshRaw,
+    expiresAt,
+    sessionDays:  REFRESH_TOKEN_TTL_DAYS,
     pendingApproval: false,
     user: { id: user.id, phone: user.phone, name: user.name, email: user.email, username: user.username, role: user.role, roles: user.roles, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"), emailVerified: user.emailVerified ?? false, phoneVerified: user.phoneVerified ?? false },
   });

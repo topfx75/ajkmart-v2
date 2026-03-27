@@ -118,7 +118,7 @@ export default function AuthScreen() {
       const res = await verifyOtp({ phone, otp });
       if (res.pendingApproval) { setPendingToken(res.token); setStep("pending"); return; }
       if (!res.user.name) { setPendingToken(res.token); setStep("complete-profile"); return; }
-      await login(res.user as any, res.token);
+      await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
     } catch (e: any) { setError(e.message || "OTP galat hai. Dobara try karein."); }
     setLoading(false);
@@ -145,7 +145,7 @@ export default function AuthScreen() {
       const res = await authPost("/auth/verify-email-otp", { email, otp: emailOtp });
       if (res.pendingApproval) { setPendingToken(res.token); setStep("pending"); return; }
       if (!res.user.name) { setPendingToken(res.token); setStep("complete-profile"); return; }
-      await login(res.user as any, res.token);
+      await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
     } catch (e: any) { setError(e.message || "OTP galat hai."); }
     setLoading(false);
@@ -160,7 +160,7 @@ export default function AuthScreen() {
     try {
       const res = await authPost("/auth/login/username", { username, password });
       if (res.pendingApproval) { setPendingToken(res.token); setStep("pending"); return; }
-      await login(res.user as any, res.token);
+      await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
     } catch (e: any) { setError(e.message || "Username ya password galat hai."); }
     setLoading(false);

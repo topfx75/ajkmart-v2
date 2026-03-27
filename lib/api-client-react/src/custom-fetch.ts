@@ -17,6 +17,9 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _onUnauthorized: (() => void) | null = null;
+let _refreshTokenGetter: (() => Promise<string | null> | string | null) | null = null;
+let _onTokenRefreshed: ((newToken: string, newRefreshToken: string) => void) | null = null;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -39,6 +42,30 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Register a callback to invoke whenever a 401 response is received and
+ * the token refresh attempt also fails. Typically used to trigger logout.
+ */
+export function setOnUnauthorized(handler: (() => void) | null): void {
+  _onUnauthorized = handler;
+}
+
+/**
+ * Register a getter that supplies the current refresh token.
+ * Used to silently refresh the access token on 401 responses.
+ */
+export function setRefreshTokenGetter(getter: (() => Promise<string | null> | string | null) | null): void {
+  _refreshTokenGetter = getter;
+}
+
+/**
+ * Register a callback invoked with the new access and refresh tokens
+ * when a silent token refresh succeeds.
+ */
+export function setOnTokenRefreshed(callback: ((newToken: string, newRefreshToken: string) => void) | null): void {
+  _onTokenRefreshed = callback;
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -319,9 +346,33 @@ async function parseSuccessBody(
   }
 }
 
+type TokenRefreshResult = { token: string; newRefreshToken: string };
+
+async function attemptTokenRefresh(baseUrl: string | null): Promise<TokenRefreshResult | null> {
+  if (!_refreshTokenGetter) return null;
+  const refreshToken = await _refreshTokenGetter();
+  if (!refreshToken) return null;
+
+  const refreshUrl = baseUrl ? `${baseUrl}/api/auth/refresh` : "/api/auth/refresh";
+  try {
+    const res = await fetch(refreshUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { token?: string; refreshToken?: string };
+    if (!data.token) return null;
+    return { token: data.token, newRefreshToken: data.refreshToken ?? refreshToken };
+  } catch {
+    return null;
+  }
+}
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
+  _isRetry = false,
 ): Promise<T> {
   input = applyBaseUrl(input);
   const { responseType = "auto", headers: headersInit, ...init } = options;
@@ -359,8 +410,29 @@ export async function customFetch<T = unknown>(
 
   const response = await fetch(input, { ...init, method, headers });
 
+  if (response.status === 401 && !_isRetry) {
+    // Try to silently refresh the access token once
+    const refreshResult = await attemptTokenRefresh(_baseUrl);
+    if (refreshResult) {
+      const { token: newToken, newRefreshToken } = refreshResult;
+      // Update the token getter and notify the app
+      setAuthTokenGetter(() => newToken);
+      if (_onTokenRefreshed) _onTokenRefreshed(newToken, newRefreshToken);
+      // Retry the original request with the new token
+      return customFetch<T>(input, options, true);
+    }
+    // Refresh failed — notify the app to logout
+    if (_onUnauthorized) _onUnauthorized();
+    const errorData = await parseErrorBody(response, method);
+    throw new ApiError(response, errorData, requestInfo);
+  }
+
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
+    /* 403 from role/ban denial — clear local session (same as 401 after failed refresh) */
+    if (response.status === 403 && _onUnauthorized) {
+      _onUnauthorized();
+    }
     throw new ApiError(response, errorData, requestInfo);
   }
 

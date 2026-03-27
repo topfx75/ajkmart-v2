@@ -1,6 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
+import {
+  setAuthTokenGetter,
+  setOnUnauthorized,
+  setRefreshTokenGetter,
+  setOnTokenRefreshed,
+} from "@workspace/api-client-react";
 
 export type UserRole = "customer" | "rider" | "vendor";
 
@@ -20,10 +25,14 @@ interface AuthContextType {
   user: AppUser | null;
   token: string | null;
   isLoading: boolean;
-  login: (user: AppUser, token: string) => Promise<void>;
+  login: (user: AppUser, token: string, refreshToken?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<AppUser>) => void;
 }
+
+const TOKEN_KEY         = "@ajkmart_token";
+const REFRESH_TOKEN_KEY = "@ajkmart_refresh_token";
+const USER_KEY          = "@ajkmart_user";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -32,21 +41,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  /* Register the token getter so all generated API hooks get auth automatically */
-  const registerToken = (tok: string | null) => {
-    setAuthTokenGetter(tok ? () => tok : null);
+  const doLogout = async () => {
+    await AsyncStorage.multiRemove([USER_KEY, TOKEN_KEY, REFRESH_TOKEN_KEY]);
+    setUser(null);
+    setToken(null);
+    setAuthTokenGetter(null);
+    setRefreshTokenGetter(null);
+    setOnTokenRefreshed(null);
+    setOnUnauthorized(null);
+  };
+
+  const registerAuth = (tok: string, refreshTok: string | null) => {
+    setAuthTokenGetter(() => tok);
+    setRefreshTokenGetter(refreshTok ? () => refreshTok : null);
+
+    setOnTokenRefreshed(async (newToken: string, newRefreshToken: string) => {
+      setToken(newToken);
+      await AsyncStorage.setItem(TOKEN_KEY, newToken);
+      if (newRefreshToken) {
+        await AsyncStorage.setItem(REFRESH_TOKEN_KEY, newRefreshToken);
+        setRefreshTokenGetter(() => newRefreshToken);
+      }
+      setAuthTokenGetter(() => newToken);
+    });
+
+    setOnUnauthorized(() => {
+      doLogout();
+    });
   };
 
   useEffect(() => {
     const loadAuth = async () => {
       try {
-        const [storedUser, storedToken] = await AsyncStorage.multiGet(["@ajkmart_user", "@ajkmart_token"]);
-        if (storedUser[1] && storedToken[1]) {
-          const parsedUser = JSON.parse(storedUser[1]);
-          const parsedToken = storedToken[1];
+        const [[, storedUser], [, storedToken], [, storedRefresh]] = await AsyncStorage.multiGet([
+          USER_KEY,
+          TOKEN_KEY,
+          REFRESH_TOKEN_KEY,
+        ]);
+        if (storedUser && storedToken) {
+          const parsedUser = JSON.parse(storedUser);
           setUser(parsedUser);
-          setToken(parsedToken);
-          registerToken(parsedToken);
+          setToken(storedToken);
+          registerAuth(storedToken, storedRefresh);
         }
       } catch {}
       setIsLoading(false);
@@ -54,28 +90,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadAuth();
   }, []);
 
-  const login = async (userData: AppUser, userToken: string) => {
-    await AsyncStorage.multiSet([
-      ["@ajkmart_user", JSON.stringify(userData)],
-      ["@ajkmart_token", userToken],
-    ]);
+  const login = async (userData: AppUser, userToken: string, refreshToken?: string) => {
+    const pairs: [string, string][] = [
+      [USER_KEY, JSON.stringify(userData)],
+      [TOKEN_KEY, userToken],
+    ];
+    if (refreshToken) pairs.push([REFRESH_TOKEN_KEY, refreshToken]);
+    await AsyncStorage.multiSet(pairs);
     setUser(userData);
     setToken(userToken);
-    registerToken(userToken);
+    registerAuth(userToken, refreshToken ?? null);
   };
 
   const logout = async () => {
-    await AsyncStorage.multiRemove(["@ajkmart_user", "@ajkmart_token"]);
-    setUser(null);
-    setToken(null);
-    registerToken(null);
+    await doLogout();
   };
 
   const updateUser = (updates: Partial<AppUser>) => {
     if (user) {
       const updated = { ...user, ...updates };
       setUser(updated);
-      AsyncStorage.setItem("@ajkmart_user", JSON.stringify(updated));
+      AsyncStorage.setItem(USER_KEY, JSON.stringify(updated));
     }
   };
 

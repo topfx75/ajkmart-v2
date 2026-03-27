@@ -1,4 +1,4 @@
-import { boolean, check, decimal, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, check, decimal, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -15,6 +15,7 @@ export const usersTable = pgTable("users", {
   /* ── OTP fields (phone verification) ── */
   otpCode:         text("otp_code"),
   otpExpiry:       timestamp("otp_expiry"),
+  otpUsed:         boolean("otp_used").notNull().default(false),
   /* ── Email OTP (separate from phone OTP) ── */
   emailOtpCode:    text("email_otp_code"),
   emailOtpExpiry:  timestamp("email_otp_expiry"),
@@ -55,6 +56,8 @@ export const usersTable = pgTable("users", {
   bankAccount:       text("bank_account"),
   bankAccountTitle:  text("bank_account_title"),
   businessType:      text("business_type"),
+  /* ── Token version — incremented on logout/ban/role change to invalidate access JWTs ── */
+  tokenVersion:    integer("token_version").notNull().default(0),
   lastLoginAt:       timestamp("last_login_at"),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
   updatedAt:       timestamp("updated_at").notNull().defaultNow(),

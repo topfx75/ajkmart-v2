@@ -4,7 +4,7 @@ import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransact
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { verifyUserJwt } from "../middleware/security.js";
+import { verifyUserJwt, writeAuthAuditLog, getClientIp } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -13,21 +13,37 @@ async function vendorAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers["authorization"];
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
+  const ip = getClientIp(req);
 
   if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
 
   const payload = verifyUserJwt(raw);
-  if (!payload) { res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return; }
+  if (!payload) {
+    writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, role: "vendor" } });
+    res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return;
+  }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ error: "User not found" }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account suspended by admin" }); return; }
-  if (user.isBanned)  { res.status(403).json({ error: "Account is banned" }); return; }
+  if (!user.isActive) {
+    writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
+    res.status(403).json({ error: "Account suspended by admin" }); return;
+  }
+  if (user.isBanned) {
+    writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
+    res.status(403).json({ error: "Account is banned" }); return;
+  }
 
-  /* Enforce vendor role — check BOTH the JWT claim and the DB roles field */
+  /* Token version check — invalidates access JWTs on logout/ban/role change */
+  if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
+    writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
+    res.status(401).json({ error: "Session revoked. Please log in again." }); return;
+  }
+
+  /* Enforce vendor role from the authoritative DB field */
   const dbRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
-  const jwtRoles = (payload.roles || payload.role || "").split(",").map((r: string) => r.trim());
-  if (!dbRoles.includes("vendor") || !jwtRoles.includes("vendor")) {
+  if (!dbRoles.includes("vendor")) {
+    writeAuthAuditLog("auth_denied_role", { userId: user.id, ip, metadata: { required: "vendor", actual: user.roles, url: req.url } });
     res.status(403).json({ error: "Access denied. Vendor role required." }); return;
   }
 

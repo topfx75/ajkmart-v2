@@ -19,6 +19,8 @@ import {
   schoolRoutesTable,
   schoolSubscriptionsTable,
   liveLocationsTable,
+  authAuditLogTable,
+  refreshTokensTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
@@ -33,6 +35,10 @@ import {
   loginAttempts,
   unlockPhone,
   invalidateSettingsCache,
+  signAdminJwt,
+  verifyAdminJwt,
+  writeAuthAuditLog,
+  ADMIN_TOKEN_TTL_HRS,
 } from "../middleware/security.js";
 import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri } from "../services/totp.js";
 
@@ -406,7 +412,14 @@ export async function getPlatformSettings(): Promise<Record<string, string>> {
 
 const router: IRouter = Router();
 
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "ajkmart-admin-2025";
+export function getAdminSecret(): string {
+  const s = process.env.ADMIN_SECRET;
+  if (!s || s.length < 16) {
+    console.error("[AUTH] FATAL: ADMIN_SECRET environment variable must be set and ≥16 characters.");
+    process.exit(1);
+  }
+  return s;
+}
 
 /* ── Admin login brute-force protection (in-memory, per IP) ── */
 const adminLoginAttempts = new Map<string, { count: number; lockedUntil: number | null }>();
@@ -438,16 +451,14 @@ function resetAdminLoginAttempts(ip: string) {
 }
 
 async function adminAuth(req: Request, res: Response, next: NextFunction) {
-  const ip   = getClientIp(req);
-  const auth = String(req.headers["x-admin-secret"] || "");
+  const ip = getClientIp(req);
 
-  if (!auth) {
-    addAuditEntry({ action: "admin_auth_missing", ip, details: `No admin secret provided for ${req.method} ${req.url}`, result: "fail" });
-    res.status(401).json({ error: "Unauthorized. Admin secret is required." });
-    return;
-  }
+  /* ── Prefer new signed admin JWT (x-admin-token header) ── */
+  const adminTokenHeader = String(req.headers["x-admin-token"] || "");
+  /* ── Backward-compat: also accept x-admin-secret (the old static secret) ── */
+  const adminSecretHeader = String(req.headers["x-admin-secret"] || "");
 
-  /* ── Load settings for IP whitelist & token expiry checks ── */
+  /* Load settings for IP whitelist check */
   const settings = await getPlatformSettings();
 
   /* ── Admin IP Whitelist ── */
@@ -458,71 +469,117 @@ async function adminAuth(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  /* ── Super admin via master secret ── */
-  if (auth === ADMIN_SECRET) {
-    req.adminRole = "super";
-    req.adminIp!   = ip;
-    addAuditEntry({ action: "admin_login", ip, details: `Super admin accessed ${req.method} ${req.url}`, result: "success" });
-    next();
-    return;
-  }
-
-  /* ── Sub-admin via stored secret ── */
-  const [sub] = await db.select().from(adminAccountsTable)
-    .where(and(eq(adminAccountsTable.secret, auth), eq(adminAccountsTable.isActive, true)))
-    .limit(1);
-
-  if (sub) {
-    /* ── Admin token expiry check ── */
-    const tokenHrs = parseInt(settings["security_admin_token_hrs"] ?? "24", 10);
-    if (sub.lastLoginAt) {
-      const msSinceLogin = Date.now() - sub.lastLoginAt.getTime();
-      const maxMs = tokenHrs * 60 * 60 * 1000;
-      if (msSinceLogin > maxMs) {
-        addAuditEntry({ action: "admin_token_expired", ip, adminId: sub.id, details: `Admin token expired for ${sub.name} (${tokenHrs}h limit)`, result: "fail" });
-        res.status(401).json({ error: `Admin session expired after ${tokenHrs} hours. Please re-authenticate.` });
-        return;
-      }
+  /* ── 1. Try new signed admin JWT ── */
+  if (adminTokenHeader) {
+    const adminPayload = verifyAdminJwt(adminTokenHeader);
+    if (!adminPayload) {
+      addAuditEntry({ action: "admin_jwt_invalid", ip, details: `Invalid admin JWT for ${req.method} ${req.url}`, result: "fail" });
+      addSecurityEvent({ type: "invalid_admin_jwt", ip, details: `Invalid/expired admin JWT used for ${req.url}`, severity: "high" });
+      res.status(401).json({ error: "Admin session expired or invalid. Please log in again." });
+      return;
     }
 
-    /* ── TOTP / MFA check ── */
-    const mfaEnabled   = settings["security_mfa_required"] === "on";
-    const totpEnabled  = sub.totpEnabled && sub.totpSecret;
-    if (mfaEnabled && totpEnabled) {
-      const totpHeader = String(req.headers["x-admin-totp"] || "");
-      /* Allow MFA setup endpoints without TOTP check */
-      const isMfaRoute = req.url.includes("/mfa/");
-      if (!isMfaRoute) {
-        if (!totpHeader) {
-          res.status(401).json({
-            error: "MFA required. Please provide your TOTP code in the x-admin-totp header.",
-            mfaRequired: true,
-          });
-          return;
-        }
-        const valid = verifyTotpToken(totpHeader, sub.totpSecret!);
-        if (!valid) {
-          addAuditEntry({ action: "admin_totp_failed", ip, adminId: sub.id, details: `Invalid TOTP for ${sub.name}`, result: "fail" });
-          addSecurityEvent({ type: "invalid_admin_totp", ip, userId: sub.id, details: `Wrong TOTP code used by ${sub.name}`, severity: "high" });
-          res.status(401).json({ error: "Invalid TOTP code. Please try again with your authenticator app." });
-          return;
+    /* ── TOTP / MFA check for JWT-based sessions ── */
+    if (adminPayload.adminId) {
+      const mfaEnabled = settings["security_mfa_required"] === "on";
+      const [sub] = await db.select().from(adminAccountsTable)
+        .where(eq(adminAccountsTable.id, adminPayload.adminId))
+        .limit(1);
+      if (sub && mfaEnabled && sub.totpEnabled && sub.totpSecret) {
+        const totpHeader = String(req.headers["x-admin-totp"] || "");
+        const isMfaRoute = req.url.includes("/mfa/");
+        if (!isMfaRoute) {
+          if (!totpHeader) {
+            res.status(401).json({ error: "MFA required. Please provide your TOTP code.", mfaRequired: true });
+            return;
+          }
+          if (!verifyTotpToken(totpHeader, sub.totpSecret)) {
+            addAuditEntry({ action: "admin_totp_failed", ip, adminId: sub.id, details: `Invalid TOTP for ${sub.name}`, result: "fail" });
+            addSecurityEvent({ type: "invalid_admin_totp", ip, userId: sub.id, details: `Wrong TOTP code`, severity: "high" });
+            res.status(401).json({ error: "Invalid TOTP code. Please try again with your authenticator app." });
+            return;
+          }
         }
       }
     }
 
-    req.adminRole = sub.role;
-    req.adminId!   = sub.id;
-    req.adminName = sub.name;
-    req.adminIp!   = ip;
-    await db.update(adminAccountsTable).set({ lastLoginAt: new Date() }).where(eq(adminAccountsTable.id, sub.id));
-    addAuditEntry({ action: "admin_login", ip, adminId: sub.id, details: `Sub-admin ${sub.name} (${sub.role}) accessed ${req.method} ${req.url}`, result: "success" });
+    (req as any).adminRole = adminPayload.role;
+    (req as any).adminId   = adminPayload.adminId;
+    (req as any).adminName = adminPayload.name;
+    (req as any).adminIp   = ip;
+    addAuditEntry({ action: "admin_access", ip, details: `Admin JWT access: ${adminPayload.name} (${adminPayload.role}) ${req.method} ${req.url}`, result: "success" });
     next();
     return;
   }
 
-  addAuditEntry({ action: "admin_auth_failed", ip, details: `Invalid admin secret for ${req.method} ${req.url}`, result: "fail" });
-  addSecurityEvent({ type: "invalid_admin_secret", ip, details: `Invalid admin secret used for ${req.url}`, severity: "high" });
-  res.status(401).json({ error: "Unauthorized. Invalid admin secret." });
+  /* ── 2. Backward-compat: accept static x-admin-secret ── */
+  if (adminSecretHeader) {
+    const ADMIN_SECRET = getAdminSecret();
+
+    /* ── Super admin via master secret ── */
+    if (adminSecretHeader === ADMIN_SECRET) {
+      (req as any).adminRole = "super";
+      (req as any).adminIp   = ip;
+      addAuditEntry({ action: "admin_login", ip, details: `Super admin (legacy secret) accessed ${req.method} ${req.url}`, result: "success" });
+      next();
+      return;
+    }
+
+    /* ── Sub-admin via stored secret ── */
+    const [sub] = await db.select().from(adminAccountsTable)
+      .where(and(eq(adminAccountsTable.secret, adminSecretHeader), eq(adminAccountsTable.isActive, true)))
+      .limit(1);
+
+    if (sub) {
+      const tokenHrs = parseInt(settings["security_admin_token_hrs"] ?? "4", 10);
+      if (sub.lastLoginAt) {
+        const msSinceLogin = Date.now() - sub.lastLoginAt.getTime();
+        const maxMs = tokenHrs * 60 * 60 * 1000;
+        if (msSinceLogin > maxMs) {
+          addAuditEntry({ action: "admin_token_expired", ip, adminId: sub.id, details: `Admin token expired for ${sub.name} (${tokenHrs}h limit)`, result: "fail" });
+          res.status(401).json({ error: `Admin session expired after ${tokenHrs} hours. Please log in again.` });
+          return;
+        }
+      }
+
+      const mfaEnabled  = settings["security_mfa_required"] === "on";
+      const totpEnabled = sub.totpEnabled && sub.totpSecret;
+      if (mfaEnabled && totpEnabled) {
+        const totpHeader = String(req.headers["x-admin-totp"] || "");
+        const isMfaRoute = req.url.includes("/mfa/");
+        if (!isMfaRoute) {
+          if (!totpHeader) {
+            res.status(401).json({ error: "MFA required. Please provide your TOTP code in the x-admin-totp header.", mfaRequired: true });
+            return;
+          }
+          if (!verifyTotpToken(totpHeader, sub.totpSecret!)) {
+            addAuditEntry({ action: "admin_totp_failed", ip, adminId: sub.id, details: `Invalid TOTP for ${sub.name}`, result: "fail" });
+            addSecurityEvent({ type: "invalid_admin_totp", ip, userId: sub.id, details: `Wrong TOTP code used by ${sub.name}`, severity: "high" });
+            res.status(401).json({ error: "Invalid TOTP code. Please try again with your authenticator app." });
+            return;
+          }
+        }
+      }
+
+      (req as any).adminRole = sub.role;
+      (req as any).adminId   = sub.id;
+      (req as any).adminName = sub.name;
+      (req as any).adminIp   = ip;
+      await db.update(adminAccountsTable).set({ lastLoginAt: new Date() }).where(eq(adminAccountsTable.id, sub.id));
+      addAuditEntry({ action: "admin_login", ip, adminId: sub.id, details: `Sub-admin ${sub.name} (${sub.role}) accessed ${req.method} ${req.url}`, result: "success" });
+      next();
+      return;
+    }
+
+    addAuditEntry({ action: "admin_auth_failed", ip, details: `Invalid admin secret for ${req.method} ${req.url}`, result: "fail" });
+    addSecurityEvent({ type: "invalid_admin_secret", ip, details: `Invalid admin secret used for ${req.url}`, severity: "high" });
+    res.status(401).json({ error: "Unauthorized. Invalid admin secret." });
+    return;
+  }
+
+  /* No auth provided */
+  addAuditEntry({ action: "admin_auth_missing", ip, details: `No admin credentials provided for ${req.method} ${req.url}`, result: "fail" });
+  res.status(401).json({ error: "Unauthorized. Admin authentication required (x-admin-token or x-admin-secret)." });
 }
 
 /* ── helpers ── */
@@ -568,12 +625,12 @@ const PARCEL_NOTIFICATIONS: Record<string, { title: string; body: string; icon: 
   cancelled:   { title: "Booking Cancelled ❌", body: "Your parcel booking has been cancelled.", icon: "close-circle-outline" },
 };
 
-/* ── Auth check ── */
-router.post("/auth", (req, res) => {
+/* ── Admin login — issues a signed, time-limited JWT (4 hours) ── */
+router.post("/auth", async (req, res) => {
   const { secret } = req.body;
   const ip = getClientIp(req);
+  const ADMIN_SECRET = getAdminSecret();
 
-  /* ── Check lockout before attempting ── */
   const lockout = checkAdminLoginLockout(ip);
   if (lockout.locked) {
     addSecurityEvent({ type: "admin_login_locked", ip, details: `Locked admin login attempt from ${ip}`, severity: "high" });
@@ -581,21 +638,40 @@ router.post("/auth", (req, res) => {
     return;
   }
 
+  /* ── Attempt master secret login ── */
   if (secret === ADMIN_SECRET) {
     resetAdminLoginAttempts(ip);
-    addAuditEntry({ action: "admin_login_success", ip, details: "Master admin login", result: "success" });
-    res.json({ success: true, token: ADMIN_SECRET });
+    const adminToken = signAdminJwt(null, "super", "Super Admin", ADMIN_TOKEN_TTL_HRS);
+    addAuditEntry({ action: "admin_login_success", ip, details: "Master admin login — JWT issued", result: "success" });
+    writeAuthAuditLog("admin_login", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { role: "super" } });
+    res.json({ success: true, token: adminToken, expiresIn: `${ADMIN_TOKEN_TTL_HRS}h` });
+    return;
+  }
+
+  /* ── Attempt sub-admin login via stored secret ── */
+  const [sub] = await db.select().from(adminAccountsTable)
+    .where(and(eq(adminAccountsTable.secret, secret || ""), eq(adminAccountsTable.isActive, true)))
+    .limit(1);
+
+  if (sub) {
+    resetAdminLoginAttempts(ip);
+    const adminToken = signAdminJwt(sub.id, sub.role, sub.name, ADMIN_TOKEN_TTL_HRS);
+    await db.update(adminAccountsTable).set({ lastLoginAt: new Date() }).where(eq(adminAccountsTable.id, sub.id));
+    addAuditEntry({ action: "admin_login_success", ip, adminId: sub.id, details: `Sub-admin ${sub.name} login — JWT issued`, result: "success" });
+    writeAuthAuditLog("admin_login", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { adminId: sub.id, role: sub.role } });
+    res.json({ success: true, token: adminToken, expiresIn: `${ADMIN_TOKEN_TTL_HRS}h` });
+    return;
+  }
+
+  recordAdminLoginFailure(ip);
+  const rec = adminLoginAttempts.get(ip);
+  const remaining = Math.max(0, ADMIN_MAX_ATTEMPTS - (rec?.count ?? 0));
+  addAuditEntry({ action: "admin_login_failed", ip, details: "Wrong admin secret", result: "fail" });
+  addSecurityEvent({ type: "admin_login_failed", ip, details: `Failed admin login attempt from ${ip}`, severity: "high" });
+  if (remaining === 0) {
+    res.status(429).json({ error: `Too many failed attempts. Account locked for 15 minutes.` });
   } else {
-    recordAdminLoginFailure(ip);
-    const rec = adminLoginAttempts.get(ip);
-    const remaining = Math.max(0, ADMIN_MAX_ATTEMPTS - (rec?.count ?? 0));
-    addAuditEntry({ action: "admin_login_failed", ip, details: "Wrong admin secret", result: "fail" });
-    addSecurityEvent({ type: "admin_login_failed", ip, details: `Failed admin login attempt from ${ip}`, severity: "high" });
-    if (remaining === 0) {
-      res.status(429).json({ error: `Too many failed attempts. Account locked for 15 minutes.` });
-    } else {
-      res.status(401).json({ error: `Invalid admin password. ${remaining} attempt(s) remaining.` });
-    }
+    res.status(401).json({ error: `Invalid admin password. ${remaining} attempt(s) remaining.` });
   }
 });
 
@@ -686,7 +762,7 @@ router.get("/users", async (_req, res) => {
 router.patch("/users/:id", async (req, res) => {
   const { role, isActive, walletBalance } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> = {};
-  if (role !== undefined) updates.role = role;
+  if (role !== undefined) { updates.role = role; updates.roles = role; }
   if (isActive !== undefined) updates.isActive = isActive;
   if (walletBalance !== undefined) updates.walletBalance = String(walletBalance);
 
@@ -709,6 +785,10 @@ router.patch("/users/:id", async (req, res) => {
     .returning();
 
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  /* Revoke sessions on role or status change */
+  if (role !== undefined || isActive === false) {
+    revokeAllUserSessions(req.params["id"]!).catch(() => {});
+  }
   res.json({ ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") });
 });
 
@@ -1302,6 +1382,15 @@ router.get("/rides-enriched", async (_req, res) => {
   });
 });
 
+/** Revoke all active refresh tokens and bump tokenVersion for a user — immediate session invalidation. */
+async function revokeAllUserSessions(userId: string): Promise<void> {
+  await db.update(usersTable)
+    .set({ tokenVersion: sql`token_version + 1` })
+    .where(eq(usersTable.id, userId));
+  await db.delete(refreshTokensTable)
+    .where(eq(refreshTokensTable.userId, userId));
+}
+
 /* ── User Security Management ── */
 router.patch("/users/:id/security", async (req, res) => {
   const { id } = req.params;
@@ -1310,12 +1399,17 @@ router.patch("/users/:id/security", async (req, res) => {
   if (body.isActive     !== undefined) updates.isActive     = body.isActive;
   if (body.isBanned     !== undefined) updates.isBanned     = body.isBanned;
   if (body.banReason    !== undefined) updates.banReason    = body.banReason || null;
-  if (body.roles        !== undefined) updates.roles        = body.roles;
-  if (body.role         !== undefined) updates.role         = body.role;
+  if (body.roles        !== undefined) { updates.roles = body.roles; updates.role = body.roles; }
+  if (body.role         !== undefined) { updates.role  = body.role;  updates.roles = body.role; }
   if (body.blockedServices !== undefined) updates.blockedServices = body.blockedServices;
   if (body.securityNote !== undefined) updates.securityNote = body.securityNote || null;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id!)).returning();
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  /* Revoke all sessions if ban, deactivation, or role change occurred */
+  if (body.isBanned || body.isActive === false || body.roles !== undefined || body.role !== undefined) {
+    revokeAllUserSessions(id!).catch(() => {});
+  }
   if (body.isBanned && body.notify) {
     await sendUserNotification(id!, "Account Suspended ⚠️", body.banReason || "Your account has been suspended. Contact support.", "warning", "warning-outline");
   }
@@ -1350,7 +1444,7 @@ router.get("/admin-accounts", async (_req, res) => {
 router.post("/admin-accounts", async (req, res) => {
   const body = req.body as any;
   if (!body.name || !body.secret) { res.status(400).json({ error: "name and secret required" }); return; }
-  if (body.secret === ADMIN_SECRET) { res.status(400).json({ error: "Cannot use the master secret" }); return; }
+  if (body.secret === getAdminSecret()) { res.status(400).json({ error: "Cannot use the master secret" }); return; }
   try {
     const [account] = await db.insert(adminAccountsTable).values({
       id:          generateId(),
@@ -1375,7 +1469,7 @@ router.patch("/admin-accounts/:id", async (req, res) => {
   if (body.permissions !== undefined) updates.permissions = body.permissions;
   if (body.isActive    !== undefined) updates.isActive    = body.isActive;
   if (body.secret      !== undefined) {
-    if (body.secret === ADMIN_SECRET) { res.status(400).json({ error: "Cannot use the master secret" }); return; }
+    if (body.secret === getAdminSecret()) { res.status(400).json({ error: "Cannot use the master secret" }); return; }
     updates.secret = body.secret;
   }
   const [account] = await db.update(adminAccountsTable).set(updates).where(eq(adminAccountsTable.id, req.params["id"]!)).returning();
@@ -1614,8 +1708,11 @@ router.patch("/vendors/:id/status", async (req, res) => {
   if (securityNote !== undefined) updates.securityNote = securityNote || null;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, req.params["id"]!)).returning();
   if (!user) { res.status(404).json({ error: "Vendor not found" }); return; }
-  if (isBanned) {
-    await sendUserNotification(req.params["id"]!, "Store Account Suspended ⚠️", banReason || "Your vendor account has been suspended. Contact support.", "warning", "warning-outline");
+  if (isBanned || isActive === false) {
+    revokeAllUserSessions(req.params["id"]!).catch(() => {});
+    if (isBanned) {
+      await sendUserNotification(req.params["id"]!, "Store Account Suspended ⚠️", banReason || "Your vendor account has been suspended. Contact support.", "warning", "warning-outline");
+    }
   }
   res.json({ ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
 });
@@ -1691,8 +1788,11 @@ router.patch("/riders/:id/status", async (req, res) => {
   if (banReason !== undefined) updates.banReason = banReason || null;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, req.params["id"]!)).returning();
   if (!user) { res.status(404).json({ error: "Rider not found" }); return; }
-  if (isBanned) {
-    await sendUserNotification(req.params["id"]!, "Rider Account Suspended ⚠️", banReason || "Your rider account has been suspended. Contact support.", "warning", "warning-outline");
+  if (isBanned || isActive === false) {
+    revokeAllUserSessions(req.params["id"]!).catch(() => {});
+    if (isBanned) {
+      await sendUserNotification(req.params["id"]!, "Rider Account Suspended ⚠️", banReason || "Your rider account has been suspended. Contact support.", "warning", "warning-outline");
+    }
   }
   res.json({ ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
 });
@@ -1898,6 +1998,52 @@ router.get("/audit-log", adminAuth, (req, res) => {
     page,
     limit,
     totalPages: Math.ceil(total / limit),
+  });
+});
+
+/* ── GET /admin/auth-audit-log — persistent auth event log from DB ── */
+router.get("/auth-audit-log", adminAuth, async (req, res) => {
+  const limit  = Math.min(parseInt(String(req.query["limit"]  || "100")), 500);
+  const event  = req.query["event"] as string | undefined;
+  const userId = req.query["userId"] as string | undefined;
+
+  const conditions: any[] = [];
+  if (event)  conditions.push(eq(authAuditLogTable.event, event));
+  if (userId) conditions.push(eq(authAuditLogTable.userId, userId));
+
+  const entries = await db.select().from(authAuditLogTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(authAuditLogTable.createdAt))
+    .limit(limit);
+
+  res.json({ entries, total: entries.length });
+});
+
+/* ── POST /admin/rotate-secret — rotate the admin master secret ── */
+router.post("/rotate-secret", adminAuth, (req, res) => {
+  const adminRole = (req as any).adminRole;
+  if (adminRole !== "super") {
+    res.status(403).json({ error: "Only super admin can rotate the master secret." });
+    return;
+  }
+
+  /* The new secret must be provided in the request body.
+     The actual env var rotation must be done by the operator, but this
+     endpoint validates the new secret and returns guidance. */
+  const { newSecret } = req.body;
+  if (!newSecret || newSecret.length < 32) {
+    res.status(400).json({ error: "New secret must be at least 32 characters." });
+    return;
+  }
+
+  const ip = getClientIp(req);
+  addAuditEntry({ action: "admin_secret_rotation_requested", ip, details: "Admin requested secret rotation", result: "success" });
+  writeAuthAuditLog("admin_secret_rotation", { ip, metadata: { note: "Secret rotation requested — update ADMIN_SECRET env var" } });
+
+  res.json({
+    success: true,
+    message: "Set the new secret as the ADMIN_SECRET environment variable and restart the server to apply the rotation.",
+    instructions: "New secret validated — it meets the minimum length requirement (32+ chars).",
   });
 });
 
