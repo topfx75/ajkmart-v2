@@ -8,6 +8,7 @@ import {
   addSecurityEvent,
   getClientIp,
   verifyUserJwt,
+  customerAuth,
 } from "../middleware/security.js";
 
 const router: IRouter = Router();
@@ -115,8 +116,8 @@ router.post("/update", async (req, res) => {
   res.json({ success: true, updatedAt: new Date().toISOString() });
 });
 
-/* ── GET /locations/:userId — fetch current location ── */
-router.get("/:userId", async (req, res) => {
+/* ── GET /locations/:userId — fetch current location (auth required) ── */
+router.get("/:userId", customerAuth, async (req, res) => {
   const settings = await getCachedSettings();
   if ((settings["feature_live_tracking"] ?? "on") === "off") {
     res.status(503).json({ error: "Live GPS tracking is currently disabled." });
