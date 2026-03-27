@@ -10,7 +10,7 @@ import { Car, Search, User, MapPin, Navigation } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-const STATUSES = ["searching", "accepted", "arrived", "in_transit", "completed", "cancelled"];
+const STATUSES = ["searching", "accepted", "arrived", "in_transit", "completed", "cancelled", "ongoing"];
 
 export default function Rides() {
   const { data, isLoading } = useRidesEnriched();

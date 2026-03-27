@@ -137,13 +137,27 @@ export default function Active() {
                 <p className="text-sm font-semibold">{ride.dropAddress}</p>
               </div>
               <div className="flex gap-2 pt-1">
-                {ride.status === "ongoing" && (
+                {ride.status === "accepted" && (
+                  <button
+                    onClick={() => updateRideMut.mutate({ id: ride.id, status: "arrived" })}
+                    disabled={updateRideMut.isPending}
+                    className="flex-1 bg-purple-600 text-white font-bold rounded-xl py-3.5 disabled:opacity-60"
+                  >📍 I'm at Pickup</button>
+                )}
+                {ride.status === "arrived" && (
+                  <button
+                    onClick={() => updateRideMut.mutate({ id: ride.id, status: "in_transit" })}
+                    disabled={updateRideMut.isPending}
+                    className="flex-1 bg-blue-600 text-white font-bold rounded-xl py-3.5 disabled:opacity-60"
+                  >🚗 Start Ride</button>
+                )}
+                {ride.status === "in_transit" && (
                   <>
                     <button
                       onClick={() => updateRideMut.mutate({ id: ride.id, status: "completed" })}
                       disabled={updateRideMut.isPending}
                       className="flex-1 bg-green-600 text-white font-bold rounded-xl py-3.5 disabled:opacity-60"
-                    >✓ Completed</button>
+                    >✓ Complete Ride</button>
                     <button
                       onClick={() => updateRideMut.mutate({ id: ride.id, status: "cancelled" })}
                       disabled={updateRideMut.isPending}

@@ -206,15 +206,15 @@ router.patch("/:id/cancel", async (req, res) => {
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, req.params["id"]!)).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
   if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
-  if (!["searching", "ongoing"].includes(ride.status)) {
+  if (!["searching", "accepted", "arrived", "in_transit"].includes(ride.status)) {
     res.status(400).json({ error: "Ride cannot be cancelled at this stage" }); return;
   }
 
   const s = await getPlatformSettings();
   const cancelFee = parseFloat(s["ride_cancellation_fee"] ?? "30");
 
-  /* Charge cancellation fee only if driver already assigned (ongoing) */
-  if (ride.status === "ongoing" && cancelFee > 0) {
+  /* Charge cancellation fee only if driver already assigned */
+  if (["accepted", "arrived", "in_transit"].includes(ride.status) && cancelFee > 0) {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (user) {
       const balance = parseFloat(user.walletBalance ?? "0");

@@ -140,7 +140,7 @@ router.get("/active", async (req, res) => {
   const riderId = (req as any).riderId;
   const [order, ride] = await Promise.all([
     db.select().from(ordersTable).where(and(eq(ordersTable.riderId, riderId), or(eq(ordersTable.status, "out_for_delivery"), eq(ordersTable.status, "picked_up")))).orderBy(desc(ordersTable.updatedAt)).limit(1),
-    db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "ongoing"))).orderBy(desc(ridesTable.updatedAt)).limit(1),
+    db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "accepted"), eq(ridesTable.status, "arrived"), eq(ridesTable.status, "in_transit")))).orderBy(desc(ridesTable.updatedAt)).limit(1),
   ]);
   res.json({
     order: order[0] ? { ...order[0], total: safeNum(order[0].total) } : null,
@@ -170,7 +170,7 @@ router.post("/orders/:id/accept", async (req, res) => {
   const maxDeliveries = parseInt(s["rider_max_deliveries"] ?? "3");
   const [activeOrders, activeRides] = await Promise.all([
     db.select({ c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), or(eq(ordersTable.status, "out_for_delivery"), eq(ordersTable.status, "picked_up")))),
-    db.select({ c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "ongoing"))),
+    db.select({ c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "accepted"), eq(ridesTable.status, "arrived"), eq(ridesTable.status, "in_transit")))),
   ]);
   const activeCount = (activeOrders[0]?.c ?? 0) + (activeRides[0]?.c ?? 0);
   if (activeCount >= maxDeliveries) {
@@ -312,7 +312,7 @@ router.post("/rides/:id/accept", async (req, res) => {
   const maxDeliveries = parseInt(s["rider_max_deliveries"] ?? "3");
   const [activeOrders, activeRides] = await Promise.all([
     db.select({ c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), or(eq(ordersTable.status, "out_for_delivery"), eq(ordersTable.status, "picked_up")))),
-    db.select({ c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "ongoing"))),
+    db.select({ c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "accepted"), eq(ridesTable.status, "arrived"), eq(ridesTable.status, "in_transit")))),
   ]);
   const activeCount = (activeOrders[0]?.c ?? 0) + (activeRides[0]?.c ?? 0);
   if (activeCount >= maxDeliveries) {
@@ -322,7 +322,7 @@ router.post("/rides/:id/accept", async (req, res) => {
   // Atomic accept: only succeeds if riderId is still NULL
   const [updated] = await db
     .update(ridesTable)
-    .set({ riderId, riderName: riderUser.name || "Rider", riderPhone: riderUser.phone, status: "ongoing", updatedAt: new Date() })
+    .set({ riderId, riderName: riderUser.name || "Rider", riderPhone: riderUser.phone, status: "accepted", updatedAt: new Date() })
     .where(and(eq(ridesTable.id, rideId), isNull(ridesTable.riderId)))
     .returning();
 
@@ -346,7 +346,7 @@ router.post("/rides/:id/accept", async (req, res) => {
 router.patch("/rides/:id/status", async (req, res) => {
   const riderId = (req as any).riderId;
   const { status } = req.body;
-  if (!["ongoing", "completed", "cancelled"].includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
+  if (!["arrived", "in_transit", "completed", "cancelled"].includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
 
   const [ride] = await db.select().from(ridesTable).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found or not yours" }); return; }
