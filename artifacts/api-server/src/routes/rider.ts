@@ -449,9 +449,12 @@ router.post("/rides/:id/accept", async (req, res) => {
 
       /* Deduct wallet only if this rider won the accept race */
       if (isBargaining && targetRide.paymentMethod === "wallet") {
-        await tx.update(usersTable)
+        /* DB floor guard — prevents negative balance under concurrent ride accepts */
+        const [walletDeducted] = await tx.update(usersTable)
           .set({ walletBalance: sql`wallet_balance - ${fareAmt}`, updatedAt: new Date() })
-          .where(eq(usersTable.id, targetRide.userId));
+          .where(and(eq(usersTable.id, targetRide.userId), gte(usersTable.walletBalance, fareAmt.toFixed(2))))
+          .returning({ id: usersTable.id });
+        if (!walletDeducted) throw new Error("Insufficient wallet balance for ride payment.");
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId: targetRide.userId, type: "debit",
           amount: fareAmt.toFixed(2),
@@ -707,7 +710,12 @@ router.post("/wallet/withdraw", async (req, res) => {
       const balance = safeNum(user.walletBalance);
       if (amt > balance) throw new Error(`Insufficient balance. Available: Rs. ${balance}`);
 
-      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
+      /* DB floor guard — prevents negative balance if two withdrawals clear pre-flight simultaneously */
+      const [deducted] = await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() })
+        .where(and(eq(usersTable.id, riderId), gte(usersTable.walletBalance, amt.toFixed(2))))
+        .returning({ id: usersTable.id });
+      if (!deducted) throw new Error(`Insufficient balance. Please try again.`);
       await tx.insert(walletTransactionsTable).values({
         id: txId, userId: riderId, type: "debit",
         amount: amt.toFixed(2),

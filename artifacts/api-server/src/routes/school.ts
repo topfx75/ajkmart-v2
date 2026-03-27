@@ -4,7 +4,7 @@ import {
   schoolRoutesTable, schoolSubscriptionsTable,
   notificationsTable, usersTable, walletTransactionsTable,
 } from "@workspace/db/schema";
-import { asc, desc, eq, and, sql } from "drizzle-orm";
+import { asc, desc, eq, and, sql, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 
@@ -87,10 +87,14 @@ router.post("/subscribe", customerAuth, async (req, res) => {
     if (balance < monthlyAmt) {
       res.status(400).json({ error: `Insufficient wallet balance. Need Rs. ${monthlyAmt.toFixed(0)}` }); return;
     }
-    /* Atomic deduction — prevents double-spend under concurrent requests */
-    await db.update(usersTable)
+    /* DB floor guard — deducts only if balance ≥ amount at UPDATE time */
+    const [deducted] = await db.update(usersTable)
       .set({ walletBalance: sql`wallet_balance - ${monthlyAmt.toFixed(2)}` })
-      .where(eq(usersTable.id, userId));
+      .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, monthlyAmt.toFixed(2))))
+      .returning({ id: usersTable.id });
+    if (!deducted) {
+      res.status(400).json({ error: "Insufficient wallet balance (concurrent request conflict). Please try again." }); return;
+    }
     await db.insert(walletTransactionsTable).values({
       id: generateId(), userId, type: "debit",
       amount: monthlyAmt.toFixed(2),

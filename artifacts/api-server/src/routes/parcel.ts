@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { notificationsTable, parcelBookingsTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { customerAuth, riderAuth } from "../middleware/security.js";
@@ -163,8 +163,12 @@ router.post("/", customerAuth, async (req, res) => {
         const balance = parseFloat(user.walletBalance ?? "0");
         if (balance < totalFare) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${totalFare}`);
 
-        /* Atomic deduction — prevents double-spend under concurrent parcel booking placements */
-        await tx.update(usersTable).set({ walletBalance: sql`wallet_balance - ${totalFare.toFixed(2)}` }).where(eq(usersTable.id, userId));
+        /* DB floor guard — deducts only if balance ≥ amount at UPDATE time */
+        const [deducted] = await tx.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance - ${totalFare.toFixed(2)}` })
+          .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, totalFare.toFixed(2))))
+          .returning({ id: usersTable.id });
+        if (!deducted) throw new Error(`Insufficient wallet balance. Required: Rs. ${totalFare.toFixed(0)}`);
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId, type: "debit",
           amount: totalFare.toFixed(2),

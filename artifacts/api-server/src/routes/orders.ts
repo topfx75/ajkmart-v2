@@ -99,6 +99,16 @@ router.post("/", customerAuth, async (req, res) => {
     res.status(400).json({ error: "items (array) required" }); return;
   }
 
+  /* Per-item validation — prevents negative-price injection that could
+     reduce the order total below what the customer is actually owed */
+  const badItem = (items as any[]).find(
+    (it) => !Number.isFinite(Number(it.price)) || Number(it.price) <= 0 ||
+            !Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0,
+  );
+  if (badItem) {
+    res.status(400).json({ error: "Each item must have a valid positive price and quantity" }); return;
+  }
+
   const itemsTotal = items.reduce(
     (sum: number, item: { price: number; quantity: number }) => sum + (item.price * item.quantity),
     0
@@ -317,8 +327,13 @@ router.post("/", customerAuth, async (req, res) => {
         const balance = parseFloat(freshUser.walletBalance ?? "0");
         if (balance < total) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${total.toFixed(0)}`);
 
-        /* Atomic deduction — prevents double-spend under concurrent order placements */
-        await tx.update(usersTable).set({ walletBalance: sql`wallet_balance - ${total.toFixed(2)}` }).where(eq(usersTable.id, userId));
+        /* DB floor guard — deducts only if balance ≥ amount at UPDATE time,
+           eliminating negative-balance race even when pre-flight checks pass concurrently */
+        const [deducted] = await tx.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance - ${total.toFixed(2)}` })
+          .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, total.toFixed(2))))
+          .returning({ id: usersTable.id });
+        if (!deducted) throw new Error(`Insufficient wallet balance. Required: Rs. ${total.toFixed(0)}`);
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId, type: "debit",
           amount: total.toFixed(2),

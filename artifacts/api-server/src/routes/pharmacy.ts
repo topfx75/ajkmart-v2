@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { notificationsTable, pharmacyOrdersTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { customerAuth, riderAuth } from "../middleware/security.js";
@@ -72,6 +72,15 @@ router.post("/", customerAuth, async (req, res) => {
   const pharmacyEnabled = (s["feature_pharmacy"] ?? "on") === "on";
   if (!pharmacyEnabled) {
     res.status(503).json({ error: "Pharmacy service is currently disabled" }); return;
+  }
+
+  /* Per-item validation — prevents negative-price injection */
+  const badItem = (items as any[]).find(
+    (it) => !Number.isFinite(Number(it.price)) || Number(it.price) <= 0 ||
+            !Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0,
+  );
+  if (badItem) {
+    res.status(400).json({ error: "Each item must have a valid positive price and quantity" }); return;
   }
 
   const itemsTotal = (items as { price: number; quantity: number }[]).reduce(
@@ -150,8 +159,12 @@ router.post("/", customerAuth, async (req, res) => {
         const balance = parseFloat(user.walletBalance ?? "0");
         if (balance < total) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${total.toFixed(0)}`);
 
-        /* Atomic deduction — prevents double-spend under concurrent pharmacy order placements */
-        await tx.update(usersTable).set({ walletBalance: sql`wallet_balance - ${total.toFixed(2)}` }).where(eq(usersTable.id, userId));
+        /* DB floor guard — deducts only if balance ≥ amount at UPDATE time */
+        const [deducted] = await tx.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance - ${total.toFixed(2)}` })
+          .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, total.toFixed(2))))
+          .returning({ id: usersTable.id });
+        if (!deducted) throw new Error(`Insufficient wallet balance. Required: Rs. ${total.toFixed(0)}`);
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId, type: "debit",
           amount: total.toFixed(2),
