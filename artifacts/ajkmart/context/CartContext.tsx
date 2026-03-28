@@ -29,7 +29,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem("@ajkmart_cart").then(stored => {
-      if (stored) setItems(JSON.parse(stored));
+      if (!stored) return;
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) setItems(parsed);
+      } catch {
+        AsyncStorage.removeItem("@ajkmart_cart");
+      }
     });
   }, []);
 

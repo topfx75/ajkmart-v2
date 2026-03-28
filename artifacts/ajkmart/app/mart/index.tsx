@@ -124,7 +124,7 @@ export default function MartScreen() {
   const categories = catData?.categories || [];
   const products   = data?.products   || [];
   const flashDeals = products.filter(p => p.originalPrice && (p.originalPrice as number) > p.price);
-  const allProducts = search || selectedCat ? products : products;
+  const allProducts = search || selectedCat ? products : products.filter(p => !(p.originalPrice && (p.originalPrice as number) > p.price));
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>

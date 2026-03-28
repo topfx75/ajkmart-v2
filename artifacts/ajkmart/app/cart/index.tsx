@@ -276,7 +276,7 @@ export default function CartScreen() {
       ...(promoCode ? { promoCode } : {}),
     } as any);
     if (finalPayMethod === "wallet") {
-      updateUser({ walletBalance: user!.walletBalance - grandTotal });
+      updateUser({ walletBalance: (user!.walletBalance ?? 0) - grandTotal });
     }
 
     /* ── Fire-and-forget: save customer GPS at order placement ── */
@@ -321,7 +321,7 @@ export default function CartScreen() {
     }
 
     if (payMethod === "wallet") {
-      if (user.walletBalance < grandTotal) {
+      if ((user.walletBalance ?? 0) < grandTotal) {
         showToast(`Wallet mein Rs. ${user.walletBalance} hain — Rs. ${grandTotal} chahiye`, "error");
         return;
       }
