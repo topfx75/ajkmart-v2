@@ -46,7 +46,7 @@ export default function Orders() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const orderRules = config.orderRules;
-  const vendorKeepp = 1 - (config.platform.vendorCommissionPct / 100);
+  const vendorKeep = 1 - (config.platform.vendorCommissionPct / 100);
   const dlvFeeMap: Record<string,number> = {
     mart: config.deliveryFee.mart,
     food: config.deliveryFee.food,
@@ -172,7 +172,7 @@ export default function Orders() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="font-extrabold text-gray-800 text-base">{fc(o.total)}</p>
-                      <p className="text-xs text-green-600 font-semibold">+{fc(o.total * vendorKeepp)}</p>
+                      <p className="text-xs text-green-600 font-semibold">+{fc(o.total * vendorKeep)}</p>
                       <span className="text-gray-300 text-xs">{isExp ? "▲" : "▼"}</span>
                     </div>
                   </button>
@@ -182,7 +182,10 @@ export default function Orders() {
                     <div className="px-4 pb-3 flex gap-2">
                       <button onClick={() => updateMut.mutate({ id: o.id, status: "confirmed" })} disabled={updateMut.isPending}
                         className="flex-1 h-10 bg-green-500 text-white font-bold rounded-xl text-sm android-press disabled:opacity-60">✓ Accept</button>
-                      <button onClick={() => updateMut.mutate({ id: o.id, status: "cancelled" })} disabled={updateMut.isPending}
+                      <button onClick={() => {
+                        if (!window.confirm("Are you sure you want to reject this order? / Kya aap yeh order reject karna chahtay hain?")) return;
+                        updateMut.mutate({ id: o.id, status: "cancelled" });
+                      }} disabled={updateMut.isPending}
                         className="h-10 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ Reject</button>
                     </div>
                   )}
@@ -230,7 +233,10 @@ export default function Orders() {
                             {T(next.labelKey)}
                           </button>
                           {o.status === "pending" && (
-                            <button onClick={() => updateMut.mutate({ id: o.id, status: "cancelled" })} disabled={updateMut.isPending}
+                            <button onClick={() => {
+                              if (!window.confirm("Are you sure you want to reject this order? / Kya aap yeh order reject karna chahtay hain?")) return;
+                              updateMut.mutate({ id: o.id, status: "cancelled" });
+                            }} disabled={updateMut.isPending}
                               className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ {T("rejectOrder")}</button>
                           )}
                         </div>

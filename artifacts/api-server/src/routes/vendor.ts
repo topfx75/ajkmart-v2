@@ -187,6 +187,22 @@ router.patch("/orders/:id/status", async (req, res) => {
   if (!validStatuses.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.vendorId, vendorId))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+
+  const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+    pending:   ["confirmed", "cancelled"],
+    confirmed: ["preparing", "cancelled"],
+    preparing: ["ready", "cancelled"],
+    ready:     [],
+    delivered: [],
+    cancelled: [],
+    completed: [],
+  };
+  const allowed = ALLOWED_TRANSITIONS[order.status] || [];
+  if (!allowed.includes(status)) {
+    res.status(400).json({ error: `Cannot change order from "${order.status}" to "${status}". Allowed: ${allowed.join(", ") || "none"}.` });
+    return;
+  }
+
   /* Include vendorId in UPDATE WHERE to close the TOCTOU window between SELECT and UPDATE */
   const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.vendorId, vendorId))).returning();
   const msgs: Record<string, { title: string; body: string }> = {
@@ -464,15 +480,46 @@ router.get("/analytics", async (req, res) => {
   const vendorId = req.vendorId!;
   const days = parseInt(String(req.query["days"] || "7"));
   const since = new Date(); since.setDate(since.getDate() - days); since.setHours(0,0,0,0);
-  const [revenueData, topProducts, ordersByStatus] = await Promise.all([
+  const s = await getPlatformSettings();
+  const vendorShare = 1 - (parseFloat(s["vendor_commission_pct"] ?? "15") / 100);
+
+  const [revenueData, topProductsRaw, ordersByStatusRaw] = await Promise.all([
     db.select({ c: count(), s: sum(ordersTable.total), date: sql<string>`DATE(${ordersTable.createdAt})` }).from(ordersTable)
       .where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, since))).groupBy(sql`DATE(${ordersTable.createdAt})`).orderBy(sql`DATE(${ordersTable.createdAt})`),
     db.select({ id: productsTable.id, name: productsTable.name, orderCount: count() }).from(ordersTable)
       .innerJoin(productsTable, sql`${ordersTable.items}::text LIKE '%' || ${productsTable.id} || '%'`)
       .where(eq(ordersTable.vendorId, vendorId)).groupBy(productsTable.id, productsTable.name).orderBy(desc(count())).limit(5).catch(() => []),
-    db.select({ status: ordersTable.status, c: count() }).from(ordersTable).where(eq(ordersTable.vendorId, vendorId)).groupBy(ordersTable.status),
+    db.select({ status: ordersTable.status, c: count() }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, since))).groupBy(ordersTable.status),
   ]);
-  res.json({ revenueData, topProducts, ordersByStatus, period: days });
+
+  const daily = revenueData.map(d => ({
+    date: d.date,
+    orders: d.c ?? 0,
+    revenue: parseFloat((safeNum(d.s) * vendorShare).toFixed(2)),
+  }));
+
+  const totalOrders = daily.reduce((sum, d) => sum + d.orders, 0);
+  const totalRevenue = daily.reduce((sum, d) => sum + d.revenue, 0);
+
+  const byStatus: Record<string, number> = {};
+  for (const row of ordersByStatusRaw) {
+    byStatus[row.status] = row.c ?? 0;
+  }
+
+  const topProducts = topProductsRaw.map(p => ({
+    productId: p.id,
+    name: p.name,
+    orders: Number(p.orderCount) || 0,
+    revenue: 0,
+  }));
+
+  res.json({
+    summary: { totalOrders, totalRevenue },
+    daily,
+    topProducts,
+    byStatus,
+    period: days,
+  });
 });
 
 export default router;

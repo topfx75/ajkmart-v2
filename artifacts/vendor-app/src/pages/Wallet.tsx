@@ -27,13 +27,13 @@ function WithdrawModal({ balance, minPayout, maxPayout, onClose, onSuccess }: { 
 
   const validate = () => {
     const amt = Number(amount);
-    if (!amount || isNaN(amt) || amt <= 0)  { setErr("Valid amount required"); return; }
-    if (amt < minPayout)                     { setErr(`Minimum withdrawal is ${fc(minPayout)}`); return; }
-    if (amt > maxPayout)                     { setErr(`Maximum single withdrawal is ${fc(maxPayout)}`); return; }
-    if (amt > balance)                       { setErr(`Max available: ${fc(balance)}`); return; }
-    if (!bank)                               { setErr("Select your bank / wallet"); return; }
-    if (!acNo.trim())                        { setErr("Account / phone number required"); return; }
-    if (!acName.trim())                      { setErr("Account holder name required"); return; }
+    if (!amount || isNaN(amt) || amt <= 0)  { setErr("Raqam darj karein / Valid amount required"); return; }
+    if (amt < minPayout)                     { setErr(`Kam az kam ${fc(minPayout)} hona chahiye / Minimum withdrawal is ${fc(minPayout)}`); return; }
+    if (amt > maxPayout)                     { setErr(`Zyada se zyada ${fc(maxPayout)} / Maximum single withdrawal is ${fc(maxPayout)}`); return; }
+    if (amt > balance)                       { setErr(`Dastiyab balance: ${fc(balance)} / Max available: ${fc(balance)}`); return; }
+    if (!bank)                               { setErr("Bank / wallet chunein / Select your bank or wallet"); return; }
+    if (!acNo.trim())                        { setErr("Account / phone number darj karein / Account number required"); return; }
+    if (!acName.trim())                      { setErr("Account holder ka naam darj karein / Account holder name required"); return; }
     setErr(""); setStep("confirm");
   };
 
@@ -198,14 +198,20 @@ export default function Wallet() {
           <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/10 rounded-full"/>
           <div className="relative">
             <p className="text-sm text-orange-100 font-semibold">Available Balance</p>
-            <p className="text-5xl font-extrabold mt-1 tracking-tight">{fc(balance)}</p>
+            <p className={`text-5xl font-extrabold mt-1 tracking-tight ${balance < 0 ? "text-red-200" : ""}`}>{fc(balance)}</p>
             <p className="text-xs text-orange-200 mt-2">{vendorKeepPct}% of each order goes to your wallet · {commissionPct}% platform commission</p>
             <div className="flex gap-3 mt-4">
               {withdrawalEnabled ? (
-                <button onClick={() => setShowWithdraw(true)}
-                  className="flex-1 h-12 bg-white text-orange-500 font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 shadow-md">
-                  💸 Withdraw
-                </button>
+                balance > 0 ? (
+                  <button onClick={() => setShowWithdraw(true)}
+                    className="flex-1 h-12 bg-white text-orange-500 font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 shadow-md">
+                    💸 Withdraw
+                  </button>
+                ) : (
+                  <div className="flex-1 h-12 bg-white/30 rounded-2xl flex items-center justify-center text-sm font-bold text-white/80 cursor-not-allowed">
+                    💸 No Balance
+                  </div>
+                )
               ) : (
                 <div className="flex-1 h-12 bg-white/30 rounded-2xl flex items-center justify-center text-sm font-bold text-white/80 cursor-not-allowed">
                   🔒 Withdrawals Paused

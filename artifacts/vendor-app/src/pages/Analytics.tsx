@@ -47,8 +47,10 @@ export default function Analytics() {
   const topProducts = data?.topProducts || [];
   const byStatus    = data?.byStatus    || {};
 
-  const maxRev = Math.max(...dailyData.map((d: any) => d.revenue || 0), 1);
-  const maxOrd = Math.max(...dailyData.map((d: any) => d.orders  || 0), 1);
+  const revValues = dailyData.map((d: any) => d.revenue || 0);
+  const ordValues = dailyData.map((d: any) => d.orders  || 0);
+  const maxRev = revValues.length > 0 ? Math.max(...revValues, 1) : 1;
+  const maxOrd = ordValues.length > 0 ? Math.max(...ordValues, 1) : 1;
 
   const totalOrders   = Number(summary.totalOrders   || 0);
   const totalRevenue  = Number(summary.totalRevenue  || 0);

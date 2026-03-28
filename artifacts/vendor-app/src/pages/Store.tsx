@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
@@ -33,9 +33,32 @@ export default function Store() {
   });
   const s = (k: string, v: any) => setSf(p => ({ ...p, [k]: v }));
 
-  const [hours, setHours] = useState<Record<string, { open:string; close:string; closed:boolean }>>(
-    user?.storeHours ? (typeof user.storeHours === "string" ? JSON.parse(user.storeHours) : user.storeHours) : DEFAULT_HOURS
-  );
+  const [hours, setHours] = useState<Record<string, { open:string; close:string; closed:boolean }>>(() => {
+    if (!user?.storeHours) return DEFAULT_HOURS;
+    if (typeof user.storeHours === "string") {
+      try { return JSON.parse(user.storeHours); } catch { return DEFAULT_HOURS; }
+    }
+    return user.storeHours;
+  });
+
+  useEffect(() => {
+    if (!user) return;
+    setSf({
+      storeName:         user.storeName || "",
+      storeCategory:     user.storeCategory || "",
+      storeDescription:  user.storeDescription || "",
+      storeBanner:       user.storeBanner || "",
+      storeAnnouncement: user.storeAnnouncement || "",
+      storeDeliveryTime: user.storeDeliveryTime || "",
+      storeMinOrder:     user.storeMinOrder ? String(user.storeMinOrder) : "0",
+    });
+    if (user.storeHours) {
+      const parsed = typeof user.storeHours === "string"
+        ? (() => { try { return JSON.parse(user.storeHours as string); } catch { return null; } })()
+        : user.storeHours;
+      if (parsed) setHours(parsed);
+    }
+  }, [user?.id, user?.storeName, user?.storeHours]);
 
   const storeMut = useMutation({
     mutationFn: () => api.updateStore({ ...sf, storeMinOrder: Number(sf.storeMinOrder) }),
@@ -71,11 +94,13 @@ export default function Store() {
   const togglePromoMut = useMutation({
     mutationFn: (id: string) => api.togglePromo(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vendor-promos"] }),
+    onError: (e: any) => showToast("❌ " + (e.message || "Promo update failed")),
   });
 
   const deletePromoMut = useMutation({
     mutationFn: (id: string) => api.deletePromo(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-promos"] }); showToast("🗑️ Promo deleted"); },
+    onError: (e: any) => showToast("❌ " + (e.message || "Delete failed")),
   });
 
   const TABS = [
@@ -233,11 +258,11 @@ export default function Store() {
                   );
                 })}
               </div>
-              <div className="px-4 pb-4 pt-2">
-                <button onClick={() => hoursMut.mutate()} disabled={hoursMut.isPending} className={BTN_PRIMARY}>
-                  {hoursMut.isPending ? "Saving..." : "💾 Save Hours"}
-                </button>
-              </div>
+            </div>
+            <div className="md:col-span-2 mt-4 md:mt-0">
+              <button onClick={() => hoursMut.mutate()} disabled={hoursMut.isPending} className={BTN_PRIMARY}>
+                {hoursMut.isPending ? "Saving..." : "💾 Save Hours"}
+              </button>
             </div>
           </div>
         )}

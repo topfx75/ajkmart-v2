@@ -1,4 +1,4 @@
-const BASE = `/api`;
+const BASE = `${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/api`;
 
 const TOKEN_KEY   = "ajkmart_vendor_token";
 const REFRESH_KEY = "ajkmart_vendor_refresh_token";
@@ -18,26 +18,34 @@ function clearTokens() {
   localStorage.removeItem("vendor_token");
 }
 
+let _refreshing: Promise<boolean> | null = null;
+
 async function attemptTokenRefresh(): Promise<boolean> {
+  if (_refreshing) return _refreshing;
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
-  try {
-    const res = await fetch(`${BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!res.ok) {
-      clearTokens();
+  _refreshing = (async () => {
+    try {
+      const res = await fetch(`${BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) {
+        clearTokens();
+        return false;
+      }
+      const data = await res.json();
+      if (data.token) localStorage.setItem(TOKEN_KEY, data.token);
+      if (data.refreshToken) localStorage.setItem(REFRESH_KEY, data.refreshToken);
+      return true;
+    } catch {
       return false;
+    } finally {
+      _refreshing = null;
     }
-    const data = await res.json();
-    if (data.token) localStorage.setItem(TOKEN_KEY, data.token);
-    if (data.refreshToken) localStorage.setItem(REFRESH_KEY, data.refreshToken);
-    return true;
-  } catch {
-    return false;
-  }
+  })();
+  return _refreshing;
 }
 
 export async function apiFetch(path: string, opts: RequestInit = {}, _retry = true): Promise<any> {

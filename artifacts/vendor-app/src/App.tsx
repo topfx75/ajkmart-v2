@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./lib/auth";
@@ -16,6 +17,37 @@ import Profile from "./pages/Profile";
 import Wallet from "./pages/Wallet";
 import Analytics from "./pages/Analytics";
 import Notifications from "./pages/Notifications";
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-xl">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h2 className="text-xl font-extrabold text-gray-800 mb-2">Kuch galat ho gaya / Something went wrong</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              {this.state.error?.message || "An unexpected error occurred."}
+            </p>
+            <button
+              onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+              className="w-full h-11 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl text-sm">
+              Dobara koshish karein / Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10000, refetchOnWindowFocus: true } },
@@ -88,12 +120,14 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AppRoutes />
-        </WouterRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <AppRoutes />
+          </WouterRouter>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

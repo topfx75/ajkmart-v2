@@ -44,6 +44,12 @@ export default function Dashboard() {
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => api.updateOrder(id, "cancelled"),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-orders"] }); qc.invalidateQueries({ queryKey: ["vendor-stats"] }); showToast("❌ Order cancelled"); },
+    onError: (e: any) => showToast("❌ " + e.message),
+  });
+
   const allOrders = ordersData?.orders || [];
   const pendingOrders = allOrders.filter((o: any) => o.status === "pending");
   const activeOrders  = allOrders.filter((o: any) => ["confirmed","preparing","ready"].includes(o.status));
@@ -163,7 +169,10 @@ export default function Dashboard() {
                       <div className="flex gap-2 flex-shrink-0">
                         <button onClick={() => acceptMut.mutate(o.id)} disabled={acceptMut.isPending}
                           className="h-9 px-4 bg-green-500 text-white text-xs font-bold rounded-xl android-press min-h-0">✓ Accept</button>
-                        <button onClick={() => api.updateOrder(o.id, "cancelled").then(() => qc.invalidateQueries({ queryKey: ["vendor-orders"] }))}
+                        <button onClick={() => {
+                          if (!window.confirm("Are you sure you want to cancel this order? / Kya aap yeh order cancel karna chahtay hain?")) return;
+                          cancelMut.mutate(o.id);
+                        }} disabled={cancelMut.isPending}
                           className="h-9 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">✕</button>
                       </div>
                     </div>

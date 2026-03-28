@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useLanguage } from "../lib/useLanguage";
@@ -28,12 +29,36 @@ export default function Notifications() {
   const notifs: any[] = data?.notifications || [];
   const unread: number = data?.unread || 0;
 
+  const [pullY, setPullY] = useState(0);
+  const [pulling, setPulling] = useState(false);
+  const startY = useRef(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (scrollRef.current && scrollRef.current.scrollTop === 0) {
+      startY.current = e.touches[0].clientY;
+      setPulling(true);
+    }
+  }, []);
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!pulling) return;
+    const diff = Math.max(0, Math.min(80, e.touches[0].clientY - startY.current));
+    setPullY(diff);
+  }, [pulling]);
+  const onTouchEnd = useCallback(() => {
+    if (pullY > 50) refetch();
+    setPullY(0);
+    setPulling(false);
+  }, [pullY, refetch]);
+
   const markAllMut = useMutation({
     mutationFn: () => api.markAllRead(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["vendor-notifications"] });
       qc.invalidateQueries({ queryKey: ["vendor-notifs-count"] });
+      qc.invalidateQueries({ queryKey: ["vendor-me"] });
     },
+    onError: () => { refetch(); },
   });
 
   return (
@@ -57,7 +82,13 @@ export default function Notifications() {
         }
       />
 
-      <div className="px-4 py-4 md:px-0 md:py-4">
+      <div ref={scrollRef} className="px-4 py-4 md:px-0 md:py-4"
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+        {pullY > 0 && (
+          <div className="flex justify-center py-2 transition-opacity" style={{ opacity: pullY / 60 }}>
+            <div className={`w-6 h-6 border-2 border-orange-400 border-t-transparent rounded-full ${pullY > 50 ? "animate-spin" : ""}`} />
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-3">
             {[1,2,3,4,5].map(i => <div key={i} className="h-20 skeleton rounded-2xl"/>)}

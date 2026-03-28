@@ -199,11 +199,11 @@ export default function Profile() {
                 </div>
                 <div className="text-right bg-white/15 rounded-2xl px-4 py-2.5">
                   <p className="text-xs text-orange-100 font-medium">Commission</p>
-                  <p className="text-3xl font-extrabold">85%</p>
+                  <p className="text-3xl font-extrabold">{Math.round(100 - (config.vendor?.commissionPct ?? config.platform.vendorCommissionPct ?? 15))}%</p>
                 </div>
               </div>
               <div className="mt-3 pt-2.5 border-t border-white/20 flex items-center justify-between">
-                <p className="text-xs text-orange-100 font-medium">Platform fee: 15% per order</p>
+                <p className="text-xs text-orange-100 font-medium">Platform fee: {config.vendor?.commissionPct ?? config.platform.vendorCommissionPct ?? 15}% per order</p>
                 <Link href="/wallet" className="text-xs bg-white/20 text-white font-bold px-3 py-1 rounded-lg">Withdraw →</Link>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
@@ -17,8 +18,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function Products() {
   const qc = useQueryClient();
+  const { config } = usePlatformConfig();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const maxItems = config.vendor?.maxItems ?? 100;
   const [view, setView]           = useState<"list"|"bulk">("list");
   const [search, setSearch]       = useState("");
   const [filterCat, setFilterCat] = useState("all");
@@ -36,6 +39,13 @@ export default function Products() {
     refetchInterval: 60000,
   });
   const products: any[] = data?.products || [];
+
+  const { data: allData } = useQuery({
+    queryKey: ["vendor-products-all"],
+    queryFn: () => api.getProducts(),
+    refetchInterval: 60000,
+  });
+  const totalProductCount = allData?.products?.length ?? products.length;
 
   const categories = useMemo(() => {
     const s = new Set<string>();
@@ -380,11 +390,11 @@ export default function Products() {
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
         title={T("products")}
-        subtitle={`${products.length} item${products.length !== 1 ? "s" : ""}`}
+        subtitle={`${totalProductCount}/${maxItems} items used`}
         actions={
           <div className="flex gap-2">
             <button onClick={() => setView("bulk")} className="h-9 px-3.5 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white text-xs font-bold rounded-xl android-press min-h-0">Bulk Add</button>
-            <button onClick={() => setShowAdd(true)} className="h-9 px-3.5 bg-white text-orange-500 md:bg-orange-500 md:text-white text-sm font-bold rounded-xl android-press min-h-0">+ Add</button>
+            <button onClick={() => setShowAdd(true)} disabled={totalProductCount >= maxItems} className={`h-9 px-3.5 text-sm font-bold rounded-xl android-press min-h-0 ${totalProductCount >= maxItems ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-white text-orange-500 md:bg-orange-500 md:text-white"}`}>+ Add</button>
           </div>
         }
         mobileContent={
@@ -468,7 +478,10 @@ export default function Products() {
                         {p.inStock ? "✓ In Stock" : "✗ Out"}
                       </button>
                       <button onClick={() => openEdit(p)} className="h-8 px-3 bg-blue-50 text-blue-600 text-xs font-bold rounded-xl android-press min-h-0">✏️ Edit</button>
-                      <button onClick={() => deleteMut.mutate(p.id)} className="h-8 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">🗑️</button>
+                      <button onClick={() => {
+                        if (!window.confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+                        deleteMut.mutate(p.id);
+                      }} className="h-8 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">🗑️</button>
                     </div>
                   </div>
                 </div>
