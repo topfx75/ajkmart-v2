@@ -863,10 +863,27 @@ router.post("/complete-profile", async (req, res) => {
 
   const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
 
+  const accessToken = signAccessToken(updated!.id, updated!.phone ?? "", updated!.role ?? "customer", updated!.roles ?? updated!.role ?? "customer", updated!.tokenVersion ?? 0);
+  const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
+  const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  await db.insert(refreshTokensTable).values({
+    id:        generateId(),
+    userId:    updated!.id,
+    tokenHash: refreshHash,
+    expiresAt: refreshExpiresAt,
+  });
+
+  db.delete(refreshTokensTable)
+    .where(and(eq(refreshTokensTable.userId, updated!.id), lt(refreshTokensTable.expiresAt, new Date())))
+    .catch(() => {});
+
   res.json({
     success: true,
     message: "Profile update ho gaya",
-    user: { id: updated!.id, phone: updated!.phone, name: updated!.name, email: updated!.email, username: updated!.username, role: updated!.role, emailVerified: updated!.emailVerified, phoneVerified: updated!.phoneVerified },
+    token: accessToken,
+    refreshToken: refreshRaw,
+    user: { id: updated!.id, phone: updated!.phone, name: updated!.name, email: updated!.email, username: updated!.username, role: updated!.role, roles: updated!.roles, emailVerified: updated!.emailVerified, phoneVerified: updated!.phoneVerified, walletBalance: parseFloat(updated!.walletBalance ?? "0"), isActive: updated!.isActive, createdAt: updated!.createdAt.toISOString() },
   });
 });
 

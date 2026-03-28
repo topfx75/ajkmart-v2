@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
-import { sendOtp, verifyOtp } from "@workspace/api-client-react";
+import { sendOtp, verifyOtp, customFetch } from "@workspace/api-client-react";
 
 const C = Colors.light;
 
@@ -71,6 +71,7 @@ export default function AuthScreen() {
   /* Pending / Profile completion */
   const [pendingToken, setPendingToken]         = useState("");
   const [pendingRefreshToken, setPendingRefreshToken] = useState<string | undefined>(undefined);
+  const [pendingUser, setPendingUser]           = useState<any>(null);
   const [profileName, setProfileName]       = useState("");
   const [profileEmail, setProfileEmail]     = useState("");
   const [profileUsername, setProfileUsername] = useState("");
@@ -124,12 +125,13 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const res = await verifyOtp({ phone, otp });
-      if (res.pendingApproval) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("pending"); return; }
-      if (!res.user.name) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("complete-profile"); return; }
+      if (res.pendingApproval) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setPendingUser(res.user); setStep("pending"); return; }
+      if (!res.user.name) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setPendingUser(res.user); setStep("complete-profile"); return; }
       await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
-    } catch (e: any) { setError(e.message || "OTP galat hai. Dobara try karein."); }
-    setLoading(false);
+    } catch (e: any) { setError(e.message || "OTP galat hai. Dobara try karein."); } finally {
+      setLoading(false);
+    }
   };
 
   /* ══════════ Email OTP ══════════ */
@@ -153,12 +155,13 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const res = await authPost("/auth/verify-email-otp", { email, otp: emailOtp });
-      if (res.pendingApproval) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("pending"); return; }
-      if (!res.user.name) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("complete-profile"); return; }
+      if (res.pendingApproval) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setPendingUser(res.user); setStep("pending"); return; }
+      if (!res.user.name) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setPendingUser(res.user); setStep("complete-profile"); return; }
       await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
-    } catch (e: any) { setError(e.message || "OTP galat hai."); }
-    setLoading(false);
+    } catch (e: any) { setError(e.message || "OTP galat hai."); } finally {
+      setLoading(false);
+    }
   };
 
   /* ══════════ Username + Password ══════════ */
@@ -182,12 +185,15 @@ export default function AuthScreen() {
     if (!profileName || profileName.trim().length < 2) { setError("Apna naam enter karein"); return; }
     setLoading(true);
     try {
-      const res = await authPost("/auth/complete-profile", {
-        token: pendingToken,
-        name: profileName.trim(),
-        ...(profileEmail && { email: profileEmail }),
-        ...(profileUsername && { username: profileUsername }),
-        ...(profilePassword && profilePassword.length >= 8 && { password: profilePassword }),
+      const res = await customFetch<any>("/api/auth/complete-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${pendingToken}` },
+        body: JSON.stringify({
+          name: profileName.trim(),
+          ...(profileEmail && { email: profileEmail }),
+          ...(profileUsername && { username: profileUsername }),
+          ...(profilePassword && profilePassword.length >= 8 && { password: profilePassword }),
+        }),
       });
       if (res.user) {
         await login({
@@ -198,8 +204,9 @@ export default function AuthScreen() {
         } as any, res.token ?? pendingToken, res.refreshToken ?? pendingRefreshToken);
         router.replace("/(tabs)");
       }
-    } catch (e: any) { setError(e.message || "Profile save nahi hua."); }
-    setLoading(false);
+    } catch (e: any) { setError(e.message || "Profile save nahi hua."); } finally {
+      setLoading(false);
+    }
   };
 
   /* ── Tab press ── */
@@ -306,7 +313,19 @@ export default function AuthScreen() {
                 {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save & Continue →</Text>}
               </Pressable>
 
-              <Pressable onPress={() => { setStep("method"); setPendingToken(""); }} style={{ alignItems: "center", marginTop: 12 }}>
+              <Pressable onPress={async () => {
+                if (pendingToken && pendingUser) {
+                  try {
+                    await login(pendingUser as any, pendingToken, pendingRefreshToken || undefined);
+                    router.replace("/(tabs)");
+                  } catch (e: any) {
+                    setError(e.message || "Login nahi ho saka. Dobara try karein.");
+                  }
+                } else {
+                  setStep("method");
+                  setPendingToken("");
+                }
+              }} style={{ alignItems: "center", marginTop: 12 }}>
                 <Text style={[styles.backBtnText, { fontSize: 13 }]}>Baad mein karein</Text>
               </Pressable>
             </View>
