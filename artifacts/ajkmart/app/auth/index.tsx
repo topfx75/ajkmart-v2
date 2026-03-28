@@ -28,7 +28,8 @@ type Step = "method" | "otp" | "pending" | "complete-profile";
 
 /* ─── simple fetch helper ─── */
 async function authPost(path: string, body: object) {
-  const res = await fetch(`/api${path}`, {
+  const base = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`;
+  const res = await fetch(`${base}/api${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -168,7 +169,7 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const res = await authPost("/auth/login/username", { username, password });
-      if (res.pendingApproval) { setPendingToken(res.token); setStep("pending"); return; }
+      if (res.pendingApproval) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("pending"); return; }
       await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
     } catch (e: any) { setError(e.message || "Username ya password galat hai."); }
@@ -189,7 +190,12 @@ export default function AuthScreen() {
         ...(profilePassword && profilePassword.length >= 8 && { password: profilePassword }),
       });
       if (res.user) {
-        await login(res.user as any, pendingToken, pendingRefreshToken);
+        await login({
+          walletBalance: 0,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+          ...res.user,
+        } as any, pendingToken, pendingRefreshToken);
         router.replace("/(tabs)");
       }
     } catch (e: any) { setError(e.message || "Profile save nahi hua."); }

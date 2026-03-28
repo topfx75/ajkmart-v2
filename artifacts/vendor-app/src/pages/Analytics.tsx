@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlatformConfig } from "../lib/useConfig";
 import { PageHeader } from "../components/PageHeader";
@@ -33,11 +33,7 @@ export default function Analytics() {
 
   const { data: reviewsData, isLoading: reviewsLoading } = useQuery({
     queryKey: ["vendor-reviews", user?.id],
-    queryFn: async () => {
-      const res = await fetch(`/api/reviews/vendor/${user!.id}`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json() as Promise<{ reviews: any[]; avgRating: number | null; total: number }>;
-    },
+    queryFn: () => apiFetch(`/reviews/vendor/${user!.id}`),
     enabled: !!user?.id && config.features.reviews,
     staleTime: 60000,
   });

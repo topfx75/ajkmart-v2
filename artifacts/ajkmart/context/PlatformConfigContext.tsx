@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
-const API = process.env.EXPO_PUBLIC_API_URL ?? "";
+const API_DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
 const CACHE_MS = 30_000;
 
 export interface PlatformConfig {
@@ -240,7 +240,7 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
     }
     fetchingRef.current = true;
     try {
-      const res = await fetch(`${API}/api/platform-config`, { cache: "no-store" });
+      const res = await fetch(`https://${API_DOMAIN}/api/platform-config`, { cache: "no-store" });
       if (!res.ok) throw new Error("config fetch failed");
       const raw = await res.json();
       const parsed: PlatformConfig = {
