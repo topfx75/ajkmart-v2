@@ -68,7 +68,8 @@ export default function AuthScreen() {
   const [showPwd, setShowPwd]   = useState(false);
 
   /* Pending / Profile completion */
-  const [pendingToken, setPendingToken]     = useState("");
+  const [pendingToken, setPendingToken]         = useState("");
+  const [pendingRefreshToken, setPendingRefreshToken] = useState<string | undefined>(undefined);
   const [profileName, setProfileName]       = useState("");
   const [profileEmail, setProfileEmail]     = useState("");
   const [profileUsername, setProfileUsername] = useState("");
@@ -76,12 +77,18 @@ export default function AuthScreen() {
   const [showProfilePwd, setShowProfilePwd]   = useState(false);
 
   /* OTP resend cooldown — counts down to 0 before resend is allowed */
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendCooldown, setResendCooldown]           = useState(0);
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
+  useEffect(() => {
+    if (emailResendCooldown <= 0) return;
+    const t = setTimeout(() => setEmailResendCooldown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [emailResendCooldown]);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
 
@@ -116,8 +123,8 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const res = await verifyOtp({ phone, otp });
-      if (res.pendingApproval) { setPendingToken(res.token); setStep("pending"); return; }
-      if (!res.user.name) { setPendingToken(res.token); setStep("complete-profile"); return; }
+      if (res.pendingApproval) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("pending"); return; }
+      if (!res.user.name) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("complete-profile"); return; }
       await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
     } catch (e: any) { setError(e.message || "OTP galat hai. Dobara try karein."); }
@@ -128,10 +135,12 @@ export default function AuthScreen() {
   const handleSendEmailOtp = async () => {
     clearError();
     if (!email || !email.includes("@")) { setError("Valid email address enter karein"); return; }
+    if (emailResendCooldown > 0) { setError(`Please wait ${emailResendCooldown}s before resending.`); return; }
     setLoading(true);
     try {
       const res = await authPost("/auth/send-email-otp", { email });
       if (res.otp) setEmailDevOtp(res.otp);
+      setEmailResendCooldown(60);
       slide(); setStep("otp");
     } catch (e: any) { setError(e.message || "OTP send nahi hua."); }
     setLoading(false);
@@ -143,8 +152,8 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       const res = await authPost("/auth/verify-email-otp", { email, otp: emailOtp });
-      if (res.pendingApproval) { setPendingToken(res.token); setStep("pending"); return; }
-      if (!res.user.name) { setPendingToken(res.token); setStep("complete-profile"); return; }
+      if (res.pendingApproval) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("pending"); return; }
+      if (!res.user.name) { setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setStep("complete-profile"); return; }
       await login(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
     } catch (e: any) { setError(e.message || "OTP galat hai."); }
@@ -180,7 +189,7 @@ export default function AuthScreen() {
         ...(profilePassword && profilePassword.length >= 8 && { password: profilePassword }),
       });
       if (res.user) {
-        await login(res.user as any, pendingToken);
+        await login(res.user as any, pendingToken, pendingRefreshToken);
         router.replace("/(tabs)");
       }
     } catch (e: any) { setError(e.message || "Profile save nahi hua."); }
@@ -240,7 +249,7 @@ export default function AuthScreen() {
               {/* Name (required) */}
               <Text style={styles.fieldLabel}>Aapka Naam *</Text>
               <TextInput
-                style={[styles.input2, error && !profileName && styles.inputError]}
+                style={[styles.input2, error && profileName.trim().length < 2 && styles.inputError]}
                 value={profileName} onChangeText={v => { setProfileName(v); clearError(); }}
                 placeholder="Full name enter karein" placeholderTextColor={C.textMuted}
                 autoFocus
@@ -417,8 +426,14 @@ export default function AuthScreen() {
                   <Text style={styles.devOtpTxt}>Dev OTP: <Text style={{ fontFamily: "Inter_700Bold", letterSpacing: 4 }}>{emailDevOtp}</Text></Text>
                 </View>
               ) : null}
-              <Pressable onPress={handleSendEmailOtp} style={styles.resendBtn}>
-                <Text style={styles.resendText}>OTP dobara bhejein</Text>
+              <Pressable
+                onPress={handleSendEmailOtp}
+                style={[styles.resendBtn, emailResendCooldown > 0 && { opacity: 0.4 }]}
+                disabled={emailResendCooldown > 0}
+              >
+                <Text style={styles.resendText}>
+                  {emailResendCooldown > 0 ? `OTP dobara bhejein (${emailResendCooldown}s)` : "OTP dobara bhejein"}
+                </Text>
               </Pressable>
             </>
           )}
