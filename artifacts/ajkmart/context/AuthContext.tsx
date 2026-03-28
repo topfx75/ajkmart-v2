@@ -1,11 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
   setAuthTokenGetter,
   setOnUnauthorized,
   setRefreshTokenGetter,
   setOnTokenRefreshed,
 } from "@workspace/api-client-react";
+import { useLanguage } from "./LanguageContext";
 
 export type UserRole = "customer" | "rider" | "vendor";
 
@@ -48,8 +49,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSuspended, setIsSuspended] = useState(false);
   const [suspendedMessage, setSuspendedMessage] = useState("");
+  const { syncToServer } = useLanguage();
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRefreshTimer = () => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  };
+
+  const scheduleProactiveRefresh = (tok: string) => {
+    clearRefreshTimer();
+    try {
+      const parts = tok.split(".");
+      if (parts.length === 3) {
+        const b64 = parts[1]!.replace(/-/g, "+").replace(/_/g, "/");
+        const bin = typeof atob === "function" ? atob(b64) : Buffer.from(b64, "base64").toString("binary");
+        const payload = JSON.parse(bin);
+        if (payload.exp) {
+          const expiresAt = payload.exp * 1000;
+          const refreshIn = Math.max((expiresAt - Date.now()) - 60_000, 10_000);
+          refreshTimerRef.current = setTimeout(async () => {
+            try {
+              const refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+              if (!refreshToken) return;
+              const base = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`;
+              const res = await fetch(`${base}/api/auth/refresh`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refreshToken }),
+              });
+              if (!res.ok) return;
+              const data = await res.json() as { token?: string; refreshToken?: string };
+              if (data.token) {
+                setToken(data.token);
+                await AsyncStorage.setItem(TOKEN_KEY, data.token);
+                if (data.refreshToken) {
+                  await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+                  setRefreshTokenGetter(() => data.refreshToken!);
+                }
+                setAuthTokenGetter(() => data.token!);
+                scheduleProactiveRefresh(data.token!);
+              }
+            } catch {}
+          }, refreshIn);
+        }
+      }
+    } catch {}
+  };
 
   const doLogout = async () => {
+    clearRefreshTimer();
     await AsyncStorage.multiRemove([USER_KEY, TOKEN_KEY, REFRESH_TOKEN_KEY]);
     setUser(null);
     setToken(null);
@@ -71,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRefreshTokenGetter(() => newRefreshToken);
       }
       setAuthTokenGetter(() => newToken);
+      scheduleProactiveRefresh(newToken);
     });
 
     setOnUnauthorized((statusCode?: number, errorMsg?: string) => {
@@ -81,6 +133,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       doLogout();
     });
+
+    scheduleProactiveRefresh(tok);
   };
 
   useEffect(() => {
@@ -113,6 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(userData);
     setToken(userToken);
     registerAuth(userToken, refreshToken ?? null);
+    syncToServer(userToken).catch(() => {});
   };
 
   const logout = async () => {

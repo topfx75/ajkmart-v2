@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -16,6 +17,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
+import QRCode from "react-native-qrcode-svg";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
@@ -484,6 +486,7 @@ export default function WalletScreen() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showSend,    setShowSend]    = useState(false);
   const [showQR,      setShowQR]      = useState(false);
+  const [showP2PTopup, setShowP2PTopup] = useState(false);
   const [refreshing,  setRefreshing]  = useState(false);
   const [txFilter,    setTxFilter]    = useState<TxFilter>("all");
 
@@ -492,6 +495,13 @@ export default function WalletScreen() {
   const [sendAmount,  setSendAmount]  = useState("");
   const [sendNote,    setSendNote]    = useState("");
   const [sendLoading, setSendLoading] = useState(false);
+
+  /* P2P topup state */
+  const [p2pSenderPhone, setP2pSenderPhone] = useState("");
+  const [p2pAmount,      setP2pAmount]      = useState("");
+  const [p2pNote,        setP2pNote]        = useState("");
+  const [p2pLoading,     setP2pLoading]     = useState(false);
+  const [pendingTopups,  setPendingTopups]  = useState<{ count: number; total: number }>({ count: 0, total: 0 });
 
   const { config: platformConfig } = usePlatformConfig();
   const appName     = platformConfig.platform.appName;
@@ -510,9 +520,46 @@ export default function WalletScreen() {
     setRefreshing(false);
   }, [refetch, updateUser]);
 
+  useEffect(() => {
+    if (token) {
+      fetch(`${API}/wallet/pending-topups`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => setPendingTopups({ count: d.count || 0, total: d.total || 0 }))
+        .catch(() => {});
+    }
+  }, [token]);
+
   const handleDepositSuccess = () => {
     qc.invalidateQueries({ queryKey: ["getWallet"] });
     showToast("Deposit request submit ho gayi! 1-2 hours mein approve ho ga.", "success");
+  };
+
+  const handleP2PTopup = async () => {
+    if (!p2pSenderPhone.trim()) { showToast("Sender ka phone number enter karein", "error"); return; }
+    const amt = parseFloat(p2pAmount);
+    if (!amt || amt < 100) { showToast("Minimum Rs. 100 topup karein", "error"); return; }
+    setP2pLoading(true);
+    try {
+      const res = await fetch(`${API}/wallet/p2p-topup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ senderPhone: p2pSenderPhone.trim(), amount: amt, note: p2pNote || null }),
+      });
+      const d = await res.json();
+      if (!res.ok) { showToast(d.error || "Request fail ho gayi", "error"); setP2pLoading(false); return; }
+      qc.invalidateQueries({ queryKey: ["getWallet"] });
+      setPendingTopups(prev => ({ count: prev.count + 1, total: prev.total + amt }));
+      setShowP2PTopup(false);
+      setP2pSenderPhone(""); setP2pAmount(""); setP2pNote("");
+      showToast("P2P Topup request submit ho gayi! Admin approval ke baad credit hoga.", "success");
+    } catch { showToast("Network error. Dobara try karein.", "error"); }
+    setP2pLoading(false);
+  };
+
+  const openSendFromQR = (phone: string) => {
+    setShowQR(false);
+    setSendPhone(phone);
+    setShowSend(true);
   };
 
   const handleSend = async () => {
@@ -583,13 +630,22 @@ export default function WalletScreen() {
               </View>
               <Text style={ws.actionTxt}>{T("receive")}</Text>
             </Pressable>
-            <Pressable onPress={onRefresh} style={ws.action}>
+            <Pressable onPress={() => setShowP2PTopup(true)} style={ws.action}>
               <View style={ws.actionIcon}>
-                <Ionicons name="refresh-outline" size={20} color={C.primary} />
+                <Ionicons name="people-outline" size={20} color={C.primary} />
               </View>
-              <Text style={ws.actionTxt}>{T("refresh")}</Text>
+              <Text style={ws.actionTxt}>P2P Topup</Text>
             </Pressable>
           </View>
+
+          {pendingTopups.count > 0 && (
+            <View style={ws.pendingBanner}>
+              <Ionicons name="time-outline" size={14} color="#D97706" />
+              <Text style={ws.pendingBannerTxt}>
+                {pendingTopups.count} pending topup ({`Rs. ${pendingTopups.total.toLocaleString()}`}) — awaiting admin approval
+              </Text>
+            </View>
+          )}
         </LinearGradient>
 
         {/* Stats */}
@@ -711,18 +767,23 @@ export default function WalletScreen() {
         </Pressable>
       </Modal>
 
-      {/* ─── QR Code Modal ─── */}
+      {/* ─── QR Code Modal (Real QR) ─── */}
       <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
         <Pressable style={[ws.overlay, { justifyContent: "center", paddingHorizontal: 32 }]} onPress={() => setShowQR(false)}>
           <Pressable style={[ws.sheet, { borderRadius: 24, paddingVertical: 28 }]} onPress={e => e.stopPropagation()}>
-            <Text style={[ws.sheetTitle, { textAlign: "center" }]}>📲 Receive Money</Text>
+            <Text style={[ws.sheetTitle, { textAlign: "center" }]}>Receive Money</Text>
             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 20 }}>
-              Yeh QR code share karein ya phone number batayein
+              Yeh QR code scan karein ya phone number batayein
             </Text>
 
             <View style={ws.qrBox}>
               <View style={ws.qrInner}>
-                <Ionicons name="qr-code" size={80} color={C.primary} />
+                <QRCode
+                  value={JSON.stringify({ type: "ajkmart_pay", phone: user?.phone, id: user?.id, name: user?.name })}
+                  size={120}
+                  color={C.primary}
+                  backgroundColor="#fff"
+                />
               </View>
               <Text style={ws.qrName}>{user?.name || "AJKMart User"}</Text>
               <Text style={ws.qrPhone}>+92 {user?.phone}</Text>
@@ -735,6 +796,59 @@ export default function WalletScreen() {
 
             <Pressable onPress={() => setShowQR(false)} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 8 }]}>
               <Text style={ws.actionBtnTxt}>Close</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ─── P2P Topup Modal ─── */}
+      <Modal visible={showP2PTopup} transparent animationType="slide" onRequestClose={() => setShowP2PTopup(false)}>
+        <Pressable style={ws.overlay} onPress={() => setShowP2PTopup(false)}>
+          <Pressable style={ws.sheet} onPress={e => e.stopPropagation()}>
+            <View style={ws.handle} />
+            <Text style={ws.sheetTitle}>P2P Topup Request</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginBottom: 16 }}>
+              Kisi se paise receive karke admin se wallet credit karwayein
+            </Text>
+
+            <Text style={ws.sheetLbl}>Sender's Phone Number</Text>
+            <View style={ws.inputWrap}>
+              <View style={ws.phonePrefix}>
+                <Text style={ws.phonePrefixTxt}>+92</Text>
+              </View>
+              <TextInput
+                value={p2pSenderPhone}
+                onChangeText={setP2pSenderPhone}
+                placeholder="3XX XXXXXXX"
+                placeholderTextColor={C.textMuted}
+                style={ws.sendInput}
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <Text style={ws.sheetLbl}>Amount (PKR)</Text>
+            <View style={ws.amtWrap}>
+              <Text style={ws.rupee}>Rs.</Text>
+              <TextInput style={ws.amtInput} value={p2pAmount} onChangeText={setP2pAmount} keyboardType="numeric" placeholder="0" placeholderTextColor={C.textMuted} />
+            </View>
+
+            <Text style={ws.sheetLbl}>Note (Optional)</Text>
+            <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
+              <TextInput value={p2pNote} onChangeText={setP2pNote} placeholder="e.g. Payment for goods" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} />
+            </View>
+
+            <View style={[ws.sheetNote, { marginTop: 8, backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10 }]}>
+              <Ionicons name="alert-circle-outline" size={14} color="#D97706" />
+              <Text style={[ws.sheetNoteTxt, { color: "#92400E" }]}>Admin verify karke wallet credit karega. 1-2 hours lag sakte hain.</Text>
+            </View>
+
+            <Pressable onPress={handleP2PTopup} disabled={p2pLoading || !p2pSenderPhone || !p2pAmount} style={[ws.actionBtn, { backgroundColor: "#059669" }, (!p2pSenderPhone || !p2pAmount || p2pLoading) && { opacity: 0.5 }]}>
+              {p2pLoading ? <ActivityIndicator color="#fff" /> : (
+                <>
+                  <Ionicons name="checkmark-circle" size={17} color="#fff" />
+                  <Text style={ws.actionBtnTxt}>Submit Topup Request</Text>
+                </>
+              )}
             </Pressable>
           </Pressable>
         </Pressable>
@@ -756,6 +870,9 @@ const ws = StyleSheet.create({
   action: { flex: 1, alignItems: "center", gap: 8 },
   actionIcon: { width: 48, height: 48, borderRadius: 15, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   actionTxt: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#fff", textAlign: "center" },
+
+  pendingBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(254,243,199,0.2)", borderRadius: 10, marginHorizontal: 20, marginTop: 12, padding: 10 },
+  pendingBannerTxt: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#FEF3C7", flex: 1 },
 
   statsRow: { flexDirection: "row", paddingHorizontal: 16, gap: 10, marginTop: 16 },
   statCard: { flex: 1, backgroundColor: "#fff", borderRadius: 14, padding: 12, alignItems: "center", gap: 5, borderWidth: 1, borderColor: C.border },

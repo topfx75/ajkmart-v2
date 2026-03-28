@@ -22,6 +22,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { sendOtp, verifyOtp, customFetch } from "@workspace/api-client-react";
+import { LANGUAGE_OPTIONS, type Language } from "@workspace/i18n";
 
 const C = Colors.light;
 
@@ -41,10 +42,16 @@ async function authPost(path: string, body: object) {
   return data;
 }
 
+const LANG_PRESETS: { value: Language; label: string; icon: string }[] = [
+  { value: "en_roman", label: "English", icon: "language-outline" },
+  { value: "ur",       label: "اردو",    icon: "language-outline" },
+  { value: "en_ur",    label: "En + اردو", icon: "language-outline" },
+];
+
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const { config: platformCfg } = usePlatformConfig();
   const appName    = platformCfg.platform.appName;
@@ -351,6 +358,21 @@ export default function AuthScreen() {
           </View>
           <Text style={styles.appName}>{appName}</Text>
           <Text style={styles.tagline}>{appTagline}</Text>
+
+          <View style={styles.langRow}>
+            {LANG_PRESETS.map(lp => (
+              <Pressable
+                key={lp.value}
+                onPress={() => setLanguage(lp.value)}
+                style={[styles.langChip, language === lp.value && styles.langChipActive]}
+              >
+                <Ionicons name={lp.icon as any} size={13} color={language === lp.value ? "#fff" : "rgba(255,255,255,0.7)"} />
+                <Text style={[styles.langChipTxt, language === lp.value && styles.langChipTxtActive]}>
+                  {lp.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -587,4 +609,10 @@ const styles = StyleSheet.create({
 
   footer:           { backgroundColor: "#fff", paddingHorizontal: 24, paddingTop: 12, alignItems: "center" },
   footerText:       { fontFamily: "Inter_400Regular", fontSize: 12, color: "#9CA3AF", textAlign: "center" },
+
+  langRow:          { flexDirection: "row", gap: 8, marginTop: 18 },
+  langChip:         { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.15)", borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
+  langChipActive:   { backgroundColor: "rgba(255,255,255,0.3)", borderColor: "rgba(255,255,255,0.5)" },
+  langChipTxt:      { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.7)" },
+  langChipTxtActive:{ color: "#fff", fontFamily: "Inter_700Bold" },
 });

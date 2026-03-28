@@ -25,7 +25,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { LanguageProvider } from "@/context/LanguageContext";
-import { PlatformConfigProvider } from "@/context/PlatformConfigContext";
+import { PlatformConfigProvider, usePlatformConfig } from "@/context/PlatformConfigContext";
 import { ToastProvider } from "@/context/ToastContext";
 
 setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
@@ -80,10 +80,32 @@ function SuspendedScreen() {
   );
 }
 
+function MaintenanceScreen() {
+  const { config } = usePlatformConfig();
+  return (
+    <View style={{ flex: 1, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", padding: 32 }}>
+      <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+        <Text style={{ fontSize: 44 }}>🔧</Text>
+      </View>
+      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#92400E", textAlign: "center", marginBottom: 12 }}>Under Maintenance</Text>
+      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#78350F", textAlign: "center", lineHeight: 22, marginBottom: 16 }}>
+        {config.content.maintenanceMsg || "App is temporarily under maintenance. Please check back soon."}
+      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF3C7", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}>
+        <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#B45309" }}>
+          Support: {config.platform.supportPhone || config.platform.supportEmail}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function RootLayoutNav() {
-  const { isSuspended } = useAuth();
+  const { isSuspended, user } = useAuth();
+  const { config } = usePlatformConfig();
 
   if (isSuspended) return <SuspendedScreen />;
+  if (config.appStatus === "maintenance" && user) return <MaintenanceScreen />;
 
   return (
     <>
@@ -155,15 +177,15 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <PlatformConfigProvider>
-                <AuthProvider>
-                  <LanguageProvider>
+                <LanguageProvider>
+                  <AuthProvider>
                     <CartProvider>
                       <ToastProvider>
                         <RootLayoutNav />
                       </ToastProvider>
                     </CartProvider>
-                  </LanguageProvider>
-                </AuthProvider>
+                  </AuthProvider>
+                </LanguageProvider>
               </PlatformConfigProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>

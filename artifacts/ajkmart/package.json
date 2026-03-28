@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@expo-google-fonts/noto-nastaliq-urdu": "^0.4.2",
-    "expo-clipboard": "6.0.3"
+    "expo-clipboard": "6.0.3",
+    "react-native-qrcode-svg": "^6.3.21"
   }
 }

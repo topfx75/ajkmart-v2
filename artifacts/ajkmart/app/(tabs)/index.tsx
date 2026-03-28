@@ -34,7 +34,7 @@ const HALF_W = (W - H_PAD * 2 - 12) / 2;
 /* ─────────────────────────── Active Order/Ride Tracker Strip ─────────────────────────── */
 function ActiveTrackerStrip({ userId }: { userId: string }) {
   const { token } = useAuth();
-  const authHdrs = token ? { Authorization: `Bearer ${token}` } : {};
+  const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
   const { data: ordersData } = useQuery({
     queryKey: ["home-active-orders", userId],

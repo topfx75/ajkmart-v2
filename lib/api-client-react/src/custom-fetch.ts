@@ -369,6 +369,20 @@ async function attemptTokenRefresh(baseUrl: string | null): Promise<TokenRefresh
   }
 }
 
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 1000;
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS", "DELETE"]);
+
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  const msg = String((error as any)?.message ?? "").toLowerCase();
+  return msg.includes("network") || msg.includes("fetch") || msg.includes("aborted") || msg.includes("timeout") || msg.includes("econnrefused");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
@@ -397,8 +411,6 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
-  // Attach bearer token when an auth getter is configured and no
-  // Authorization header has been explicitly provided.
   if (_authTokenGetter && !headers.has("authorization")) {
     const token = await _authTokenGetter();
     if (token) {
@@ -408,33 +420,54 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const canRetry = IDEMPOTENT_METHODS.has(method);
+  const maxAttempts = canRetry ? MAX_RETRIES : 0;
 
-  if (response.status === 401 && !_isRetry) {
-    // Try to silently refresh the access token once
-    const refreshResult = await attemptTokenRefresh(_baseUrl);
-    if (refreshResult) {
-      const { token: newToken, newRefreshToken } = refreshResult;
-      // Update the token getter and notify the app
-      setAuthTokenGetter(() => newToken);
-      if (_onTokenRefreshed) _onTokenRefreshed(newToken, newRefreshToken);
-      // Retry the original request with the new token
-      return customFetch<T>(input, options, true);
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(input, { ...init, method, headers });
+    } catch (err) {
+      lastError = err;
+      if (canRetry && isNetworkError(err) && attempt < maxAttempts) {
+        const delay = RETRY_BASE_MS * Math.pow(2, attempt) + Math.random() * 500;
+        await sleep(delay);
+        continue;
+      }
+      throw err;
     }
-    // Refresh failed — notify the app to logout
-    if (_onUnauthorized) _onUnauthorized(401);
-    const errorData = await parseErrorBody(response, method);
-    throw new ApiError(response, errorData, requestInfo);
+
+    if (canRetry && response.status >= 500 && attempt < maxAttempts) {
+      const delay = RETRY_BASE_MS * Math.pow(2, attempt) + Math.random() * 500;
+      await sleep(delay);
+      continue;
+    }
+
+    if (response.status === 401 && !_isRetry) {
+      const refreshResult = await attemptTokenRefresh(_baseUrl);
+      if (refreshResult) {
+        const { token: newToken, newRefreshToken } = refreshResult;
+        setAuthTokenGetter(() => newToken);
+        if (_onTokenRefreshed) _onTokenRefreshed(newToken, newRefreshToken);
+        return customFetch<T>(input, options, true);
+      }
+      if (_onUnauthorized) _onUnauthorized(401);
+      const errorData = await parseErrorBody(response, method);
+      throw new ApiError(response, errorData, requestInfo);
+    }
+
+    if (!response.ok) {
+      const errorData = await parseErrorBody(response, method);
+      if (response.status === 403 && _onUnauthorized) {
+        const errMsg = getStringField(errorData, "error") || getStringField(errorData, "message") || undefined;
+        _onUnauthorized(403, errMsg);
+      }
+      throw new ApiError(response, errorData, requestInfo);
+    }
+
+    return (await parseSuccessBody(response, responseType, requestInfo)) as T;
   }
 
-  if (!response.ok) {
-    const errorData = await parseErrorBody(response, method);
-    if (response.status === 403 && _onUnauthorized) {
-      const errMsg = getStringField(errorData, "error") || getStringField(errorData, "message") || undefined;
-      _onUnauthorized(403, errMsg);
-    }
-    throw new ApiError(response, errorData, requestInfo);
-  }
-
-  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+  throw lastError ?? new Error("Request failed after retries");
 }

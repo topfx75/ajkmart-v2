@@ -147,6 +147,12 @@ export default function PharmacyScreen() {
   const cartTotal = cartItems.reduce((sum, m) => sum + m.price * m.qty, 0);
   const cartCount = Object.values(cart).reduce((sum, v) => sum + v, 0);
 
+  useEffect(() => {
+    if (payMethod === "cash" && cartTotal > config.orderRules.maxCodAmount) {
+      setPayMethod("wallet");
+    }
+  }, [cartTotal, config.orderRules.maxCodAmount]);
+
   const addToCart = (id: string) => setCart(p => ({ ...p, [id]: (p[id] ?? 0) + 1 }));
   const removeFromCart = (id: string) => setCart(p => {
     const v = (p[id] ?? 0) - 1;
@@ -418,17 +424,26 @@ export default function PharmacyScreen() {
           <View style={s.section}>
             <Text style={s.sectionTitle}>Payment Method</Text>
             <View style={s.payRow}>
-              <Pressable onPress={() => setPayMethod("cash")} style={[s.payOpt, payMethod === "cash" && s.payOptActive]}>
-                <Ionicons name="cash-outline" size={20} color={payMethod === "cash" ? C.primary : C.textMuted} />
-                <Text style={[s.payOptTxt, payMethod === "cash" && { color: C.primary }]}>Cash on Delivery</Text>
-              </Pressable>
-              <Pressable onPress={() => setPayMethod("wallet")} style={[s.payOpt, payMethod === "wallet" && s.payOptActive]}>
-                <Ionicons name="wallet-outline" size={20} color={payMethod === "wallet" ? C.primary : C.textMuted} />
-                <View>
-                  <Text style={[s.payOptTxt, payMethod === "wallet" && { color: C.primary }]}>Wallet</Text>
-                  <Text style={s.walletBal}>Rs. {(user?.walletBalance ?? 0).toLocaleString()} available</Text>
+              {cartTotal <= config.orderRules.maxCodAmount ? (
+                <Pressable onPress={() => setPayMethod("cash")} style={[s.payOpt, payMethod === "cash" && s.payOptActive]}>
+                  <Ionicons name="cash-outline" size={20} color={payMethod === "cash" ? C.primary : C.textMuted} />
+                  <Text style={[s.payOptTxt, payMethod === "cash" && { color: C.primary }]}>Cash on Delivery</Text>
+                </Pressable>
+              ) : (
+                <View style={[s.payOpt, { opacity: 0.4 }]}>
+                  <Ionicons name="cash-outline" size={20} color={C.textMuted} />
+                  <Text style={s.payOptTxt}>COD limit: Rs. {config.orderRules.maxCodAmount.toLocaleString()}</Text>
                 </View>
-              </Pressable>
+              )}
+              {config.features.wallet && (
+                <Pressable onPress={() => setPayMethod("wallet")} style={[s.payOpt, payMethod === "wallet" && s.payOptActive]}>
+                  <Ionicons name="wallet-outline" size={20} color={payMethod === "wallet" ? C.primary : C.textMuted} />
+                  <View>
+                    <Text style={[s.payOptTxt, payMethod === "wallet" && { color: C.primary }]}>Wallet</Text>
+                    <Text style={s.walletBal}>Rs. {(user?.walletBalance ?? 0).toLocaleString()} available</Text>
+                  </View>
+                </Pressable>
+              )}
             </View>
           </View>
 

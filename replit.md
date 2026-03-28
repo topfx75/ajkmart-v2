@@ -56,9 +56,18 @@ The project is structured as a pnpm monorepo using TypeScript. The frontend leve
 - **Orval codegen:** Generates API client and hooks.
 - **React Query:** Data fetching and caching for frontend.
 - **Zod:** Schema validation library.
-- **AsyncStorage:** For client-side data persistence in React Native.
+- **AsyncStorage:** For client-side data persistence in React Native (including pre-login language preference).
 - **jsonwebtoken:** For JWT generation and verification.
 - **crypto.scryptSync:** For password hashing.
+- **react-native-qrcode-svg:** For generating real QR codes in the wallet Receive Money modal.
+
+### Customer App Full-Stack Overhaul (Task #5)
+1. **Pre-login Language Selector:** English/Urdu/Mixed toggle on auth screen. Language persists in AsyncStorage before login, syncs to server after login. RTL support for Urdu via `I18nManager.forceRTL`. LanguageProvider wraps AuthProvider in `_layout.tsx`.
+2. **Robust Session Management:** `custom-fetch` retries network errors and 5xx with exponential backoff (up to 3 retries). Proactive token refresh 60s before JWT expiry via `scheduleProactiveRefresh` in AuthContext. Only forced logout on genuine 401 after refresh token failure.
+3. **P2P Topup with Admin Approval:** New `/api/wallet/p2p-topup` endpoint creates pending deposit with `paymentMethod: "p2p"`. Admin approves via existing DepositRequests page. Wallet screen shows "P2P Topup" button and pending topup count banner.
+4. **QR/Barcode Payment:** Real QR code generation in Receive Money modal using `react-native-qrcode-svg` (encodes phone, ID, name as JSON). Decoded QR data pre-fills Send Money form.
+5. **Admin Settings Enforcement:** Maintenance mode overlay in `_layout.tsx`. Service toggles on home screen already enforced. Cart uses `PlatformConfigContext` for delivery fees instead of redundant API fetch. Pharmacy checkout enforces COD limit from `orderRules.maxCodAmount` and auto-switches to wallet when exceeded. Wallet feature toggle controls wallet payment option visibility.
+6. **Audit & Bug Fixes:** Eliminated redundant platform-config API fetch in cart checkout (now uses context). Consistent error handling across screens.
 - **Mapping APIs:** Google Maps Platform (or similar) for autocomplete, geocoding, and distance calculations (gated by `maps_places_autocomplete`, `maps_geocoding`, `maps_distance_matrix` settings).
 - **Sentry:** For error tracking and performance monitoring (configured via `sentry_dsn`, `sentry_env`, etc.).
 - **Analytics Platform:** For tracking user behavior (configured via `analytics_platform`, `tracking_id`).

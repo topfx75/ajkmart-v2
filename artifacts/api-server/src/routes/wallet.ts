@@ -260,4 +260,61 @@ router.post("/send", customerAuth, async (req, res) => {
   }
 });
 
+/* ── POST /wallet/p2p-topup — Customer requests P2P topup (pending admin approval) ── */
+router.post("/p2p-topup", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const { senderPhone, amount, note } = req.body;
+
+  if (!senderPhone) { res.status(400).json({ error: "senderPhone required" }); return; }
+  if (!amount) { res.status(400).json({ error: "amount required" }); return; }
+
+  const amt = parseFloat(String(amount));
+  if (isNaN(amt) || amt <= 0) { res.status(400).json({ error: "Invalid amount" }); return; }
+
+  const s = await getPlatformSettings();
+  const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
+  const minTopup = parseFloat(s["wallet_min_topup"] ?? "100");
+  const maxTopup = parseFloat(s["wallet_max_topup"] ?? "25000");
+
+  if (!walletEnabled) { res.status(503).json({ error: "Wallet service is currently disabled" }); return; }
+  if (amt < minTopup) { res.status(400).json({ error: `Minimum topup is Rs. ${minTopup}` }); return; }
+  if (amt > maxTopup) { res.status(400).json({ error: `Maximum single topup is Rs. ${maxTopup}` }); return; }
+
+  const txId = generateId();
+  const desc = [
+    `P2P Topup from ${senderPhone}`,
+    note ? `Note: ${note}` : null,
+  ].filter(Boolean).join(" — ");
+
+  await db.insert(walletTransactionsTable).values({
+    id: txId, userId, type: "deposit",
+    amount: amt.toFixed(2),
+    description: desc,
+    reference: "pending",
+    paymentMethod: "p2p",
+  });
+
+  await db.insert(notificationsTable).values({
+    id: generateId(), userId,
+    title: "P2P Topup Request Submitted",
+    body: `Rs. ${amt.toFixed(0)} P2P topup request pending hai. Admin approval ke baad wallet credit hoga.`,
+    type: "wallet", icon: "wallet-outline",
+  }).catch(e => console.error("p2p topup notif insert failed:", e));
+
+  res.json({ success: true, txId, status: "pending", amount: amt });
+});
+
+/* ── GET /wallet/pending-topups — Customer pending topup count ────────── */
+router.get("/pending-topups", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const pending = await db.select()
+    .from(walletTransactionsTable)
+    .where(and(
+      eq(walletTransactionsTable.userId, userId),
+      eq(walletTransactionsTable.type, "deposit"),
+      eq(walletTransactionsTable.reference, "pending"),
+    ));
+  res.json({ count: pending.length, total: pending.reduce((s, t) => s + parseFloat(t.amount), 0) });
+});
+
 export default router;
