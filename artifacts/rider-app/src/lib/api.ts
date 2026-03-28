@@ -133,4 +133,8 @@ export const api = {
   /* Notifications */
   getNotifications: () => apiFetch("/rider/notifications"),
   markAllRead:      () => apiFetch("/rider/notifications/read-all", { method: "PATCH", body: "{}" }),
+
+  /* Settings */
+  getSettings:    () => apiFetch("/settings"),
+  updateSettings: (data: Record<string, unknown>) => apiFetch("/settings", { method: "PUT", body: JSON.stringify(data) }),
 };

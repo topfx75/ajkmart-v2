@@ -3,6 +3,8 @@ import { Link } from "wouter";
 import { useAuth } from "../lib/auth";
 import { api, apiFetch } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle, MapPin, Pin, Bike, Car, Bus, ShoppingBag,
@@ -64,6 +66,8 @@ const SVC_NAMES: Record<string, string> = {
 export default function Home() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const qc = useQueryClient();
   const [toggling, setToggling] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
@@ -263,7 +267,7 @@ export default function Home() {
             </h1>
           </div>
           <div className="text-right">
-            <p className="text-green-200 text-xs">Wallet</p>
+            <p className="text-green-200 text-xs">{T("wallet")}</p>
             <p className="font-extrabold text-xl">{formatCurrency(Number(user?.walletBalance) || 0)}</p>
           </div>
         </div>
@@ -274,10 +278,10 @@ export default function Home() {
             <div>
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${user?.isOnline ? "bg-green-300 animate-pulse" : "bg-gray-400"}`} />
-                <p className="font-extrabold text-lg">{user?.isOnline ? "Online" : "Offline"}</p>
+                <p className="font-extrabold text-lg">{user?.isOnline ? T("online") : T("offline")}</p>
               </div>
               <p className="text-green-100 text-sm mt-0.5">
-                {user?.isOnline ? "Accepting orders & rides" : "Tap to start working"}
+                {user?.isOnline ? T("acceptingOrders") : T("tapToStart")}
               </p>
             </div>
             <button onClick={toggleOnline} disabled={toggling}

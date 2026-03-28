@@ -6,6 +6,8 @@ import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, INPUT, BTN_PRIMARY, LABEL } from "../lib/ui";
+import { useLanguage } from "../lib/useLanguage";
+import { LANGUAGE_OPTIONS, type Language } from "@workspace/i18n";
 
 const CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Lahore","Karachi","Other"];
 const BANKS  = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
@@ -32,6 +34,9 @@ export default function Profile() {
   const [editing, setEditing] = useState<EditSection>(null);
   const [saving, setSaving]   = useState(false);
   const [toast, setToast]     = useState("");
+  const [showLangPicker, setShowLangPicker] = useState(false);
+
+  const { language, setLanguage, loading: langLoading } = useLanguage();
 
   // Personal info form state
   const [name, setName]               = useState(user?.name || "");
@@ -215,6 +220,52 @@ export default function Profile() {
                   <p className="text-xs text-blue-700 font-medium">🔐 Session secured via encrypted authentication. Logout if using a shared device.</p>
                 </div>
               </div>
+            </div>
+
+            {/* Language Picker */}
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <button
+                onClick={() => setShowLangPicker(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🌐</span>
+                  <div className="text-left">
+                    <div className="text-sm font-bold text-gray-800">Language / زبان</div>
+                    <div className="text-xs text-gray-400">{LANGUAGE_OPTIONS.find(o => o.value === language)?.label || "Select Language"}</div>
+                  </div>
+                </div>
+                <span className="text-gray-400 text-sm">{showLangPicker ? "▲" : "▼"}</span>
+              </button>
+              {showLangPicker && (
+                <div className="border-t border-gray-100 p-3 space-y-2">
+                  {LANGUAGE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      disabled={langLoading}
+                      onClick={async () => {
+                        await setLanguage(opt.value as Language);
+                        setShowLangPicker(false);
+                        showToast("Language save ho gayi!");
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border-2 transition-colors text-left ${
+                        language === opt.value
+                          ? "border-orange-400 bg-orange-50"
+                          : "border-gray-100 bg-gray-50 hover:border-orange-200"
+                      }`}
+                    >
+                      <div>
+                        <div className={`text-sm font-semibold ${language === opt.value ? "text-orange-700" : "text-gray-700"}`}>{opt.label}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">{opt.nativeLabel}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {opt.rtl && <span className="text-xs bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded">RTL</span>}
+                        {language === opt.value && <span className="text-orange-500 text-lg">✓</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button onClick={logout} className="w-full h-12 border-2 border-red-200 text-red-500 font-bold rounded-2xl hover:bg-red-50 transition-colors text-sm">

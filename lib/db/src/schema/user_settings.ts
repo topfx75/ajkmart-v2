@@ -1,6 +1,8 @@
-import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export const languageEnum = pgEnum("language_mode", ["en", "ur", "roman", "en_roman", "en_ur"]);
 
 export const userSettingsTable = pgTable("user_settings", {
   id: text("id").primaryKey(),
@@ -13,6 +15,7 @@ export const userSettingsTable = pgTable("user_settings", {
   biometric: boolean("biometric").notNull().default(false),
   twoFactor: boolean("two_factor").notNull().default(false),
   darkMode: boolean("dark_mode").notNull().default(false),
+  language: languageEnum("language").notNull().default("en_roman"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

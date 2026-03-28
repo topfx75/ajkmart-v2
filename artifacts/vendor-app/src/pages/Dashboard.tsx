@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual } from "@workspace/i18n";
 import { useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, STAT_VAL, STAT_LBL } from "../lib/ui";
@@ -21,6 +23,8 @@ function VendorNoticeBanner({ message }: { message: string }) {
 export default function Dashboard() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const qc = useQueryClient();
   const [toast, setToast] = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
@@ -45,10 +49,10 @@ export default function Dashboard() {
   const activeOrders  = allOrders.filter((o: any) => ["confirmed","preparing","ready"].includes(o.status));
 
   const statItems = [
-    { label: "Today's Orders",  value: isLoading ? "—" : String(stats?.today?.orders ?? 0),  color: "text-orange-500", bg: "bg-orange-50",  icon: "📦" },
-    { label: "Today's Revenue", value: isLoading ? "—" : fc(stats?.today?.revenue ?? 0),      color: "text-amber-600",  bg: "bg-amber-50",   icon: "💰" },
-    { label: "Weekly Revenue",  value: isLoading ? "—" : fc(stats?.week?.revenue ?? 0),       color: "text-blue-600",   bg: "bg-blue-50",    icon: "📅" },
-    { label: "Monthly Revenue", value: isLoading ? "—" : fc(stats?.month?.revenue ?? 0),      color: "text-purple-600", bg: "bg-purple-50",  icon: "📈" },
+    { label: T("todaysOrders"),   value: isLoading ? "—" : String(stats?.today?.orders ?? 0),  color: "text-orange-500", bg: "bg-orange-50",  icon: "📦" },
+    { label: T("todaysRevenue"),  value: isLoading ? "—" : fc(stats?.today?.revenue ?? 0),      color: "text-amber-600",  bg: "bg-amber-50",   icon: "💰" },
+    { label: T("weeklyRevenue"),  value: isLoading ? "—" : fc(stats?.week?.revenue ?? 0),       color: "text-blue-600",   bg: "bg-blue-50",    icon: "📅" },
+    { label: T("monthlyRevenue"), value: isLoading ? "—" : fc(stats?.month?.revenue ?? 0),      color: "text-purple-600", bg: "bg-purple-50",  icon: "📈" },
   ];
 
   return (
@@ -76,11 +80,11 @@ export default function Dashboard() {
         mobileContent={
           <div className="flex items-center justify-between bg-white/20 rounded-2xl px-4 py-2.5">
             <div>
-              <p className="text-orange-100 text-xs font-medium">Wallet Balance</p>
+              <p className="text-orange-100 text-xs font-medium">{T("walletBalance")}</p>
               <p className="text-2xl font-extrabold text-white">{fc(user?.walletBalance || 0)}</p>
             </div>
             <div className="text-right">
-              <p className="text-orange-100 text-xs font-medium">Store Status</p>
+              <p className="text-orange-100 text-xs font-medium">{T("storeStatus")}</p>
               <button onClick={() => toggleMut.mutate(!user?.storeIsOpen)} disabled={toggleMut.isPending}
                 className={`w-14 h-7 rounded-full relative transition-all duration-300 block mt-1 ${user?.storeIsOpen ? "bg-green-400" : "bg-white/30"}`}>
                 <div className={`w-5 h-5 bg-white rounded-full absolute top-1 shadow transition-all duration-300 ${user?.storeIsOpen ? "left-8" : "left-1"}`} />
@@ -98,15 +102,15 @@ export default function Dashboard() {
         {/* Desktop wallet bar */}
         <div className="hidden md:flex items-center gap-4 px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl text-white shadow-sm mb-6">
           <div className="flex-1">
-            <p className="text-orange-100 text-xs font-medium">Wallet Balance</p>
+            <p className="text-orange-100 text-xs font-medium">{T("walletBalance")}</p>
             <p className="text-3xl font-extrabold">{fc(user?.walletBalance || 0)}</p>
           </div>
           <div className="text-center border-l border-white/20 pl-4">
-            <p className="text-orange-100 text-xs font-medium">Commission</p>
+            <p className="text-orange-100 text-xs font-medium">{T("commission")}</p>
             <p className="text-3xl font-extrabold">{Math.round(100 - (config.platform.vendorCommissionPct ?? 15))}%</p>
           </div>
           <div className="text-right border-l border-white/20 pl-4">
-            <p className="text-orange-100 text-xs font-medium">All-Time Earned</p>
+            <p className="text-orange-100 text-xs font-medium">{T("allTimeEarned")}</p>
             <p className="text-xl font-extrabold">{fc(user?.stats?.totalRevenue || 0)}</p>
           </div>
         </div>

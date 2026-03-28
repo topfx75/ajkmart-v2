@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { usePlatformConfig } from "./lib/useConfig";
+import { useLanguage } from "./lib/useLanguage";
 import { BottomNav } from "./components/BottomNav";
 import { AnnouncementBar } from "./components/AnnouncementBar";
 import { MaintenanceScreen } from "./components/MaintenanceScreen";
@@ -19,6 +20,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } 
 function AppRoutes() {
   const { user, loading } = useAuth();
   const { config } = usePlatformConfig();
+  useLanguage(); /* initialises RTL + language from API on mount */
 
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-green-600 to-emerald-800 flex items-center justify-center">

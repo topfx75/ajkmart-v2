@@ -19,8 +19,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useToast } from "@/context/ToastContext";
+import { LANGUAGE_OPTIONS, type Language } from "@workspace/i18n";
 
 const C   = Colors.light;
 const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
@@ -543,12 +545,15 @@ export default function ProfileScreen() {
   const [showNotifs,  setShowNotifs]  = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showAddrs,   setShowAddrs]   = useState(false);
+  const [showLang,    setShowLang]    = useState(false);
   const [refreshing,  setRefreshing]  = useState(false);
   const [unread,      setUnread]      = useState(0);
   const [stats,       setStats]       = useState({ orders: 0, rides: 0, spent: 0 });
   const [statsLoading,setStatsLoading]= useState(true);
   const [signingOut,        setSigningOut]        = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
+  const { language, setLanguage, loading: langLoading } = useLanguage();
 
   const { config: platformConfig } = usePlatformConfig();
   const platformCfg = {
@@ -761,6 +766,7 @@ export default function ProfileScreen() {
           <Row icon="shield-checkmark-outline" label="Privacy & Security" sub="Toggles, biometric, location"       onPress={() => setShowPrivacy(true)} iconColor="#059669" iconBg="#D1FAE5"
             right={<View style={{ flexDirection:"row", alignItems:"center", gap:4 }}><View style={sc.secureBadge}><Text style={sc.secureTxt}>Secure</Text></View><Ionicons name="chevron-forward" size={15} color={C.textMuted} /></View>}
           />
+          <Row icon="language-outline" label="Language / زبان" sub={LANGUAGE_OPTIONS.find(o => o.value === language)?.label || "Select Language"} onPress={() => setShowLang(true)} iconColor="#7C3AED" iconBg="#F5F3FF" />
         </SectionCard>
 
         {/* ── Activity ── */}
@@ -917,6 +923,43 @@ export default function ProfileScreen() {
       <NotificationsModal visible={showNotifs} userId={user?.id || ""} token={token} onClose={count => { setUnread(count); setShowNotifs(false); }} />
       <PrivacyModal       visible={showPrivacy} userId={user?.id || ""} token={token} onClose={() => setShowPrivacy(false)} />
       <AddressesModal     visible={showAddrs}  userId={user?.id || ""} token={token} onClose={() => setShowAddrs(false)} />
+
+      {/* ── Language Picker Modal ── */}
+      <Modal visible={showLang} transparent animationType="slide" onRequestClose={() => setShowLang(false)}>
+        <Pressable style={lm.overlay} onPress={() => setShowLang(false)}>
+          <Pressable style={lm.sheet} onPress={e => e.stopPropagation()}>
+            <View style={lm.handle} />
+            <Text style={lm.title}>Language / زبان</Text>
+            <Text style={lm.sub}>App ki zaban choose karein</Text>
+            <View style={{ gap: 8, marginTop: 8 }}>
+              {LANGUAGE_OPTIONS.map(opt => {
+                const active = language === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={async () => {
+                      await setLanguage(opt.value as Language);
+                      setShowLang(false);
+                      showToast("Language save ho gayi!", "success");
+                    }}
+                    disabled={langLoading}
+                    style={[lm.option, active && lm.optionActive]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[lm.optLabel, active && lm.optLabelActive]}>{opt.label}</Text>
+                      <Text style={[lm.optNative, active && { color: C.primary }]}>{opt.nativeLabel}</Text>
+                    </View>
+                    {active && <Ionicons name="checkmark-circle" size={22} color={C.primary} />}
+                    {opt.rtl && (
+                      <View style={lm.rtlBadge}><Text style={lm.rtlBadgeTxt}>RTL</Text></View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1088,4 +1131,20 @@ const ad = StyleSheet.create({
   defBadge: { backgroundColor: "#D1FAE5", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 },
   defTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#059669" },
   delBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" },
+});
+
+/* Language Modal */
+const lm = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 12 },
+  handle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: 20 },
+  title: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text, marginBottom: 4 },
+  sub: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginBottom: 8 },
+  option: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: C.border, backgroundColor: "#fff" },
+  optionActive: { borderColor: C.primary, backgroundColor: C.rideLight },
+  optLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
+  optLabelActive: { color: C.primary },
+  optNative: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
+  rtlBadge: { backgroundColor: "#FEF3C7", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
+  rtlBadgeTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#D97706" },
 });

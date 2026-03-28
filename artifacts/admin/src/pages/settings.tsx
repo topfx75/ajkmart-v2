@@ -2998,6 +2998,42 @@ function renderSection(
             </div>
           </div>
         ))}
+
+        {/* ── Language Support Info ── */}
+        <div className="space-y-3 border-t border-border/40 pt-6">
+          <SLabel icon={Globe}>Language / زبان Support</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">
+            AJKMart supports 5 language modes. Each user sets their preference from their own profile — the selection is stored in their account and synced across sessions. No action required here; this is informational.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { code: "en",       label: "English Only",         native: "English",          rtl: false, desc: "Standard English UI throughout" },
+              { code: "ur",       label: "Urdu Only",            native: "اردو",             rtl: true,  desc: "Full Urdu script — RTL layout active" },
+              { code: "roman",    label: "Roman Urdu Only",      native: "Roman Urdu",       rtl: false, desc: "Urdu written in Latin script" },
+              { code: "en_roman", label: "English + Roman Urdu", native: "English + Roman",  rtl: false, desc: "Default — bilingual, widest reach" },
+              { code: "en_ur",    label: "English + Urdu",       native: "English + اردو",   rtl: false, desc: "English with native Urdu below" },
+            ].map(lang => (
+              <div key={lang.code} className="rounded-xl border border-border bg-white p-4 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-foreground">{lang.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    {lang.code === "en_roman" && <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded-full">DEFAULT</span>}
+                    {lang.rtl && <span className="text-[10px] bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded-full">RTL</span>}
+                  </div>
+                </div>
+                <p className="text-base font-medium text-gray-500">{lang.native}</p>
+                <p className="text-[11px] text-muted-foreground">{lang.desc}</p>
+                <p className="text-[10px] text-muted-foreground/50 font-mono">lang={lang.code}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5 flex gap-2.5">
+            <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-700 leading-relaxed">
+              Language preference is per-user and stored in the database. RTL (Right-to-Left) layout applies only when a user selects "Urdu Only". The default for all new users is <strong>English + Roman Urdu</strong>.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

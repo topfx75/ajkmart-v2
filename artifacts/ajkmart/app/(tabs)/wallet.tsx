@@ -19,6 +19,8 @@ import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual } from "@workspace/i18n";
 import { useGetWallet, topUpWallet } from "@workspace/api-client-react";
 
 const C   = Colors.light;
@@ -59,6 +61,8 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const qc = useQueryClient();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_H  = Platform.OS === "web" ? 84 : 49;
@@ -153,11 +157,11 @@ export default function WalletScreen() {
           <View style={[ws.blob, { width:220, height:220, top:-70, right:-60 }]} />
           <View style={[ws.blob, { width:100, height:100, bottom:-20, left:30 }]} />
 
-          <Text style={ws.balLbl}>{appName} Wallet</Text>
+          <Text style={ws.balLbl}>{appName} {T("wallet")}</Text>
           <Text style={ws.balAmt}>
             {isLoading ? "Rs. ···" : `Rs. ${balance.toLocaleString()}`}
           </Text>
-          <Text style={ws.balSub}>Available Balance</Text>
+          <Text style={ws.balSub}>{T("availableBalance")}</Text>
 
           {/* Action Buttons */}
           <View style={ws.actionsRow}>
@@ -165,27 +169,27 @@ export default function WalletScreen() {
               <View style={ws.actionIcon}>
                 <Ionicons name="add" size={22} color={C.primary} />
               </View>
-              <Text style={ws.actionTxt}>Top Up</Text>
+              <Text style={ws.actionTxt}>{T("topUp")}</Text>
             </Pressable>
             {p2pEnabled && (
               <Pressable onPress={() => setShowSend(true)} style={ws.action}>
                 <View style={ws.actionIcon}>
                   <Ionicons name="send-outline" size={20} color={C.primary} />
                 </View>
-                <Text style={ws.actionTxt}>Send</Text>
+                <Text style={ws.actionTxt}>{T("send")}</Text>
               </Pressable>
             )}
             <Pressable onPress={() => setShowQR(true)} style={ws.action}>
               <View style={ws.actionIcon}>
                 <Ionicons name="qr-code-outline" size={20} color={C.primary} />
               </View>
-              <Text style={ws.actionTxt}>Receive</Text>
+              <Text style={ws.actionTxt}>{T("receive")}</Text>
             </Pressable>
             <Pressable onPress={onRefresh} style={ws.action}>
               <View style={ws.actionIcon}>
                 <Ionicons name="refresh-outline" size={20} color={C.primary} />
               </View>
-              <Text style={ws.actionTxt}>Refresh</Text>
+              <Text style={ws.actionTxt}>{T("refresh")}</Text>
             </Pressable>
           </View>
         </LinearGradient>
@@ -196,21 +200,21 @@ export default function WalletScreen() {
             <View style={[ws.statIcon, { backgroundColor: "#D1FAE5" }]}>
               <Ionicons name="arrow-down-outline" size={17} color={C.success} />
             </View>
-            <Text style={ws.statLbl}>Money In</Text>
+            <Text style={ws.statLbl}>{T("moneyIn")}</Text>
             <Text style={[ws.statAmt, { color: C.success }]}>Rs. {totalIn.toLocaleString()}</Text>
           </View>
           <View style={ws.statCard}>
             <View style={[ws.statIcon, { backgroundColor: "#FEE2E2" }]}>
               <Ionicons name="arrow-up-outline" size={17} color={C.danger} />
             </View>
-            <Text style={ws.statLbl}>Money Out</Text>
+            <Text style={ws.statLbl}>{T("moneyOut")}</Text>
             <Text style={[ws.statAmt, { color: C.danger }]}>Rs. {totalOut.toLocaleString()}</Text>
           </View>
           <View style={ws.statCard}>
             <View style={[ws.statIcon, { backgroundColor: "#DBEAFE" }]}>
               <Ionicons name="receipt-outline" size={17} color={C.primary} />
             </View>
-            <Text style={ws.statLbl}>Transactions</Text>
+            <Text style={ws.statLbl}>{T("transactions")}</Text>
             <Text style={[ws.statAmt, { color: C.primary }]}>{transactions.length}</Text>
           </View>
         </View>
@@ -218,7 +222,7 @@ export default function WalletScreen() {
         {/* Transaction History */}
         <View style={ws.txSection}>
           <View style={ws.txHeader}>
-            <Text style={ws.txTitle}>Transaction History</Text>
+            <Text style={ws.txTitle}>{T("transactionHistory")}</Text>
             {transactions.length > 0 && (
               <View style={ws.filterRow}>
                 {(["all", "credit", "debit"] as TxFilter[]).map(f => (

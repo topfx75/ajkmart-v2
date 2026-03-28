@@ -9,6 +9,8 @@ const router: IRouter = Router();
 
 router.use(customerAuth);
 
+const VALID_LANGUAGES = ["en", "ur", "roman", "en_roman", "en_ur"] as const;
+
 const DEFAULT_SETTINGS = {
   notifOrders: true,
   notifWallet: true,
@@ -18,6 +20,7 @@ const DEFAULT_SETTINGS = {
   biometric: false,
   twoFactor: false,
   darkMode: false,
+  language: "en_roman" as const,
 };
 
 router.get("/", async (req, res) => {
@@ -35,6 +38,10 @@ router.get("/", async (req, res) => {
 router.put("/", async (req, res) => {
   const userId = req.customerId!;
   const { userId: _ignored, ...updates } = req.body;
+
+  if (updates.language !== undefined && !VALID_LANGUAGES.includes(updates.language)) {
+    delete updates.language;
+  }
 
   let [existing] = await db.select().from(userSettingsTable).where(eq(userSettingsTable.userId, userId)).limit(1);
   if (!existing) {

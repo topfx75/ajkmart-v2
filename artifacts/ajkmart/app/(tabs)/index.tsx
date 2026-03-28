@@ -20,7 +20,9 @@ import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { tDual } from "@workspace/i18n";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
@@ -428,6 +430,9 @@ export default function HomeScreen() {
   const announcement  = platformConfig.content.announcement;
   const [announceDismissed, setAnnounceDismissed] = useState(false);
 
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
+
   useEffect(() => {
     Animated.timing(hdOp, { toValue:1, duration:480, useNativeDriver:true }).start();
   }, []);
@@ -469,8 +474,8 @@ export default function HomeScreen() {
         >
           <View style={styles.hdrRow}>
             <View style={{ flex:1 }}>
-              <Text style={styles.greeting}>{user?.name ? `Salam, ${user.name.split(" ")[0]} 👋` : "Salam! 👋"}</Text>
-              <Text style={styles.hdrTitle}>Kya chahiye aaj?</Text>
+              <Text style={styles.greeting}>{user?.name ? `${T("salam")}, ${user.name.split(" ")[0]} 👋` : `${T("salam")}! 👋`}</Text>
+              <Text style={styles.hdrTitle}>{T("whatDoYouWant")}</Text>
               <View style={styles.locRow}>
                 <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.75)" />
                 <Text style={styles.locTxt}>{platformConfig.platform.businessAddress}</Text>
@@ -491,7 +496,7 @@ export default function HomeScreen() {
             <View style={styles.searchIcon}>
               <Ionicons name="search" size={16} color={C.primary} />
             </View>
-            <Text style={styles.searchTxt}>Products, food, restaurants...</Text>
+            <Text style={styles.searchTxt}>{T("search")}</Text>
             <View style={styles.searchFilter}>
               <Ionicons name="options-outline" size={16} color={C.textMuted} />
             </View>
@@ -503,8 +508,8 @@ export default function HomeScreen() {
 
         {/* ──── SERVICES ──── */}
         <View style={styles.secRow}>
-          <Text style={styles.secTitle}>Our Services</Text>
-          <Text style={styles.secSub}>Sab kuch ek jagah</Text>
+          <Text style={styles.secTitle}>{T("ourServices")}</Text>
+          <Text style={styles.secSub}>{T("allInOne")}</Text>
         </View>
 
         {/* Announcement Banner */}

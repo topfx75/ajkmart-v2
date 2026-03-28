@@ -20,6 +20,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual } from "@workspace/i18n";
 import { useGetOrders } from "@workspace/api-client-react";
 
 const C = Colors.light;
@@ -562,6 +564,8 @@ export default function OrdersScreen() {
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<any>(null);
@@ -839,9 +843,9 @@ export default function OrdersScreen() {
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
-        <Text style={styles.headerTitle}>My Orders</Text>
+        <Text style={styles.headerTitle}>{T("myOrders")}</Text>
         <Text style={styles.headerSub}>
-          {totalCount > 0 ? `${totalCount} total bookings` : "Track all your activity here"}
+          {totalCount > 0 ? `${totalCount} total bookings` : T("trackActivity")}
         </Text>
       </LinearGradient>
 

@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Colors from "@/constants/colors";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual } from "@workspace/i18n";
 
 function NativeTabLayout() {
   return (
@@ -41,6 +43,8 @@ function ClassicTabLayout() {
   const isWeb = Platform.OS === "web";
   const insets = useSafeAreaInsets();
   const C = Colors.light;
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
 
   return (
     <Tabs
@@ -72,7 +76,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: T("home"),
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
               <SymbolView name="house" tintColor={color} size={size} />
@@ -84,7 +88,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="orders"
         options={{
-          title: "Orders",
+          title: T("orders"),
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
               <SymbolView name="bag" tintColor={color} size={size} />
@@ -96,7 +100,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="wallet"
         options={{
-          title: "Wallet",
+          title: T("wallet"),
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
               <SymbolView name="creditcard" tintColor={color} size={size} />
@@ -108,7 +112,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: T("profile"),
           tabBarIcon: ({ color, size }) =>
             isIOS ? (
               <SymbolView name="person" tintColor={color} size={size} />
