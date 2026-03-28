@@ -14,11 +14,14 @@ export interface AppUser {
   phone: string;
   name?: string;
   email?: string;
+  username?: string;
   role: UserRole;
   avatar?: string;
   walletBalance: number;
   isActive: boolean;
   createdAt: string;
+  cnic?: string;
+  city?: string;
 }
 
 interface AuthContextType {

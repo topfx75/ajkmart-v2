@@ -231,7 +231,9 @@ export default function CartScreen() {
     try {
       const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
       const orderType = cartType === "mixed" ? "mart" : cartType;
-      const res = await fetch(`${API}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`);
+      const res = await fetch(`${API}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data = await res.json();
       if (data.valid) {
         setPromoCode(code);

@@ -47,14 +47,14 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
   const { showToast } = useToast();
   const [name,   setName]   = useState(user?.name  || "");
   const [email,  setEmail]  = useState(user?.email || "");
-  const [cnic,   setCnic]   = useState((user as any)?.cnic  || "");
-  const [city,   setCity]   = useState((user as any)?.city  || "");
+  const [cnic,   setCnic]   = useState(user?.cnic  || "");
+  const [city,   setCity]   = useState(user?.city  || "");
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
   const [showCityPicker, setShowCityPicker] = useState(false);
 
   useEffect(() => {
-    if (visible) { setName(user?.name || ""); setEmail(user?.email || ""); setCnic((user as any)?.cnic || ""); setCity((user as any)?.city || ""); setError(""); }
+    if (visible) { setName(user?.name || ""); setEmail(user?.email || ""); setCnic(user?.cnic || ""); setCity(user?.city || ""); setError(""); }
   }, [visible, user]);
 
   const save = async () => {
@@ -68,7 +68,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
         body: JSON.stringify({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() }),
       });
       if (!res.ok) throw new Error();
-      updateUser({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() } as any);
+      updateUser({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() });
       onClose();
       showToast("Profile update ho gayi!", "success");
     } catch { showToast("Update fail. Dobara try karein.", "error"); }

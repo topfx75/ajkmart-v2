@@ -170,12 +170,17 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
     return () => clearInterval(iv);
   }, [rideId]);
 
+  const { showToast } = useToast();
+
   const cancelRideHandler = async () => {
     setCancelling(true);
     setShowCancelModal(false);
     try {
       await cancelRideApi(rideId, {});
-    } catch {}
+      setRide((r: any) => r ? { ...r, status: "cancelled" } : r);
+    } catch {
+      showToast("Cancel nahi ho saka. Dobara try karein.", "error");
+    }
     setCancelling(false);
   };
 

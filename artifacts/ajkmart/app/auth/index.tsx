@@ -195,7 +195,7 @@ export default function AuthScreen() {
           isActive: true,
           createdAt: new Date().toISOString(),
           ...res.user,
-        } as any, pendingToken, pendingRefreshToken);
+        } as any, res.token ?? pendingToken, res.refreshToken ?? pendingRefreshToken);
         router.replace("/(tabs)");
       }
     } catch (e: any) { setError(e.message || "Profile save nahi hua."); }

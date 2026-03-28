@@ -171,7 +171,7 @@ export default function PharmacyScreen() {
         paymentMethod: payMethod as "cash" | "wallet",
       });
       if (payMethod === "wallet" && user) {
-        updateUser({ walletBalance: (user.walletBalance ?? 0) - cartTotal });
+        updateUser({ walletBalance: (user.walletBalance ?? 0) - (data.total ?? cartTotal) });
       }
       setConfirmedOrderId(data.id);
       setConfirmed(true);
