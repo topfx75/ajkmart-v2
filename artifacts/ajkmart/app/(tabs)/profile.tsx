@@ -22,7 +22,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useToast } from "@/context/ToastContext";
-import { LANGUAGE_OPTIONS, type Language } from "@workspace/i18n";
+import { LANGUAGE_OPTIONS, tDual, type Language, type TranslationKey } from "@workspace/i18n";
 
 const C   = Colors.light;
 const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
@@ -575,6 +575,7 @@ export default function ProfileScreen() {
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   const { language, setLanguage, loading: langLoading } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const { config: platformConfig } = usePlatformConfig();
   const platformCfg = {
@@ -706,17 +707,17 @@ export default function ProfileScreen() {
               <>
                 <View style={ph.stat}>
                   <Text style={ph.statVal}>{stats.orders}</Text>
-                  <Text style={ph.statLbl}>Orders</Text>
+                  <Text style={ph.statLbl}>{T("orders")}</Text>
                 </View>
                 <View style={ph.statDiv} />
                 <View style={ph.stat}>
                   <Text style={ph.statVal}>{stats.rides}</Text>
-                  <Text style={ph.statLbl}>Rides</Text>
+                  <Text style={ph.statLbl}>{T("rides")}</Text>
                 </View>
                 <View style={ph.statDiv} />
                 <View style={ph.stat}>
                   <Text style={ph.statVal}>Rs.{stats.spent.toLocaleString()}</Text>
-                  <Text style={ph.statLbl}>Spent</Text>
+                  <Text style={ph.statLbl}>{T("spentLabel")}</Text>
                 </View>
               </>
             )}
@@ -729,11 +730,11 @@ export default function ProfileScreen() {
             <Ionicons name="wallet" size={18} color="#fff" />
           </LinearGradient>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={wb.lbl}>{platformCfg.appName} Wallet</Text>
+            <Text style={wb.lbl}>{platformCfg.appName} {T("wallet")}</Text>
             <Text style={wb.amt}>Rs. {(user?.walletBalance || 0).toLocaleString()}</Text>
           </View>
           <View style={wb.btn}>
-            <Text style={wb.btnTxt}>Manage</Text>
+            <Text style={wb.btnTxt}>{T("manageLabel")}</Text>
             <Ionicons name="arrow-forward" size={13} color={C.primary} />
           </View>
         </Pressable>
@@ -746,7 +747,7 @@ export default function ProfileScreen() {
                 <Ionicons name="gift-outline" size={22} color="#7C3AED" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={rc.title}>Refer & Earn</Text>
+                <Text style={rc.title}>{T("referAndEarn")}</Text>
                 <Text style={rc.sub}>Dost ko invite karein — dono ko Rs. {platformConfig.customer.referralBonus.toLocaleString()} milega</Text>
                 <View style={rc.codeRow}>
                   <Text style={rc.codeLabel}>Aapka Code:</Text>
@@ -767,7 +768,7 @@ export default function ProfileScreen() {
                 <Ionicons name="star-outline" size={22} color="#D97706" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={rc.title}>Loyalty Points</Text>
+                <Text style={rc.title}>{T("loyaltyPointsLabel")}</Text>
                 <Text style={rc.sub}>Har Rs. 100 spend karne par {platformConfig.customer.loyaltyPtsPerRs100} points milte hain</Text>
                 <View style={rc.codeRow}>
                   <Text style={rc.codeLabel}>Aap kama sakte hain:</Text>
@@ -781,22 +782,22 @@ export default function ProfileScreen() {
         )}
 
         {/* ── Account ── */}
-        <SectionCard title="ACCOUNT">
-          <Row icon="person-outline"          label="Edit Profile"       sub="Naam, email update karein"            onPress={() => setShowEdit(true)} />
-          <Row icon="notifications-outline"   label="Notifications"      sub={unread > 0 ? `${unread} naye notifications` : "Koi naya notification nahi"} badge={unread} onPress={() => setShowNotifs(true)} iconColor={C.food} iconBg={C.foodLight} />
-          <Row icon="shield-checkmark-outline" label="Privacy & Security" sub="Toggles, biometric, location"       onPress={() => setShowPrivacy(true)} iconColor="#059669" iconBg="#D1FAE5"
+        <SectionCard title={T("account")}>
+          <Row icon="person-outline"          label={T("editProfile")}       sub={T("editProfileSub")}            onPress={() => setShowEdit(true)} />
+          <Row icon="notifications-outline"   label={T("notifications")}      sub={unread > 0 ? `${unread} ${T("notificationsSub")}` : T("noNewNotifs")} badge={unread} onPress={() => setShowNotifs(true)} iconColor={C.food} iconBg={C.foodLight} />
+          <Row icon="shield-checkmark-outline" label={T("privacySecurity")} sub="Toggles, biometric, location"       onPress={() => setShowPrivacy(true)} iconColor="#059669" iconBg="#D1FAE5"
             right={<View style={{ flexDirection:"row", alignItems:"center", gap:4 }}><View style={sc.secureBadge}><Text style={sc.secureTxt}>Secure</Text></View><Ionicons name="chevron-forward" size={15} color={C.textMuted} /></View>}
           />
           <Row icon="language-outline" label="Language / زبان" sub={LANGUAGE_OPTIONS.find(o => o.value === language)?.label || "Select Language"} onPress={() => setShowLang(true)} iconColor="#7C3AED" iconBg="#F5F3FF" />
         </SectionCard>
 
         {/* ── Activity ── */}
-        <SectionCard title="MY ACTIVITY">
-          <Row icon="bag-outline"      label="My Orders"        sub={`${stats.orders} total orders`}       onPress={() => router.push("/(tabs)/orders")}  iconColor={C.primary} iconBg={C.rideLight} />
-          <Row icon="bicycle-outline"  label="My Rides"         sub={`${stats.rides} total rides`}          onPress={() => router.push("/ride")}            iconColor="#8B5CF6"   iconBg="#EDE9FE" />
-          <Row icon="medkit-outline"   label="Pharmacy"         sub="Medicine order history"               onPress={() => router.push("/pharmacy")}        iconColor="#7C3AED"   iconBg="#F5F3FF" />
-          <Row icon="cube-outline"     label="Parcel Bookings"  sub="Courier delivery history"             onPress={() => router.push("/parcel")}          iconColor="#D97706"   iconBg="#FFFBEB" />
-          <Row icon="location-outline" label="Saved Addresses"  sub="Ghar, office aur doosre addresses"    onPress={() => setShowAddrs(true)}              iconColor={C.mart}    iconBg={C.martLight} />
+        <SectionCard title={T("myActivity")}>
+          <Row icon="bag-outline"      label={T("myOrders")}        sub={`${stats.orders} ${T("ordersCount")}`}       onPress={() => router.push("/(tabs)/orders")}  iconColor={C.primary} iconBg={C.rideLight} />
+          <Row icon="bicycle-outline"  label={T("rides")}         sub={`${stats.rides} ${T("ridesCount")}`}          onPress={() => router.push("/ride")}            iconColor="#8B5CF6"   iconBg="#EDE9FE" />
+          <Row icon="medkit-outline"   label={T("pharmacy")}         sub={T("medicineOrderHistory")}               onPress={() => router.push("/pharmacy")}        iconColor="#7C3AED"   iconBg="#F5F3FF" />
+          <Row icon="cube-outline"     label={T("parcelBookings")}  sub={T("courierHistory")}             onPress={() => router.push("/parcel")}          iconColor="#D97706"   iconBg="#FFFBEB" />
+          <Row icon="location-outline" label={T("savedAddresses")}  sub={T("savedAddressesSub")}    onPress={() => setShowAddrs(true)}              iconColor={C.mart}    iconBg={C.martLight} />
         </SectionCard>
 
         {/* ── Vendor / Rider dashboard ── */}
@@ -816,71 +817,71 @@ export default function ProfileScreen() {
         )}
 
         {/* ── Support ── */}
-        <SectionCard title="SUPPORT">
+        <SectionCard title={T("helpSupport")}>
           <Row icon="call-outline"
-               label="Call Support"
+               label={T("contactSupport")}
                sub={platformCfg.supportHours || `Call: ${platformCfg.supportPhone}`}
                onPress={() => Linking.openURL(`tel:${platformCfg.supportPhone}`).catch(() => showToast(`📞 ${platformCfg.supportPhone}`, "info"))}
                iconColor="#64748B" iconBg="#F1F5F9" />
           {platformCfg.supportEmail ? (
             <Row icon="mail-outline"
-                 label="Email Support"
+                 label={T("emailSupport")}
                  sub={platformCfg.supportEmail}
                  onPress={() => Linking.openURL(`mailto:${platformCfg.supportEmail}`).catch(() => showToast(platformCfg.supportEmail, "info"))}
                  iconColor="#6366F1" iconBg="#EEF2FF" />
           ) : null}
           {platformCfg.chat && (
             <Row icon="logo-whatsapp"
-                 label="Live Chat"
+                 label={T("liveChatLabel")}
                  sub={platformCfg.supportMsg}
                  onPress={() => Linking.openURL(`https://wa.me/${platformCfg.supportPhone.replace(/^0/, "92")}`).catch(() => showToast(`📞 ${platformCfg.supportPhone}`, "info"))}
                  iconColor="#25D366" iconBg="#DCFCE7" />
           )}
           {(platformCfg.socialFacebook || platformCfg.socialInstagram) && (
             <Row icon="share-social-outline"
-                 label="Follow Us"
+                 label={T("followUsLabel")}
                  sub={[platformCfg.socialFacebook && "Facebook", platformCfg.socialInstagram && "Instagram"].filter(Boolean).join(" • ")}
                  onPress={() => Linking.openURL(platformCfg.socialFacebook || platformCfg.socialInstagram).catch(() => {})}
                  iconColor="#1877F2" iconBg="#EFF6FF" />
           )}
           {platformCfg.tncUrl ? (
             <Row icon="document-text-outline"
-                 label="Terms of Service"
-                 sub="Terms aur conditions parhein"
+                 label={T("termsOfService")}
+                 sub={T("termsSubLabel")}
                  onPress={() => Linking.openURL(platformCfg.tncUrl).catch(() => {})}
                  iconColor="#64748B" iconBg="#F1F5F9" />
           ) : (
             <Row icon="document-text-outline"
-                 label="Terms of Service"
-                 sub="Terms aur conditions"
+                 label={T("termsOfService")}
+                 sub={T("termsSubLabel")}
                  onPress={() => showToast(`${platformCfg.appName} use karte hue aap hamare terms se agree karte hain.`, "info")}
                  iconColor="#64748B" iconBg="#F1F5F9" />
           )}
           {platformCfg.privacyUrl && (
             <Row icon="shield-checkmark-outline"
-                 label="Privacy Policy"
-                 sub="Aapka data kaise use hota hai"
+                 label={T("privacyPolicy")}
+                 sub={T("privacySubLabel")}
                  onPress={() => Linking.openURL(platformCfg.privacyUrl).catch(() => {})}
                  iconColor="#0891B2" iconBg="#E0F2FE" />
           )}
           {platformCfg.refundPolicyUrl && (
             <Row icon="return-down-back-outline"
-                 label="Refund Policy"
-                 sub="Refund aur cancellation rules"
+                 label={T("refundPolicy")}
+                 sub={T("refundSubLabel")}
                  onPress={() => Linking.openURL(platformCfg.refundPolicyUrl).catch(() => {})}
                  iconColor="#059669" iconBg="#ECFDF5" />
           )}
           {platformCfg.faqUrl && (
             <Row icon="help-circle-outline"
-                 label="Help & FAQs"
-                 sub="Aksar pooche jane wale sawalat"
+                 label={T("helpFaqsLabel")}
+                 sub={T("faqSubLabel")}
                  onPress={() => Linking.openURL(platformCfg.faqUrl).catch(() => {})}
                  iconColor="#7C3AED" iconBg="#F5F3FF" />
           )}
           {platformCfg.aboutUrl && (
             <Row icon="information-circle-outline"
-                 label="About Us"
-                 sub={`${platformCfg.appName} ke baare mein`}
+                 label={T("aboutUsLabel")}
+                 sub={`${platformCfg.appName} ${T("aboutSubLabel")}`}
                  onPress={() => Linking.openURL(platformCfg.aboutUrl).catch(() => {})}
                  iconColor="#EA580C" iconBg="#FFF7ED" />
           )}
@@ -903,8 +904,8 @@ export default function ProfileScreen() {
                   <Ionicons name="log-out-outline" size={18} color={C.danger} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={so.confirmTitle}>Sign Out</Text>
-                  <Text style={so.confirmSub}>Aap waqai sign out karna chahte hain?</Text>
+                  <Text style={so.confirmTitle}>{T("signOutConfirm")}</Text>
+                  <Text style={so.confirmSub}>{T("signOutMsg")}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: "row", gap: 10 }}>
@@ -912,7 +913,7 @@ export default function ProfileScreen() {
                   onPress={() => setShowSignOutConfirm(false)}
                   style={so.confirmCancel}
                 >
-                  <Text style={so.confirmCancelTxt}>Nahi</Text>
+                  <Text style={so.confirmCancelTxt}>{T("cancelNo")}</Text>
                 </Pressable>
                 <Pressable
                   onPress={doSignOut}
@@ -921,7 +922,7 @@ export default function ProfileScreen() {
                 >
                   {signingOut
                     ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={so.confirmOkTxt}>Haan, Sign Out</Text>}
+                    : <Text style={so.confirmOkTxt}>{T("signOutYes")}</Text>}
                 </Pressable>
               </View>
             </View>
@@ -931,7 +932,7 @@ export default function ProfileScreen() {
               style={so.btn}
             >
               <Ionicons name="log-out-outline" size={20} color={C.danger} />
-              <Text style={so.txt}>Sign Out</Text>
+              <Text style={so.txt}>{T("signOutLabel")}</Text>
             </Pressable>
           )}
         </View>
@@ -951,7 +952,7 @@ export default function ProfileScreen() {
           <Pressable style={lm.sheet} onPress={e => e.stopPropagation()}>
             <View style={lm.handle} />
             <Text style={lm.title}>Language / زبان</Text>
-            <Text style={lm.sub}>App ki zaban choose karein</Text>
+            <Text style={lm.sub}>{T("selectLanguageSub")}</Text>
             <View style={{ gap: 8, marginTop: 8 }}>
               {LANGUAGE_OPTIONS.map(opt => {
                 const active = language === opt.value;

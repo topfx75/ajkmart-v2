@@ -2,20 +2,24 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Home, MapPin, Wallet, Bell, User } from "lucide-react";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 import type { LucideProps } from "lucide-react";
-interface NavItem { href: string; label: string; Icon: React.ComponentType<LucideProps>; }
+interface NavItem { href: string; labelKey: TranslationKey; Icon: React.ComponentType<LucideProps>; }
 
-const items: NavItem[] = [
-  { href: "/",               label: "Home",     Icon: Home    },
-  { href: "/active",         label: "Active",   Icon: MapPin  },
-  { href: "/wallet",         label: "Wallet",   Icon: Wallet  },
-  { href: "/notifications",  label: "Alerts",   Icon: Bell    },
-  { href: "/profile",        label: "Profile",  Icon: User    },
+const navItems: NavItem[] = [
+  { href: "/",               labelKey: "home",              Icon: Home    },
+  { href: "/active",         labelKey: "active",            Icon: MapPin  },
+  { href: "/wallet",         labelKey: "wallet",            Icon: Wallet  },
+  { href: "/notifications",  labelKey: "alerts",            Icon: Bell    },
+  { href: "/profile",        labelKey: "profile",           Icon: User    },
 ];
 
 export function BottomNav() {
   const [location] = useLocation();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const { data: notifData } = useQuery({
     queryKey: ["rider-notifs-count"],
@@ -37,7 +41,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 shadow-lg"
       style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom, 8px))" }}>
       <div className="flex max-w-md mx-auto">
-        {items.map(item => {
+        {navItems.map(item => {
           const active = location === item.href || (item.href !== "/" && location.startsWith(item.href));
           const { Icon } = item;
           return (
@@ -48,13 +52,11 @@ export function BottomNav() {
                 <span className={`flex items-center justify-center w-10 h-7 rounded-xl ${active ? "bg-green-50" : ""}`}>
                   <Icon size={20} strokeWidth={active ? 2.5 : 1.8} className={active ? "text-green-600" : "text-gray-400"} />
                 </span>
-                {/* Notification badge */}
                 {item.href === "/notifications" && unread > 0 && (
                   <span className="absolute -top-1 -right-0.5 bg-red-500 text-white text-[9px] font-extrabold rounded-full w-4 h-4 flex items-center justify-center">
                     {unread > 9 ? "9+" : unread}
                   </span>
                 )}
-                {/* Active task badge — pulsing green dot */}
                 {item.href === "/active" && hasActive && (
                   <span className="absolute -top-1 -right-0.5 flex items-center justify-center">
                     <span className="w-3.5 h-3.5 bg-green-500 rounded-full flex items-center justify-center">
@@ -64,7 +66,7 @@ export function BottomNav() {
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] font-bold leading-none ${active ? "text-green-600" : "text-gray-400"}`}>{item.label}</span>
+              <span className={`text-[10px] font-bold leading-none ${active ? "text-green-600" : "text-gray-400"}`}>{T(item.labelKey)}</span>
             </Link>
           );
         })}

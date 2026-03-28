@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { fd, CARD, CARD_HEADER } from "../lib/ui";
 
@@ -14,6 +16,8 @@ function typeIcon(type: string) {
 
 export default function Notifications() {
   const qc = useQueryClient();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["vendor-notifications"],
@@ -35,8 +39,8 @@ export default function Notifications() {
   return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
-        title="Notifications"
-        subtitle={unread > 0 ? `${unread} unread` : "All caught up"}
+        title={T("notifications")}
+        subtitle={unread > 0 ? `${unread} ${T("unread")}` : T("allCaughtUp")}
         actions={
           <div className="flex gap-2">
             <button onClick={() => refetch()}
@@ -46,7 +50,7 @@ export default function Notifications() {
             {unread > 0 && (
               <button onClick={() => markAllMut.mutate()} disabled={markAllMut.isPending}
                 className="h-9 px-4 bg-white/20 md:bg-orange-50 md:text-orange-600 text-white text-sm font-bold rounded-xl android-press min-h-0">
-                ✓ Mark All Read
+                ✓ {T("markAllRead")}
               </button>
             )}
           </div>
@@ -61,8 +65,8 @@ export default function Notifications() {
         ) : notifs.length === 0 ? (
           <div className={`${CARD} px-4 py-20 text-center`}>
             <p className="text-5xl mb-4">🔔</p>
-            <p className="font-bold text-gray-700 text-base">No notifications yet</p>
-            <p className="text-sm text-gray-400 mt-1">Order updates and alerts will appear here</p>
+            <p className="font-bold text-gray-700 text-base">{T("noNotificationsYet")}</p>
+            <p className="text-sm text-gray-400 mt-1">{T("noNotificationsDesc")}</p>
           </div>
         ) : (
           <div className={CARD}>

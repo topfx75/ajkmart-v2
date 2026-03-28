@@ -1,15 +1,19 @@
 import { Link, useLocation } from "wouter";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
-const items = [
-  { href: "/",          label: "Dashboard",  icon: "📊" },
-  { href: "/orders",    label: "Orders",     icon: "📦" },
-  { href: "/products",  label: "Products",   icon: "🍽️" },
-  { href: "/wallet",    label: "Wallet",     icon: "💰" },
-  { href: "/profile",   label: "Account",    icon: "👤" },
+const navItems: { href: string; labelKey: TranslationKey; icon: string }[] = [
+  { href: "/",          labelKey: "dashboard",  icon: "📊" },
+  { href: "/orders",    labelKey: "orders",     icon: "📦" },
+  { href: "/products",  labelKey: "products",   icon: "🍽️" },
+  { href: "/wallet",    labelKey: "wallet",     icon: "💰" },
+  { href: "/profile",   labelKey: "account",    icon: "👤" },
 ];
 
 export function BottomNav() {
   const [location] = useLocation();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   return (
     <nav
       className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white"
@@ -19,7 +23,7 @@ export function BottomNav() {
       }}
     >
       <div className="flex">
-        {items.map(item => {
+        {navItems.map(item => {
           const active = location === item.href || (item.href !== "/" && location.startsWith(item.href));
           return (
             <Link
@@ -32,7 +36,7 @@ export function BottomNav() {
                 {item.icon}
               </span>
               <span className={`text-[10px] font-bold leading-none ${active ? "text-orange-500" : "text-gray-400"}`}>
-                {item.label}
+                {T(item.labelKey)}
               </span>
             </Link>
           );

@@ -7,6 +7,8 @@ import {
   Clock, Sparkles,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const fd = (d: string | Date) => {
   const diff = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -73,6 +75,8 @@ export default function Notifications() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const [filter, setFilter] = useState<NFilter>("all");
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["rider-notifications"],
@@ -139,12 +143,12 @@ export default function Notifications() {
         </div>
         <div className="relative flex items-center justify-between mb-3">
           <div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Notifications</h1>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">{T("notificationsTitle")}</h1>
             <p className="text-green-200 text-sm mt-0.5 flex items-center gap-1.5">
               {unread > 0 ? (
-                <><span className="w-2 h-2 bg-red-400 rounded-full animate-pulse"/>{unread} unread</>
+                <><span className="w-2 h-2 bg-red-400 rounded-full animate-pulse"/>{unread} {T("unread")}</>
               ) : (
-                <><Sparkles size={13}/> All caught up</>
+                <><Sparkles size={13}/> {T("allCaughtUp")}</>
               )}
             </p>
           </div>
@@ -156,7 +160,7 @@ export default function Notifications() {
             {unread > 0 && (
               <button onClick={() => markAllMut.mutate()} disabled={markAllMut.isPending}
                 className="h-10 px-4 bg-white/15 backdrop-blur-sm text-white text-sm font-bold rounded-xl flex items-center gap-1.5 border border-white/10 active:bg-white/25 transition-colors disabled:opacity-60">
-                <CheckCheck size={15}/> Read All
+                <CheckCheck size={15}/> {T("readAll")}
               </button>
             )}
           </div>
@@ -224,10 +228,10 @@ export default function Notifications() {
               <Inbox size={40} className="text-gray-200"/>
             </div>
             <p className="font-bold text-gray-700 text-lg">
-              {filter === "all" ? "No notifications yet" : `No ${filter} notifications`}
+              {filter === "all" ? T("noNotificationsYet") : `${T("noNotifications")}`}
             </p>
             <p className="text-sm text-gray-400 mt-1.5 max-w-[260px] mx-auto leading-relaxed">
-              {filter === "all" ? "Order & delivery alerts will appear here when you start accepting tasks" : "Try a different filter to find what you're looking for"}
+              {filter === "all" ? T("orderAlertsAppearHere") : T("tryDifferentFilter")}
             </p>
           </div>
         ) : (

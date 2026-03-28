@@ -4,6 +4,12 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
+import {
+  NotoNastaliqUrdu_400Regular,
+  NotoNastaliqUrdu_500Medium,
+  NotoNastaliqUrdu_600SemiBold,
+  NotoNastaliqUrdu_700Bold,
+} from "@expo-google-fonts/noto-nastaliq-urdu";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setBaseUrl } from "@workspace/api-client-react";
 import * as Font from "expo-font";
@@ -110,6 +116,10 @@ export default function RootLayout() {
           Inter_500Medium,
           Inter_600SemiBold,
           Inter_700Bold,
+          NotoNastaliqUrdu_400Regular,
+          NotoNastaliqUrdu_500Medium,
+          NotoNastaliqUrdu_600SemiBold,
+          NotoNastaliqUrdu_700Bold,
         }).catch(() => { /* fall back to system fonts silently */ });
 
         await Promise.race([

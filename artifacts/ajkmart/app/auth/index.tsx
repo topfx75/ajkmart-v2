@@ -18,7 +18,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { sendOtp, verifyOtp, customFetch } from "@workspace/api-client-react";
 
 const C = Colors.light;
@@ -42,6 +44,8 @@ async function authPost(path: string, body: object) {
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { config: platformCfg } = usePlatformConfig();
   const appName    = platformCfg.platform.appName;
   const appTagline = platformCfg.platform.appTagline;
@@ -226,17 +230,17 @@ export default function AuthScreen() {
             <View style={styles.pendingIcon}>
               <Ionicons name="time-outline" size={48} color="#F59E0B" />
             </View>
-            <Text style={styles.pendingTitle}>Approval Ka Intezaar</Text>
+            <Text style={styles.pendingTitle}>{T("approvalWaiting")}</Text>
             <Text style={styles.pendingSubtitle}>
-              Aapka account admin approval ke liye submit ho gaya hai. Approve hone ke baad aap login kar sakenge.
+              {T("approvalMsg")}
             </Text>
             <View style={styles.pendingInfo}>
               <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
-              <Text style={styles.pendingInfoTxt}>Approval mein 24-48 ghante lag sakte hain.</Text>
+              <Text style={styles.pendingInfoTxt}>{T("approvalTimeframe")}</Text>
             </View>
             <Pressable style={styles.backBtn} onPress={() => { setStep("method"); setOtp(""); setEmailOtp(""); }}>
               <Ionicons name="arrow-back" size={16} color={C.primary} />
-              <Text style={styles.backBtnText}>Wapis Login Par</Text>
+              <Text style={styles.backBtnText}>{T("backToLogin")}</Text>
             </Pressable>
           </View>
         </View>
@@ -254,13 +258,13 @@ export default function AuthScreen() {
           <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
             <View style={[styles.topSection, { paddingTop: topPad + 24 }]}>
               <View style={styles.logo}><Ionicons name="person" size={36} color={C.primary} /></View>
-              <Text style={styles.appName}>Profile Complete Karein</Text>
-              <Text style={styles.tagline}>Thodi si information aur ho jayega!</Text>
+              <Text style={styles.appName}>{T("completeProfileLabel")}</Text>
+              <Text style={styles.tagline}>{T("almostDone")}</Text>
             </View>
 
             <View style={styles.card}>
               {/* Name (required) */}
-              <Text style={styles.fieldLabel}>Aapka Naam *</Text>
+              <Text style={styles.fieldLabel}>{T("yourNameRequired")}</Text>
               <TextInput
                 style={[styles.input2, error && profileName.trim().length < 2 && styles.inputError]}
                 value={profileName} onChangeText={v => { setProfileName(v); clearError(); }}
@@ -269,7 +273,7 @@ export default function AuthScreen() {
               />
 
               {/* Email (optional) */}
-              <Text style={styles.fieldLabel}>Email (optional)</Text>
+              <Text style={styles.fieldLabel}>{T("emailOptional")}</Text>
               <TextInput
                 style={styles.input2} value={profileEmail} onChangeText={v => { setProfileEmail(v); clearError(); }}
                 placeholder="email@example.com" placeholderTextColor={C.textMuted}
@@ -277,7 +281,7 @@ export default function AuthScreen() {
               />
 
               {/* Username (optional) */}
-              <Text style={styles.fieldLabel}>Username (optional)</Text>
+              <Text style={styles.fieldLabel}>{T("usernameOptional")}</Text>
               <TextInput
                 style={styles.input2} value={profileUsername} onChangeText={v => { setProfileUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, "")); clearError(); }}
                 placeholder="e.g. ali_ahmed123" placeholderTextColor={C.textMuted}
@@ -285,7 +289,7 @@ export default function AuthScreen() {
               />
 
               {/* Password (optional) */}
-              <Text style={styles.fieldLabel}>Password (optional)</Text>
+              <Text style={styles.fieldLabel}>{T("passwordOptional")}</Text>
               <View style={styles.pwdWrapper}>
                 <TextInput
                   style={[styles.input2, { flex: 1, marginBottom: 0 }]}
@@ -310,7 +314,7 @@ export default function AuthScreen() {
                 style={[styles.btn, loading && styles.btnDisabled]}
                 disabled={loading}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save & Continue →</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{T("saveAndContinue")} →</Text>}
               </Pressable>
 
               <Pressable onPress={async () => {
@@ -326,7 +330,7 @@ export default function AuthScreen() {
                   setPendingToken("");
                 }
               }} style={{ alignItems: "center", marginTop: 12 }}>
-                <Text style={[styles.backBtnText, { fontSize: 13 }]}>Baad mein karein</Text>
+                <Text style={[styles.backBtnText, { fontSize: 13 }]}>{T("doLater")}</Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -361,7 +365,7 @@ export default function AuthScreen() {
                     color={method === m ? C.primary : C.textMuted}
                   />
                   <Text style={[styles.tabText, method === m && styles.tabTextActive]}>
-                    {m === "phone" ? "Phone" : m === "email" ? "Email" : "Username"}
+                    {m === "phone" ? T("phone") : m === "email" ? T("email") : T("username")}
                   </Text>
                 </Pressable>
               ))}
@@ -371,8 +375,8 @@ export default function AuthScreen() {
           {/* ── Phone OTP ── */}
           {method === "phone" && step === "method" && (
             <>
-              <Text style={styles.cardTitle}>Phone Number</Text>
-              <Text style={styles.cardSubtitle}>Aapko ek verification code bheja jayega</Text>
+              <Text style={styles.cardTitle}>{T("phoneNumber")}</Text>
+              <Text style={styles.cardSubtitle}>{T("verificationCodeSent")}</Text>
               <View style={styles.inputWrapper}>
                 <View style={styles.countryCode}><Text style={styles.countryCodeText}>+92</Text></View>
                 <TextInput
@@ -389,10 +393,10 @@ export default function AuthScreen() {
             <>
               <Pressable onPress={() => { setStep("method"); clearError(); setDevOtp(""); }} style={styles.backBtn}>
                 <Ionicons name="arrow-back" size={16} color={C.primary} />
-                <Text style={styles.backBtnText}>Number change karein</Text>
+                <Text style={styles.backBtnText}>{T("changeNumber")}</Text>
               </Pressable>
-              <Text style={styles.cardTitle}>OTP Enter Karein</Text>
-              <Text style={styles.cardSubtitle}>+92{phone} par bheja gaya</Text>
+              <Text style={styles.cardTitle}>{T("enterOtp")}</Text>
+              <Text style={styles.cardSubtitle}>{T("otpSentToPhone")}{phone}</Text>
               <TextInput
                 style={[styles.input, styles.otpInput, error ? styles.inputError : null]}
                 value={otp} onChangeText={v => { setOtp(v); clearError(); }}
@@ -411,7 +415,7 @@ export default function AuthScreen() {
                 disabled={resendCooldown > 0}
               >
                 <Text style={styles.resendText}>
-                  {resendCooldown > 0 ? `OTP dobara bhejein (${resendCooldown}s)` : "OTP dobara bhejein"}
+                  {resendCooldown > 0 ? `${T("otpResendIn")} (${resendCooldown}s)` : T("otpResend")}
                 </Text>
               </Pressable>
             </>
@@ -420,8 +424,8 @@ export default function AuthScreen() {
           {/* ── Email OTP ── */}
           {method === "email" && step === "method" && (
             <>
-              <Text style={styles.cardTitle}>Email Address</Text>
-              <Text style={styles.cardSubtitle}>Pehle se registered email se login karein</Text>
+              <Text style={styles.cardTitle}>{T("emailAddress")}</Text>
+              <Text style={styles.cardSubtitle}>{T("enterRegisteredEmail")}</Text>
               <TextInput
                 style={[styles.input, { marginBottom: 8 }]}
                 value={email} onChangeText={v => { setEmail(v); clearError(); }}
@@ -435,10 +439,10 @@ export default function AuthScreen() {
             <>
               <Pressable onPress={() => { setStep("method"); clearError(); setEmailDevOtp(""); }} style={styles.backBtn}>
                 <Ionicons name="arrow-back" size={16} color={C.primary} />
-                <Text style={styles.backBtnText}>Email change karein</Text>
+                <Text style={styles.backBtnText}>{T("changeEmail")}</Text>
               </Pressable>
-              <Text style={styles.cardTitle}>Email OTP</Text>
-              <Text style={styles.cardSubtitle}>{email} par bheja gaya</Text>
+              <Text style={styles.cardTitle}>{T("enterEmailOtp")}</Text>
+              <Text style={styles.cardSubtitle}>{T("otpSentToEmail")} {email}</Text>
               <TextInput
                 style={[styles.input, styles.otpInput, error ? styles.inputError : null]}
                 value={emailOtp} onChangeText={v => { setEmailOtp(v); clearError(); }}
@@ -457,7 +461,7 @@ export default function AuthScreen() {
                 disabled={emailResendCooldown > 0}
               >
                 <Text style={styles.resendText}>
-                  {emailResendCooldown > 0 ? `OTP dobara bhejein (${emailResendCooldown}s)` : "OTP dobara bhejein"}
+                  {emailResendCooldown > 0 ? `${T("otpResendIn")} (${emailResendCooldown}s)` : T("otpResend")}
                 </Text>
               </Pressable>
             </>
@@ -466,8 +470,8 @@ export default function AuthScreen() {
           {/* ── Username + Password ── */}
           {method === "username" && step === "method" && (
             <>
-              <Text style={styles.cardTitle}>Username se Login</Text>
-              <Text style={styles.cardSubtitle}>Apna username aur password dalein</Text>
+              <Text style={styles.cardTitle}>{T("loginViaUsername")}</Text>
+              <Text style={styles.cardSubtitle}>{T("enterUsernamePassword")}</Text>
               <TextInput
                 style={[styles.input, { marginBottom: 10 }]}
                 value={username} onChangeText={v => { setUsername(v.toLowerCase()); clearError(); }}
@@ -511,10 +515,10 @@ export default function AuthScreen() {
             {loading ? <ActivityIndicator color="#fff" /> : (
               <Text style={styles.btnText}>
                 {method === "phone"
-                  ? step === "method" ? "OTP Bhejein" : "Verify & Continue →"
+                  ? step === "method" ? T("sendOtpBtn") : `${T("verifyAndContinueBtn")} →`
                   : method === "email"
-                  ? step === "method" ? "Email OTP Bhejein" : "Verify & Continue →"
-                  : "Login Karein →"
+                  ? step === "method" ? T("sendOtpBtn") : `${T("verifyAndContinueBtn")} →`
+                  : `${T("loginBtn")} →`
                 }
               </Text>
             )}
@@ -522,7 +526,7 @@ export default function AuthScreen() {
         </View>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
-          <Text style={styles.footerText}>Continue karne par aap hamare Terms & Privacy Policy se agree karte hain</Text>
+          <Text style={styles.footerText}>{T("termsAgreement")}</Text>
         </View>
       </LinearGradient>
     </KeyboardAvoidingView>

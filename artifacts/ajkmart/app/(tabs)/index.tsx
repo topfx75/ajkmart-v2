@@ -531,8 +531,8 @@ export default function HomeScreen() {
               g1="#FFFBEB" g2="#FEF3C7"
               ig1="#F59E0B" ig2="#FBBF24"
               icon="restaurant"
-              title={"Food\nDelivery"}
-              sub={"Restaurants\nnear you"}
+              title={T("foodDelivery")}
+              sub={T("restaurantsNearYou")}
               tag="30 min"
               tagIcon="time-outline"
               textC="#92400E" tagC="#92400E" tagBg="#FDE68A"
@@ -544,9 +544,9 @@ export default function HomeScreen() {
               g1="#F0FDF4" g2="#DCFCE7"
               ig1="#10B981" ig2="#34D399"
               icon="car"
-              title={"Bike &\nCar Ride"}
-              sub={"Safe & fast\nbooking"}
-              tag="Instant"
+              title={T("bikeCarRide")}
+              sub={T("safeBooking")}
+              tag={T("instantLabel")}
               tagIcon="flash-outline"
               textC="#065F46" tagC="#065F46" tagBg="#A7F3D0"
             />
@@ -561,8 +561,8 @@ export default function HomeScreen() {
               g1="#F5F3FF" g2="#EDE9FE"
               ig1="#7C3AED" ig2="#A78BFA"
               icon="medkit"
-              title={"💊 Pharmacy"}
-              sub={"Medicines\ndelivered fast"}
+              title={`💊 ${T("pharmacy")}`}
+              sub={T("medicinesDelivered")}
               tag="25-40 min"
               tagIcon="medkit-outline"
               textC="#4C1D95" tagC="#4C1D95" tagBg="#DDD6FE"
@@ -574,8 +574,8 @@ export default function HomeScreen() {
               g1="#FFFBEB" g2="#FEF3C7"
               ig1="#D97706" ig2="#F59E0B"
               icon="cube"
-              title={"📦 Parcel"}
-              sub={"Send parcels\nanywhere in AJK"}
+              title={`📦 ${T("parcel")}`}
+              sub={T("parcelsAnywhere")}
               tag="Rs. 150+"
               tagIcon="cube-outline"
               textC="#78350F" tagC="#78350F" tagBg="#FDE68A"
@@ -587,7 +587,7 @@ export default function HomeScreen() {
 
         {/* ──── QUICK PILLS ──── */}
         <View style={styles.secRow}>
-          <Text style={styles.secTitle}>Quick Access</Text>
+          <Text style={styles.secTitle}>{T("quickAccess")}</Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsRow}>
           {quickActions.map((q, i) => (
@@ -605,8 +605,8 @@ export default function HomeScreen() {
 
         {/* ──── SLIDING BANNERS ──── */}
         <View style={styles.secRow}>
-          <Text style={styles.secTitle}>Today's Deals</Text>
-          <Text style={styles.secSub}>Auto slides</Text>
+          <Text style={styles.secTitle}>{T("todaysDeals")}</Text>
+          <Text style={styles.secSub}>{T("autoSlidesLabel")}</Text>
         </View>
 
         <View style={styles.carouselWrap}>

@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { fc, fd, CARD } from "../lib/ui";
 
@@ -14,17 +16,17 @@ function useNow(intervalMs = 10000) {
   return now;
 }
 
-const TABS = [
-  { key: "new",       label: "New",      icon: "🔔" },
-  { key: "active",    label: "Active",   icon: "🍳" },
-  { key: "delivered", label: "Done",     icon: "✅" },
-  { key: "all",       label: "All",      icon: "📋" },
+const TAB_KEYS: { key: string; labelKey: TranslationKey; icon: string }[] = [
+  { key: "new",       labelKey: "newLabel",  icon: "🔔" },
+  { key: "active",    labelKey: "active",    icon: "🍳" },
+  { key: "delivered", labelKey: "done",      icon: "✅" },
+  { key: "all",       labelKey: "all",       icon: "📋" },
 ];
 
-const NEXT: Record<string, { next: string; label: string; bg: string }> = {
-  pending:   { next: "confirmed", label: "✓ Accept Order",    bg: "bg-green-500 text-white"  },
-  confirmed: { next: "preparing", label: "🍳 Start Preparing", bg: "bg-blue-500 text-white"   },
-  preparing: { next: "ready",     label: "📦 Mark as Ready",   bg: "bg-purple-500 text-white" },
+const NEXT_KEYS: Record<string, { next: string; labelKey: TranslationKey; bg: string }> = {
+  pending:   { next: "confirmed", labelKey: "acceptOrder",    bg: "bg-green-500 text-white"  },
+  confirmed: { next: "preparing", labelKey: "startPreparing", bg: "bg-blue-500 text-white"   },
+  preparing: { next: "ready",     labelKey: "markReady",      bg: "bg-purple-500 text-white" },
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -41,6 +43,8 @@ const ORDER_ICON: Record<string, string> = { food: "🍔", mart: "🛒", pharmac
 export default function Orders() {
   const qc = useQueryClient();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const orderRules = config.orderRules;
   const vendorKeepp = 1 - (config.platform.vendorCommissionPct / 100);
   const dlvFeeMap: Record<string,number> = {
@@ -83,17 +87,17 @@ export default function Orders() {
 
   return (
     <div className="bg-gray-50 md:bg-transparent">
-      <PageHeader title="Orders" subtitle={`${orders.length} ${tab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
+      <PageHeader title={T("orders")} subtitle={`${orders.length} ${tab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
 
       {/* ── Tabs ── */}
       <div className="bg-white border-b border-gray-200 flex sticky top-0 z-10 md:mx-0">
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+        {TAB_KEYS.map(tb => (
+          <button key={tb.key} onClick={() => setTab(tb.key)}
             className={`flex-1 flex flex-col items-center py-3 text-[11px] font-bold border-b-2 transition-colors android-press min-h-0 relative
-              ${tab === t.key ? "border-orange-500 text-orange-600" : "border-transparent text-gray-400"}`}>
-            <span className="text-lg mb-0.5">{t.icon}</span>
-            {t.label}
-            {t.key === "new" && newCount > 0 && (
+              ${tab === tb.key ? "border-orange-500 text-orange-600" : "border-transparent text-gray-400"}`}>
+            <span className="text-lg mb-0.5">{tb.icon}</span>
+            {T(tb.labelKey)}
+            {tb.key === "new" && newCount > 0 && (
               <span className="absolute top-1 right-1/4 bg-red-500 text-white text-[9px] font-bold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center">
                 {newCount}
               </span>
@@ -108,14 +112,14 @@ export default function Orders() {
           [1,2,3].map(i => <div key={i} className="h-20 skeleton rounded-2xl"/>)
         ) : orders.length === 0 ? (
           <div className={`${CARD} px-4 py-16 text-center`}>
-            <p className="text-5xl mb-3">{TABS.find(t => t.key === tab)?.icon}</p>
-            <p className="font-bold text-gray-700 text-base">No {tab === "all" ? "" : tab + " "}orders</p>
+            <p className="text-5xl mb-3">{TAB_KEYS.find(tb => tb.key === tab)?.icon}</p>
+            <p className="font-bold text-gray-700 text-base">{T("noNewOrders")}</p>
             <p className="text-sm text-gray-400 mt-1">They'll appear here automatically</p>
           </div>
         ) : (
           <div className="md:grid md:grid-cols-2 md:gap-4 space-y-3 md:space-y-0">
             {orders.map((o: any) => {
-              const next = NEXT[o.status];
+              const next = NEXT_KEYS[o.status];
               const items = Array.isArray(o.items) ? o.items : [];
               const isExp = expanded === o.id;
 
@@ -223,11 +227,11 @@ export default function Orders() {
                         <div className="px-4 pb-4 pt-2 flex gap-2">
                           <button onClick={() => updateMut.mutate({ id: o.id, status: next.next })} disabled={updateMut.isPending}
                             className={`flex-1 h-11 ${next.bg} font-bold rounded-xl text-sm android-press disabled:opacity-60`}>
-                            {next.label}
+                            {T(next.labelKey)}
                           </button>
                           {o.status === "pending" && (
                             <button onClick={() => updateMut.mutate({ id: o.id, status: "cancelled" })} disabled={updateMut.isPending}
-                              className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ Reject</button>
+                              className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ {T("rejectOrder")}</button>
                           )}
                         </div>
                       )}

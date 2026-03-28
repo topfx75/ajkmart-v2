@@ -57,6 +57,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@expo-google-fonts/noto-nastaliq-urdu": "^0.4.2",
     "expo-clipboard": "6.0.3"
   }
 }

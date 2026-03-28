@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { fc, fd, CARD, CARD_HEADER, INPUT, SELECT, BTN_PRIMARY, BTN_SECONDARY, LABEL, ROW, BADGE_GREEN, BADGE_RED, BADGE_BLUE, BADGE_GRAY } from "../lib/ui";
 
@@ -128,6 +130,8 @@ function txBadge(type: string) {
 export default function Wallet() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const fin = config.finance;
   const vc = config.vendor;
   const vendorKeepPct  = Math.round(100 - fin.vendorCommissionPct);
@@ -162,7 +166,7 @@ export default function Wallet() {
   if (!config.features.wallet) {
     return (
       <div className="bg-gray-50 md:bg-transparent">
-        <PageHeader title="My Wallet" subtitle="Earnings & withdrawals" />
+        <PageHeader title={T("wallet")} subtitle={T("earningsPayoutsShort")} />
         <div className="px-4 py-8 text-center">
           <div className="bg-white rounded-3xl p-10 shadow-sm max-w-sm mx-auto">
             <div className="text-5xl mb-4">🔒</div>
@@ -177,8 +181,8 @@ export default function Wallet() {
   return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
-        title="My Wallet"
-        subtitle="Earnings & withdrawals"
+        title={T("wallet")}
+        subtitle={T("earningsPayoutsShort")}
         actions={
           <button onClick={() => refetch()}
             className="h-9 px-4 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white text-sm font-bold rounded-xl android-press min-h-0">

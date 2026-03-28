@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL } from "../lib/ui";
 
@@ -15,6 +17,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export default function Products() {
   const qc = useQueryClient();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const [view, setView]           = useState<"list"|"bulk">("list");
   const [search, setSearch]       = useState("");
   const [filterCat, setFilterCat] = useState("all");
@@ -124,11 +128,11 @@ export default function Products() {
   if (showAdd) return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
-        title={editProd ? "Edit Product" : "Add Product"}
-        subtitle="Fill in product details"
+        title={editProd ? T("editProduct") : T("addProduct")}
+        subtitle={T("fillProductDetails")}
         actions={
           <button onClick={closeForm} className="h-10 px-4 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white font-bold rounded-xl text-sm android-press min-h-0">
-            ✕ Cancel
+            ✕ {T("cancel")}
           </button>
         }
       />
@@ -197,7 +201,7 @@ export default function Products() {
 
   if (view === "bulk") return (
     <div className="bg-gray-50 md:bg-transparent">
-      <PageHeader title="Bulk Add Products" subtitle={`${validRows.length} ready to add`}
+      <PageHeader title={T("bulkAdd")} subtitle={`${validRows.length} ${T("readyToAdd")}`}
         actions={<button onClick={() => setView("list")} className="h-10 px-4 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white font-bold rounded-xl text-sm android-press min-h-0">← Back</button>}
       />
       <div className="px-4 py-4 space-y-4 md:px-0 md:py-4">
@@ -375,7 +379,7 @@ export default function Products() {
   return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
-        title="Products"
+        title={T("products")}
         subtitle={`${products.length} item${products.length !== 1 ? "s" : ""}`}
         actions={
           <div className="flex gap-2">

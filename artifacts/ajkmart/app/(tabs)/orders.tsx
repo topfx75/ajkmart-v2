@@ -701,7 +701,7 @@ export default function OrdersScreen() {
       return (
         <View style={styles.center}>
           <ActivityIndicator color={C.primary} size="large" />
-          <Text style={styles.loadingText}>Orders load ho rahe hain...</Text>
+          <Text style={styles.loadingText}>{T("loading")}</Text>
         </View>
       );
     }
@@ -712,9 +712,9 @@ export default function OrdersScreen() {
           <View style={styles.emptyIcon}>
             <Ionicons name="bag-outline" size={52} color={C.primary} />
           </View>
-          <Text style={styles.emptyTitle}>Koi order nahi mila</Text>
+          <Text style={styles.emptyTitle}>{T("noRecordsFound")}</Text>
           <Text style={styles.emptyText}>
-            Shop karein, ride lein ya parcel bhejein — sab yahan dikhega
+            {T("trackActivity")}
           </Text>
           <View style={styles.emptyBtns}>
             <Pressable onPress={() => router.push("/mart")} style={styles.emptyBtn}>
@@ -792,14 +792,8 @@ export default function OrdersScreen() {
       return (
         <View style={styles.center}>
           <Ionicons name="search-outline" size={44} color={C.textMuted} />
-          <Text style={styles.emptyTitle}>
-            {activeTab === "mart" ? "Koi mart order nahi" :
-             activeTab === "food" ? "Koi food order nahi" :
-             activeTab === "rides" ? "Koi ride nahi" :
-             activeTab === "pharmacy" ? "Koi pharmacy order nahi" :
-             "Koi parcel booking nahi"}
-          </Text>
-          <Text style={styles.emptyText}>Is section mein abhi tak koi activity nahi hai</Text>
+          <Text style={styles.emptyTitle}>{T("noRecordsFound")}</Text>
+          <Text style={styles.emptyText}>{T("noActivitySection")}</Text>
         </View>
       );
     }
@@ -812,7 +806,7 @@ export default function OrdersScreen() {
       >
         {anyActive > 0 && (
           <>
-            <SectionHeader title="Active" count={anyActive} active />
+            <SectionHeader title={T("activeLabel")} count={anyActive} active />
             {activeOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} />)}
             {activeRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
             {activePharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
@@ -822,7 +816,7 @@ export default function OrdersScreen() {
 
         {anyPast > 0 && (
           <>
-            <SectionHeader title="History" count={anyPast} />
+            <SectionHeader title={T("historyLabel")} count={anyPast} />
             {pastOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} />)}
             {pastRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
             {pastPharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
@@ -845,7 +839,7 @@ export default function OrdersScreen() {
       >
         <Text style={styles.headerTitle}>{T("myOrders")}</Text>
         <Text style={styles.headerSub}>
-          {totalCount > 0 ? `${totalCount} total bookings` : T("trackActivity")}
+          {totalCount > 0 ? `${totalCount} ${T("totalBookingsLabel")}` : T("trackActivity")}
         </Text>
       </LinearGradient>
 

@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api, apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlatformConfig } from "../lib/useConfig";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, CARD_HEADER, BADGE_GREEN, BADGE_ORANGE, BADGE_RED, BADGE_GRAY } from "../lib/ui";
 
@@ -24,6 +26,8 @@ export default function Analytics() {
   const [days, setDays] = useState(30);
   const { user } = useAuth();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const { data, isLoading } = useQuery({
     queryKey: ["vendor-analytics", days],
@@ -64,8 +68,8 @@ export default function Analytics() {
   return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
-        title="Analytics"
-        subtitle="Store performance insights"
+        title={T("analytics")}
+        subtitle={T("storePerformance")}
         actions={
           <div className="flex gap-1.5">
             {RANGES.map(r => (

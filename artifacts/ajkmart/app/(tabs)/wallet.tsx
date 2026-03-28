@@ -626,7 +626,7 @@ export default function WalletScreen() {
                 {(["all", "credit", "debit"] as TxFilter[]).map(f => (
                   <Pressable key={f} onPress={() => setTxFilter(f)} style={[ws.filterChip, txFilter === f && ws.filterChipActive]}>
                     <Text style={[ws.filterTxt, txFilter === f && ws.filterTxtActive]}>
-                      {f === "all" ? "All" : f === "credit" ? "In" : "Out"}
+                      {f === "all" ? T("allFilter") : f === "credit" ? T("inFilter") : T("outFilter")}
                     </Text>
                   </Pressable>
                 ))}
@@ -639,8 +639,8 @@ export default function WalletScreen() {
           ) : filtered.length === 0 ? (
             <View style={ws.emptyTx}>
               <Ionicons name="receipt-outline" size={52} color={C.border} />
-              <Text style={ws.emptyTitle}>{transactions.length === 0 ? "Koi transaction nahi" : "Is filter mein kuch nahi"}</Text>
-              <Text style={ws.emptySubtitle}>{transactions.length === 0 ? "Wallet top up karo to start karo" : "Filter change karein"}</Text>
+              <Text style={ws.emptyTitle}>{transactions.length === 0 ? T("noTransactionLabel") : T("filterNoResultsLabel")}</Text>
+              <Text style={ws.emptySubtitle}>{transactions.length === 0 ? T("noTransactionSub") : T("changeFilterLabel")}</Text>
             </View>
           ) : (
             <View style={ws.txList}>

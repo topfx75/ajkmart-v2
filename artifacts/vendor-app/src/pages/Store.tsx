@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, CARD_HEADER, INPUT, TEXTAREA, BTN_PRIMARY, LABEL } from "../lib/ui";
 
@@ -12,6 +14,8 @@ const DEFAULT_HOURS = Object.fromEntries(DAYS.map(d => [d, { open:"09:00", close
 export default function Store() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const promoEnabled = config.vendor?.promoEnabled !== false;
   const qc = useQueryClient();
   const [tab, setTab] = useState<"info"|"hours"|"promos">("info");
@@ -83,8 +87,8 @@ export default function Store() {
   return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
-        title="My Store"
-        subtitle={user?.storeName || "Store settings"}
+        title={T("myStore")}
+        subtitle={user?.storeName || T("storeSettings")}
         actions={
           <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${user?.storeIsOpen ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
             {user?.storeIsOpen ? "🟢 Open" : "🔴 Closed"}

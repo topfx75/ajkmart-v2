@@ -7,7 +7,7 @@ import { usePlatformConfig } from "../lib/useConfig";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, INPUT, BTN_PRIMARY, LABEL } from "../lib/ui";
 import { useLanguage } from "../lib/useLanguage";
-import { LANGUAGE_OPTIONS, type Language } from "@workspace/i18n";
+import { LANGUAGE_OPTIONS, tDual, type Language, type TranslationKey } from "@workspace/i18n";
 
 const CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Lahore","Karachi","Other"];
 const BANKS  = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
@@ -37,6 +37,7 @@ export default function Profile() {
   const [showLangPicker, setShowLangPicker] = useState(false);
 
   const { language, setLanguage, loading: langLoading } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   // Personal info form state
   const [name, setName]               = useState(user?.name || "");
@@ -96,8 +97,8 @@ export default function Profile() {
   return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader
-        title="My Account"
-        subtitle="Vendor profile & settings"
+        title={T("account")}
+        subtitle={T("profileSecurity")}
         actions={
           <div className="flex items-center gap-2">
             <Link href="/notifications" className="relative h-9 w-9 flex items-center justify-center bg-white/20 md:bg-gray-100 text-white md:text-gray-700 rounded-xl android-press min-h-0">
@@ -110,7 +111,7 @@ export default function Profile() {
             </Link>
             <button onClick={logout}
               className="h-9 px-4 bg-white/20 md:bg-red-50 md:text-red-600 text-white text-sm font-bold rounded-xl android-press min-h-0">
-              🚪 Logout
+              🚪 {T("logout")}
             </button>
           </div>
         }

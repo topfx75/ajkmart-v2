@@ -8,6 +8,8 @@ import { api } from "../lib/api";
 import { useState, useRef, useEffect } from "react";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useAuth } from "../lib/auth";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 function useElapsedTimer(startIso?: string | null) {
   const [elapsed, setElapsed] = useState(0);
@@ -76,7 +78,6 @@ type OrderItem = { name: string; quantity: number; price: number };
 
 /* ── Order Progress Steps ── */
 const ORDER_STEPS  = ["store",    "picked_up",  "delivered"];
-const ORDER_LABELS = ["Go to Store", "Picked Up", "Delivered"];
 const ORDER_STEP_ICONS = [
   <ShoppingCart key="store" size={14}/>,
   <Package      key="picked" size={14}/>,
@@ -85,12 +86,15 @@ const ORDER_STEP_ICONS = [
 
 /* ── Ride Progress Steps ── */
 const RIDE_STEPS  = ["accepted", "arrived", "in_transit", "completed"];
-const RIDE_LABELS = ["Accepted", "At Pickup", "In Transit", "Done"];
 
 export default function Active() {
   const qc = useQueryClient();
   const { config } = usePlatformConfig();
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
+  const ORDER_LABELS = [T("goToStore"), T("pickedUp"), T("delivered")];
+  const RIDE_LABELS = [T("acceptOrder"), T("atPickup"), T("inTransit"), T("done")];
   const [toastMsg, setToastMsg]                    = useState("");
   const [showCancelConfirm, setShowCancelConfirm]  = useState(false);
   const [cancelTarget, setCancelTarget]            = useState<"order" | "ride">("ride");
@@ -191,14 +195,14 @@ export default function Active() {
       if (vars.status === "delivered") {
         sessionStorage.removeItem("orderPickedUp");
         setProofPhoto(null);
-        showToast("Order delivered! Earnings credited.");
+        showToast(T("orderDeliveredEarnings"));
       } else if (vars.status === "cancelled") {
         sessionStorage.removeItem("orderPickedUp");
         setProofPhoto(null);
         setShowCancelConfirm(false);
-        showToast("Order cancel ho gaya. Customer ko naya rider milega.");
+        showToast(T("orderCancelledMsg"));
       } else {
-        showToast("Status updated!");
+        showToast(T("statusUpdated"));
       }
     },
     onError: (e: Error) => showToast(e.message),
@@ -212,9 +216,9 @@ export default function Active() {
       qc.invalidateQueries({ queryKey: ["rider-earnings"] });
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
       logRideEvent(vars.id, vars.status);
-      if (vars.status === "completed") showToast("Ride completed! Earnings credited.");
-      else if (vars.status === "cancelled") { setShowCancelConfirm(false); showToast("Ride cancel ho gaya."); }
-      else showToast("Status updated!");
+      if (vars.status === "completed") showToast(T("rideCompletedEarnings"));
+      else if (vars.status === "cancelled") { setShowCancelConfirm(false); showToast(T("rideCancelledMsg")); }
+      else showToast(T("statusUpdated"));
     },
     onError: (e: Error) => showToast(e.message),
   });
@@ -223,7 +227,7 @@ export default function Active() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
         <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-        <p className="text-gray-500 font-medium">Loading active task...</p>
+        <p className="text-gray-500 font-medium">{T("loadingActiveTask")}</p>
       </div>
     </div>
   );
@@ -234,17 +238,17 @@ export default function Active() {
   if (!order && !ride) return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-gradient-to-br from-green-600 to-emerald-700 px-5 pt-12 pb-6">
-        <h1 className="text-2xl font-bold text-white">Active Task</h1>
-        <p className="text-green-200 text-sm">No current assignment</p>
+        <h1 className="text-2xl font-bold text-white">{T("activeTask")}</h1>
+        <p className="text-green-200 text-sm">{T("noCurrentAssignment")}</p>
       </div>
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-center">
           <Bike size={72} className="text-gray-200 mx-auto mb-4"/>
-          <h2 className="text-xl font-bold text-gray-700">No Active Task</h2>
-          <p className="text-gray-400 mt-2 text-sm">Accept an order or ride from the Home tab to get started</p>
+          <h2 className="text-xl font-bold text-gray-700">{T("noActiveTask")}</h2>
+          <p className="text-gray-400 mt-2 text-sm">{T("acceptFromHome")}</p>
           <button onClick={() => refetch()}
             className="mt-5 bg-green-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 mx-auto">
-            <RefreshCw size={14}/> Refresh
+            <RefreshCw size={14}/> {T("refresh")}
           </button>
         </div>
       </div>
@@ -267,7 +271,7 @@ export default function Active() {
       <div className="bg-gradient-to-br from-green-600 to-emerald-700 px-5 pt-12 pb-6">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Active {order ? "Delivery" : "Ride"}</h1>
+            <h1 className="text-2xl font-bold text-white">{order ? T("activeDelivery") : T("activeRide")}</h1>
             <p className="text-green-200 text-sm mt-0.5">
               {order ? `${order.type} order — ${orderPickedUp ? "Delivering to customer" : "Pick up from store"}` : `${ride?.type} ride in progress`}
             </p>
@@ -325,7 +329,7 @@ export default function Active() {
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="bg-orange-50 px-4 py-2.5 border-b border-orange-100">
                   <p className="text-xs font-bold text-orange-600 uppercase tracking-wide flex items-center gap-1.5">
-                    <MapPin size={12}/> Step 1 — Go to Store
+                    <MapPin size={12}/> {T("step")} 1 — {T("goToStore")}
                   </p>
                 </div>
                 <div className="p-4 space-y-3">
@@ -340,7 +344,7 @@ export default function Active() {
                   {/* Items Preview */}
                   {order.items && Array.isArray(order.items) && order.items.length > 0 && (
                     <div className="bg-gray-50 rounded-xl p-3">
-                      <p className="text-xs text-gray-500 font-bold mb-2">Items to Collect ({order.items.length})</p>
+                      <p className="text-xs text-gray-500 font-bold mb-2">{T("itemsToCollect")} ({order.items.length})</p>
                       <div className="space-y-1">
                         {(order.items as OrderItem[]).slice(0, 5).map((item: OrderItem, i: number) => (
                           <div key={i} className="flex justify-between text-sm">
@@ -349,28 +353,28 @@ export default function Active() {
                           </div>
                         ))}
                         {order.items.length > 5 && (
-                          <p className="text-xs text-gray-400 mt-1">+{order.items.length - 5} more items</p>
+                          <p className="text-xs text-gray-400 mt-1">+{order.items.length - 5} {T("moreItems")}</p>
                         )}
                       </div>
                     </div>
                   )}
 
                   <div className="grid grid-cols-2 gap-2">
-                    <NavButton label="Go to Store" address={order.vendorStoreName} color="orange" />
+                    <NavButton label={T("goToStore")} address={order.vendorStoreName} color="orange" />
                     {order.vendorPhone && <CallButton phone={order.vendorPhone} label="Call Store" name={order.vendorStoreName} />}
                   </div>
 
                   <button
                     onClick={() => setOrderPickedUp(true)}
                     className="w-full bg-blue-600 text-white font-extrabold rounded-xl py-3.5 text-base flex items-center justify-center gap-2">
-                    <Package size={18}/> I've Picked Up the Order
+                    <Package size={18}/> {T("pickUpOrder")}
                   </button>
 
                   {/* Cancel Order */}
                   <button
                     onClick={() => { setCancelTarget("order"); setShowCancelConfirm(true); }}
                     className="w-full border border-red-200 text-red-500 text-sm font-bold rounded-xl py-2.5 bg-red-50 flex items-center justify-center gap-1.5">
-                    <X size={14}/> Can't Pick Up — Cancel Order
+                    <X size={14}/> {T("cantPickUp")}
                   </button>
                 </div>
               </div>
@@ -381,7 +385,7 @@ export default function Active() {
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="bg-green-50 px-4 py-2.5 border-b border-green-100">
                   <p className="text-xs font-bold text-green-600 uppercase tracking-wide flex items-center gap-1.5">
-                    <Car size={12}/> Step 2 — Deliver to Customer
+                    <Car size={12}/> {T("step")} 2 — {T("deliverToCustomer")}
                   </p>
                 </div>
                 <div className="p-4 space-y-3">
@@ -390,7 +394,7 @@ export default function Active() {
                     <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 flex items-center gap-2">
                       <User size={20} className="text-blue-400 flex-shrink-0"/>
                       <div>
-                        <p className="text-xs text-blue-500 font-bold">Customer</p>
+                        <p className="text-xs text-blue-500 font-bold">{T("customer")}</p>
                         <p className="text-sm font-bold text-gray-800">{order.customerName}</p>
                         {order.customerPhone && <p className="text-xs text-gray-500">{order.customerPhone}</p>}
                       </div>
@@ -399,19 +403,19 @@ export default function Active() {
 
                   {/* Delivery Address */}
                   <div className="bg-red-50 border border-red-100 rounded-xl p-3">
-                    <p className="text-xs text-red-500 font-bold mb-1 flex items-center gap-1"><MapPinned size={11}/> Delivery Address</p>
+                    <p className="text-xs text-red-500 font-bold mb-1 flex items-center gap-1"><MapPinned size={11}/> {T("deliveryAddress")}</p>
                     <p className="text-sm font-bold text-gray-900">{order.deliveryAddress || "Address not provided"}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <NavButton label="Navigate" address={order.deliveryAddress} color="blue" />
+                    <NavButton label={T("navigateLabel")} address={order.deliveryAddress} color="blue" />
                     <CallButton name={order.customerName} phone={order.customerPhone} />
                   </div>
 
                   {/* ── Proof of Delivery ── */}
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
                     <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5" /> Proof of Delivery (Recommended)
+                      <Camera className="w-3.5 h-3.5" /> {T("proofOfDelivery")} ({T("recommended")})
                     </p>
                     {proofPhoto ? (
                       <div className="space-y-2">
@@ -419,13 +423,13 @@ export default function Active() {
                           <img src={proofPhoto} alt="Delivery proof" className="w-full h-full object-cover" />
                           <div className="absolute top-2 right-2">
                             <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                              <CheckCircle size={9}/> Photo Ready
+                              <CheckCircle size={9}/> {T("photoReady")}
                             </span>
                           </div>
                         </div>
                         <button onClick={() => { setProofPhoto(null); setProofFileName(""); }}
                           className="w-full text-xs text-blue-600 font-bold py-1.5 border border-blue-200 rounded-lg bg-white flex items-center justify-center gap-1.5">
-                          <Camera size={12}/> Retake Photo
+                          <Camera size={12}/> {T("retakePhoto")}
                         </button>
                       </div>
                     ) : (
@@ -442,8 +446,8 @@ export default function Active() {
                           onClick={() => photoInputRef.current?.click()}
                           className="w-full border-2 border-dashed border-blue-200 rounded-xl py-4 flex flex-col items-center gap-2 bg-white text-blue-500 hover:bg-blue-50 transition-colors">
                           <Camera className="w-6 h-6" />
-                          <span className="text-xs font-bold">Take Delivery Photo</span>
-                          <span className="text-[10px] text-blue-400">Opens camera on your phone</span>
+                          <span className="text-xs font-bold">{T("takePhoto")}</span>
+                          <span className="text-[10px] text-blue-400">{T("opensCamera")}</span>
                         </button>
                       </div>
                     )}
@@ -454,13 +458,13 @@ export default function Active() {
                     disabled={updateOrderMut.isPending}
                     className="w-full font-extrabold rounded-xl py-3.5 text-lg disabled:opacity-60 transition-colors bg-green-600 text-white flex items-center justify-center gap-2">
                     <CheckCircle size={20}/>
-                    {updateOrderMut.isPending ? "Updating..." : proofPhoto ? "Confirm Delivery with Proof" : "Mark as Delivered"}
+                    {updateOrderMut.isPending ? T("updating") : proofPhoto ? T("confirmDeliveryWithProof") : T("markDelivered")}
                   </button>
 
                   <button
                     onClick={() => setOrderPickedUp(false)}
                     className="w-full border border-gray-200 text-gray-500 text-sm font-bold rounded-xl py-2 bg-white">
-                    ← Back to Store Step
+                    ← {T("backToStoreStep")}
                   </button>
 
                   {/* Cancel Order */}
@@ -468,7 +472,7 @@ export default function Active() {
                     onClick={() => { setCancelTarget("order"); setShowCancelConfirm(true); }}
                     disabled={updateOrderMut.isPending}
                     className="w-full border border-red-200 text-red-500 text-sm font-bold rounded-xl py-2.5 bg-red-50 flex items-center justify-center gap-1.5">
-                    <X size={14}/> Cannot Deliver — Cancel Order
+                    <X size={14}/> {T("cannotDeliverCancel")}
                   </button>
                 </div>
               </div>
@@ -558,7 +562,7 @@ export default function Active() {
                     onClick={() => updateRideMut.mutate({ id: ride.id, status: "arrived" })}
                     disabled={updateRideMut.isPending}
                     className="flex-1 bg-purple-600 text-white font-extrabold rounded-xl py-3.5 disabled:opacity-60 flex items-center justify-center gap-2">
-                    <MapPin size={16}/> I'm at Pickup
+                    <MapPin size={16}/> {T("arrivedAtPickup")}
                   </button>
                 )}
                 {ride.status === "arrived" && (
@@ -566,7 +570,7 @@ export default function Active() {
                     onClick={() => updateRideMut.mutate({ id: ride.id, status: "in_transit" })}
                     disabled={updateRideMut.isPending}
                     className="flex-1 bg-blue-600 text-white font-extrabold rounded-xl py-3.5 disabled:opacity-60 flex items-center justify-center gap-2">
-                    <Car size={16}/> Start Ride
+                    <Car size={16}/> {T("startRide")}
                   </button>
                 )}
                 {ride.status === "in_transit" && (
@@ -574,7 +578,7 @@ export default function Active() {
                     onClick={() => updateRideMut.mutate({ id: ride.id, status: "completed" })}
                     disabled={updateRideMut.isPending}
                     className="flex-1 bg-green-600 text-white font-extrabold rounded-xl py-3.5 disabled:opacity-60 flex items-center justify-center gap-2">
-                    <CheckCircle size={16}/> Complete Ride
+                    <CheckCircle size={16}/> {T("completeRide")}
                   </button>
                 )}
                 {(ride.status === "accepted" || ride.status === "arrived" || ride.status === "in_transit") && (
@@ -600,19 +604,19 @@ export default function Active() {
                 <AlertTriangle className="w-7 h-7 text-red-600" />
               </div>
               <div className="text-center">
-                <p className="font-bold text-gray-900 text-lg">Cancel {cancelTarget === "order" ? "Delivery" : "Ride"}?</p>
-                <p className="text-sm text-gray-500 mt-1">Yeh action reversible nahi hai.</p>
+                <p className="font-bold text-gray-900 text-lg">{T("cancelConfirm")} {cancelTarget === "order" ? T("deliveryLabel") : T("ride")}?</p>
+                <p className="text-sm text-gray-500 mt-1">{T("actionNotReversible")}</p>
               </div>
             </div>
             <div className="p-5 space-y-3">
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex gap-2">
                 <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5"/>
-                <p className="text-xs text-amber-800 font-medium">Sirf emergency mein cancel karein. Zyada cancellations se account par ban lag sakta hai.</p>
+                <p className="text-xs text-amber-800 font-medium">{T("cancelWarning")}</p>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setShowCancelConfirm(false)}
                   className="flex-1 h-12 bg-gray-100 text-gray-700 font-bold rounded-xl">
-                  Wapas Jao
+                  {T("goBack")}
                 </button>
                 <button
                   onClick={() => {
@@ -625,7 +629,7 @@ export default function Active() {
                   }}
                   disabled={updateOrderMut.isPending || updateRideMut.isPending}
                   className="flex-1 h-12 bg-red-600 text-white font-bold rounded-xl disabled:opacity-60">
-                  {(updateOrderMut.isPending || updateRideMut.isPending) ? "Cancelling..." : "Haan, Cancel Karo"}
+                  {(updateOrderMut.isPending || updateRideMut.isPending) ? T("cancelling") : T("yesCancel")}
                 </button>
               </div>
             </div>

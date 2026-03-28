@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 interface Props {
   message: string;
@@ -6,6 +8,8 @@ interface Props {
 
 export function AnnouncementBar({ message }: Props) {
   const [dismissed, setDismissed] = useState(false);
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   if (!message || dismissed) return null;
 
@@ -18,7 +22,7 @@ export function AnnouncementBar({ message }: Props) {
       <button
         onClick={() => setDismissed(true)}
         className="flex-shrink-0 text-white/80 hover:text-white text-lg leading-none font-bold transition-colors"
-        aria-label="Dismiss announcement"
+        aria-label={T("dismissAnnouncement")}
       >
         ×
       </button>

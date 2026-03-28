@@ -5,6 +5,8 @@ import {
   ShoppingCart, CreditCard,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { useLanguage } from "../lib/useLanguage";
+import { tDual } from "@workspace/i18n";
 
 function formatCurrency(n: number) { return `Rs. ${Math.round(n).toLocaleString()}`; }
 function formatDate(d: string | Date) {
@@ -24,6 +26,8 @@ type HistoryItem = {
 export default function History() {
   const [period, setPeriod]   = useState<FilterPeriod>("all");
   const [kind,   setKind]     = useState<FilterKind>("all");
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
 
   const { data, isLoading } = useQuery({
     queryKey: ["rider-history"],
@@ -50,15 +54,15 @@ export default function History() {
   const cancelledItems = filtered.filter(i => i.status === "cancelled");
 
   const PERIOD_TABS: { key: FilterPeriod; label: string }[] = [
-    { key: "today", label: "Today" },
-    { key: "week",  label: "This Week" },
-    { key: "all",   label: "All Time" },
+    { key: "today", label: T("today") },
+    { key: "week",  label: T("thisWeek") },
+    { key: "all",   label: T("allTimeEarnings") },
   ];
   type KindTab = { key: FilterKind; label: string; icon: React.ReactElement };
   const KIND_TABS: KindTab[] = [
-    { key: "all",   label: "All",    icon: <ClipboardList size={12}/> },
-    { key: "order", label: "Orders", icon: <Package size={12}/>       },
-    { key: "ride",  label: "Rides",  icon: <Bike size={12}/>          },
+    { key: "all",   label: T("all"),    icon: <ClipboardList size={12}/> },
+    { key: "order", label: T("orders"), icon: <Package size={12}/>       },
+    { key: "ride",  label: T("rides"),  icon: <Bike size={12}/>          },
   ];
 
   function ItemIcon({ kind, type }: { kind: string; type: string }) {
@@ -74,35 +78,31 @@ export default function History() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-gradient-to-br from-green-600 to-emerald-700 px-5 pt-12 pb-6">
-        <h1 className="text-2xl font-bold text-white">History</h1>
-        <p className="text-green-200 text-sm">{raw.length} total records</p>
+        <h1 className="text-2xl font-bold text-white">{T("history")}</h1>
+        <p className="text-green-200 text-sm">{raw.length} {T("totalRecords")}</p>
       </div>
 
-      {/* Summary Stats */}
       {!isLoading && (
         <div className="px-4 -mt-2 mb-0">
           <div className="bg-white rounded-2xl shadow-sm p-4 grid grid-cols-3 gap-3">
             <div className="text-center">
               <p className="text-lg font-extrabold text-green-600">{formatCurrency(totalEarnings)}</p>
-              <p className="text-[10px] text-gray-400 font-medium mt-0.5">Earnings</p>
+              <p className="text-[10px] text-gray-400 font-medium mt-0.5">{T("earnings")}</p>
             </div>
             <div className="text-center border-x border-gray-100">
               <p className="text-lg font-extrabold text-blue-600">{completedItems.length}</p>
-              <p className="text-[10px] text-gray-400 font-medium mt-0.5">Completed</p>
+              <p className="text-[10px] text-gray-400 font-medium mt-0.5">{T("completed")}</p>
             </div>
             <div className="text-center">
               <p className="text-lg font-extrabold text-red-500">{cancelledItems.length}</p>
-              <p className="text-[10px] text-gray-400 font-medium mt-0.5">Cancelled</p>
+              <p className="text-[10px] text-gray-400 font-medium mt-0.5">{T("cancelled")}</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Filters */}
       <div className="px-4 pt-4 space-y-3 sticky top-0 bg-gray-50 pb-2 z-10">
-        {/* Period Tabs */}
         <div className="flex bg-white rounded-xl p-1 shadow-sm gap-1">
           {PERIOD_TABS.map(tab => (
             <button key={tab.key} onClick={() => setPeriod(tab.key)}
@@ -111,7 +111,6 @@ export default function History() {
             </button>
           ))}
         </div>
-        {/* Kind Tabs */}
         <div className="flex gap-2">
           {KIND_TABS.map(tab => (
             <button key={tab.key} onClick={() => setKind(tab.key)}
@@ -122,16 +121,15 @@ export default function History() {
         </div>
       </div>
 
-      {/* List */}
       <div className="px-4 py-3 space-y-3 pb-24">
         {isLoading ? (
           [1,2,3,4,5].map(i => <div key={i} className="h-20 bg-white rounded-2xl animate-pulse"/>)
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <ClipboardList size={56} className="text-gray-200 mx-auto mb-3"/>
-            <p className="font-bold text-gray-700">No records found</p>
+            <p className="font-bold text-gray-700">{T("noRecordsFound")}</p>
             <p className="text-gray-400 text-sm mt-1">
-              {period !== "all" ? "Try selecting a wider time period" : "Your deliveries will appear here"}
+              {period !== "all" ? T("widerTimePeriod") : T("deliveriesAppearHere")}
             </p>
           </div>
         ) : (
@@ -146,7 +144,7 @@ export default function History() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-800 capitalize">
-                      {item.kind === "ride" ? `${item.type} Ride` : `${item.type} Delivery`}
+                      {item.kind === "ride" ? `${item.type} ${T("ride")}` : `${item.type} ${T("deliveryLabel")}`}
                     </p>
                     <p className="text-xs text-gray-500 truncate mt-0.5">{item.address || "—"}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{formatDate(item.createdAt)}</p>
@@ -166,11 +164,10 @@ export default function History() {
                     </span>
                   </div>
                 </div>
-                {/* Earnings bar only for completed */}
                 {completed && item.earnings > 0 && (
                   <div className="px-4 pb-3">
                     <div className="bg-green-50 rounded-lg px-3 py-1.5 flex items-center justify-between">
-                      <span className="text-xs text-green-600 font-medium flex items-center gap-1"><CreditCard size={11}/> Earnings credited</span>
+                      <span className="text-xs text-green-600 font-medium flex items-center gap-1"><CreditCard size={11}/> {T("earningsCredited")}</span>
                       <span className="text-xs font-extrabold text-green-700">{formatCurrency(item.earnings)}</span>
                     </div>
                   </div>
