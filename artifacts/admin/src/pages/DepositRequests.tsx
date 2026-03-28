@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
 const fd = (d: string | Date) =>
@@ -57,6 +59,8 @@ function ApproveModal({ d, onClose }: { d: any; onClose: () => void }) {
   const [refNo, setRefNo] = useState("");
   const [note, setNote]   = useState("");
   const { toast } = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const approve = useApproveDeposit();
   const parsed = parseDesc(d.description || "");
 
@@ -106,10 +110,10 @@ function ApproveModal({ d, onClose }: { d: any; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={handleApprove} disabled={approve.isPending}>
-              {approve.isPending ? "Processing..." : "✅ Approve & Credit"}
+              {approve.isPending ? T("processing") : "✅ Approve & Credit"}
             </Button>
           </div>
         </div>
@@ -121,6 +125,8 @@ function ApproveModal({ d, onClose }: { d: any; onClose: () => void }) {
 function RejectModal({ d, onClose }: { d: any; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const { toast } = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const reject = useRejectDeposit();
 
   const handleReject = () => {
@@ -159,10 +165,10 @@ function RejectModal({ d, onClose }: { d: any; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
               onClick={handleReject} disabled={reject.isPending}>
-              {reject.isPending ? "Rejecting..." : "❌ Reject Request"}
+              {reject.isPending ? T("processing") : "❌ Reject Request"}
             </Button>
           </div>
         </div>
@@ -177,6 +183,8 @@ export default function DepositRequests() {
   const [approveTarget, setApproveTarget] = useState<any | null>(null);
   const [rejectTarget,  setRejectTarget]  = useState<any | null>(null);
 
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch } = useDepositRequests();
   const { toast } = useToast();
 
@@ -204,7 +212,7 @@ export default function DepositRequests() {
           <p className="text-sm text-gray-500 mt-0.5">Approve or reject rider & customer wallet deposit requests</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
-          <RefreshCw className="w-4 h-4 mr-2"/> Refresh
+          <RefreshCw className="w-4 h-4 mr-2"/> {T("refresh")}
         </Button>
       </div>
 

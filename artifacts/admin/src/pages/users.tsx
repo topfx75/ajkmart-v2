@@ -6,6 +6,8 @@ import {
   Download, FileText, CalendarDays, Eye, AlertCircle,
   Users as UsersIcon, Loader2,
 } from "lucide-react";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers } from "@/hooks/use-admin";
 import { fetcher } from "@/lib/api";
@@ -552,6 +554,8 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
 /* ══════════ Main Users Page ══════════ */
 
 export default function Users() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch, isFetching, isError } = useUsers();
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const updateMutation   = useUpdateUser();
@@ -716,7 +720,7 @@ export default function Users() {
               <span className="text-xs text-amber-600 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">Action Required</span>
             </div>
             <Button variant="ghost" size="sm" onClick={() => refetchPending()} className="h-7 text-xs text-amber-700 hover:bg-amber-100">
-              Refresh
+              {T("refresh")}
             </Button>
           </div>
           <div className="space-y-2">

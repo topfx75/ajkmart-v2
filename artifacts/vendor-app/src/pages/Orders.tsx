@@ -72,8 +72,8 @@ export default function Orders() {
       qc.invalidateQueries({ queryKey: ["vendor-orders"] });
       qc.invalidateQueries({ queryKey: ["vendor-stats"] });
       qc.invalidateQueries({ queryKey: ["vendor-orders-count"] });
-      const msg: Record<string, string> = { confirmed: "✅ Order accepted!", preparing: "🍳 Preparing started", ready: "📦 Marked as ready", cancelled: "❌ Cancelled" };
-      showToast(msg[status] || "✅ Updated");
+      const msg: Record<string, string> = { confirmed: "✅ " + T("orderAccepted"), preparing: "🍳 " + T("preparingStarted"), ready: "📦 " + T("markedReady"), cancelled: "❌ " + T("orderCancelled") };
+      showToast(msg[status] || "✅ " + T("done"));
     },
     onError: (e: any) => showToast("❌ " + e.message),
   });
@@ -114,7 +114,7 @@ export default function Orders() {
           <div className={`${CARD} px-4 py-16 text-center`}>
             <p className="text-5xl mb-3">{TAB_KEYS.find(tb => tb.key === tab)?.icon}</p>
             <p className="font-bold text-gray-700 text-base">{T("noNewOrders")}</p>
-            <p className="text-sm text-gray-400 mt-1">They'll appear here automatically</p>
+            <p className="text-sm text-gray-400 mt-1">{T("theyAppearAutomatically")}</p>
           </div>
         ) : (
           <div className="md:grid md:grid-cols-2 md:gap-4 space-y-3 md:space-y-0">
@@ -192,7 +192,7 @@ export default function Orders() {
                     <div className="border-t border-gray-50 slide-up">
                       {items.length > 0 && (
                         <div className="px-4 py-3 bg-gray-50 space-y-2">
-                          <p className="text-[10px] font-extrabold text-gray-400 tracking-widest">ORDER ITEMS</p>
+                          <p className="text-[10px] font-extrabold text-gray-400 tracking-widest">{T("orderItems")}</p>
                           {items.map((item: any, i: number) => (
                             <div key={i} className="flex justify-between text-sm">
                               <span className="text-gray-700">{item.name} <span className="text-gray-400">×{item.quantity}</span></span>
@@ -200,15 +200,15 @@ export default function Orders() {
                             </div>
                           ))}
                           <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-sm">
-                            <span className="text-gray-600">Subtotal</span>
+                            <span className="text-gray-600">{T("subtotal")}</span>
                             <span className="text-orange-600">{fc(o.total)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">🚚 Delivery Fee</span>
+                            <span className="text-gray-500">🚚 {T("deliveryFee")}</span>
                             <span className="font-semibold text-sky-600">{fc(dlvFeeMap[o.type] ?? dlvFeeMap.mart)}</span>
                           </div>
                           <div className="flex justify-between text-[11px] text-gray-400 -mt-1">
-                            <span>Charged to customer · Rider keeps {config.finance.riderEarningPct}%</span>
+                            <span>{T("chargedToCustomer")} · Rider keeps {config.finance.riderEarningPct}%</span>
                             <span>+{fc((dlvFeeMap[o.type] ?? dlvFeeMap.mart) * config.finance.riderEarningPct / 100)} rider</span>
                           </div>
                         </div>
@@ -221,7 +221,7 @@ export default function Orders() {
                       )}
                       <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-50">
                         <span className="text-base">💳</span>
-                        <p className="text-sm text-gray-600 capitalize font-medium">{o.paymentMethod || "Cash on Delivery"}</p>
+                        <p className="text-sm text-gray-600 capitalize font-medium">{o.paymentMethod || T("cashOnDelivery")}</p>
                       </div>
                       {next && (
                         <div className="px-4 pb-4 pt-2 flex gap-2">

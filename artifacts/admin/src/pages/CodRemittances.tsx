@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
 const fd = (d: string | Date) =>
@@ -42,6 +44,8 @@ function VerifyModal({ item, onClose }: { item: any; onClose: () => void }) {
   const [note, setNote] = useState("");
   const [err, setErr]   = useState("");
   const { toast }       = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const verify = useVerifyCodRemittance();
   const d = parseDesc(item.description || "");
 
@@ -95,9 +99,9 @@ function VerifyModal({ item, onClose }: { item: any; onClose: () => void }) {
         </div>
         {err && <p className="text-red-500 text-sm mb-3 font-semibold">⚠️ {err}</p>}
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button variant="outline" onClick={onClose} className="flex-1">{T("cancel")}</Button>
           <Button onClick={submit} disabled={verify.isPending} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold">
-            {verify.isPending ? "Verifying..." : "✅ Mark as Received"}
+            {verify.isPending ? T("processing") : "✅ Mark as Received"}
           </Button>
         </div>
       </div>
@@ -109,6 +113,8 @@ function RejectModal({ item, onClose }: { item: any; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const [err, setErr]       = useState("");
   const { toast }           = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const reject = useRejectCodRemittance();
 
   const submit = () => {
@@ -137,9 +143,9 @@ function RejectModal({ item, onClose }: { item: any; onClose: () => void }) {
         </div>
         {err && <p className="text-red-500 text-sm mb-3 font-semibold">⚠️ {err}</p>}
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button variant="outline" onClick={onClose} className="flex-1">{T("cancel")}</Button>
           <Button onClick={submit} disabled={reject.isPending} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold">
-            {reject.isPending ? "Rejecting..." : "❌ Reject"}
+            {reject.isPending ? T("processing") : "❌ Reject"}
           </Button>
         </div>
       </div>
@@ -217,6 +223,8 @@ export default function CodRemittances() {
   const { data, isLoading, refetch } = useCodRemittances();
   const batchVerify = useBatchVerifyCodRemittances();
   const { toast } = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const [filter, setFilter]   = useState<StatusFilter>("all");
   const [search, setSearch]   = useState("");
@@ -271,7 +279,7 @@ export default function CodRemittances() {
           <p className="text-sm text-gray-500 mt-0.5">Riders ke COD cash deposits verify karein</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
-          <RefreshCw className="w-4 h-4"/> Refresh
+          <RefreshCw className="w-4 h-4"/> {T("refresh")}
         </Button>
       </div>
 

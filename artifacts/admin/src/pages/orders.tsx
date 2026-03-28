@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ShoppingBag, Search, User, Package, Phone, TrendingUp, AlertTriangle, CheckCircle2, Download, CalendarDays, UserCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 function exportOrdersCSV(orders: any[]) {
   const header = "ID,Type,Status,Total,Payment,Customer,Rider,Date";
@@ -45,6 +47,8 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 const ALL_STATUSES = Object.keys(ALLOWED_TRANSITIONS);
 
 export default function Orders() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading } = useOrdersEnriched();
   const { data: ridersData } = useRiders();
   const updateMutation  = useUpdateOrder();
@@ -145,8 +149,8 @@ export default function Orders() {
             <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Mart & Food Orders</h1>
-            <p className="text-muted-foreground text-xs sm:text-sm">{totalCount} total · {pendingCount} pending · {deliveredCount} delivered</p>
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("martFoodOrders")}</h1>
+            <p className="text-muted-foreground text-xs sm:text-sm">{totalCount} {T("total")} · {pendingCount} {T("pending")} · {deliveredCount} {T("delivered")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -186,26 +190,26 @@ export default function Orders() {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center">
           <p className="text-3xl font-bold text-foreground">{totalCount}</p>
-          <p className="text-xs text-muted-foreground mt-1">Total Orders</p>
+          <p className="text-xs text-muted-foreground mt-1">{T("totalOrders")}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center bg-amber-50/60 border-amber-200/60">
           <p className="text-3xl font-bold text-amber-700">{pendingCount}</p>
-          <p className="text-xs text-amber-600 mt-1">Pending</p>
+          <p className="text-xs text-amber-600 mt-1">{T("pending")}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center bg-blue-50/60 border-blue-200/60">
           <p className="text-3xl font-bold text-blue-700">{activeCount}</p>
-          <p className="text-xs text-blue-500 mt-1">Active Now</p>
+          <p className="text-xs text-blue-500 mt-1">{T("activeNow")}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center bg-green-50/60 border-green-200/60">
           <p className="text-3xl font-bold text-green-700">{deliveredCount}</p>
-          <p className="text-xs text-green-500 mt-1">Delivered</p>
+          <p className="text-xs text-green-500 mt-1">{T("delivered")}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center bg-purple-50/60 border-purple-200/60 sm:col-span-1 col-span-2">
           <div className="flex items-center justify-center gap-1 mb-1">
             <TrendingUp className="w-3.5 h-3.5 text-purple-600" />
           </div>
           <p className="text-2xl font-bold text-purple-700">{formatCurrency(totalRevenue)}</p>
-          <p className="text-xs text-purple-500 mt-1">Total Revenue</p>
+          <p className="text-xs text-purple-500 mt-1">{T("totalRevenue")}</p>
         </Card>
       </div>
 
@@ -279,12 +283,12 @@ export default function Orders() {
           <Table className="min-w-[640px]">
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="font-semibold">Order ID</TableHead>
-                <TableHead className="font-semibold">Customer</TableHead>
-                <TableHead className="font-semibold">Type</TableHead>
-                <TableHead className="font-semibold">Total</TableHead>
-                <TableHead className="font-semibold">Status</TableHead>
-                <TableHead className="font-semibold text-right">Date</TableHead>
+                <TableHead className="font-semibold">{T("orderId")}</TableHead>
+                <TableHead className="font-semibold">{T("customer")}</TableHead>
+                <TableHead className="font-semibold">{T("type")}</TableHead>
+                <TableHead className="font-semibold">{T("total")}</TableHead>
+                <TableHead className="font-semibold">{T("status")}</TableHead>
+                <TableHead className="font-semibold text-right">{T("date")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

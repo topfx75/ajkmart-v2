@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
 const fd = (d: string | Date) =>
@@ -46,6 +48,8 @@ function ApproveModal({ w, onClose }: { w: any; onClose: () => void }) {
   const [refNo, setRefNo] = useState("");
   const [note, setNote]   = useState("");
   const { toast } = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const approve = useApproveWithdrawal();
   const parsed = parseDesc(w.description || "");
 
@@ -91,10 +95,10 @@ function ApproveModal({ w, onClose }: { w: any; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={handleApprove} disabled={approve.isPending}>
-              {approve.isPending ? "Processing..." : "✅ Confirm Payment"}
+              {approve.isPending ? T("processing") : "✅ Confirm Payment"}
             </Button>
           </div>
         </div>
@@ -106,6 +110,8 @@ function ApproveModal({ w, onClose }: { w: any; onClose: () => void }) {
 function RejectModal({ w, onClose }: { w: any; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const { toast } = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const reject = useRejectWithdrawal();
   const parsed = parseDesc(w.description || "");
 
@@ -148,10 +154,10 @@ function RejectModal({ w, onClose }: { w: any; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
               onClick={handleReject} disabled={reject.isPending}>
-              {reject.isPending ? "Rejecting..." : "❌ Reject & Refund"}
+              {reject.isPending ? T("processing") : "❌ Reject & Refund"}
             </Button>
           </div>
         </div>
@@ -168,6 +174,8 @@ export default function Withdrawals() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchRejectReason, setBatchRejectReason] = useState("");
 
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch } = useWithdrawalRequests();
   const batchApprove = useBatchApproveWithdrawals();
   const batchReject  = useBatchRejectWithdrawals();
@@ -223,7 +231,7 @@ export default function Withdrawals() {
           <p className="text-sm text-gray-500 mt-0.5">Approve or reject rider & vendor withdrawal requests</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
-          <RefreshCw className="w-4 h-4 mr-2"/> Refresh
+          <RefreshCw className="w-4 h-4 mr-2"/> {T("refresh")}
         </Button>
       </div>
 

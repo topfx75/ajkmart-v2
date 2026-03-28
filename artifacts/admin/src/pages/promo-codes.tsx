@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const EMPTY_FORM = {
   code: "", description: "", discountPct: "", discountFlat: "",
@@ -181,6 +183,8 @@ function PromoModal({ promo, onClose }: { promo?: any; onClose: () => void }) {
 
 /* ══════════ Main Page ══════════ */
 export default function PromoCodes() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch, isFetching } = usePromoCodes();
   const deleteMutation = useDeletePromoCode();
   const { toast } = useToast();
@@ -231,7 +235,7 @@ export default function PromoCodes() {
             <Ticket className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Promo Codes</h1>
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("promoCodes")}</h1>
             <p className="text-sm text-muted-foreground">{codes.length} total · {activeCodes} active · {expiredCodes} expired</p>
           </div>
         </div>

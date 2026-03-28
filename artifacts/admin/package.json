@@ -76,6 +76,7 @@
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",
+    "@workspace/i18n": "workspace:*",
     "leaflet": "^1.9.4",
     "react-leaflet": "^5.0.0"
   }

@@ -169,6 +169,9 @@ importers:
       '@types/leaflet':
         specifier: ^1.9.21
         version: 1.9.21
+      '@workspace/i18n':
+        specifier: workspace:*
+        version: link:../../lib/i18n
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4

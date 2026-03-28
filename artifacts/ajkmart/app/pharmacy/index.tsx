@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { getProducts, createPharmacyOrder } from "@workspace/api-client-react";
 import type { GetProductsParams, GetProductsType } from "@workspace/api-client-react";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
@@ -85,6 +87,8 @@ export default function PharmacyScreen() {
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const inMaintenance = config.appStatus === "maintenance";
   const pharmacyEnabled = config.features.pharmacy;
@@ -162,11 +166,11 @@ export default function PharmacyScreen() {
 
   const placeOrder = async () => {
     if (!address.trim() || !phone.trim()) {
-      showToast("Delivery address aur phone number enter karein", "error");
+      showToast(T("deliveryAddress"), "error");
       return;
     }
     if (cartItems.length === 0) {
-      showToast("Cart mein kam az kam ek medicine add karein", "error");
+      showToast(T("addToCart"), "error");
       return;
     }
     setLoading(true);
@@ -185,7 +189,7 @@ export default function PharmacyScreen() {
       setConfirmed(true);
       setCart({});
     } catch {
-      showToast("Network error. Dobara try karein.", "error");
+      showToast(T("networkError"), "error");
     } finally {
       setLoading(false);
     }
@@ -200,13 +204,10 @@ export default function PharmacyScreen() {
         </Pressable>
         <View style={[s.successCard, { borderColor: "#FEE2E2" }]}>
           <Text style={{ fontSize: 52, marginBottom: 12 }}>🚫</Text>
-          <Text style={[s.successTitle, { color: "#EF4444" }]}>Service Unavailable</Text>
-          <Text style={[s.successSub, { marginBottom: 20 }]}>
-            Pharmacy service filhaal available nahi hai.{"\n"}
-            Thodi der baad dobara try karein.
-          </Text>
+          <Text style={[s.successTitle, { color: "#EF4444" }]}>{T("serviceUnavailable")}</Text>
+          <Text style={[s.successSub, { marginBottom: 20 }]}>{T("maintenanceApology")}</Text>
           <Pressable style={[s.successBtn, { backgroundColor: "#FEF2F2" }]} onPress={() => router.back()}>
-            <Text style={[s.successBtnTxt, { color: "#EF4444" }]}>Back to Home</Text>
+            <Text style={[s.successBtnTxt, { color: "#EF4444" }]}>{T("backToHome")}</Text>
           </Pressable>
         </View>
       </View>
@@ -219,10 +220,10 @@ export default function PharmacyScreen() {
       <View style={[s.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
         <View style={[s.successCard, { borderColor: "#FEF3C7" }]}>
           <Text style={{ fontSize: 52, marginBottom: 12 }}>🔧</Text>
-          <Text style={[s.successTitle, { color: "#D97706" }]}>Under Maintenance</Text>
+          <Text style={[s.successTitle, { color: "#D97706" }]}>{T("underMaintenance")}</Text>
           <Text style={[s.successSub, { marginBottom: 20 }]}>{config.content.maintenanceMsg}</Text>
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, textAlign: "center" }}>
-            Please check back later. We apologize for the inconvenience.
+            {T("maintenanceApology")}
           </Text>
         </View>
       </View>
@@ -234,20 +235,20 @@ export default function PharmacyScreen() {
       <View style={[s.root, { justifyContent: "center", alignItems: "center", paddingHorizontal: 32 }]}>
         <View style={s.successCard}>
           <View style={s.successIcon}><Text style={{ fontSize: 48 }}>✅</Text></View>
-          <Text style={s.successTitle}>Order Placed!</Text>
+          <Text style={s.successTitle}>{T("orderPlaced")}</Text>
           <Text style={s.successSub}>
-            Aapka pharmacy order #{confirmedOrderId.slice(-6).toUpperCase()} place ho gaya!{"\n"}
-            Delivery: 25-40 minutes
+            #{confirmedOrderId.slice(-6).toUpperCase()}{"\n"}
+            {T("eta")}: 25-40 min
           </Text>
           <View style={s.successMeta}>
             <Ionicons name="location-outline" size={14} color={C.textMuted} />
             <Text style={s.successMetaTxt} numberOfLines={2}>{address}</Text>
           </View>
           <Pressable style={s.successBtn} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
-            <Text style={s.successBtnTxt}>Back to Home</Text>
+            <Text style={s.successBtnTxt}>{T("backToHome")}</Text>
           </Pressable>
           <Pressable style={[s.successBtn, { backgroundColor: "#EFF6FF", marginTop: 8 }]} onPress={() => { setConfirmed(false); }}>
-            <Text style={[s.successBtnTxt, { color: C.primary }]}>Order More</Text>
+            <Text style={[s.successBtnTxt, { color: C.primary }]}>{T("orderMore")}</Text>
           </Pressable>
         </View>
       </View>
@@ -263,13 +264,13 @@ export default function PharmacyScreen() {
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </Pressable>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={s.hdrTitle}>💊 Pharmacy</Text>
-            <Text style={s.hdrSub}>Medicines delivered to your door</Text>
+            <Text style={s.hdrTitle}>💊 {T("pharmacy")}</Text>
+            <Text style={s.hdrSub}>{T("medicinesDeliveredTo")}</Text>
           </View>
           {cartCount > 0 && (
             <Pressable onPress={() => setShowCheckout(true)} style={s.cartPill}>
               <Ionicons name="cart" size={16} color="#fff" />
-              <Text style={s.cartPillTxt}>{cartCount} items</Text>
+              <Text style={s.cartPillTxt}>{cartCount} {T("itemsLabel")}</Text>
             </Pressable>
           )}
         </View>
@@ -279,7 +280,7 @@ export default function PharmacyScreen() {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search medicines..."
+            placeholder={T("searchMedicines")}
             placeholderTextColor={C.textMuted}
             style={s.searchInput}
           />
@@ -303,7 +304,7 @@ export default function PharmacyScreen() {
       {/* Notice */}
       <View style={s.rxNotice}>
         <Ionicons name="information-circle-outline" size={14} color="#7C3AED" />
-        <Text style={s.rxNoticeTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>Rx</Text> wali dawaiyan prescription ke saath milti hain</Text>
+        <Text style={s.rxNoticeTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>Rx</Text> {T("rxNotice")}</Text>
       </View>
 
       {/* Medicines Grid */}
@@ -311,21 +312,21 @@ export default function PharmacyScreen() {
         {loadingMeds ? (
           <View style={{ alignItems: "center", paddingTop: 60 }}>
             <ActivityIndicator size="large" color="#7C3AED" />
-            <Text style={[s.emptyTxt, { marginTop: 12 }]}>Medicines load ho rahi hain...</Text>
+            <Text style={[s.emptyTxt, { marginTop: 12 }]}>{T("loadingMedicines")}</Text>
           </View>
         ) : medsError ? (
           <View style={{ alignItems: "center", paddingTop: 60, gap: 8 }}>
             <Ionicons name="cloud-offline-outline" size={48} color="#9CA3AF" />
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#374151" }}>Load nahi ho sakein</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280" }}>Internet check karein aur retry karein</Text>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#374151" }}>{T("cannotLoad")}</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280" }}>{T("checkInternet")}</Text>
             <Pressable onPress={() => { setLoadingMeds(true); setMedsError(false); getProducts({ type: "pharmacy" as GetProductsType }).then(data => { if (data?.products?.length) { const meds: Med[] = data.products.map(p => ({ id: p.id, name: p.name, brand: p.vendorName ?? "Various", category: p.category, price: p.price, unit: p.unit ?? p.description ?? "1 unit", emoji: "💊", requires_prescription: false })); setMedicines(meds); setCategories(["All", ...new Set(meds.map(m => m.category))]); } }).catch(() => setMedsError(true)).finally(() => setLoadingMeds(false)); }} style={{ backgroundColor: "#7C3AED", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 8 }}>
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Retry</Text>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>{T("retry")}</Text>
             </Pressable>
           </View>
         ) : filtered.length === 0 ? (
           <View style={{ alignItems: "center", paddingTop: 60 }}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>🔍</Text>
-            <Text style={s.emptyTxt}>Koi medicine nahi mili</Text>
+            <Text style={s.emptyTxt}>{T("noMedicineFound")}</Text>
           </View>
         ) : (
           filtered.map(med => (
@@ -345,11 +346,11 @@ export default function PharmacyScreen() {
       {cartCount > 0 && (
         <View style={[s.cartBar, { paddingBottom: insets.bottom + 12 }]}>
           <View>
-            <Text style={s.cartBarCount}>{cartCount} medicines</Text>
+            <Text style={s.cartBarCount}>{cartCount} {T("medicines")}</Text>
             <Text style={s.cartBarTotal}>Rs. {cartTotal.toLocaleString()}</Text>
           </View>
           <Pressable style={s.checkoutBtn} onPress={() => setShowCheckout(true)}>
-            <Text style={s.checkoutBtnTxt}>Place Order</Text>
+            <Text style={s.checkoutBtnTxt}>{T("placeOrder")}</Text>
             <Ionicons name="arrow-forward" size={16} color="#fff" />
           </Pressable>
         </View>
@@ -359,7 +360,7 @@ export default function PharmacyScreen() {
       <Modal visible={showCheckout} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCheckout(false)}>
         <ScrollView style={s.modal} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={s.modalHeader}>
-            <Text style={s.modalTitle}>Order Summary</Text>
+            <Text style={s.modalTitle}>{T("orderSummary")}</Text>
             <Pressable onPress={() => setShowCheckout(false)}>
               <Ionicons name="close" size={22} color={C.text} />
             </Pressable>
@@ -367,7 +368,7 @@ export default function PharmacyScreen() {
 
           {/* Cart Items */}
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Medicines ({cartCount})</Text>
+            <Text style={s.sectionTitle}>{T("medicines")} ({cartCount})</Text>
             {cartItems.map(item => (
               <View key={item.id} style={s.orderItem}>
                 <Text style={s.orderItemName}>{item.emoji || "💊"} {item.name}</Text>
@@ -377,29 +378,29 @@ export default function PharmacyScreen() {
             ))}
             <View style={s.divider} />
             <View style={[s.orderItem, { marginTop: 4 }]}>
-              <Text style={[s.orderItemName, { fontFamily: "Inter_700Bold" }]}>Delivery Fee</Text>
-              <Text style={[s.orderItemPrice, { color: C.success }]}>FREE</Text>
+              <Text style={[s.orderItemName, { fontFamily: "Inter_700Bold" }]}>{T("deliveryFee")}</Text>
+              <Text style={[s.orderItemPrice, { color: C.success }]}>{T("freeLabel")}</Text>
             </View>
             <View style={s.orderItem}>
-              <Text style={[s.orderItemName, { fontFamily: "Inter_700Bold", fontSize: 15 }]}>Total</Text>
+              <Text style={[s.orderItemName, { fontFamily: "Inter_700Bold", fontSize: 15 }]}>{T("totalLabel")}</Text>
               <Text style={[s.orderItemPrice, { fontFamily: "Inter_700Bold", fontSize: 15, color: C.primary }]}>Rs. {cartTotal.toLocaleString()}</Text>
             </View>
           </View>
 
           {/* Delivery Info */}
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Delivery Details</Text>
-            <Text style={s.label}>Delivery Address *</Text>
+            <Text style={s.sectionTitle}>{T("deliveryDetails")}</Text>
+            <Text style={s.label}>{T("deliveryAddress")} *</Text>
             <TextInput
               value={address}
               onChangeText={setAddress}
-              placeholder="Enter full address"
+              placeholder={T("enterFullName")}
               placeholderTextColor={C.textMuted}
               style={s.input}
               multiline
               numberOfLines={2}
             />
-            <Text style={s.label}>Contact Number *</Text>
+            <Text style={s.label}>{T("contactNumber")} *</Text>
             <TextInput
               value={phone}
               onChangeText={setPhone}
@@ -408,11 +409,11 @@ export default function PharmacyScreen() {
               style={s.input}
               keyboardType="phone-pad"
             />
-            <Text style={s.label}>Prescription Note (Optional)</Text>
+            <Text style={s.label}>{T("prescriptionNote")}</Text>
             <TextInput
               value={prescription}
               onChangeText={setPrescription}
-              placeholder="Any special instructions or prescription details..."
+              placeholder={T("rxNotice")}
               placeholderTextColor={C.textMuted}
               style={[s.input, { minHeight: 72 }]}
               multiline
@@ -422,25 +423,25 @@ export default function PharmacyScreen() {
 
           {/* Payment */}
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Payment Method</Text>
+            <Text style={s.sectionTitle}>{T("paymentMethods")}</Text>
             <View style={s.payRow}>
               {cartTotal <= config.orderRules.maxCodAmount ? (
                 <Pressable onPress={() => setPayMethod("cash")} style={[s.payOpt, payMethod === "cash" && s.payOptActive]}>
                   <Ionicons name="cash-outline" size={20} color={payMethod === "cash" ? C.primary : C.textMuted} />
-                  <Text style={[s.payOptTxt, payMethod === "cash" && { color: C.primary }]}>Cash on Delivery</Text>
+                  <Text style={[s.payOptTxt, payMethod === "cash" && { color: C.primary }]}>{T("cashOnDelivery")}</Text>
                 </Pressable>
               ) : (
                 <View style={[s.payOpt, { opacity: 0.4 }]}>
                   <Ionicons name="cash-outline" size={20} color={C.textMuted} />
-                  <Text style={s.payOptTxt}>COD limit: Rs. {config.orderRules.maxCodAmount.toLocaleString()}</Text>
+                  <Text style={s.payOptTxt}>{T("codLimit")}: Rs. {config.orderRules.maxCodAmount.toLocaleString()}</Text>
                 </View>
               )}
               {config.features.wallet && (
                 <Pressable onPress={() => setPayMethod("wallet")} style={[s.payOpt, payMethod === "wallet" && s.payOptActive]}>
                   <Ionicons name="wallet-outline" size={20} color={payMethod === "wallet" ? C.primary : C.textMuted} />
                   <View>
-                    <Text style={[s.payOptTxt, payMethod === "wallet" && { color: C.primary }]}>Wallet</Text>
-                    <Text style={s.walletBal}>Rs. {(user?.walletBalance ?? 0).toLocaleString()} available</Text>
+                    <Text style={[s.payOptTxt, payMethod === "wallet" && { color: C.primary }]}>{T("wallet")}</Text>
+                    <Text style={s.walletBal}>Rs. {(user?.walletBalance ?? 0).toLocaleString()} {T("availableBalance")}</Text>
                   </View>
                 </Pressable>
               )}
@@ -452,7 +453,7 @@ export default function PharmacyScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <Text style={s.placeBtnTxt}>Place Order • Rs. {cartTotal.toLocaleString()}</Text>
+                <Text style={s.placeBtnTxt}>{T("placeOrder")} • Rs. {cartTotal.toLocaleString()}</Text>
                 <Ionicons name="checkmark-circle" size={18} color="#fff" />
               </>
             )}

@@ -6,6 +6,8 @@ import {
   ToggleRight, ToggleLeft, RefreshCw, CheckCircle2,
   AlertTriangle, WrenchIcon, Eye, EyeOff, ScrollText, CalendarDays, ChevronLeft, ChevronRight,
 } from "lucide-react";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
 import { useAuditLog } from "@/hooks/use-admin";
@@ -130,6 +132,8 @@ function AuditLogTab() {
 }
 
 export default function AppManagement() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { toast } = useToast();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"overview"|"admins"|"maintenance"|"audit-log">("overview");

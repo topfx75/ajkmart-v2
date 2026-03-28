@@ -24,9 +24,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
-import { LanguageProvider } from "@/context/LanguageContext";
+import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
 import { PlatformConfigProvider, usePlatformConfig } from "@/context/PlatformConfigContext";
 import { ToastProvider } from "@/context/ToastContext";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
 
@@ -64,17 +65,19 @@ function AuthGuard() {
 
 function SuspendedScreen() {
   const { suspendedMessage, clearSuspended } = useAuth();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   return (
     <View style={{ flex: 1, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center", padding: 32 }}>
       <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
         <Text style={{ fontSize: 44 }}>🚫</Text>
       </View>
-      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#991B1B", textAlign: "center", marginBottom: 12 }}>Account Suspended</Text>
+      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#991B1B", textAlign: "center", marginBottom: 12 }}>{T("accountSuspended")}</Text>
       <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#7F1D1D", textAlign: "center", lineHeight: 22, marginBottom: 32 }}>
-        {suspendedMessage || "Your account has been suspended. Contact support for assistance."}
+        {suspendedMessage || T("accountSuspendedMsg")}
       </Text>
       <Pressable onPress={clearSuspended} style={{ backgroundColor: "#DC2626", borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, alignItems: "center" }}>
-        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>Sign Out</Text>
+        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>{T("signOutLabel")}</Text>
       </Pressable>
     </View>
   );
@@ -82,14 +85,16 @@ function SuspendedScreen() {
 
 function MaintenanceScreen() {
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   return (
     <View style={{ flex: 1, backgroundColor: "#FFF7ED", alignItems: "center", justifyContent: "center", padding: 32 }}>
       <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
         <Text style={{ fontSize: 44 }}>🔧</Text>
       </View>
-      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#92400E", textAlign: "center", marginBottom: 12 }}>Under Maintenance</Text>
+      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#92400E", textAlign: "center", marginBottom: 12 }}>{T("underMaintenance")}</Text>
       <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#78350F", textAlign: "center", lineHeight: 22, marginBottom: 16 }}>
-        {config.content.maintenanceMsg || "App is temporarily under maintenance. Please check back soon."}
+        {config.content.maintenanceMsg || T("maintenanceApology")}
       </Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF3C7", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 }}>
         <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#B45309" }}>

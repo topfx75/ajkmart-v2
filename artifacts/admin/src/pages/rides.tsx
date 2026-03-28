@@ -23,6 +23,8 @@ import {
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight, ChevronUp, ChevronDown, Layers,
   GraduationCap, Bus, X, Users,
 } from "lucide-react";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 /* ─── constants ─── */
 const STATUS_LABELS: Record<string, string> = {
@@ -1219,6 +1221,8 @@ function ServiceManager() {
 }
 
 export default function Rides() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading } = useRidesEnriched();
   const updateMutation = useUpdateRide();
   const { toast } = useToast();
@@ -1415,7 +1419,7 @@ export default function Rides() {
             <Car className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Rides</h1>
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("ridesTitle")}</h1>
             <p className="text-muted-foreground text-xs">{rides.length} total · {rides.filter((r:any) => r.type === "bike").length} bike · {rides.filter((r:any) => r.type === "car").length} car</p>
           </div>
         </div>
@@ -1429,7 +1433,7 @@ export default function Rides() {
             className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
           >
             <Settings2 className="w-3.5 h-3.5" />
-            Ride Config
+            {T("ridesConfig")}
           </button>
         </div>
       </div>
@@ -1451,7 +1455,7 @@ export default function Rides() {
           </div>
           <button onClick={() => setTab("live")}
             className="px-3 py-1.5 bg-orange-500 text-white text-xs font-bold rounded-xl whitespace-nowrap hover:bg-orange-600 transition-colors">
-            View Live
+            {T("ridesViewLive")}
           </button>
         </div>
       )}
@@ -1459,11 +1463,11 @@ export default function Rides() {
       {/* ── Stat Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: "Total",      val: rides.length,          cls: "text-foreground", bg: "" },
-          { label: "Bargaining", val: bargaining.length,     cls: "text-orange-600", bg: "bg-orange-50/60 border-orange-200/60" },
-          { label: "Searching",  val: searching.length,      cls: "text-amber-700",  bg: "bg-amber-50/60 border-amber-200/60"  },
-          { label: "Active Now", val: activeCount,            cls: "text-blue-700",   bg: "bg-blue-50/60 border-blue-200/60"    },
-          { label: "Completed",  val: completed.length,      cls: "text-green-700",  bg: "bg-green-50/60 border-green-200/60"  },
+          { label: T("ridesTotal"),      val: rides.length,          cls: "text-foreground", bg: "" },
+          { label: T("ridesBargaining"), val: bargaining.length,     cls: "text-orange-600", bg: "bg-orange-50/60 border-orange-200/60" },
+          { label: T("ridesSearching"),  val: searching.length,      cls: "text-amber-700",  bg: "bg-amber-50/60 border-amber-200/60"  },
+          { label: T("activeNow"),       val: activeCount,            cls: "text-blue-700",   bg: "bg-blue-50/60 border-blue-200/60"    },
+          { label: T("ridesCompleted"),  val: completed.length,      cls: "text-green-700",  bg: "bg-green-50/60 border-green-200/60"  },
         ].map(s => (
           <Card key={s.label} className={`p-4 rounded-2xl border-border/50 shadow-sm text-center ${s.bg}`}>
             <p className={`text-3xl font-bold ${s.cls}`}>{s.val}</p>
@@ -1479,7 +1483,7 @@ export default function Rides() {
             <TrendingUp className="w-5 h-5 text-amber-600" />
           </div>
           <div>
-            <p className="text-xs text-amber-500 font-medium">Total Revenue (Completed Rides)</p>
+            <p className="text-xs text-amber-500 font-medium">{T("ridesTotalRevenue")}</p>
             <p className="text-2xl font-extrabold text-amber-700">{formatCurrency(totalRevenue)}</p>
           </div>
         </div>
@@ -1491,12 +1495,12 @@ export default function Rides() {
 
       {/* ── Tabs ── */}
       <div className="flex flex-wrap gap-2">
-        <TabBtn id="live"      icon={Zap}           label="Live"         count={liveRides.length}   urgent />
-        <TabBtn id="active"    icon={Activity}      label="In Progress"  count={inProgress.length}         />
-        <TabBtn id="history"   icon={History}       label="History"      count={completed.length + cancelled.length} />
-        <TabBtn id="services"  icon={Layers}        label="Services"     count={0} />
-        <TabBtn id="locations" icon={MapPin}        label="Stops"        count={0} />
-        <TabBtn id="school"    icon={GraduationCap} label="School Shift" count={0} />
+        <TabBtn id="live"      icon={Zap}           label={T("ridesLive")}        count={liveRides.length}   urgent />
+        <TabBtn id="active"    icon={Activity}      label={T("ridesInProgress")}  count={inProgress.length}         />
+        <TabBtn id="history"   icon={History}       label={T("ridesHistory")}     count={completed.length + cancelled.length} />
+        <TabBtn id="services"  icon={Layers}        label={T("ridesServices")}    count={0} />
+        <TabBtn id="locations" icon={MapPin}        label={T("ridesStops")}       count={0} />
+        <TabBtn id="school"    icon={GraduationCap} label={T("ridesSchoolShift")} count={0} />
       </div>
 
       {/* ══════════ TAB: LIVE ══════════ */}
@@ -1553,7 +1557,7 @@ export default function Rides() {
           {liveRides.length === 0 && (
             <Card className="p-12 rounded-2xl border-border/50 shadow-sm text-center">
               <p className="text-5xl mb-3">🟢</p>
-              <p className="text-lg font-bold text-gray-700">All Quiet</p>
+              <p className="text-lg font-bold text-gray-700">{T("ridesAllQuiet")}</p>
               <p className="text-gray-400 text-sm mt-1">No rides need attention right now</p>
             </Card>
           )}
@@ -1562,7 +1566,7 @@ export default function Rides() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Navigation className="w-4 h-4 text-blue-500" />
-              <h2 className="font-bold text-blue-700">Live Riders GPS</h2>
+              <h2 className="font-bold text-blue-700">{T("ridesLiveGPS")}</h2>
               {freshRiders.length > 0 && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
                   {freshRiders.length} Active
@@ -1619,7 +1623,7 @@ export default function Rides() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <User className="w-4 h-4 text-purple-500" />
-              <h2 className="font-bold text-purple-700">Active Customers (Last Location)</h2>
+              <h2 className="font-bold text-purple-700">{T("ridesCustomerGPS")}</h2>
               {freshCustomers.length > 0 && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
                   {freshCustomers.length} Recent
@@ -1694,7 +1698,7 @@ export default function Rides() {
           {inProgress.length === 0 ? (
             <Card className="p-12 rounded-2xl border-border/50 shadow-sm text-center">
               <p className="text-5xl mb-3">🏍️</p>
-              <p className="text-lg font-bold text-gray-700">No Active Rides</p>
+              <p className="text-lg font-bold text-gray-700">{T("ridesNoActiveRides")}</p>
               <p className="text-gray-400 text-sm mt-1">Accepted / Arrived / In-transit rides appear here</p>
             </Card>
           ) : (
@@ -1811,12 +1815,12 @@ export default function Rides() {
           <div className="grid grid-cols-2 gap-3">
             <Card className="p-4 rounded-2xl border-border/50 shadow-sm bg-green-50/60 border-green-200/60 text-center">
               <p className="text-3xl font-bold text-green-700">{completed.length}</p>
-              <p className="text-xs text-green-500 mt-1">Completed</p>
+              <p className="text-xs text-green-500 mt-1">{T("ridesCompleted")}</p>
               <p className="text-sm font-bold text-green-600 mt-0.5">{formatCurrency(totalRevenue)}</p>
             </Card>
             <Card className="p-4 rounded-2xl border-border/50 shadow-sm bg-red-50/60 border-red-200/60 text-center">
               <p className="text-3xl font-bold text-red-700">{cancelled.length}</p>
-              <p className="text-xs text-red-400 mt-1">Cancelled</p>
+              <p className="text-xs text-red-400 mt-1">{T("ridesCancelled")}</p>
               <p className="text-sm text-red-400 mt-0.5">
                 {rides.length > 0 ? Math.round((cancelled.length / rides.length) * 100) : 0}% cancel rate
               </p>

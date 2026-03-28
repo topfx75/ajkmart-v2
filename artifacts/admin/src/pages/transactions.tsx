@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Receipt, TrendingUp, TrendingDown, DollarSign, Search, RefreshCw, User, Download, CalendarDays } from "lucide-react";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 function exportTxnCSV(txns: any[]) {
   const header = "ID,User,Phone,Type,Amount,Description,Date";
@@ -21,6 +23,8 @@ function exportTxnCSV(txns: any[]) {
 }
 
 export default function Transactions() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch, isFetching } = useTransactions();
   const [search, setSearch]     = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -53,16 +57,16 @@ export default function Transactions() {
             <Receipt className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Wallet Transactions</h1>
-            <p className="text-muted-foreground text-sm">Complete history of all digital wallet movements</p>
+            <h1 className="text-3xl font-display font-bold text-foreground">{T("walletTransactions")}</h1>
+            <p className="text-muted-foreground text-sm">{T("walletTxnSubtitle")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => exportTxnCSV(filtered)} className="h-9 rounded-xl gap-2 self-start sm:self-auto">
-            <Download className="w-4 h-4" /> CSV
+            <Download className="w-4 h-4" /> {T("csvExport")}
           </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2 self-start sm:self-auto">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> {T("refresh")}
           </Button>
         </div>
       </div>
@@ -75,7 +79,7 @@ export default function Transactions() {
               <DollarSign className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-white/80 text-xs font-medium">Total Transactions</p>
+              <p className="text-white/80 text-xs font-medium">{T("totalTransactions")}</p>
               <p className="text-xl font-bold">{transactions.length}</p>
             </div>
           </CardContent>
@@ -86,7 +90,7 @@ export default function Transactions() {
               <TrendingUp className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-green-700/80 text-xs font-medium">Total Credits</p>
+              <p className="text-green-700/80 text-xs font-medium">{T("totalCredits")}</p>
               <p className="text-xl font-bold text-green-700">{formatCurrency(data?.totalCredit || 0)}</p>
             </div>
           </CardContent>
@@ -97,7 +101,7 @@ export default function Transactions() {
               <TrendingDown className="w-5 h-5 text-red-600" />
             </div>
             <div>
-              <p className="text-red-700/80 text-xs font-medium">Total Debits</p>
+              <p className="text-red-700/80 text-xs font-medium">{T("totalDebits")}</p>
               <p className="text-xl font-bold text-red-700">{formatCurrency(data?.totalDebit || 0)}</p>
             </div>
           </CardContent>
@@ -129,9 +133,9 @@ export default function Transactions() {
           </div>
           <div className="flex gap-2">
             {[
-              { value: "all", label: "All" },
-              { value: "credit", label: "▲ Credits" },
-              { value: "debit", label: "▼ Debits" }
+              { value: "all", label: T("allTypes") },
+              { value: "credit", label: `▲ ${T("creditLabel")}` },
+              { value: "debit", label: `▼ ${T("debitLabel")}` }
             ].map(t => (
               <button
                 key={t.value}
@@ -154,7 +158,7 @@ export default function Transactions() {
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
           <span className="text-xs text-muted-foreground">–</span>
           <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="h-9 rounded-xl bg-muted/30 text-xs w-32" />
-          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">Clear</button>}
+          {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-primary hover:underline">{T("clearFilter")}</button>}
         </div>
       </Card>
 
@@ -163,19 +167,19 @@ export default function Transactions() {
           <Table className="min-w-[580px]">
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead>Txn ID</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Date</TableHead>
+                <TableHead>{T("txnId")}</TableHead>
+                <TableHead>{T("user")}</TableHead>
+                <TableHead>{T("description")}</TableHead>
+                <TableHead>{T("type")}</TableHead>
+                <TableHead className="text-right">{T("amount")}</TableHead>
+                <TableHead className="text-right">{T("date")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">{T("loading")}</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No transactions found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">{T("noTransactions")}</TableCell></TableRow>
               ) : (
                 filtered.map((t: any) => (
                   <TableRow key={t.id} className="hover:bg-muted/30">
@@ -206,7 +210,7 @@ export default function Transactions() {
                           : 'bg-red-50 text-red-700 border-red-200 uppercase text-[10px] font-bold'
                         }
                       >
-                        {t.type === 'credit' ? '▲ Credit' : '▼ Debit'}
+                        {t.type === 'credit' ? `▲ ${T("creditLabel")}` : `▼ ${T("debitLabel")}`}
                       </Badge>
                     </TableCell>
                     <TableCell className={`text-right font-bold ${t.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>

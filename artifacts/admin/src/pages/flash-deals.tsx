@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 /* ── Types ── */
 interface Product { id: string; name: string; price: string | number; category: string; image?: string }
@@ -73,6 +75,8 @@ const EMPTY_PROMO = {
 
 /* ══════════ Main Page ══════════ */
 export default function FlashDealsPage() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { toast } = useToast();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"flash"|"promo">("flash");
@@ -244,7 +248,7 @@ export default function FlashDealsPage() {
             <Zap className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Flash Deals & Promos</h1>
+            <h1 className="text-3xl font-display font-bold text-foreground">{T("flashDealsPromos")}</h1>
             <p className="text-muted-foreground text-sm">{liveDeals} live deal{liveDeals!==1?"s":""} · {activePromos} active promo code{activePromos!==1?"s":""}</p>
           </div>
         </div>
@@ -253,7 +257,7 @@ export default function FlashDealsPage() {
           className="h-10 rounded-xl gap-2 shadow-md"
         >
           <Plus className="w-4 h-4" />
-          {tab === "flash" ? "New Flash Deal" : "New Promo Code"}
+          {tab === "flash" ? T("newFlashDeal") : T("newPromoCode")}
         </Button>
       </div>
 
@@ -263,14 +267,14 @@ export default function FlashDealsPage() {
           onClick={() => setTab("flash")}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="flash" ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          ⚡ Flash Deals
-          {liveDeals > 0 && <span className="ml-2 bg-green-100 text-green-700 text-xs rounded-full px-2">{liveDeals} live</span>}
+          ⚡ {T("tabFlashDeals")}
+          {liveDeals > 0 && <span className="ml-2 bg-green-100 text-green-700 text-xs rounded-full px-2">{liveDeals} {T("live")}</span>}
         </button>
         <button
           onClick={() => setTab("promo")}
           className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${tab==="promo" ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          🎟 Promo Codes
+          🎟 {T("tabPromoCodes")}
           {activePromos > 0 && <span className="ml-2 bg-blue-100 text-blue-700 text-xs rounded-full px-2">{activePromos} active</span>}
         </button>
       </div>
@@ -284,9 +288,9 @@ export default function FlashDealsPage() {
             <Card className="rounded-2xl border-border/50">
               <CardContent className="p-16 text-center">
                 <Zap className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3"/>
-                <p className="text-muted-foreground font-medium">No flash deals yet</p>
-                <p className="text-sm text-muted-foreground/60 mt-1">Create your first flash deal to boost sales!</p>
-                <Button onClick={openNewDeal} className="mt-4 rounded-xl gap-2"><Plus className="w-4 h-4"/>Create Flash Deal</Button>
+                <p className="text-muted-foreground font-medium">{T("noFlashDeals")}</p>
+                <p className="text-sm text-muted-foreground/60 mt-1">{T("createFirstFlashDeal")}</p>
+                <Button onClick={openNewDeal} className="mt-4 rounded-xl gap-2"><Plus className="w-4 h-4"/>{T("createFlashDeal")}</Button>
               </CardContent>
             </Card>
           ) : (
@@ -368,9 +372,9 @@ export default function FlashDealsPage() {
             <Card className="rounded-2xl border-border/50">
               <CardContent className="p-16 text-center">
                 <TicketPercent className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3"/>
-                <p className="text-muted-foreground font-medium">No promo codes yet</p>
-                <p className="text-sm text-muted-foreground/60 mt-1">Create discount codes for customers to use at checkout</p>
-                <Button onClick={openNewPromo} className="mt-4 rounded-xl gap-2"><Plus className="w-4 h-4"/>Create Promo Code</Button>
+                <p className="text-muted-foreground font-medium">{T("noPromoCodes")}</p>
+                <p className="text-sm text-muted-foreground/60 mt-1">{T("createDiscountCodes")}</p>
+                <Button onClick={openNewPromo} className="mt-4 rounded-xl gap-2"><Plus className="w-4 h-4"/>{T("createPromoCode")}</Button>
               </CardContent>
             </Card>
           ) : (
@@ -446,7 +450,7 @@ export default function FlashDealsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-amber-500"/>
-              {editingDeal ? "Edit Flash Deal" : "Create Flash Deal"}
+              {editingDeal ? T("editFlashDeal") : T("createFlashDeal")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
@@ -584,7 +588,7 @@ export default function FlashDealsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <TicketPercent className="w-5 h-5 text-blue-500"/>
-              {editingPromo ? "Edit Promo Code" : "Create Promo Code"}
+              {editingPromo ? T("editPromoCode") : T("createPromoCode")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">

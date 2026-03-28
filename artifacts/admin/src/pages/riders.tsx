@@ -4,6 +4,8 @@ import {
   CheckCircle2, Ban, AlertTriangle, Star, Phone, Download, CalendarDays,
   WifiOff, Wifi,
 } from "lucide-react";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useRiders, useUpdateRiderStatus, useRiderPayout, useRiderBonus, useToggleRiderOnline } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -165,6 +167,8 @@ function exportRidersCSV(riders: any[]) {
 
 /* ══════════ Main Riders Page ══════════ */
 export default function Riders() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch, isFetching } = useRiders();
   const toggleOnlineMutation = useToggleRiderOnline();
   const { toast } = useToast();
@@ -228,7 +232,7 @@ export default function Riders() {
             <Download className="w-4 h-4" /> CSV
           </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
           </Button>
         </div>
       </div>

@@ -19,6 +19,8 @@ import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { getPaymentMethods, estimateParcel, createParcelBooking } from "@workspace/api-client-react";
 import type { CreateParcelBookingRequest } from "@workspace/api-client-react";
 
@@ -47,11 +49,10 @@ const AJK_LOCATIONS = [
 ];
 
 /* ─── Step Indicator ─── */
-function Steps({ current }: { current: number }) {
-  const steps = ["Sender", "Receiver", "Parcel", "Payment"];
+function Steps({ current, labels }: { current: number; labels: string[] }) {
   return (
     <View style={ss.steps}>
-      {steps.map((lbl, i) => (
+      {labels.map((lbl, i) => (
         <React.Fragment key={lbl}>
           <View style={ss.stepItem}>
             <View style={[ss.stepDot, i <= current && ss.stepDotActive]}>
@@ -77,6 +78,8 @@ export default function ParcelScreen() {
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const appName = platformConfig.platform.appName;
   const inMaintenance = platformConfig.appStatus === "maintenance";
   const parcelEnabled = platformConfig.features.parcel;
@@ -104,7 +107,7 @@ export default function ParcelScreen() {
 
   const [payMethod, setPayMethod] = useState<string>("cash");
   const [payMethods, setPayMethods] = useState<Array<{ id: string; label: string; logo: string; description: string }>>([
-    { id: "cash", label: "Cash on Pickup", logo: "💵", description: "Driver parcel lene aake payment le ga" },
+    { id: "cash", label: "Cash on Pickup", logo: "💵", description: "" },
   ]);
 
   /* ── Server-calculated fare (replaces hardcoded per-type fares) ── */
@@ -138,17 +141,17 @@ export default function ParcelScreen() {
 
   const validateStep = (s: number): boolean => {
     if (s === 0) {
-      if (!senderName.trim()) { showToast("Sender ka naam likhein", "error"); return false; }
-      if (!senderPhone.trim()) { showToast("Sender ka phone number likhein", "error"); return false; }
-      if (!pickupAddress.trim()) { showToast("Pickup address likhein", "error"); return false; }
+      if (!senderName.trim()) { showToast(T("enterFullName"), "error"); return false; }
+      if (!senderPhone.trim()) { showToast(T("enterPhoneNumber"), "error"); return false; }
+      if (!pickupAddress.trim()) { showToast(T("pickupAddress"), "error"); return false; }
     }
     if (s === 1) {
-      if (!receiverName.trim()) { showToast("Receiver ka naam likhein", "error"); return false; }
-      if (!receiverPhone.trim()) { showToast("Receiver ka phone number likhein", "error"); return false; }
-      if (!dropAddress.trim()) { showToast("Drop address likhein", "error"); return false; }
+      if (!receiverName.trim()) { showToast(T("enterFullName"), "error"); return false; }
+      if (!receiverPhone.trim()) { showToast(T("enterPhoneNumber"), "error"); return false; }
+      if (!dropAddress.trim()) { showToast(T("dropAddress"), "error"); return false; }
     }
     if (s === 2) {
-      if (!parcelType) { showToast("Parcel type select karein", "error"); return false; }
+      if (!parcelType) { showToast(T("parcelType"), "error"); return false; }
     }
     return true;
   };
@@ -192,13 +195,10 @@ export default function ParcelScreen() {
         </Pressable>
         <View style={[ss.confirmCard, { borderColor: "#FEE2E2" }]}>
           <Text style={{ fontSize: 52 }}>🚫</Text>
-          <Text style={[ss.confirmTitle, { color: "#EF4444" }]}>Service Unavailable</Text>
-          <Text style={ss.confirmSub}>
-            Parcel delivery service filhaal available nahi hai.{"\n"}
-            Thodi der baad dobara try karein.
-          </Text>
+          <Text style={[ss.confirmTitle, { color: "#EF4444" }]}>{T("serviceUnavailable")}</Text>
+          <Text style={ss.confirmSub}>{T("maintenanceApology")}</Text>
           <Pressable style={[ss.doneBtn, { backgroundColor: "#FEF2F2", width: "100%" }]} onPress={() => router.back()}>
-            <Text style={[ss.doneBtnTxt, { color: "#EF4444" }]}>Back to Home</Text>
+            <Text style={[ss.doneBtnTxt, { color: "#EF4444" }]}>{T("backToHome")}</Text>
           </Pressable>
         </View>
       </View>
@@ -211,10 +211,10 @@ export default function ParcelScreen() {
       <View style={[ss.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
         <View style={[ss.confirmCard, { borderColor: "#FEF3C7" }]}>
           <Text style={{ fontSize: 52 }}>🔧</Text>
-          <Text style={[ss.confirmTitle, { color: "#D97706" }]}>Under Maintenance</Text>
+          <Text style={[ss.confirmTitle, { color: "#D97706" }]}>{T("underMaintenance")}</Text>
           <Text style={ss.confirmSub}>{platformConfig.content.maintenanceMsg}</Text>
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, textAlign: "center", marginTop: 8 }}>
-            Please check back later. We apologize for the inconvenience.
+            {T("maintenanceApology")}
           </Text>
         </View>
       </View>
@@ -227,33 +227,33 @@ export default function ParcelScreen() {
       <View style={[ss.root, { justifyContent: "center", alignItems: "center", paddingHorizontal: 28 }]}>
         <View style={ss.confirmCard}>
           <Text style={{ fontSize: 56 }}>🚀</Text>
-          <Text style={ss.confirmTitle}>Parcel Booked!</Text>
+          <Text style={ss.confirmTitle}>{T("parcelBooked")}</Text>
           <Text style={ss.confirmSub}>
             Booking #{confirmedId.slice(-6).toUpperCase()}{"\n"}
-            Estimated delivery: 45-60 minutes
+            {T("estimatedDeliveryTime")}
           </Text>
           <View style={ss.confirmRow}>
             <View style={ss.confirmInfoBox}>
-              <Text style={ss.confirmInfoLbl}>Pickup</Text>
+              <Text style={ss.confirmInfoLbl}>{T("pickup")}</Text>
               <Text style={ss.confirmInfoVal} numberOfLines={2}>{pickupAddress}</Text>
             </View>
             <Ionicons name="arrow-forward" size={20} color={C.textMuted} />
             <View style={ss.confirmInfoBox}>
-              <Text style={ss.confirmInfoLbl}>Drop</Text>
+              <Text style={ss.confirmInfoLbl}>{T("dropOff")}</Text>
               <Text style={ss.confirmInfoVal} numberOfLines={2}>{dropAddress}</Text>
             </View>
           </View>
           <View style={ss.fareBox}>
-            <Text style={ss.fareLbl}>Total Fare</Text>
+            <Text style={ss.fareLbl}>{T("totalFare")}</Text>
             <Text style={ss.fareVal}>Rs. {confirmedFare.toLocaleString()}</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
             <Pressable style={[ss.doneBtn, { flex: 1, backgroundColor: "#F0FDF4" }]} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
-              <Text style={[ss.doneBtnTxt, { color: "#059669" }]}>Home</Text>
+              <Text style={[ss.doneBtnTxt, { color: "#059669" }]}>{T("home")}</Text>
             </Pressable>
             <Pressable style={[ss.doneBtn, { flex: 2 }]} onPress={() => { setConfirmed(false); router.push("/(tabs)/orders"); }}>
               <Ionicons name="cube-outline" size={16} color="#fff" style={{ marginRight: 4 }} />
-              <Text style={ss.doneBtnTxt}>Track Parcel</Text>
+              <Text style={ss.doneBtnTxt}>{T("trackParcel")}</Text>
             </Pressable>
           </View>
         </View>
@@ -270,31 +270,31 @@ export default function ParcelScreen() {
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </Pressable>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={ss.hdrTitle}>📦 Parcel Delivery</Text>
-            <Text style={ss.hdrSub}>AJK mein kahin bhi parcel bhejein</Text>
+            <Text style={ss.hdrTitle}>📦 {T("parcel")}</Text>
+            <Text style={ss.hdrSub}>{T("parcelsAnywhere")}</Text>
           </View>
         </View>
-        <Steps current={step} />
+        <Steps current={step} labels={[T("senderDetails"), T("receiverDetails"), T("parcelDetails"), T("paymentMethods")]} />
       </LinearGradient>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={ss.scroll}>
         {/* ─── Step 0: Sender ─── */}
         {step === 0 && (
           <View style={ss.card}>
-            <Text style={ss.cardTitle}>📍 Sender Details</Text>
-            <Text style={ss.label}>Your Name *</Text>
-            <TextInput value={senderName} onChangeText={setSenderName} placeholder="Full name" placeholderTextColor={C.textMuted} style={ss.input} />
-            <Text style={ss.label}>Your Phone *</Text>
+            <Text style={ss.cardTitle}>📍 {T("senderDetails")}</Text>
+            <Text style={ss.label}>{T("yourName")} *</Text>
+            <TextInput value={senderName} onChangeText={setSenderName} placeholder={T("fullName")} placeholderTextColor={C.textMuted} style={ss.input} />
+            <Text style={ss.label}>{T("yourPhone")} *</Text>
             <TextInput value={senderPhone} onChangeText={setSenderPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" />
-            <Text style={ss.label}>Pickup Address *</Text>
+            <Text style={ss.label}>{T("pickupAddress")} *</Text>
             <Pressable onPress={() => setShowLocPicker("pickup")} style={ss.locInput}>
               <Ionicons name="location-outline" size={16} color={pickupAddress ? C.text : C.textMuted} />
               <Text style={[ss.locInputTxt, !pickupAddress && { color: C.textMuted }]}>
-                {pickupAddress || "Select pickup location"}
+                {pickupAddress || T("selectPickupLocation")}
               </Text>
               <Ionicons name="chevron-down" size={14} color={C.textMuted} />
             </Pressable>
-            <Text style={ss.label}>Or type address manually</Text>
+            <Text style={ss.label}>{T("orTypeManually")}</Text>
             <TextInput
               value={pickupAddress}
               onChangeText={setPickupAddress}
@@ -309,20 +309,20 @@ export default function ParcelScreen() {
         {/* ─── Step 1: Receiver ─── */}
         {step === 1 && (
           <View style={ss.card}>
-            <Text style={ss.cardTitle}>📬 Receiver Details</Text>
-            <Text style={ss.label}>Receiver Name *</Text>
-            <TextInput value={receiverName} onChangeText={setReceiverName} placeholder="Full name" placeholderTextColor={C.textMuted} style={ss.input} />
-            <Text style={ss.label}>Receiver Phone *</Text>
+            <Text style={ss.cardTitle}>📬 {T("receiverDetails")}</Text>
+            <Text style={ss.label}>{T("receiverName")} *</Text>
+            <TextInput value={receiverName} onChangeText={setReceiverName} placeholder={T("fullName")} placeholderTextColor={C.textMuted} style={ss.input} />
+            <Text style={ss.label}>{T("receiverPhone")} *</Text>
             <TextInput value={receiverPhone} onChangeText={setReceiverPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" />
-            <Text style={ss.label}>Drop Address *</Text>
+            <Text style={ss.label}>{T("dropAddress")} *</Text>
             <Pressable onPress={() => setShowLocPicker("drop")} style={ss.locInput}>
               <Ionicons name="location-outline" size={16} color={dropAddress ? C.text : C.textMuted} />
               <Text style={[ss.locInputTxt, !dropAddress && { color: C.textMuted }]}>
-                {dropAddress || "Select drop location"}
+                {dropAddress || T("selectDropLocation")}
               </Text>
               <Ionicons name="chevron-down" size={14} color={C.textMuted} />
             </Pressable>
-            <Text style={ss.label}>Or type address manually</Text>
+            <Text style={ss.label}>{T("orTypeManually")}</Text>
             <TextInput
               value={dropAddress}
               onChangeText={setDropAddress}
@@ -338,8 +338,8 @@ export default function ParcelScreen() {
         {step === 2 && (
           <View>
             <View style={ss.card}>
-              <Text style={ss.cardTitle}>📦 Parcel Details</Text>
-              <Text style={ss.label}>Parcel Type *</Text>
+              <Text style={ss.cardTitle}>📦 {T("parcelDetails")}</Text>
+              <Text style={ss.label}>{T("parcelType")} *</Text>
               <View style={ss.typeGrid}>
                 {PARCEL_TYPES.map(pt => (
                   <Pressable key={pt.id} onPress={() => setParcelType(pt.id)} style={[ss.typeCard, parcelType === pt.id && ss.typeCardActive]}>
@@ -351,7 +351,7 @@ export default function ParcelScreen() {
               </View>
             </View>
             <View style={ss.card}>
-              <Text style={ss.label}>Weight (kg) — Optional</Text>
+              <Text style={ss.label}>{T("weightOptional")}</Text>
               <TextInput
                 value={weight}
                 onChangeText={setWeight}
@@ -362,14 +362,14 @@ export default function ParcelScreen() {
               />
               {weight && parseFloat(weight) > 0 && (
                 <Text style={ss.weightNote}>
-                  Weight: {parseFloat(weight).toFixed(1)} kg — fare auto-calculated by admin settings
+                  {T("weightKg")}: {parseFloat(weight).toFixed(1)} kg
                 </Text>
               )}
-              <Text style={ss.label}>Description — Optional</Text>
+              <Text style={ss.label}>{T("descriptionOptional")}</Text>
               <TextInput
                 value={description}
                 onChangeText={setDescription}
-                placeholder="What's inside the parcel?"
+                placeholder={T("whatsInParcel")}
                 placeholderTextColor={C.textMuted}
                 style={[ss.input, { minHeight: 60 }]}
                 multiline
@@ -378,8 +378,8 @@ export default function ParcelScreen() {
             {parcelType && (
               <View style={ss.fareCard}>
                 <View>
-                  <Text style={ss.fareLbl2}>Estimated Fare</Text>
-                  <Text style={ss.fareNote}>Base + weight charge (admin rates)</Text>
+                  <Text style={ss.fareLbl2}>{T("estimatedFareLabel")}</Text>
+                  <Text style={ss.fareNote}>{T("eta")}</Text>
                 </View>
                 {fareLoading
                   ? <ActivityIndicator color="#D97706" size="small" />
@@ -394,7 +394,7 @@ export default function ParcelScreen() {
         {step === 3 && (
           <View>
             <View style={ss.card}>
-              <Text style={ss.cardTitle}>💳 Payment Method</Text>
+              <Text style={ss.cardTitle}>💳 {T("paymentMethods")}</Text>
               {payMethods.map(pm => {
                 const active = payMethod === pm.id;
                 const isWallet = pm.id === "wallet";
@@ -412,7 +412,7 @@ export default function ParcelScreen() {
                   : pm.id === "jazzcash" ? "#BE123C"
                   : "#0284C7";
                 const subLabel = isWallet
-                  ? `Balance: Rs. ${(user?.walletBalance ?? 0).toLocaleString()}`
+                  ? `${T("availableBalance")}: Rs. ${(user?.walletBalance ?? 0).toLocaleString()}`
                   : (pm as any).description || pm.label;
                 return (
                   <Pressable key={pm.id} onPress={() => setPayMethod(pm.id)} style={[ss.payOpt, active && ss.payOptActive]}>
@@ -421,7 +421,7 @@ export default function ParcelScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[ss.payLabel, active && { color: "#D97706" }]}>
-                        {isWallet ? `${appName} Wallet` : pm.label}
+                        {isWallet ? `${appName} ${T("wallet")}` : pm.label}
                       </Text>
                       <Text style={ss.paySub}>{subLabel}</Text>
                     </View>
@@ -433,14 +433,14 @@ export default function ParcelScreen() {
 
             {/* Summary */}
             <View style={ss.summaryCard}>
-              <Text style={ss.summaryTitle}>Booking Summary</Text>
+              <Text style={ss.summaryTitle}>{T("bookingSummary")}</Text>
               <View style={ss.summaryRow}>
                 <Ionicons name="location" size={14} color={C.primary} />
-                <Text style={ss.summaryTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>From:</Text> {pickupAddress}</Text>
+                <Text style={ss.summaryTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>{T("pickup")}:</Text> {pickupAddress}</Text>
               </View>
               <View style={ss.summaryRow}>
                 <Ionicons name="location" size={14} color="#EF4444" />
-                <Text style={ss.summaryTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>To:</Text> {dropAddress}</Text>
+                <Text style={ss.summaryTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>{T("dropOff")}:</Text> {dropAddress}</Text>
               </View>
               <View style={ss.summaryRow}>
                 <Ionicons name="person" size={14} color={C.textMuted} />
@@ -451,7 +451,7 @@ export default function ParcelScreen() {
                 <Text style={ss.summaryTxt}>{selectedType?.emoji} {selectedType?.label}{weight ? ` • ${weight} kg` : ""}</Text>
               </View>
               <View style={[ss.summaryRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border }]}>
-                <Text style={ss.summaryTotal}>Total Fare</Text>
+                <Text style={ss.summaryTotal}>{T("totalFare")}</Text>
                 <Text style={ss.summaryFare}>Rs. {estimatedFare}</Text>
               </View>
             </View>
@@ -466,19 +466,19 @@ export default function ParcelScreen() {
         {step > 0 && (
           <Pressable style={ss.prevBtn} onPress={prev}>
             <Ionicons name="arrow-back" size={18} color={C.text} />
-            <Text style={ss.prevBtnTxt}>Back</Text>
+            <Text style={ss.prevBtnTxt}>{T("back")}</Text>
           </Pressable>
         )}
         {step < 3 ? (
           <Pressable style={[ss.nextBtn, step === 0 && { marginLeft: "auto" }]} onPress={next}>
-            <Text style={ss.nextBtnTxt}>Continue</Text>
+            <Text style={ss.nextBtnTxt}>{T("confirmLabel")}</Text>
             <Ionicons name="arrow-forward" size={18} color="#fff" />
           </Pressable>
         ) : (
           <Pressable style={[ss.nextBtn, loading && { opacity: 0.7 }]} onPress={bookParcel} disabled={loading}>
             {loading ? <ActivityIndicator color="#fff" /> : (
               <>
-                <Text style={ss.nextBtnTxt}>Book Parcel • Rs. {estimatedFare}</Text>
+                <Text style={ss.nextBtnTxt}>{T("parcel")} • Rs. {estimatedFare}</Text>
                 <Ionicons name="checkmark-circle" size={18} color="#fff" />
               </>
             )}

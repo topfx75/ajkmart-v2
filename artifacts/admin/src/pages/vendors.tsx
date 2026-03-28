@@ -6,6 +6,8 @@ import {
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
   Download, CalendarDays, Percent,
 } from "lucide-react";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -213,6 +215,8 @@ function exportVendorsCSV(vendors: any[]) {
 
 /* ══════════ Main Vendors Page ══════════ */
 export default function Vendors() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const [, setLocation] = useLocation();
   const { data, isLoading, refetch, isFetching } = useVendors();
   const { data: settingsData } = usePlatformSettings();
@@ -285,7 +289,7 @@ export default function Vendors() {
             Vendor Config
           </button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
           </Button>
         </div>
       </div>

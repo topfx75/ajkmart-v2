@@ -4,6 +4,8 @@ import { useAllNotifications } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 function fd(d: string | Date) {
   return new Date(d).toLocaleString("en-PK", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -26,6 +28,8 @@ function typeIcon(type: string) {
 }
 
 export default function Notifications() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const [roleFilter, setRoleFilter] = useState<string>("");
 
   const { data: nData, isLoading, refetch } = useAllNotifications(roleFilter || undefined);
@@ -36,11 +40,11 @@ export default function Notifications() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">System Notifications</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{T("systemNotifications")}</h1>
           <p className="text-sm text-gray-500 mt-0.5">All platform notifications across users, riders, and vendors</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
-          <RefreshCw className="w-4 h-4 mr-2" /> Refresh
+          <RefreshCw className="w-4 h-4 mr-2" /> {T("refresh")}
         </Button>
       </div>
 
@@ -51,7 +55,7 @@ export default function Notifications() {
         {["", "customer", "vendor", "rider"].map(r => (
           <button key={r} onClick={() => setRoleFilter(r)}
             className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-colors ${roleFilter === r ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}>
-            {r === "" ? "All" : r.charAt(0).toUpperCase() + r.slice(1)}
+            {r === "" ? T("allTypes") : r.charAt(0).toUpperCase() + r.slice(1)}
           </button>
         ))}
         <span className="text-xs text-gray-400 ml-2">{notifications.length} records</span>
@@ -63,14 +67,14 @@ export default function Notifications() {
         <Card className="border-0 shadow-sm">
           <CardContent className="p-12 text-center">
             <p className="text-4xl mb-3">🔔</p>
-            <p className="font-bold text-gray-700">No notifications found</p>
-            <p className="text-sm text-gray-400 mt-1">Notifications will appear here as users interact with the platform</p>
+            <p className="font-bold text-gray-700">{T("noNotificationsFound")}</p>
+            <p className="text-sm text-gray-400 mt-1">{T("notificationsSubtitle")}</p>
           </CardContent>
         </Card>
       ) : (
         <Card className="border-0 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <p className="text-sm font-bold text-gray-700">Recent Notifications</p>
+            <p className="text-sm font-bold text-gray-700">{T("recentNotifications")}</p>
             <span className="text-xs text-gray-400">{notifications.length} records</span>
           </div>
           <div className="divide-y divide-gray-50 max-h-[600px] overflow-y-auto">

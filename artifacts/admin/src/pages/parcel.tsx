@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Box, Search, User, MapPin, Phone, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const STATUS_LABELS: Record<string, string> = {
   pending:    "Pending",
@@ -29,6 +31,8 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 };
 
 export default function Parcel() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading } = useParcelBookings();
   const updateMutation = useUpdateParcelBooking();
   const { toast } = useToast();
@@ -102,8 +106,8 @@ export default function Parcel() {
             <Box className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Parcel Bookings</h1>
-            <p className="text-muted-foreground text-xs sm:text-sm">{totalCount} total · {pendingCount} pending · {activeCount} active</p>
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("parcelBookings")}</h1>
+            <p className="text-muted-foreground text-xs sm:text-sm">{totalCount} {T("total")} · {pendingCount} {T("pending")} · {activeCount} {T("active")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
@@ -131,19 +135,19 @@ export default function Parcel() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center">
           <p className="text-3xl font-bold text-foreground">{totalCount}</p>
-          <p className="text-xs text-muted-foreground mt-1">Total Bookings</p>
+          <p className="text-xs text-muted-foreground mt-1">{T("totalBookings")}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center bg-amber-50/60 border-amber-200/60">
           <p className="text-3xl font-bold text-amber-700">{pendingCount}</p>
-          <p className="text-xs text-amber-600 mt-1">Pending</p>
+          <p className="text-xs text-amber-600 mt-1">{T("pending")}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center bg-blue-50/60 border-blue-200/60">
           <p className="text-3xl font-bold text-blue-700">{activeCount}</p>
-          <p className="text-xs text-blue-500 mt-1">Active / In Transit</p>
+          <p className="text-xs text-blue-500 mt-1">{T("activeInTransit")}</p>
         </Card>
         <Card className="p-4 rounded-2xl border-border/50 shadow-sm text-center bg-green-50/60 border-green-200/60">
           <p className="text-3xl font-bold text-green-700">{completedCount}</p>
-          <p className="text-xs text-green-500 mt-1">Completed</p>
+          <p className="text-xs text-green-500 mt-1">{T("completed")}</p>
         </Card>
       </div>
 
@@ -166,12 +170,12 @@ export default function Parcel() {
           <Table className="min-w-[640px]">
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="font-semibold">Booking ID</TableHead>
-                <TableHead className="font-semibold">Booked By</TableHead>
-                <TableHead className="font-semibold">Route</TableHead>
-                <TableHead className="font-semibold">Fare</TableHead>
-                <TableHead className="font-semibold">Status</TableHead>
-                <TableHead className="font-semibold text-right">Date</TableHead>
+                <TableHead className="font-semibold">{T("bookingId")}</TableHead>
+                <TableHead className="font-semibold">{T("bookedBy")}</TableHead>
+                <TableHead className="font-semibold">{T("route")}</TableHead>
+                <TableHead className="font-semibold">{T("fare")}</TableHead>
+                <TableHead className="font-semibold">{T("status")}</TableHead>
+                <TableHead className="font-semibold text-right">{T("date")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

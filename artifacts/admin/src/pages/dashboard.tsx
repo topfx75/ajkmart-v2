@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { fetcher } from "@/lib/api";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 function exportDashboard() {
   fetcher("/dashboard-export").then((data: any) => {
@@ -21,6 +23,8 @@ function exportDashboard() {
 }
 
 export default function Dashboard() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading } = useStats();
   const { data: trendData } = useRevenueTrend();
   const { data: lbData }    = useLeaderboard();
@@ -39,12 +43,12 @@ export default function Dashboard() {
   }
 
   const statCards = [
-    { title: "Users", value: data?.users || 0, icon: Users, color: "text-blue-600", bg: "bg-blue-100", href: "/users" },
-    { title: "Orders", value: data?.orders || 0, icon: ShoppingBag, color: "text-indigo-600", bg: "bg-indigo-100", href: "/orders" },
-    { title: "Rides", value: data?.rides || 0, icon: Car, color: "text-green-600", bg: "bg-green-100", href: "/rides" },
-    { title: "Pharmacy", value: data?.pharmacyOrders || 0, icon: Pill, color: "text-pink-600", bg: "bg-pink-100", href: "/pharmacy" },
-    { title: "Parcels", value: data?.parcelBookings || 0, icon: Box, color: "text-orange-600", bg: "bg-orange-100", href: "/parcel" },
-    { title: "Products", value: data?.products || 0, icon: Package, color: "text-purple-600", bg: "bg-purple-100", href: "/products" },
+    { title: T("users"), value: data?.users || 0, icon: Users, color: "text-blue-600", bg: "bg-blue-100", href: "/users" },
+    { title: T("myOrders"), value: data?.orders || 0, icon: ShoppingBag, color: "text-indigo-600", bg: "bg-indigo-100", href: "/orders" },
+    { title: T("ride"), value: data?.rides || 0, icon: Car, color: "text-green-600", bg: "bg-green-100", href: "/rides" },
+    { title: T("pharmacy"), value: data?.pharmacyOrders || 0, icon: Pill, color: "text-pink-600", bg: "bg-pink-100", href: "/pharmacy" },
+    { title: T("parcel"), value: data?.parcelBookings || 0, icon: Box, color: "text-orange-600", bg: "bg-orange-100", href: "/parcel" },
+    { title: T("products"), value: data?.products || 0, icon: Package, color: "text-purple-600", bg: "bg-purple-100", href: "/products" },
   ];
 
   const trend = trendData?.trend || [];
@@ -55,11 +59,11 @@ export default function Dashboard() {
     <div className="space-y-6 sm:space-y-8">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Overview</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Welcome back. Here's your platform summary.</p>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("overview")}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{T("welcomeBack")}</p>
         </div>
         <Button variant="outline" size="sm" onClick={exportDashboard} className="h-9 rounded-xl gap-2 shrink-0">
-          <Download className="w-4 h-4" /> Export
+          <Download className="w-4 h-4" /> {T("export")}
         </Button>
       </div>
 
@@ -87,20 +91,20 @@ export default function Dashboard() {
 
       {/* Revenue Section */}
       <div>
-        <h2 className="text-lg sm:text-xl font-display font-bold text-foreground mb-3 sm:mb-4">Revenue Breakdown</h2>
+        <h2 className="text-lg sm:text-xl font-display font-bold text-foreground mb-3 sm:mb-4">{T("revenueBreakdown")}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <Card className="col-span-2 sm:col-span-2 lg:col-span-1 rounded-2xl bg-gradient-to-br from-primary to-blue-700 text-white shadow-lg shadow-primary/20 border-none">
             <CardContent className="p-4 sm:p-6">
               <p className="text-white/80 font-medium text-xs sm:text-sm mb-1 sm:mb-2 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4" /> Grand Total
+                <TrendingUp className="w-4 h-4" /> {T("grandTotal")}
               </p>
               <h3 className="text-xl sm:text-2xl font-bold">{formatCurrency(data?.revenue?.total || 0)}</h3>
             </CardContent>
           </Card>
           {[
             { label: "Mart & Food", value: data?.revenue?.orders || 0 },
-            { label: "Rides", value: data?.revenue?.rides || 0 },
-            { label: "Pharmacy", value: data?.revenue?.pharmacy || 0 },
+            { label: T("ride"), value: data?.revenue?.rides || 0 },
+            { label: T("pharmacy"), value: data?.revenue?.pharmacy || 0 },
           ].map((rev, i) => (
             <Card key={i} className="rounded-2xl border-border/50">
               <CardContent className="p-4 sm:p-6">
@@ -133,7 +137,7 @@ export default function Dashboard() {
                   tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} width={40} />
                 <Tooltip
                   contentStyle={{ borderRadius: "12px", fontSize: "12px", border: "1px solid hsl(var(--border))" }}
-                  formatter={(v: any) => [`Rs. ${Math.round(v).toLocaleString()}`, "Revenue"]}
+                  formatter={(v: any) => [`Rs. ${Math.round(v).toLocaleString()}`, T("revenue")]}
                   labelFormatter={l => new Date(l).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={2}
@@ -150,15 +154,15 @@ export default function Dashboard() {
         <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-border/50 flex items-center justify-between bg-card">
             <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-amber-500" /> Top Vendors
+              <Trophy className="w-4 h-4 text-amber-500" /> {T("topVendors")}
             </h2>
             <Link href="/vendors" className="text-xs sm:text-sm font-semibold text-primary flex items-center hover:underline gap-1">
-              View all <ArrowRight className="w-3.5 h-3.5" />
+              {T("viewAll")} <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
           <div className="divide-y divide-border/50">
             {!vendors.length ? (
-              <div className="p-8 text-center text-muted-foreground text-sm">No vendor data yet</div>
+              <div className="p-8 text-center text-muted-foreground text-sm">{T("noVendorData")}</div>
             ) : vendors.map((v: any, idx: number) => (
               <div key={v.id} className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3">
                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0
@@ -167,7 +171,7 @@ export default function Dashboard() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm truncate">{v.name || v.phone}</p>
-                  <p className="text-xs text-muted-foreground">{v.totalOrders} orders</p>
+                  <p className="text-xs text-muted-foreground">{v.totalOrders} {T("myOrders").toLowerCase()}</p>
                 </div>
                 <p className="font-bold text-sm text-foreground shrink-0">{formatCurrency(v.totalRevenue)}</p>
               </div>
@@ -179,15 +183,15 @@ export default function Dashboard() {
         <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-border/50 flex items-center justify-between bg-card">
             <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
-              <Star className="w-4 h-4 text-green-600" /> Top Riders
+              <Star className="w-4 h-4 text-green-600" /> {T("topRiders")}
             </h2>
             <Link href="/riders" className="text-xs sm:text-sm font-semibold text-primary flex items-center hover:underline gap-1">
-              View all <ArrowRight className="w-3.5 h-3.5" />
+              {T("viewAll")} <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
           <div className="divide-y divide-border/50">
             {!riders.length ? (
-              <div className="p-8 text-center text-muted-foreground text-sm">No rider data yet</div>
+              <div className="p-8 text-center text-muted-foreground text-sm">{T("noRiderData")}</div>
             ) : riders.map((r: any, idx: number) => (
               <div key={r.id} className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3">
                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0
@@ -211,15 +215,15 @@ export default function Dashboard() {
         <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-border/50 flex items-center justify-between bg-card">
             <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-indigo-600" /> Recent Orders
+              <ShoppingBag className="w-4 h-4 text-indigo-600" /> {T("recentOrders")}
             </h2>
             <Link href="/orders" className="text-xs sm:text-sm font-semibold text-primary flex items-center hover:underline gap-1">
-              View all <ArrowRight className="w-3.5 h-3.5" />
+              {T("viewAll")} <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
           <div className="divide-y divide-border/50">
             {!data?.recentOrders?.length ? (
-              <div className="p-8 text-center text-muted-foreground text-sm">No recent orders</div>
+              <div className="p-8 text-center text-muted-foreground text-sm">{T("noRecentOrders")}</div>
             ) : (
               data.recentOrders.map((order: any) => (
                 <div key={order.id} className="px-4 sm:px-6 py-3 sm:py-4 hover:bg-muted/40 transition-colors flex items-center justify-between gap-2">
@@ -246,15 +250,15 @@ export default function Dashboard() {
         <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-border/50 flex items-center justify-between bg-card">
             <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
-              <Car className="w-4 h-4 text-green-600" /> Recent Rides
+              <Car className="w-4 h-4 text-green-600" /> {T("recentRides")}
             </h2>
             <Link href="/rides" className="text-xs sm:text-sm font-semibold text-primary flex items-center hover:underline gap-1">
-              View all <ArrowRight className="w-3.5 h-3.5" />
+              {T("viewAll")} <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
           <div className="divide-y divide-border/50">
             {!data?.recentRides?.length ? (
-              <div className="p-8 text-center text-muted-foreground text-sm">No recent rides</div>
+              <div className="p-8 text-center text-muted-foreground text-sm">{T("noRecentRides")}</div>
             ) : (
               data.recentRides.map((ride: any) => (
                 <div key={ride.id} className="px-4 sm:px-6 py-3 sm:py-4 hover:bg-muted/40 transition-colors flex items-center justify-between gap-2">
@@ -280,13 +284,13 @@ export default function Dashboard() {
 
       {/* Quick Links on Mobile */}
       <div className="lg:hidden">
-        <h2 className="text-base font-bold mb-3">Quick Access</h2>
+        <h2 className="text-base font-bold mb-3">{T("quickAccess")}</h2>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: "Pharmacy", href: "/pharmacy", icon: Pill, color: "text-pink-600", bg: "bg-pink-50 border-pink-200" },
-            { label: "Parcels", href: "/parcel", icon: Box, color: "text-orange-600", bg: "bg-orange-50 border-orange-200" },
-            { label: "Transactions", href: "/transactions", icon: Wallet, color: "text-sky-600", bg: "bg-sky-50 border-sky-200" },
-            { label: "Settings", href: "/settings", icon: Package, color: "text-gray-600", bg: "bg-gray-50 border-gray-200" },
+            { label: T("pharmacy"), href: "/pharmacy", icon: Pill, color: "text-pink-600", bg: "bg-pink-50 border-pink-200" },
+            { label: T("parcel"), href: "/parcel", icon: Box, color: "text-orange-600", bg: "bg-orange-50 border-orange-200" },
+            { label: T("transactions"), href: "/transactions", icon: Wallet, color: "text-sky-600", bg: "bg-sky-50 border-sky-200" },
+            { label: T("settings"), href: "/settings", icon: Package, color: "text-gray-600", bg: "bg-gray-50 border-gray-200" },
           ].map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer active:scale-95 transition-transform ${item.bg}`}>

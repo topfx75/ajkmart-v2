@@ -23,47 +23,48 @@ import { useCart } from "@/context/CartContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { tDual } from "@workspace/i18n";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useGetOrders } from "@workspace/api-client-react";
 
 const C = Colors.light;
 
 /* ─────────────────────────── Status config ─────────────────────────── */
-const ORDER_STATUS: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",            label: "Pending" },
-  confirmed:        { color: "#2563EB", bg: "#DBEAFE", icon: "checkmark-circle-outline", label: "Confirmed" },
-  preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",            label: "Preparing" },
-  out_for_delivery: { color: "#059669", bg: "#D1FAE5", icon: "bicycle-outline",          label: "On the Way" },
-  delivered:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   label: "Delivered" },
-  cancelled:        { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",     label: "Cancelled" },
+
+const ORDER_STATUS: Record<string, { color: string; bg: string; icon: string; labelKey: TranslationKey }> = {
+  pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",            labelKey: "pending" },
+  confirmed:        { color: "#2563EB", bg: "#DBEAFE", icon: "checkmark-circle-outline", labelKey: "confirmed" },
+  preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",            labelKey: "preparing" },
+  out_for_delivery: { color: "#059669", bg: "#D1FAE5", icon: "bicycle-outline",          labelKey: "onTheWay" },
+  delivered:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   labelKey: "delivered" },
+  cancelled:        { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",     labelKey: "cancelled" },
 };
 
-const RIDE_STATUS: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  searching:  { color: "#D97706", bg: "#FEF3C7", icon: "search-outline",            label: "Finding Rider" },
-  accepted:   { color: "#2563EB", bg: "#DBEAFE", icon: "person-outline",            label: "Rider Accepted" },
-  arrived:    { color: "#7C3AED", bg: "#EDE9FE", icon: "location-outline",          label: "Rider Arrived" },
-  in_transit: { color: "#059669", bg: "#D1FAE5", icon: "car-outline",               label: "In Transit" },
-  ongoing:    { color: "#059669", bg: "#D1FAE5", icon: "car-outline",               label: "In Transit" },
-  completed:  { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",    label: "Completed" },
-  cancelled:  { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",      label: "Cancelled" },
+const RIDE_STATUS: Record<string, { color: string; bg: string; icon: string; labelKey: TranslationKey }> = {
+  searching:  { color: "#D97706", bg: "#FEF3C7", icon: "search-outline",            labelKey: "searching" },
+  accepted:   { color: "#2563EB", bg: "#DBEAFE", icon: "person-outline",            labelKey: "accepted" },
+  arrived:    { color: "#7C3AED", bg: "#EDE9FE", icon: "location-outline",          labelKey: "arrived" },
+  in_transit: { color: "#059669", bg: "#D1FAE5", icon: "car-outline",               labelKey: "inTransit" },
+  ongoing:    { color: "#059669", bg: "#D1FAE5", icon: "car-outline",               labelKey: "inTransit" },
+  completed:  { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",    labelKey: "completed" },
+  cancelled:  { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",      labelKey: "cancelled" },
 };
 
-const PARCEL_STATUS: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  pending:    { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",              label: "Awaiting Rider" },
-  accepted:   { color: "#2563EB", bg: "#DBEAFE", icon: "person-outline",            label: "Rider Assigned" },
-  in_transit: { color: "#059669", bg: "#D1FAE5", icon: "cube-outline",              label: "In Transit" },
-  completed:  { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",    label: "Delivered" },
-  cancelled:  { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",      label: "Cancelled" },
+const PARCEL_STATUS: Record<string, { color: string; bg: string; icon: string; labelKey: TranslationKey }> = {
+  pending:    { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",              labelKey: "pending" },
+  accepted:   { color: "#2563EB", bg: "#DBEAFE", icon: "person-outline",            labelKey: "accepted" },
+  in_transit: { color: "#059669", bg: "#D1FAE5", icon: "cube-outline",              labelKey: "inTransit" },
+  completed:  { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",    labelKey: "delivered" },
+  cancelled:  { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",      labelKey: "cancelled" },
 };
 
 /* ─────────────────────────── Tab config ─────────────────────────── */
 const TABS = [
-  { key: "all",      label: "All",       icon: "layers-outline" },
-  { key: "mart",     label: "Mart",      icon: "storefront-outline" },
-  { key: "food",     label: "Food",      icon: "restaurant-outline" },
-  { key: "rides",    label: "Rides",     icon: "car-outline" },
-  { key: "pharmacy", label: "Pharmacy",  icon: "medical-outline" },
-  { key: "parcel",   label: "Parcel",    icon: "cube-outline" },
+  { key: "all",      labelKey: "all" as TranslationKey,       icon: "layers-outline" },
+  { key: "mart",     labelKey: "mart" as TranslationKey,      icon: "storefront-outline" },
+  { key: "food",     labelKey: "food" as TranslationKey,      icon: "restaurant-outline" },
+  { key: "rides",    labelKey: "ride" as TranslationKey,      icon: "car-outline" },
+  { key: "pharmacy", labelKey: "pharmacy" as TranslationKey,  icon: "medical-outline" },
+  { key: "parcel",   labelKey: "parcel" as TranslationKey,    icon: "cube-outline" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -80,6 +81,8 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
   onCancel: (o: any) => void;
   onReorder?: (o: any) => void;
 }) {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const cfg = ORDER_STATUS[order.status] || ORDER_STATUS["pending"]!;
   const isFood = order.type === "food";
   const isDelivered = order.status === "delivered";
@@ -109,7 +112,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
             color={isFood ? "#E65100" : "#0D47A1"}
           />
           <Text style={[styles.chipText, { color: isFood ? "#E65100" : "#0D47A1" }]}>
-            {isFood ? "Food" : "Mart"}
+            {isFood ? T("food") : T("mart")}
           </Text>
         </View>
         <Text style={styles.cardId}>#{order.id.slice(-8).toUpperCase()}</Text>
@@ -131,10 +134,10 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       <View style={styles.cardFooter}>
         <View style={[styles.statusChip, { backgroundColor: cfg.bg }]}>
           <Ionicons name={cfg.icon as any} size={13} color={cfg.color} />
-          <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          <Text style={[styles.statusText, { color: cfg.color }]}>{T(cfg.labelKey)}</Text>
         </View>
         <View style={styles.totalWrap}>
-          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalLabel}>{T("total")}</Text>
           <Text style={styles.totalAmount}>Rs. {order.total?.toLocaleString()}</Text>
         </View>
       </View>
@@ -148,7 +151,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
               name={order.paymentMethod === "wallet" ? "wallet-outline" : "cash-outline"}
               size={11} color={C.textMuted}
             />
-            <Text style={styles.payText}>{order.paymentMethod === "wallet" ? "Wallet" : "Cash"}</Text>
+            <Text style={styles.payText}>{order.paymentMethod === "wallet" ? T("wallet") : T("cash")}</Text>
           </View>
         </View>
       )}
@@ -156,7 +159,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       {!liveTracking && isActive && (
         <View style={[styles.etaBar, { backgroundColor: "#FFF8E1", borderRadius: 8, paddingHorizontal: 10 }]}>
           <Ionicons name="navigate-circle-outline" size={13} color="#D97706" />
-          <Text style={[styles.etaText, { color: "#92400E" }]}>Live tracking temporarily unavailable</Text>
+          <Text style={[styles.etaText, { color: "#92400E" }]}>{T("liveTrackingUnavailable")}</Text>
         </View>
       )}
 
@@ -164,7 +167,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       {canCancel && (
         <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)}>
           <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
-          <Text style={styles.cancelBtnText}>Cancel Order ({cancelMinsLeft}m left)</Text>
+          <Text style={styles.cancelBtnText}>{T("cancelOrder")} ({cancelMinsLeft}m left)</Text>
         </Pressable>
       )}
 
@@ -172,14 +175,14 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       {canRate && (
         <Pressable style={styles.rateBtn} onPress={() => onRate(order)}>
           <Ionicons name="star-outline" size={14} color="#F59E0B" />
-          <Text style={styles.rateBtnText}>Rate this order</Text>
+          <Text style={styles.rateBtnText}>{T("rateOrder")}</Text>
         </Pressable>
       )}
 
       {order._reviewed && (
         <View style={styles.reviewedBadge}>
           <Ionicons name="star" size={13} color="#F59E0B" />
-          <Text style={styles.reviewedText}>Reviewed — Thank you!</Text>
+          <Text style={styles.reviewedText}>{T("reviewedThanks")}</Text>
         </View>
       )}
 
@@ -194,7 +197,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       {isCancelled && order.paymentMethod !== "cash" && refundDays > 0 && (
         <View style={styles.refundBar}>
           <Ionicons name="return-down-back-outline" size={12} color="#059669" />
-          <Text style={styles.refundText}>Refund {refundDays} din mein process hoga</Text>
+          <Text style={styles.refundText}>{T("refundInfo").replace("{n}", String(refundDays))}</Text>
         </View>
       )}
     </View>
@@ -209,6 +212,8 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
   onRate: (o: any) => void;
   onCancel: (o: any) => void;
 }) {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const cfg = RIDE_STATUS[ride.status] || RIDE_STATUS["searching"]!;
   const isActive    = !["completed", "cancelled"].includes(ride.status);
   const isCompleted = ride.status === "completed";
@@ -224,7 +229,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
             size={13} color="#1B5E20"
           />
           <Text style={[styles.chipText, { color: "#1B5E20" }]}>
-            {ride.type === "bike" ? "Bike Ride" : "Car Ride"}
+            {ride.type === "bike" ? T("bikeRide") : T("carRide")}
           </Text>
         </View>
         <Text style={styles.cardId}>#{ride.id.slice(-8).toUpperCase()}</Text>
@@ -233,22 +238,22 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
       <View style={styles.rideRoute}>
         <View style={styles.ridePoint}>
           <View style={[styles.routeDot, { backgroundColor: "#10B981" }]} />
-          <Text style={styles.rideAddr} numberOfLines={1}>{ride.pickupAddress || "Pickup Location"}</Text>
+          <Text style={styles.rideAddr} numberOfLines={1}>{ride.pickupAddress || T("pickup")}</Text>
         </View>
         <View style={styles.routeLine} />
         <View style={styles.ridePoint}>
           <View style={[styles.routeDot, { backgroundColor: "#EF4444" }]} />
-          <Text style={styles.rideAddr} numberOfLines={1}>{ride.dropAddress || "Drop Location"}</Text>
+          <Text style={styles.rideAddr} numberOfLines={1}>{ride.dropAddress || T("drop")}</Text>
         </View>
       </View>
 
       <View style={styles.cardFooter}>
         <View style={[styles.statusChip, { backgroundColor: cfg.bg }]}>
           <Ionicons name={cfg.icon as any} size={13} color={cfg.color} />
-          <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          <Text style={[styles.statusText, { color: cfg.color }]}>{T(cfg.labelKey)}</Text>
         </View>
         <View style={styles.totalWrap}>
-          <Text style={styles.totalLabel}>{ride.distance ? `${ride.distance} km` : "Fare"}</Text>
+          <Text style={styles.totalLabel}>{ride.distance ? `${ride.distance} km` : T("fare")}</Text>
           <Text style={styles.totalAmount}>Rs. {ride.fare?.toLocaleString()}</Text>
         </View>
       </View>
@@ -273,7 +278,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
         <View style={styles.etaBar}>
           <Ionicons name={ride.paymentMethod === "wallet" ? "wallet-outline" : "cash-outline"} size={12} color={C.primary} />
           <Text style={styles.etaText}>
-            {ride.paymentMethod === "wallet" ? "Paid via Wallet" : "Cash Payment"}
+            {ride.paymentMethod === "wallet" ? T("paidViaWallet") : T("cashPayment")}
           </Text>
         </View>
       )}
@@ -283,7 +288,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
         <Pressable style={styles.cancelBtn} onPress={() => onCancel(ride)}>
           <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
           <Text style={styles.cancelBtnText}>
-            {ride.status === "accepted" ? "Cancel Ride (fee may apply)" : "Cancel Ride"}
+            {ride.status === "accepted" ? T("cancelRideFee") : T("cancelRide")}
           </Text>
         </Pressable>
       )}
@@ -298,7 +303,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
       {ride._reviewed && (
         <View style={styles.reviewedBadge}>
           <Ionicons name="star" size={13} color="#F59E0B" />
-          <Text style={styles.reviewedText}>Reviewed — Thank you!</Text>
+          <Text style={styles.reviewedText}>{T("reviewedThanks")}</Text>
         </View>
       )}
     </View>
@@ -311,6 +316,8 @@ function PharmacyCard({ order, reviews, onRate }: {
   reviews: boolean;
   onRate: (o: any) => void;
 }) {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const cfg = ORDER_STATUS[order.status] || ORDER_STATUS["pending"]!;
   const isDelivered = order.status === "delivered";
 
@@ -319,7 +326,7 @@ function PharmacyCard({ order, reviews, onRate }: {
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#FCE4EC" }]}>
           <Ionicons name="medical-outline" size={13} color="#880E4F" />
-          <Text style={[styles.chipText, { color: "#880E4F" }]}>Pharmacy</Text>
+          <Text style={[styles.chipText, { color: "#880E4F" }]}>{T("pharmacy")}</Text>
         </View>
         <Text style={styles.cardId}>#{order.id.slice(-8).toUpperCase()}</Text>
       </View>
@@ -347,10 +354,10 @@ function PharmacyCard({ order, reviews, onRate }: {
       <View style={styles.cardFooter}>
         <View style={[styles.statusChip, { backgroundColor: cfg.bg }]}>
           <Ionicons name={cfg.icon as any} size={13} color={cfg.color} />
-          <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          <Text style={[styles.statusText, { color: cfg.color }]}>{T(cfg.labelKey)}</Text>
         </View>
         <View style={styles.totalWrap}>
-          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalLabel}>{T("total")}</Text>
           <Text style={styles.totalAmount}>Rs. {order.total?.toLocaleString()}</Text>
         </View>
       </View>
@@ -358,14 +365,14 @@ function PharmacyCard({ order, reviews, onRate }: {
       {reviews && isDelivered && !order._reviewed && (
         <Pressable style={styles.rateBtn} onPress={() => onRate({ ...order, _type: "pharmacy" })}>
           <Ionicons name="star-outline" size={14} color="#F59E0B" />
-          <Text style={styles.rateBtnText}>Rate this order</Text>
+          <Text style={styles.rateBtnText}>{T("rateOrder")}</Text>
         </Pressable>
       )}
 
       {order._reviewed && (
         <View style={styles.reviewedBadge}>
           <Ionicons name="star" size={13} color="#F59E0B" />
-          <Text style={styles.reviewedText}>Reviewed — Thank you!</Text>
+          <Text style={styles.reviewedText}>{T("reviewedThanks")}</Text>
         </View>
       )}
     </View>
@@ -374,18 +381,20 @@ function PharmacyCard({ order, reviews, onRate }: {
 
 /* ─────────────────────────── Parcel Card ─────────────────────────── */
 function ParcelCard({ booking }: { booking: any }) {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const cfg = PARCEL_STATUS[booking.status] || PARCEL_STATUS["pending"]!;
   const isActive = !["completed", "cancelled"].includes(booking.status);
   const parcelLabel = booking.parcelType
     ? booking.parcelType.charAt(0).toUpperCase() + booking.parcelType.slice(1)
-    : "Parcel";
+    : T("parcel");
 
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#FFF8E1" }]}>
           <Ionicons name="cube-outline" size={13} color="#E65100" />
-          <Text style={[styles.chipText, { color: "#E65100" }]}>Parcel · {parcelLabel}</Text>
+          <Text style={[styles.chipText, { color: "#E65100" }]}>{T("parcel")} · {parcelLabel}</Text>
         </View>
         <Text style={styles.cardId}>#{booking.id.slice(-8).toUpperCase()}</Text>
       </View>
@@ -393,22 +402,22 @@ function ParcelCard({ booking }: { booking: any }) {
       <View style={styles.rideRoute}>
         <View style={styles.ridePoint}>
           <View style={[styles.routeDot, { backgroundColor: "#10B981" }]} />
-          <Text style={styles.rideAddr} numberOfLines={1}>{booking.pickupAddress || "Pickup"}</Text>
+          <Text style={styles.rideAddr} numberOfLines={1}>{booking.pickupAddress || T("pickup")}</Text>
         </View>
         <View style={styles.routeLine} />
         <View style={styles.ridePoint}>
           <View style={[styles.routeDot, { backgroundColor: "#EF4444" }]} />
-          <Text style={styles.rideAddr} numberOfLines={1}>{booking.dropAddress || "Drop"}</Text>
+          <Text style={styles.rideAddr} numberOfLines={1}>{booking.dropAddress || T("drop")}</Text>
         </View>
       </View>
 
       <View style={styles.cardFooter}>
         <View style={[styles.statusChip, { backgroundColor: cfg.bg }]}>
           <Ionicons name={cfg.icon as any} size={13} color={cfg.color} />
-          <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          <Text style={[styles.statusText, { color: cfg.color }]}>{T(cfg.labelKey)}</Text>
         </View>
         <View style={styles.totalWrap}>
-          <Text style={styles.totalLabel}>Fare</Text>
+          <Text style={styles.totalLabel}>{T("fare")}</Text>
           <Text style={styles.totalAmount}>Rs. {(booking.fare || booking.estimatedFare)?.toLocaleString()}</Text>
         </View>
       </View>
@@ -430,7 +439,7 @@ function ParcelCard({ booking }: { booking: any }) {
               size={11} color={C.textMuted}
             />
             <Text style={styles.payText}>
-              {booking.paymentMethod === "wallet" ? "Wallet" : booking.paymentMethod === "jazzcash" ? "JazzCash" : booking.paymentMethod === "easypaisa" ? "EasyPaisa" : "Cash"}
+              {booking.paymentMethod === "wallet" ? T("wallet") : booking.paymentMethod === "jazzcash" ? T("jazzcash") : booking.paymentMethod === "easypaisa" ? T("easypaisa") : T("cash")}
             </Text>
           </View>
         </View>
@@ -906,7 +915,7 @@ export default function OrdersScreen() {
                   size={14}
                   color={isActive ? "#fff" : C.textSecondary}
                 />
-                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{tab.label}</Text>
+                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{T(tab.labelKey)}</Text>
                 {count > 0 && (
                   <View style={[styles.tabBadge, isActive && { backgroundColor: "rgba(255,255,255,0.35)" }]}>
                     <Text style={[styles.tabBadgeText, isActive && { color: "#fff" }]}>{count}</Text>

@@ -87,7 +87,7 @@ export default function Home() {
       const newStatus = !user?.isOnline;
       await api.setOnline(newStatus);
       await refreshUser();
-      showToast(newStatus ? "You are now Online!" : "You are now Offline");
+      showToast(newStatus ? T("youAreNowOnline") : T("youAreNowOffline"));
     } catch (e: any) { showToast(e.message); }
     setToggling(false);
   };
@@ -396,7 +396,7 @@ export default function Home() {
                   <p className="font-extrabold text-white text-sm">
                     {totalRequests > 0
                       ? `${totalRequests} Request${totalRequests > 1 ? "s" : ""} — Accept Karo!`
-                      : "Listening for Requests..."}
+                      : T("listeningForRequests")}
                   </p>
                 </div>
                 {totalRequests > 0 && (
@@ -407,8 +407,8 @@ export default function Home() {
               {totalRequests === 0 ? (
                 <div className="bg-white p-8 text-center">
                   <div className="flex justify-center mb-2"><Bike size={40} className="text-gray-300"/></div>
-                  <p className="text-gray-500 font-semibold">No requests right now</p>
-                  <p className="text-gray-400 text-xs mt-1">Auto-refreshes every 12 seconds</p>
+                  <p className="text-gray-500 font-semibold">{T("noRequestsNow")}</p>
+                  <p className="text-gray-400 text-xs mt-1">{T("autoRefreshes")}</p>
                   {dismissed.size > 0 && (
                     <button onClick={() => setDismissed(new Set())}
                       className="mt-3 text-xs text-green-600 font-bold bg-green-50 px-3 py-1.5 rounded-xl">
@@ -442,18 +442,18 @@ export default function Home() {
                           <div className="flex items-center gap-3 mt-2">
                             <div>
                               <p className="text-lg font-extrabold text-green-600">+{formatCurrency(getDeliveryEarn(o.type))}</p>
-                              <p className="text-[10px] text-gray-400">your earnings</p>
+                              <p className="text-[10px] text-gray-400">{T("yourEarnings")}</p>
                             </div>
                             {o.total && (
                               <div>
                                 <p className="text-sm font-bold text-gray-700">{formatCurrency(o.total)}</p>
-                                <p className="text-[10px] text-gray-400">order total</p>
+                                <p className="text-[10px] text-gray-400">{T("orderTotal")}</p>
                               </div>
                             )}
                             {o.itemCount && (
                               <div>
                                 <p className="text-sm font-bold text-gray-700">{o.itemCount} items</p>
-                                <p className="text-[10px] text-gray-400">to collect</p>
+                                <p className="text-[10px] text-gray-400">{T("toCollect")}</p>
                               </div>
                             )}
                           </div>
@@ -475,7 +475,7 @@ export default function Home() {
                           disabled={acceptOrderMut.isPending || acceptRideMut.isPending}
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white font-extrabold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-colors flex items-center justify-center gap-1.5">
                           <CheckCircle size={15}/>
-                          {acceptOrderMut.isPending ? "Accepting..." : "Accept Order"}
+                          {acceptOrderMut.isPending ? T("accepting") : T("acceptOrder")}
                         </button>
                       </div>
                     </div>
@@ -526,23 +526,23 @@ export default function Home() {
                                 <p className={`text-lg font-extrabold ${isBargain ? "text-orange-600" : "text-green-600"}`}>
                                   +{formatCurrency(earnings)}
                                 </p>
-                                <p className="text-[10px] text-gray-400">your earnings</p>
+                                <p className="text-[10px] text-gray-400">{T("yourEarnings")}</p>
                               </div>
                               {isBargain && (
                                 <div>
                                   <p className="text-sm font-bold text-orange-700">{formatCurrency(offeredFare)}</p>
-                                  <p className="text-[10px] text-gray-400">customer offer</p>
+                                  <p className="text-[10px] text-gray-400">{T("customerOffer")}</p>
                                 </div>
                               )}
                               {r.distance && (
                                 <div>
                                   <p className="text-sm font-bold text-gray-700">{r.distance} km</p>
-                                  <p className="text-[10px] text-gray-400">distance</p>
+                                  <p className="text-[10px] text-gray-400">{T("distance")}</p>
                                 </div>
                               )}
                               <div>
                                 <p className="text-sm font-bold text-gray-400 line-through">{formatCurrency(r.fare)}</p>
-                                <p className="text-[10px] text-gray-400">platform fare</p>
+                                <p className="text-[10px] text-gray-400">{T("platformFare")}</p>
                               </div>
                             </div>
                             {r.bargainNote && (
@@ -568,7 +568,7 @@ export default function Home() {
                               disabled={acceptRideMut.isPending || acceptOrderMut.isPending}
                               className="flex-1 bg-green-600 hover:bg-green-700 text-white font-extrabold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-colors flex items-center justify-center gap-1.5">
                               <CheckCircle size={15}/>
-                              {acceptRideMut.isPending ? "Accepting..." : "Accept Ride"}
+                              {acceptRideMut.isPending ? T("accepting") : T("acceptRide")}
                             </button>
                           </div>
                         )}

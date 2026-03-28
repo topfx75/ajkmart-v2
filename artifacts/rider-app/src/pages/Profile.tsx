@@ -13,7 +13,7 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
-import { LANGUAGE_OPTIONS, type Language } from "@workspace/i18n";
+import { LANGUAGE_OPTIONS, tDual, type Language, type TranslationKey } from "@workspace/i18n";
 
 const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
 const fd = (d: string | Date) => new Date(d).toLocaleDateString("en-PK", { day: "numeric", month: "long", year: "numeric" });
@@ -120,6 +120,7 @@ export default function Profile() {
   const [showLangPicker, setShowLangPicker] = useState(false);
 
   const { language, setLanguage, loading: langLoading } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
 
   const [name, setName]             = useState(user?.name || "");
   const [email, setEmail]           = useState(user?.email || "");
@@ -185,19 +186,19 @@ export default function Profile() {
   const rating = user?.stats?.rating || 5.0;
 
   const quickLinks: QuickLink[] = [
-    { href: "/",              icon: <Home size={18} className="text-green-600"/>,          label: "Dashboard",           desc: "Overview & requests"  },
-    { href: "/wallet",        icon: <Wallet size={18} className="text-emerald-600"/>,      label: "Wallet",              desc: "Earnings & payouts"   },
-    { href: "/notifications", icon: <Bell size={18} className="text-blue-600"/>,           label: "Notifications",       desc: "Alerts & updates",    badge: unread },
-    { href: "/history",       icon: <ClipboardList size={18} className="text-purple-600"/>,label: "Delivery History",    desc: "Past orders & rides"  },
-    { href: "/earnings",      icon: <BarChart2 size={18} className="text-amber-600"/>,     label: "Earnings Report",     desc: "Detailed breakdown"   },
+    { href: "/",              icon: <Home size={18} className="text-green-600"/>,          label: T("dashboard"),     desc: T("trackActivity")     },
+    { href: "/wallet",        icon: <Wallet size={18} className="text-emerald-600"/>,      label: T("wallet"),        desc: T("transactions")      },
+    { href: "/notifications", icon: <Bell size={18} className="text-blue-600"/>,           label: T("notifications"), badge: unread },
+    { href: "/history",       icon: <ClipboardList size={18} className="text-purple-600"/>,label: T("myOrders"),      desc: T("pastOrders")        },
+    { href: "/earnings",      icon: <BarChart2 size={18} className="text-amber-600"/>,     label: T("yourEarnings"),  desc: T("transactionHistory") },
   ];
 
   const achievements = [
-    totalDeliveries >= 1   && { icon: <Rocket size={12}/>, label: "First Delivery",  bg: "bg-blue-100",   text: "text-blue-700"   },
-    totalDeliveries >= 50  && { icon: <Zap size={12}/>,    label: "50+ Deliveries",  bg: "bg-green-100",  text: "text-green-700"  },
-    totalDeliveries >= 100 && { icon: <Gem size={12}/>,    label: "Century Rider",   bg: "bg-purple-100", text: "text-purple-700" },
-    totalEarnings >= 10000 && { icon: <CreditCard size={12}/>, label: "Rs. 10K+",    bg: "bg-orange-100", text: "text-orange-700" },
-    rating >= 4.8          && { icon: <Star size={12}/>,   label: "Top Rated",       bg: "bg-yellow-100", text: "text-yellow-700" },
+    totalDeliveries >= 1   && { icon: <Rocket size={12}/>, label: T("firstDeliveryBadge"),  bg: "bg-blue-100",   text: "text-blue-700"   },
+    totalDeliveries >= 50  && { icon: <Zap size={12}/>,    label: "50+ " + T("deliveriesLabel"), bg: "bg-green-100",  text: "text-green-700"  },
+    totalDeliveries >= 100 && { icon: <Gem size={12}/>,    label: T("centuryRiderBadge"),    bg: "bg-purple-100", text: "text-purple-700" },
+    totalEarnings >= 10000 && { icon: <CreditCard size={12}/>, label: "Rs. 10K+",            bg: "bg-orange-100", text: "text-orange-700" },
+    rating >= 4.8          && { icon: <Star size={12}/>,   label: T("topRatedBadge"),        bg: "bg-yellow-100", text: "text-yellow-700" },
   ].filter(Boolean) as { icon: React.ReactElement; label: string; bg: string; text: string }[];
 
   return (
@@ -211,8 +212,8 @@ export default function Profile() {
         </div>
         <div className="relative flex items-center justify-between mb-2">
           <div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">My Account</h1>
-            <p className="text-green-200 text-sm mt-0.5">Rider profile & settings</p>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">{T("myAccountTitle")}</h1>
+            <p className="text-green-200 text-sm mt-0.5">{T("riderProfileSettings")}</p>
           </div>
           <div className="flex gap-2">
             <Link href="/notifications" className="relative h-10 w-10 flex items-center justify-center bg-white/15 backdrop-blur-sm text-white rounded-xl border border-white/10">
@@ -224,7 +225,7 @@ export default function Profile() {
               )}
             </Link>
             <button onClick={logout} className="h-10 px-4 bg-white/15 backdrop-blur-sm text-white text-sm font-bold rounded-xl border border-white/10 active:bg-white/25 transition-colors">
-              Logout
+              {T("logout")}
             </button>
           </div>
         </div>
@@ -273,10 +274,10 @@ export default function Profile() {
         <div className="flex gap-3">
           <div className="flex-1 grid grid-cols-2 gap-2">
             {[
-              { label: "Deliveries", value: String(totalDeliveries), icon: <ClipboardList size={16} className="text-blue-500"/>, bg: "bg-blue-50" },
-              { label: "Earned",     value: fc(totalEarnings),       icon: <TrendingUp size={16} className="text-green-500"/>,   bg: "bg-green-50" },
-              { label: "Wallet",     value: fc(Number(user?.walletBalance || 0)), icon: <Wallet size={16} className="text-amber-500"/>, bg: "bg-amber-50" },
-              { label: "Rating",     value: rating.toFixed(1),       icon: <Star size={16} className="text-yellow-500"/>,        bg: "bg-yellow-50" },
+              { label: T("deliveriesLabel"), value: String(totalDeliveries), icon: <ClipboardList size={16} className="text-blue-500"/>, bg: "bg-blue-50" },
+              { label: T("earnedStat"),      value: fc(totalEarnings),       icon: <TrendingUp size={16} className="text-green-500"/>,   bg: "bg-green-50" },
+              { label: T("walletStat"),      value: fc(Number(user?.walletBalance || 0)), icon: <Wallet size={16} className="text-amber-500"/>, bg: "bg-amber-50" },
+              { label: T("ratingStat"),      value: rating.toFixed(1),       icon: <Star size={16} className="text-yellow-500"/>,        bg: "bg-yellow-50" },
             ].map(s => (
               <div key={s.label} className={`${s.bg} rounded-xl p-3 border border-white`}>
                 <div className="flex items-center gap-1.5 mb-1">{s.icon}</div>
@@ -287,14 +288,14 @@ export default function Profile() {
           </div>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 flex flex-col items-center justify-center min-w-[96px]">
             <CircularProgress pct={completionPct}/>
-            <p className="text-[10px] text-gray-400 font-bold mt-1 text-center leading-tight">Profile<br/>Complete</p>
+            <p className="text-[10px] text-gray-400 font-bold mt-1 text-center leading-tight">{T("profileComplete")}</p>
           </div>
         </div>
 
         {completionPct < 100 && (
           <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-2.5 flex items-center gap-2">
             <Target size={14} className="text-amber-500 flex-shrink-0"/>
-            <p className="text-xs text-amber-700 font-medium">Complete your profile to build trust with customers & unlock all features</p>
+            <p className="text-xs text-amber-700 font-medium">{T("profileCompleteMsg")}</p>
           </div>
         )}
 
@@ -303,7 +304,7 @@ export default function Profile() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[15px] font-bold text-gray-900 flex items-center gap-2">
-                <Award size={16} className="text-yellow-500"/> Achievements
+                <Award size={16} className="text-yellow-500"/> {T("achievementsLabel")}
               </p>
               <div className="flex items-center gap-0.5">
                 {[1,2,3,4,5].map(s => (
@@ -329,55 +330,55 @@ export default function Profile() {
         {/* ══ PERSONAL INFORMATION ══ */}
         <SectionCard
           icon={<User size={16} className="text-green-600"/>}
-          title="Personal Information"
-          subtitle="Identity & contact details"
+          title={T("personalInformation")}
+          subtitle={T("identityContact")}
           isEditing={editing === "personal"}
           onToggleEdit={() => editing === "personal" ? setEditing(null) : startEdit("personal")}
         >
           {editing === "personal" ? (
             <div className="p-5 space-y-3.5">
               <div>
-                <label className={LABEL}>Full Name *</label>
-                <input value={name} onChange={e => setName(e.target.value)} placeholder="Your full name" className={INPUT}/>
+                <label className={LABEL}>{T("fullNameRequired")}</label>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder={T("enterFullName")} className={INPUT}/>
               </div>
               <div>
-                <label className={LABEL}>Email Address</label>
+                <label className={LABEL}>{T("emailAddress")}</label>
                 <input value={email} onChange={e => setEmail(e.target.value)} type="email" inputMode="email" placeholder="email@example.com" className={INPUT}/>
               </div>
               <div>
-                <label className={LABEL}>CNIC / National ID</label>
+                <label className={LABEL}>{T("cnicNationalId")}</label>
                 <input value={cnic} onChange={e => setCnic(e.target.value)} inputMode="numeric" placeholder="XXXXX-XXXXXXX-X" className={INPUT}/>
-                <p className="text-[10px] text-gray-400 mt-1">Format: XXXXX-XXXXXXX-X (dashes ke saath)</p>
+                <p className="text-[10px] text-gray-400 mt-1">Format: XXXXX-XXXXXXX-X</p>
               </div>
               <div>
-                <label className={LABEL}>City</label>
+                <label className={LABEL}>{T("cityLabel")}</label>
                 <select value={city} onChange={e => setCity(e.target.value)} className={SELECT}>
-                  <option value="">Select city</option>
+                  <option value="">{T("selectCity")}</option>
                   {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
-                <label className={LABEL}>Home Address</label>
+                <label className={LABEL}>{T("homeAddress")}</label>
                 <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Street, Area, City" className={INPUT}/>
               </div>
               <div>
-                <label className={LABEL}>Emergency Contact</label>
-                <input value={emergency} onChange={e => setEmergency(e.target.value)} inputMode="tel" placeholder="03XX-XXXXXXX (family member)" className={INPUT}/>
+                <label className={LABEL}>{T("emergencyContactLabel")}</label>
+                <input value={emergency} onChange={e => setEmergency(e.target.value)} inputMode="tel" placeholder="03XX-XXXXXXX" className={INPUT}/>
               </div>
               <button onClick={() => saveSection("personal")} disabled={saving}
                 className="w-full h-12 bg-green-600 text-white font-bold rounded-xl disabled:opacity-60 flex items-center justify-center gap-2 active:bg-green-700 transition-colors shadow-sm">
-                {saving ? <><RefreshCcw size={15} className="animate-spin"/> Saving...</> : <><CheckCircle size={15}/> Save Changes</>}
+                {saving ? <><RefreshCcw size={15} className="animate-spin"/> {T("saving")}</> : <><CheckCircle size={15}/> {T("saveChangesBtn")}</>}
               </button>
             </div>
           ) : (
             <div className="py-1">
-              <InfoRow label="Name"      value={user?.name}             icon={<User size={11} className="text-gray-300"/>}/>
-              <InfoRow label="Phone"     value={user?.phone}            icon={<Phone size={11} className="text-gray-300"/>}/>
-              <InfoRow label="Email"     value={user?.email}            icon={<Mail size={11} className="text-gray-300"/>}/>
-              <InfoRow label="CNIC"      value={user?.cnic}             icon={<FileText size={11} className="text-gray-300"/>}/>
-              <InfoRow label="City"      value={user?.city}             icon={<MapPin size={11} className="text-gray-300"/>}/>
-              <InfoRow label="Address"   value={user?.address}          icon={<Home size={11} className="text-gray-300"/>}/>
-              <InfoRow label="Emergency" value={user?.emergencyContact} icon={<Phone size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("fullName")}            value={user?.name}             icon={<User size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("phoneNumber")}         value={user?.phone}            icon={<Phone size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("emailAddress")}        value={user?.email}            icon={<Mail size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("cnicNationalId")}      value={user?.cnic}             icon={<FileText size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("cityLabel")}           value={user?.city}             icon={<MapPin size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("homeAddress")}         value={user?.address}          icon={<Home size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("emergencyContactLabel")} value={user?.emergencyContact} icon={<Phone size={11} className="text-gray-300"/>}/>
             </div>
           )}
         </SectionCard>
@@ -385,44 +386,44 @@ export default function Profile() {
         {/* ══ VEHICLE DETAILS ══ */}
         <SectionCard
           icon={<Bike size={16} className="text-green-600"/>}
-          title="Vehicle Details"
-          subtitle="Your delivery vehicle info"
+          title={T("vehicleDetails")}
+          subtitle={T("yourDeliveryVehicle")}
           isEditing={editing === "vehicle"}
           onToggleEdit={() => editing === "vehicle" ? setEditing(null) : startEdit("vehicle")}
         >
           {editing === "vehicle" ? (
             <div className="p-5 space-y-3.5">
               <div>
-                <label className={LABEL}>Vehicle Type *</label>
+                <label className={LABEL}>{T("vehicleTypeRequired")}</label>
                 <select value={vehicleType} onChange={e => setVehicleType(e.target.value)} className={SELECT}>
-                  <option value="">Select vehicle type</option>
+                  <option value="">{T("selectVehicle")}</option>
                   {VEHICLES.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               <div>
-                <label className={LABEL}>Registration Number</label>
+                <label className={LABEL}>{T("registrationNumber")}</label>
                 <input value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value.toUpperCase())} placeholder="e.g. AJK 1234" className={`${INPUT} uppercase`}/>
               </div>
               <button onClick={() => saveSection("vehicle")} disabled={saving}
                 className="w-full h-12 bg-green-600 text-white font-bold rounded-xl disabled:opacity-60 flex items-center justify-center gap-2 active:bg-green-700 transition-colors shadow-sm">
-                {saving ? <><RefreshCcw size={15} className="animate-spin"/> Saving...</> : <><CheckCircle size={15}/> Save Vehicle Info</>}
+                {saving ? <><RefreshCcw size={15} className="animate-spin"/> {T("saving")}</> : <><CheckCircle size={15}/> {T("saveChangesBtn")}</>}
               </button>
             </div>
           ) : user?.vehicleType ? (
             <div className="py-1">
-              <InfoRow label="Type"  value={user.vehicleType}  icon={<Bike size={11} className="text-gray-300"/>}/>
-              <InfoRow label="Plate" value={user.vehiclePlate} icon={<FileText size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("vehicleSection")} value={user.vehicleType}  icon={<Bike size={11} className="text-gray-300"/>}/>
+              <InfoRow label={T("vehiclePlateRequired")} value={user.vehiclePlate} icon={<FileText size={11} className="text-gray-300"/>}/>
             </div>
           ) : (
             <div className="py-8 text-center">
               <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-2">
                 <Bike size={28} className="text-gray-200"/>
               </div>
-              <p className="text-sm font-bold text-gray-600">No vehicle added</p>
-              <p className="text-xs text-gray-400 mt-1">Required for identity verification</p>
+              <p className="text-sm font-bold text-gray-600">{T("noVehicle")}</p>
+              <p className="text-xs text-gray-400 mt-1">{T("addVehicleInfo")}</p>
               <button onClick={() => startEdit("vehicle")}
                 className="mt-3 px-5 py-2 bg-green-50 text-green-600 font-bold rounded-xl text-sm active:bg-green-100 transition-colors">
-                + Add Vehicle
+                + {T("addVehicle")}
               </button>
             </div>
           )}
@@ -431,35 +432,35 @@ export default function Profile() {
         {/* ══ WITHDRAWAL ACCOUNT ══ */}
         <SectionCard
           icon={<Landmark size={16} className="text-green-600"/>}
-          title="Withdrawal Account"
-          subtitle="Bank or mobile wallet for payouts"
+          title={T("withdrawalAccount")}
+          subtitle={T("bankMobileWallet")}
           isEditing={editing === "bank"}
           onToggleEdit={() => editing === "bank" ? setEditing(null) : startEdit("bank")}
         >
           {editing === "bank" ? (
             <div className="p-5 space-y-3.5">
               <div>
-                <label className={LABEL}>Bank / Mobile Wallet *</label>
+                <label className={LABEL}>{T("bankNameLabel")} *</label>
                 <select value={bankName} onChange={e => setBankName(e.target.value)} className={SELECT}>
-                  <option value="">Select bank or wallet</option>
+                  <option value="">{T("selectBank")}</option>
                   {BANKS.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
               <div>
-                <label className={LABEL}>Account / Phone Number *</label>
+                <label className={LABEL}>{T("accountNoRequired")}</label>
                 <input value={bankAccount} onChange={e => setBankAccount(e.target.value)} inputMode="numeric" placeholder="03XX-XXXXXXX or IBAN" className={INPUT}/>
               </div>
               <div>
-                <label className={LABEL}>Account Holder Name *</label>
-                <input value={bankAccountTitle} onChange={e => setBankAccountTitle(e.target.value)} placeholder="Full name as on account" className={INPUT}/>
+                <label className={LABEL}>{T("accountTitle")} *</label>
+                <input value={bankAccountTitle} onChange={e => setBankAccountTitle(e.target.value)} placeholder={T("enterFullName")} className={INPUT}/>
               </div>
               <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
                 <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5"/>
-                <p className="text-xs text-amber-700 font-medium">Ensure details match your bank records. Incorrect info may delay withdrawals.</p>
+                <p className="text-xs text-amber-700 font-medium">{T("bankMobileWallet")}</p>
               </div>
               <button onClick={() => saveSection("bank")} disabled={saving}
                 className="w-full h-12 bg-green-600 text-white font-bold rounded-xl disabled:opacity-60 flex items-center justify-center gap-2 active:bg-green-700 transition-colors shadow-sm">
-                {saving ? <><RefreshCcw size={15} className="animate-spin"/> Saving...</> : <><CheckCircle size={15}/> Save Account</>}
+                {saving ? <><RefreshCcw size={15} className="animate-spin"/> {T("saving")}</> : <><CheckCircle size={15}/> {T("saveChangesBtn")}</>}
               </button>
             </div>
           ) : user?.bankName ? (
@@ -473,11 +474,11 @@ export default function Profile() {
                   <p className="text-xs text-gray-500 font-mono">{user.bankAccount}</p>
                 </div>
                 <span className="text-[10px] bg-green-100 text-green-700 font-bold px-2 py-1 rounded-full flex items-center gap-0.5">
-                  <CheckCircle size={10}/> Active
+                  <CheckCircle size={10}/> {T("activeVerified")}
                 </span>
               </div>
               <div className="py-1">
-                <InfoRow label="Account Title" value={user.bankAccountTitle} icon={<User size={11} className="text-gray-300"/>}/>
+                <InfoRow label={T("accountTitle")} value={user.bankAccountTitle} icon={<User size={11} className="text-gray-300"/>}/>
               </div>
             </div>
           ) : (
@@ -485,11 +486,11 @@ export default function Profile() {
               <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-2">
                 <Landmark size={28} className="text-gray-200"/>
               </div>
-              <p className="text-sm font-bold text-gray-600">No withdrawal account</p>
-              <p className="text-xs text-gray-400 mt-1">Add your account to receive payouts</p>
+              <p className="text-sm font-bold text-gray-600">{T("noWithdrawalAccount")}</p>
+              <p className="text-xs text-gray-400 mt-1">{T("addVehicleInfo")}</p>
               <button onClick={() => startEdit("bank")}
                 className="mt-3 px-5 py-2 bg-green-50 text-green-600 font-bold rounded-xl text-sm active:bg-green-100 transition-colors">
-                + Add Account
+                + {T("addAccount")}
               </button>
             </div>
           )}
@@ -498,7 +499,7 @@ export default function Profile() {
         {/* ══ QUICK LINKS ══ */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-3.5">
-            <p className="font-bold text-gray-900 text-[15px] flex items-center gap-2"><Zap size={15} className="text-amber-500"/> Quick Navigation</p>
+            <p className="font-bold text-gray-900 text-[15px] flex items-center gap-2"><Zap size={15} className="text-amber-500"/> {T("quickNavigation")}</p>
           </div>
           <div className="border-t border-gray-50">
             {quickLinks.map(item => (
@@ -523,12 +524,12 @@ export default function Profile() {
         {/* ══ SECURITY ══ */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-3.5">
-            <p className="font-bold text-gray-900 text-[15px] flex items-center gap-2"><Shield size={15} className="text-blue-500"/> Security & Session</p>
+            <p className="font-bold text-gray-900 text-[15px] flex items-center gap-2"><Shield size={15} className="text-blue-500"/> {T("securitySession")}</p>
           </div>
           <div className="border-t border-gray-50 py-1">
-            <InfoRow label="Member Since" value={user?.createdAt ? fd(user.createdAt) : "—"} icon={<Clock size={11} className="text-gray-300"/>}/>
-            <InfoRow label="Last Login"   value={user?.lastLoginAt ? fd(user.lastLoginAt) : "Now"} icon={<Clock size={11} className="text-gray-300"/>}/>
-            <InfoRow label="Status"       value="Active & Verified" icon={<CheckCircle size={11} className="text-green-400"/>}/>
+            <InfoRow label={T("memberSince")} value={user?.createdAt ? fd(user.createdAt) : "—"} icon={<Clock size={11} className="text-gray-300"/>}/>
+            <InfoRow label={T("lastLogin")}   value={user?.lastLoginAt ? fd(user.lastLoginAt) : "Now"} icon={<Clock size={11} className="text-gray-300"/>}/>
+            <InfoRow label={T("statusLabel")} value={T("activeVerified")} icon={<CheckCircle size={11} className="text-green-400"/>}/>
           </div>
           <div className="px-5 pb-4">
             <div className="bg-blue-50 rounded-xl p-3 flex gap-2 border border-blue-100">
@@ -540,7 +541,7 @@ export default function Profile() {
 
         {/* ══ PAYOUT POLICY ══ */}
         <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-2xl p-5">
-          <p className="font-bold text-green-800 text-[15px] mb-3 flex items-center gap-2"><Lightbulb size={15}/> Payout Policy</p>
+          <p className="font-bold text-green-800 text-[15px] mb-3 flex items-center gap-2"><Lightbulb size={15}/> {T("payoutPolicyLabel")}</p>
           <div className="space-y-2.5">
             {[
               { icon: <CheckCircle size={13}/>, text: `${riderKeepPct}% earnings — ${100 - riderKeepPct}% platform fee` },

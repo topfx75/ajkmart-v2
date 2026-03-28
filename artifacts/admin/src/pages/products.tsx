@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useLanguage } from "@/lib/useLanguage";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const EMPTY_FORM = {
   name: "", description: "", price: "", originalPrice: "",
@@ -17,6 +19,8 @@ const EMPTY_FORM = {
 };
 
 export default function Products() {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading } = useProducts();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
@@ -120,8 +124,8 @@ export default function Products() {
             <PackageSearch className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Products</h1>
-            <p className="text-muted-foreground text-sm">{martCount} mart · {foodCount} food · {products.length} total</p>
+            <h1 className="text-3xl font-display font-bold text-foreground">{T("products")}</h1>
+            <p className="text-muted-foreground text-sm">{martCount} mart · {foodCount} food · {products.length} {T("total")}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -138,7 +142,7 @@ export default function Products() {
       <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
         <DialogContent className="w-[95vw] max-w-2xl max-h-[90dvh] overflow-y-auto rounded-3xl p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">{editingId ? 'Edit Product' : 'Add New Product'}</DialogTitle>
+            <DialogTitle className="font-display text-2xl">{editingId ? T("editProduct") : T("addNewProduct")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 mt-4">
             <div className="grid grid-cols-2 gap-4">
@@ -287,12 +291,12 @@ export default function Products() {
           <Table className="min-w-[600px]">
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Stock</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>{T("product")}</TableHead>
+                <TableHead>{T("category")}</TableHead>
+                <TableHead>{T("price")}</TableHead>
+                <TableHead>{T("vendor")}</TableHead>
+                <TableHead>{T("stock")}</TableHead>
+                <TableHead className="text-right">{T("actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
