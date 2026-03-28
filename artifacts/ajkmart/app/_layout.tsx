@@ -10,6 +10,7 @@ import * as Font from "expo-font";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -90,7 +91,7 @@ export default function RootLayout() {
 
         await Promise.race([
           fontPromise,
-          new Promise<void>(resolve => setTimeout(resolve, 2000)),
+          new Promise<void>(resolve => setTimeout(resolve, Platform.OS === "web" ? 500 : 2000)),
         ]);
       } catch {
         /* ignore */
@@ -106,7 +107,13 @@ export default function RootLayout() {
     return () => { cancelled = true; };
   }, []);
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#1A56DB", alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color="#ffffff" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaProvider>
