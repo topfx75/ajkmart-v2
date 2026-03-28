@@ -19,9 +19,10 @@ import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { getPaymentMethods, estimateParcel, createParcelBooking } from "@workspace/api-client-react";
+import type { CreateParcelBookingRequest } from "@workspace/api-client-react";
 
 const C = Colors.light;
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 /* ─── Parcel Types ─── */
 interface ParcelType {
@@ -77,6 +78,8 @@ export default function ParcelScreen() {
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
   const appName = platformConfig.platform.appName;
+  const inMaintenance = platformConfig.appStatus === "maintenance";
+  const parcelEnabled = platformConfig.features.parcel;
 
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -110,30 +113,24 @@ export default function ParcelScreen() {
 
   const selectedType = PARCEL_TYPES.find(t => t.id === parcelType);
 
-  /* ── Fetch enabled payment methods ── */
+  /* ── Fetch enabled payment methods (via api-client-react) ── */
   useEffect(() => {
-    fetch(`${API}/payments/methods`)
-      .then(r => r.json())
-      .then((methods: Array<{ id: string; label: string; logo: string; description: string }>) => {
-        if (Array.isArray(methods) && methods.length > 0) {
-          setPayMethods(methods);
-          setPayMethod(methods[0]!.id);
+    getPaymentMethods()
+      .then(data => {
+        if (data?.methods?.length) {
+          setPayMethods(data.methods);
+          setPayMethod(data.methods[0]!.id);
         }
       })
       .catch(() => {});
   }, []);
 
-  /* ── Fetch server fare estimate when parcel type or weight changes ── */
+  /* ── Fetch server fare estimate (via api-client-react) ── */
   useEffect(() => {
     if (!parcelType) { setEstimatedFare(0); return; }
     setFareLoading(true);
     const wgt = parseFloat(weight) || 0;
-    fetch(`${API}/parcel-bookings/estimate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parcelType, weight: wgt }),
-    })
-      .then(r => r.json())
+    estimateParcel({ parcelType, weight: wgt })
       .then(data => { if (data.fare) setEstimatedFare(data.fare); })
       .catch(() => {})
       .finally(() => setFareLoading(false));
@@ -164,35 +161,65 @@ export default function ParcelScreen() {
   const bookParcel = async () => {
     setLoading(true);
     try {
-      const w = parseFloat(weight) || null;
-      const body = {
+      const w = parseFloat(weight) || undefined;
+      const data = await createParcelBooking({
         senderName, senderPhone, pickupAddress,
         receiverName, receiverPhone, dropAddress,
-        parcelType, weight: w, description: description || null,
-        paymentMethod: payMethod,
-      };
-      const res = await fetch(`${API}/parcel-bookings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(body),
+        parcelType: parcelType!, weight: w,
+        description: description || undefined,
+        paymentMethod: payMethod as "cash" | "wallet",
       });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Parcel book nahi ho saka", "error");
-        return;
-      }
       if (payMethod === "wallet" && user) {
         updateUser({ walletBalance: (user.walletBalance ?? 0) - data.fare });
       }
       setConfirmedId(data.id);
       setConfirmedFare(data.fare);
       setConfirmed(true);
-    } catch {
-      showToast("Network error. Dobara try karein.", "error");
+    } catch (err: unknown) {
+      const errMsg = (err as { message?: string })?.message;
+      showToast(errMsg || "Parcel book nahi ho saka", "error");
     } finally {
       setLoading(false);
     }
   };
+
+  /* ── Service Unavailable ── */
+  if (!parcelEnabled) {
+    return (
+      <View style={[ss.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
+        <Pressable onPress={() => router.back()} style={{ position: "absolute", top: topPad + 12, left: 16 }}>
+          <Ionicons name="arrow-back" size={24} color={C.text} />
+        </Pressable>
+        <View style={[ss.confirmCard, { borderColor: "#FEE2E2" }]}>
+          <Text style={{ fontSize: 52 }}>🚫</Text>
+          <Text style={[ss.confirmTitle, { color: "#EF4444" }]}>Service Unavailable</Text>
+          <Text style={ss.confirmSub}>
+            Parcel delivery service filhaal available nahi hai.{"\n"}
+            Thodi der baad dobara try karein.
+          </Text>
+          <Pressable style={[ss.doneBtn, { backgroundColor: "#FEF2F2", width: "100%" }]} onPress={() => router.back()}>
+            <Text style={[ss.doneBtnTxt, { color: "#EF4444" }]}>Back to Home</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  /* ── Maintenance blocks ALL states including confirmed booking ── */
+  if (inMaintenance) {
+    return (
+      <View style={[ss.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
+        <View style={[ss.confirmCard, { borderColor: "#FEF3C7" }]}>
+          <Text style={{ fontSize: 52 }}>🔧</Text>
+          <Text style={[ss.confirmTitle, { color: "#D97706" }]}>Under Maintenance</Text>
+          <Text style={ss.confirmSub}>{platformConfig.content.maintenanceMsg}</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, textAlign: "center", marginTop: 8 }}>
+            Please check back later. We apologize for the inconvenience.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   /* ── Confirmation ── */
   if (confirmed) {
@@ -523,6 +550,7 @@ export default function ParcelScreen() {
           </ScrollView>
         </View>
       </Modal>
+
     </View>
   );
 }

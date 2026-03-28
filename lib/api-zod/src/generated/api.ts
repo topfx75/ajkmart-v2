@@ -414,6 +414,374 @@ export const EstimateFareResponse = zod.object({
 });
 
 /**
+ * @summary Get popular ride stops
+ */
+export const GetRideStopsResponse = zod.object({
+  locations: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      nameUrdu: zod.string().optional(),
+      lat: zod.number(),
+      lng: zod.number(),
+      category: zod.string().optional(),
+      icon: zod.string().optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get available ride service types
+ */
+export const GetRideServicesResponse = zod.object({
+  services: zod.array(
+    zod.object({
+      key: zod.string(),
+      name: zod.string(),
+      nameUrdu: zod.string().optional(),
+      icon: zod.string(),
+      description: zod.string().optional(),
+      color: zod.string(),
+      baseFare: zod.number(),
+      perKm: zod.number(),
+      minFare: zod.number(),
+      maxPassengers: zod.number(),
+      allowBargaining: zod.boolean(),
+    }),
+  ),
+});
+
+/**
+ * @summary Cancel a ride
+ */
+export const CancelRideParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CancelRideBody = zod.object({
+  reason: zod.string().optional(),
+});
+
+export const CancelRideResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  type: zod.enum(["car", "bike"]),
+  status: zod.enum([
+    "searching",
+    "confirmed",
+    "in_progress",
+    "completed",
+    "cancelled",
+  ]),
+  pickupAddress: zod.string().optional(),
+  dropAddress: zod.string().optional(),
+  pickupLat: zod.number().optional(),
+  pickupLng: zod.number().optional(),
+  dropLat: zod.number().optional(),
+  dropLng: zod.number().optional(),
+  fare: zod.number(),
+  distance: zod.number(),
+  riderId: zod.string().optional(),
+  riderName: zod.string().optional(),
+  riderPhone: zod.string().optional(),
+  paymentMethod: zod.enum(["cash", "wallet"]),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Accept a rider bid
+ */
+export const AcceptRideBidParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const AcceptRideBidBody = zod.object({
+  bidId: zod.string().optional(),
+});
+
+export const AcceptRideBidResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  type: zod.enum(["car", "bike"]),
+  status: zod.enum([
+    "searching",
+    "confirmed",
+    "in_progress",
+    "completed",
+    "cancelled",
+  ]),
+  pickupAddress: zod.string().optional(),
+  dropAddress: zod.string().optional(),
+  pickupLat: zod.number().optional(),
+  pickupLng: zod.number().optional(),
+  dropLat: zod.number().optional(),
+  dropLng: zod.number().optional(),
+  fare: zod.number(),
+  distance: zod.number(),
+  riderId: zod.string().optional(),
+  riderName: zod.string().optional(),
+  riderPhone: zod.string().optional(),
+  paymentMethod: zod.enum(["cash", "wallet"]),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Send a customer counter offer for a ride
+ */
+export const CustomerCounterOfferParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const CustomerCounterOfferBody = zod.object({
+  offeredFare: zod.number().optional(),
+});
+
+export const CustomerCounterOfferResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  type: zod.enum(["car", "bike"]),
+  status: zod.enum([
+    "searching",
+    "confirmed",
+    "in_progress",
+    "completed",
+    "cancelled",
+  ]),
+  pickupAddress: zod.string().optional(),
+  dropAddress: zod.string().optional(),
+  pickupLat: zod.number().optional(),
+  pickupLng: zod.number().optional(),
+  dropLat: zod.number().optional(),
+  dropLng: zod.number().optional(),
+  fare: zod.number(),
+  distance: zod.number(),
+  riderId: zod.string().optional(),
+  riderName: zod.string().optional(),
+  riderPhone: zod.string().optional(),
+  paymentMethod: zod.enum(["cash", "wallet"]),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Get customer ride history
+ */
+export const GetRideHistoryResponse = zod.object({
+  rides: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      type: zod.enum(["car", "bike"]),
+      status: zod.enum([
+        "searching",
+        "confirmed",
+        "in_progress",
+        "completed",
+        "cancelled",
+      ]),
+      pickupAddress: zod.string().optional(),
+      dropAddress: zod.string().optional(),
+      pickupLat: zod.number().optional(),
+      pickupLng: zod.number().optional(),
+      dropLat: zod.number().optional(),
+      dropLng: zod.number().optional(),
+      fare: zod.number(),
+      distance: zod.number(),
+      riderId: zod.string().optional(),
+      riderName: zod.string().optional(),
+      riderPhone: zod.string().optional(),
+      paymentMethod: zod.enum(["cash", "wallet"]),
+      createdAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Place a pharmacy order
+ */
+export const CreatePharmacyOrderBody = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.string(),
+      name: zod.string(),
+      price: zod.number(),
+      quantity: zod.number(),
+    }),
+  ),
+  prescriptionNote: zod.string().nullish(),
+  deliveryAddress: zod.string(),
+  contactPhone: zod.string(),
+  paymentMethod: zod.enum(["cash", "wallet"]),
+});
+
+/**
+ * @summary Reverse geocode coordinates or forward geocode an address
+ */
+export const GeocodeAddressQueryParams = zod.object({
+  address: zod.coerce
+    .string()
+    .describe("Coordinates as 'lat,lng' or address string"),
+});
+
+export const GeocodeAddressResponse = zod.object({
+  formattedAddress: zod.string().optional(),
+  lat: zod.number().optional(),
+  lng: zod.number().optional(),
+  placeId: zod.string().optional(),
+});
+
+/**
+ * @summary Get available school shift routes
+ */
+export const GetSchoolRoutesResponse = zod.object({
+  routes: zod.array(
+    zod.object({
+      id: zod.string(),
+      schoolName: zod.string(),
+      area: zod.string(),
+      pickupTime: zod.string().optional(),
+      dropoffTime: zod.string().optional(),
+      monthlyFare: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Subscribe a student to a school route
+ */
+export const SubscribeSchoolRouteBody = zod.object({
+  routeId: zod.string(),
+  studentName: zod.string(),
+  studentClass: zod.string(),
+  paymentMethod: zod.enum(["cash", "wallet"]),
+});
+
+export const SubscribeSchoolRouteResponse = zod.object({
+  message: zod.string().optional(),
+  subscriptionId: zod.string().optional(),
+});
+
+/**
+ * @summary Get parcel delivery fare estimate
+ */
+export const EstimateParcelBody = zod.object({
+  parcelType: zod.string(),
+  weight: zod.number().optional(),
+});
+
+export const EstimateParcelResponse = zod.object({
+  fare: zod.number(),
+  estimatedTime: zod.string(),
+  parcelType: zod.string().optional(),
+  baseFee: zod.number().optional(),
+  perKgRate: zod.number().optional(),
+  weightKg: zod.number().optional(),
+});
+
+/**
+ * @summary List user parcel bookings
+ */
+export const GetParcelBookingsResponse = zod.object({
+  bookings: zod.array(
+    zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      senderName: zod.string(),
+      senderPhone: zod.string(),
+      pickupAddress: zod.string(),
+      receiverName: zod.string(),
+      receiverPhone: zod.string(),
+      dropAddress: zod.string(),
+      parcelType: zod.string(),
+      weight: zod.number().optional(),
+      description: zod.string().optional(),
+      fare: zod.number(),
+      paymentMethod: zod.string(),
+      status: zod.enum([
+        "pending",
+        "accepted",
+        "picked_up",
+        "in_transit",
+        "delivered",
+        "cancelled",
+      ]),
+      estimatedTime: zod.string().optional(),
+      riderId: zod.string().optional(),
+      createdAt: zod.string(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Create a parcel booking
+ */
+export const CreateParcelBookingBody = zod.object({
+  senderName: zod.string(),
+  senderPhone: zod.string(),
+  pickupAddress: zod.string(),
+  receiverName: zod.string(),
+  receiverPhone: zod.string(),
+  dropAddress: zod.string(),
+  parcelType: zod.string(),
+  weight: zod.number().optional(),
+  description: zod.string().optional(),
+  paymentMethod: zod.enum(["cash", "wallet"]),
+});
+
+/**
+ * @summary Get a parcel booking by ID
+ */
+export const GetParcelBookingParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetParcelBookingResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  senderName: zod.string(),
+  senderPhone: zod.string(),
+  pickupAddress: zod.string(),
+  receiverName: zod.string(),
+  receiverPhone: zod.string(),
+  dropAddress: zod.string(),
+  parcelType: zod.string(),
+  weight: zod.number().optional(),
+  description: zod.string().optional(),
+  fare: zod.number(),
+  paymentMethod: zod.string(),
+  status: zod.enum([
+    "pending",
+    "accepted",
+    "picked_up",
+    "in_transit",
+    "delivered",
+    "cancelled",
+  ]),
+  estimatedTime: zod.string().optional(),
+  riderId: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Get available payment methods
+ */
+export const GetPaymentMethodsResponse = zod.object({
+  methods: zod.array(
+    zod.object({
+      id: zod.string(),
+      label: zod.string(),
+      logo: zod.string().optional(),
+      available: zod.boolean(),
+      mode: zod.string().optional(),
+      description: zod.string().optional(),
+      maxAmount: zod.number().optional(),
+      fee: zod.number().optional(),
+      freeAbove: zod.number().optional(),
+    }),
+  ),
+});
+
+/**
  * @summary Update rider live location
  */
 export const UpdateLocationBody = zod.object({

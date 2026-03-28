@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -18,10 +18,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { getProducts, createPharmacyOrder } from "@workspace/api-client-react";
+import type { GetProductsParams, GetProductsType } from "@workspace/api-client-react";
+import { usePlatformConfig } from "@/context/PlatformConfigContext";
 
 const C = Colors.light;
 const W = Dimensions.get("window").width;
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 /* ─── Types ─── */
 interface Med {
@@ -37,39 +39,13 @@ interface Med {
 
 interface CartItem extends Med { qty: number }
 
-/* ─── Medicine Catalog ─── */
-const MEDICINES: Med[] = [
-  { id: "m1",  name: "Panadol 500mg",     brand: "GSK",       category: "Tablets",   price: 45,  unit: "1 strip (10 tabs)",   emoji: "💊" },
-  { id: "m2",  name: "Augmentin 625mg",   brand: "GSK",       category: "Tablets",   price: 380, unit: "1 strip (7 tabs)",    emoji: "💊", requires_prescription: true },
-  { id: "m3",  name: "Disprin",           brand: "Bayer",     category: "Tablets",   price: 35,  unit: "1 strip (10 tabs)",   emoji: "💊" },
-  { id: "m4",  name: "ORS Sachet",        brand: "Various",   category: "Tablets",   price: 25,  unit: "1 sachet",            emoji: "🧂" },
-  { id: "m5",  name: "Metformin 500mg",   brand: "Sanofi",    category: "Tablets",   price: 120, unit: "1 strip (10 tabs)",   emoji: "💊", requires_prescription: true },
-  { id: "m6",  name: "Cough Syrup",       brand: "Abbott",    category: "Syrups",    price: 95,  unit: "120ml bottle",        emoji: "🍶" },
-  { id: "m7",  name: "Brufen Syrup",      brand: "Abbott",    category: "Syrups",    price: 75,  unit: "100ml bottle",        emoji: "🍶" },
-  { id: "m8",  name: "Panadol CF Syrup",  brand: "GSK",       category: "Syrups",    price: 85,  unit: "90ml bottle",         emoji: "🍶" },
-  { id: "m9",  name: "Eye Drops",         brand: "Various",   category: "Drops",     price: 120, unit: "10ml dropper",        emoji: "💧" },
-  { id: "m10", name: "Ear Drops",         brand: "Various",   category: "Drops",     price: 95,  unit: "10ml dropper",        emoji: "💧" },
-  { id: "m11", name: "Nasal Drops",       brand: "Otrivin",   category: "Drops",     price: 110, unit: "10ml bottle",         emoji: "💧" },
-  { id: "m12", name: "Vitamin C 1000mg",  brand: "Redoxon",   category: "Vitamins",  price: 450, unit: "1 tube (15 tabs)",    emoji: "🍊" },
-  { id: "m13", name: "Vitamin D3",        brand: "Various",   category: "Vitamins",  price: 280, unit: "30 capsules",         emoji: "☀️" },
-  { id: "m14", name: "Iron Supplements",  brand: "Various",   category: "Vitamins",  price: 320, unit: "30 tablets",          emoji: "🔴" },
-  { id: "m15", name: "Calcium 500mg",     brand: "Various",   category: "Vitamins",  price: 250, unit: "30 tablets",          emoji: "🦴" },
-  { id: "m16", name: "Blood Glucose Kit", brand: "Accu-Chek", category: "Equipment", price: 1800, unit: "1 device + strips",  emoji: "🩺", requires_prescription: true },
-  { id: "m17", name: "Thermometer",       brand: "Various",   category: "Equipment", price: 350, unit: "1 piece",             emoji: "🌡️" },
-  { id: "m18", name: "Bandage Roll",      brand: "Various",   category: "Equipment", price: 80,  unit: "5m × 5cm",            emoji: "🩹" },
-  { id: "m19", name: "Hand Sanitizer",    brand: "Dettol",    category: "Equipment", price: 150, unit: "250ml bottle",        emoji: "🧴" },
-  { id: "m20", name: "Face Mask (10pc)",  brand: "Various",   category: "Equipment", price: 120, unit: "1 pack",              emoji: "😷" },
-];
-
-const CATEGORIES = ["All", "Tablets", "Syrups", "Drops", "Vitamins", "Equipment"];
-
 /* ─── Medicine Card ─── */
 function MedCard({ med, qty, onAdd, onRemove }: {
   med: Med; qty: number; onAdd: () => void; onRemove: () => void;
 }) {
   return (
     <View style={s.medCard}>
-      <View style={s.medEmoji}><Text style={{ fontSize: 26 }}>{med.emoji}</Text></View>
+      <View style={s.medEmoji}><Text style={{ fontSize: 26 }}>{med.emoji || "💊"}</Text></View>
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
           <Text style={s.medName} numberOfLines={1}>{med.name}</Text>
@@ -108,7 +84,14 @@ export default function PharmacyScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
+  const { config } = usePlatformConfig();
 
+  const inMaintenance = config.appStatus === "maintenance";
+  const pharmacyEnabled = config.features.pharmacy;
+
+  const [medicines, setMedicines] = useState<Med[]>([]);
+  const [categories, setCategories] = useState<string[]>(["All"]);
+  const [loadingMeds, setLoadingMeds] = useState(true);
   const [activeTab, setActiveTab] = useState("All");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -122,18 +105,45 @@ export default function PharmacyScreen() {
   const [prescription, setPrescription] = useState("");
   const [payMethod, setPayMethod] = useState<"wallet" | "cash">("cash");
 
-  const filtered = MEDICINES.filter(m => {
+  /* ── Fetch medicines from real API (typed, via api-client-react) ── */
+  useEffect(() => {
+    if (!pharmacyEnabled) return;
+    setLoadingMeds(true);
+    const params: GetProductsParams = { type: "pharmacy" as GetProductsType };
+    getProducts(params)
+      .then(data => {
+        if (data?.products?.length) {
+          const meds: Med[] = data.products.map(p => ({
+            id: p.id,
+            name: p.name,
+            brand: p.vendorName ?? "Various",
+            category: p.category,
+            price: p.price,
+            unit: p.unit ?? p.description ?? "1 unit",
+            emoji: "💊",
+            requires_prescription: false,
+          }));
+          setMedicines(meds);
+          const cats = ["All", ...new Set(meds.map(m => m.category))];
+          setCategories(cats);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMeds(false));
+  }, [pharmacyEnabled]);
+
+  const filtered = medicines.filter(m => {
     const matchCat = activeTab === "All" || m.category === activeTab;
     const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
   });
 
-  const cartItems: CartItem[] = MEDICINES
+  const cartItems: CartItem[] = medicines
     .filter(m => (cart[m.id] ?? 0) > 0)
     .map(m => ({ ...m, qty: cart[m.id]! }));
 
-  const cartTotal = cartItems.reduce((s, m) => s + m.price * m.qty, 0);
-  const cartCount = Object.values(cart).reduce((s, v) => s + v, 0);
+  const cartTotal = cartItems.reduce((sum, m) => sum + m.price * m.qty, 0);
+  const cartCount = Object.values(cart).reduce((sum, v) => sum + v, 0);
 
   const addToCart = (id: string) => setCart(p => ({ ...p, [id]: (p[id] ?? 0) + 1 }));
   const removeFromCart = (id: string) => setCart(p => {
@@ -153,23 +163,13 @@ export default function PharmacyScreen() {
     }
     setLoading(true);
     try {
-      const body = {
+      const data = await createPharmacyOrder({
         items: cartItems.map(m => ({ id: m.id, name: m.name, price: m.price, quantity: m.qty })),
         prescriptionNote: prescription || null,
         deliveryAddress: address,
         contactPhone: phone,
-        paymentMethod: payMethod,
-      };
-      const res = await fetch(`${API}/pharmacy-orders`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(body),
+        paymentMethod: payMethod as "cash" | "wallet",
       });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Order place nahi ho saka", "error");
-        return;
-      }
       if (payMethod === "wallet" && user) {
         updateUser({ walletBalance: (user.walletBalance ?? 0) - cartTotal });
       }
@@ -182,6 +182,44 @@ export default function PharmacyScreen() {
       setLoading(false);
     }
   };
+
+  /* ── Service Unavailable ── */
+  if (!pharmacyEnabled) {
+    return (
+      <View style={[s.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
+        <Pressable onPress={() => router.back()} style={{ position: "absolute", top: topPad + 12, left: 16 }}>
+          <Ionicons name="arrow-back" size={24} color={C.text} />
+        </Pressable>
+        <View style={[s.successCard, { borderColor: "#FEE2E2" }]}>
+          <Text style={{ fontSize: 52, marginBottom: 12 }}>🚫</Text>
+          <Text style={[s.successTitle, { color: "#EF4444" }]}>Service Unavailable</Text>
+          <Text style={[s.successSub, { marginBottom: 20 }]}>
+            Pharmacy service filhaal available nahi hai.{"\n"}
+            Thodi der baad dobara try karein.
+          </Text>
+          <Pressable style={[s.successBtn, { backgroundColor: "#FEF2F2" }]} onPress={() => router.back()}>
+            <Text style={[s.successBtnTxt, { color: "#EF4444" }]}>Back to Home</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  /* ── Maintenance blocks ALL states including order confirmation ── */
+  if (inMaintenance) {
+    return (
+      <View style={[s.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
+        <View style={[s.successCard, { borderColor: "#FEF3C7" }]}>
+          <Text style={{ fontSize: 52, marginBottom: 12 }}>🔧</Text>
+          <Text style={[s.successTitle, { color: "#D97706" }]}>Under Maintenance</Text>
+          <Text style={[s.successSub, { marginBottom: 20 }]}>{config.content.maintenanceMsg}</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, textAlign: "center" }}>
+            Please check back later. We apologize for the inconvenience.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   if (confirmed) {
     return (
@@ -247,7 +285,7 @@ export default function PharmacyScreen() {
 
       {/* Category Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabsScroll} contentContainerStyle={s.tabsRow}>
-        {CATEGORIES.map(cat => (
+        {categories.map(cat => (
           <Pressable key={cat} onPress={() => setActiveTab(cat)} style={[s.tab, activeTab === cat && s.tabActive]}>
             <Text style={[s.tabTxt, activeTab === cat && s.tabTxtActive]}>{cat}</Text>
           </Pressable>
@@ -262,7 +300,12 @@ export default function PharmacyScreen() {
 
       {/* Medicines Grid */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.grid}>
-        {filtered.length === 0 ? (
+        {loadingMeds ? (
+          <View style={{ alignItems: "center", paddingTop: 60 }}>
+            <ActivityIndicator size="large" color="#7C3AED" />
+            <Text style={[s.emptyTxt, { marginTop: 12 }]}>Medicines load ho rahi hain...</Text>
+          </View>
+        ) : filtered.length === 0 ? (
           <View style={{ alignItems: "center", paddingTop: 60 }}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>🔍</Text>
             <Text style={s.emptyTxt}>Koi medicine nahi mili</Text>
@@ -310,7 +353,7 @@ export default function PharmacyScreen() {
             <Text style={s.sectionTitle}>Medicines ({cartCount})</Text>
             {cartItems.map(item => (
               <View key={item.id} style={s.orderItem}>
-                <Text style={s.orderItemName}>{item.emoji} {item.name}</Text>
+                <Text style={s.orderItemName}>{item.emoji || "💊"} {item.name}</Text>
                 <Text style={s.orderItemQty}>×{item.qty}</Text>
                 <Text style={s.orderItemPrice}>Rs. {(item.price * item.qty).toLocaleString()}</Text>
               </View>
@@ -390,6 +433,7 @@ export default function PharmacyScreen() {
           </Pressable>
         </ScrollView>
       </Modal>
+
     </View>
   );
 }
@@ -470,8 +514,8 @@ const s = StyleSheet.create({
   successIcon: { marginBottom: 12 },
   successTitle: { fontFamily: "Inter_700Bold", fontSize: 24, color: C.text, marginBottom: 8 },
   successSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 16 },
-  successMeta: { flexDirection: "row", alignItems: "flex-start", gap: 6, backgroundColor: "#F8FAFC", padding: 10, borderRadius: 10, marginBottom: 20, width: "100%" },
-  successMetaTxt: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, flex: 1 },
-  successBtn: { backgroundColor: "#7C3AED", borderRadius: 12, paddingVertical: 13, paddingHorizontal: 24, alignItems: "center", width: "100%" },
-  successBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+  successMeta: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginBottom: 20, width: "100%" },
+  successMetaTxt: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, flex: 1 },
+  successBtn: { width: "100%", alignItems: "center", backgroundColor: "#7C3AED", borderRadius: 14, paddingVertical: 14 },
+  successBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" },
 });

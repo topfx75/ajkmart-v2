@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { Alert } from "react-native";
 
 export interface CartItem {
   productId: string;
@@ -41,9 +42,33 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const existing = items.find(i => i.productId === item.productId);
     if (existing) {
       save(items.map(i => i.productId === item.productId ? { ...i, quantity: i.quantity + 1 } : i));
-    } else {
-      save([...items, { ...item, type: item.type || "mart" }]);
+      return;
     }
+
+    const types = [...new Set(items.map(i => i.type))];
+    const currentType = types.length === 1 ? types[0] : null;
+
+    if (currentType && currentType !== item.type && items.length > 0) {
+      const existingTypeName = currentType === "mart" ? "Mart" : "Food";
+      const newTypeName = item.type === "mart" ? "Mart" : "Food";
+      Alert.alert(
+        "Mixed Cart",
+        `Your cart has items from ${existingTypeName}. Adding ${newTypeName} items will clear your cart. Continue?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Yes, Clear & Add",
+            style: "destructive",
+            onPress: () => {
+              save([{ ...item, type: item.type || "mart" }]);
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    save([...items, { ...item, type: item.type || "mart" }]);
   };
 
   const removeItem = (productId: string) => save(items.filter(i => i.productId !== productId));

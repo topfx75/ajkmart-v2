@@ -351,6 +351,286 @@ paths:
               schema:
                 $ref: "#/components/schemas/FareEstimate"
 
+  /rides/stops:
+    get:
+      operationId: getRideStops
+      tags: [rides]
+      summary: Get popular ride stops
+      responses:
+        "200":
+          description: List of popular stops
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RideStopsResponse"
+
+  /rides/services:
+    get:
+      operationId: getRideServices
+      tags: [rides]
+      summary: Get available ride service types
+      responses:
+        "200":
+          description: List of ride service types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RideServicesResponse"
+
+  /rides/{id}/cancel:
+    patch:
+      operationId: cancelRide
+      tags: [rides]
+      summary: Cancel a ride
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Ride cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ride"
+
+  /rides/{id}/accept-bid:
+    patch:
+      operationId: acceptRideBid
+      tags: [rides]
+      summary: Accept a rider bid
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bidId:
+                  type: string
+      responses:
+        "200":
+          description: Bid accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ride"
+
+  /rides/{id}/customer-counter:
+    patch:
+      operationId: customerCounterOffer
+      tags: [rides]
+      summary: Send a customer counter offer for a ride
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                offeredFare:
+                  type: number
+      responses:
+        "200":
+          description: Counter offer sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ride"
+
+  /rides/history:
+    get:
+      operationId: getRideHistory
+      tags: [rides]
+      summary: Get customer ride history
+      responses:
+        "200":
+          description: List of past rides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RideHistoryResponse"
+
+  /pharmacy-orders:
+    post:
+      operationId: createPharmacyOrder
+      tags: [pharmacy]
+      summary: Place a pharmacy order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePharmacyOrderRequest"
+      responses:
+        "201":
+          description: Order placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PharmacyOrderResponse"
+
+  /maps/geocode:
+    get:
+      operationId: geocodeAddress
+      tags: [maps]
+      summary: Reverse geocode coordinates or forward geocode an address
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Coordinates as 'lat,lng' or address string"
+      responses:
+        "200":
+          description: Geocode result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeocodeResponse"
+
+  /school/routes:
+    get:
+      operationId: getSchoolRoutes
+      tags: [school]
+      summary: Get available school shift routes
+      responses:
+        "200":
+          description: List of school routes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchoolRoutesResponse"
+
+  /school/subscribe:
+    post:
+      operationId: subscribeSchoolRoute
+      tags: [school]
+      summary: Subscribe a student to a school route
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchoolSubscribeRequest"
+      responses:
+        "200":
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  subscriptionId:
+                    type: string
+
+  /parcel-bookings/estimate:
+    post:
+      operationId: estimateParcel
+      tags: [parcel]
+      summary: Get parcel delivery fare estimate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParcelEstimateRequest"
+      responses:
+        "200":
+          description: Parcel fare estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParcelEstimateResponse"
+
+  /parcel-bookings:
+    get:
+      operationId: getParcelBookings
+      tags: [parcel]
+      summary: List user parcel bookings
+      responses:
+        "200":
+          description: List of parcel bookings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParcelBookingsResponse"
+    post:
+      operationId: createParcelBooking
+      tags: [parcel]
+      summary: Create a parcel booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateParcelBookingRequest"
+      responses:
+        "201":
+          description: Parcel booking created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParcelBooking"
+
+  /parcel-bookings/{id}:
+    get:
+      operationId: getParcelBooking
+      tags: [parcel]
+      summary: Get a parcel booking by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Parcel booking details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParcelBooking"
+
+  /payments/methods:
+    get:
+      operationId: getPaymentMethods
+      tags: [payments]
+      summary: Get available payment methods
+      responses:
+        "200":
+          description: List of payment methods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethodsResponse"
+
   /locations/update:
     post:
       operationId: updateLocation
@@ -616,6 +896,205 @@ components:
           enum: [cash, wallet]
       required: [userId, type, items, paymentMethod]
 
+    RideStop:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        nameUrdu:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        category:
+          type: string
+        icon:
+          type: string
+      required: [id, name, lat, lng]
+
+    RideStopsResponse:
+      type: object
+      properties:
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/RideStop"
+      required: [locations]
+
+    RideService:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        nameUrdu:
+          type: string
+        icon:
+          type: string
+        description:
+          type: string
+        color:
+          type: string
+        baseFare:
+          type: number
+        perKm:
+          type: number
+        minFare:
+          type: number
+        maxPassengers:
+          type: number
+        allowBargaining:
+          type: boolean
+      required: [key, name, icon, color, baseFare, perKm, minFare, maxPassengers, allowBargaining]
+
+    RideServicesResponse:
+      type: object
+      properties:
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/RideService"
+      required: [services]
+
+    ParcelEstimateRequest:
+      type: object
+      properties:
+        parcelType:
+          type: string
+        weight:
+          type: number
+      required: [parcelType]
+
+    ParcelEstimateResponse:
+      type: object
+      properties:
+        fare:
+          type: number
+        estimatedTime:
+          type: string
+        parcelType:
+          type: string
+        baseFee:
+          type: number
+        perKgRate:
+          type: number
+        weightKg:
+          type: number
+      required: [fare, estimatedTime]
+
+    ParcelBooking:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        senderName:
+          type: string
+        senderPhone:
+          type: string
+        pickupAddress:
+          type: string
+        receiverName:
+          type: string
+        receiverPhone:
+          type: string
+        dropAddress:
+          type: string
+        parcelType:
+          type: string
+        weight:
+          type: number
+        description:
+          type: string
+        fare:
+          type: number
+        paymentMethod:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, picked_up, in_transit, delivered, cancelled]
+        estimatedTime:
+          type: string
+        riderId:
+          type: string
+        createdAt:
+          type: string
+      required: [id, userId, senderName, senderPhone, pickupAddress, receiverName, receiverPhone, dropAddress, parcelType, fare, paymentMethod, status, createdAt]
+
+    ParcelBookingsResponse:
+      type: object
+      properties:
+        bookings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParcelBooking"
+        total:
+          type: number
+      required: [bookings, total]
+
+    CreateParcelBookingRequest:
+      type: object
+      properties:
+        senderName:
+          type: string
+        senderPhone:
+          type: string
+        pickupAddress:
+          type: string
+        receiverName:
+          type: string
+        receiverPhone:
+          type: string
+        dropAddress:
+          type: string
+        parcelType:
+          type: string
+        weight:
+          type: number
+        description:
+          type: string
+        paymentMethod:
+          type: string
+          enum: [cash, wallet]
+      required: [senderName, senderPhone, pickupAddress, receiverName, receiverPhone, dropAddress, parcelType, paymentMethod]
+
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        logo:
+          type: string
+        available:
+          type: boolean
+        mode:
+          type: string
+        description:
+          type: string
+        maxAmount:
+          type: number
+        fee:
+          type: number
+        freeAbove:
+          type: number
+      required: [id, label, available]
+
+    PaymentMethodsResponse:
+      type: object
+      properties:
+        methods:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentMethod"
+      required: [methods]
+
     UpdateOrderStatusRequest:
       type: object
       properties:
@@ -804,3 +1283,107 @@ components:
           items:
             $ref: "#/components/schemas/Category"
       required: [categories]
+
+    RideHistoryResponse:
+      type: object
+      properties:
+        rides:
+          type: array
+          items:
+            $ref: "#/components/schemas/Ride"
+      required: [rides]
+
+    SchoolRoute:
+      type: object
+      properties:
+        id:
+          type: string
+        schoolName:
+          type: string
+        area:
+          type: string
+        pickupTime:
+          type: string
+        dropoffTime:
+          type: string
+        monthlyFare:
+          type: number
+      required: [id, schoolName, area, monthlyFare]
+
+    SchoolRoutesResponse:
+      type: object
+      properties:
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SchoolRoute"
+      required: [routes]
+
+    SchoolSubscribeRequest:
+      type: object
+      properties:
+        routeId:
+          type: string
+        studentName:
+          type: string
+        studentClass:
+          type: string
+        paymentMethod:
+          type: string
+          enum: [cash, wallet]
+      required: [routeId, studentName, studentClass, paymentMethod]
+
+    GeocodeResponse:
+      type: object
+      properties:
+        formattedAddress:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        placeId:
+          type: string
+
+    PharmacyOrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        quantity:
+          type: integer
+      required: [id, name, price, quantity]
+
+    CreatePharmacyOrderRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PharmacyOrderItem"
+        prescriptionNote:
+          type: string
+          nullable: true
+        deliveryAddress:
+          type: string
+        contactPhone:
+          type: string
+        paymentMethod:
+          type: string
+          enum: [cash, wallet]
+      required: [items, deliveryAddress, contactPhone, paymentMethod]
+
+    PharmacyOrderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        estimatedMinutes:
+          type: integer
+      required: [id, status]

@@ -182,6 +182,126 @@ export interface CreateOrderRequest {
   paymentMethod: CreateOrderRequestPaymentMethod;
 }
 
+export interface RideStop {
+  id: string;
+  name: string;
+  nameUrdu?: string;
+  lat: number;
+  lng: number;
+  category?: string;
+  icon?: string;
+}
+
+export interface RideStopsResponse {
+  locations: RideStop[];
+}
+
+export interface RideService {
+  key: string;
+  name: string;
+  nameUrdu?: string;
+  icon: string;
+  description?: string;
+  color: string;
+  baseFare: number;
+  perKm: number;
+  minFare: number;
+  maxPassengers: number;
+  allowBargaining: boolean;
+}
+
+export interface RideServicesResponse {
+  services: RideService[];
+}
+
+export interface ParcelEstimateRequest {
+  parcelType: string;
+  weight?: number;
+}
+
+export interface ParcelEstimateResponse {
+  fare: number;
+  estimatedTime: string;
+  parcelType?: string;
+  baseFee?: number;
+  perKgRate?: number;
+  weightKg?: number;
+}
+
+export type ParcelBookingStatus =
+  (typeof ParcelBookingStatus)[keyof typeof ParcelBookingStatus];
+
+export const ParcelBookingStatus = {
+  pending: "pending",
+  accepted: "accepted",
+  picked_up: "picked_up",
+  in_transit: "in_transit",
+  delivered: "delivered",
+  cancelled: "cancelled",
+} as const;
+
+export interface ParcelBooking {
+  id: string;
+  userId: string;
+  senderName: string;
+  senderPhone: string;
+  pickupAddress: string;
+  receiverName: string;
+  receiverPhone: string;
+  dropAddress: string;
+  parcelType: string;
+  weight?: number;
+  description?: string;
+  fare: number;
+  paymentMethod: string;
+  status: ParcelBookingStatus;
+  estimatedTime?: string;
+  riderId?: string;
+  createdAt: string;
+}
+
+export interface ParcelBookingsResponse {
+  bookings: ParcelBooking[];
+  total: number;
+}
+
+export type CreateParcelBookingRequestPaymentMethod =
+  (typeof CreateParcelBookingRequestPaymentMethod)[keyof typeof CreateParcelBookingRequestPaymentMethod];
+
+export const CreateParcelBookingRequestPaymentMethod = {
+  cash: "cash",
+  wallet: "wallet",
+} as const;
+
+export interface CreateParcelBookingRequest {
+  senderName: string;
+  senderPhone: string;
+  pickupAddress: string;
+  receiverName: string;
+  receiverPhone: string;
+  dropAddress: string;
+  parcelType: string;
+  weight?: number;
+  description?: string;
+  paymentMethod: CreateParcelBookingRequestPaymentMethod;
+}
+
+export interface PaymentMethod {
+  id: string;
+  label: string;
+  logo?: string;
+  available: boolean;
+  mode?: string;
+  description?: string;
+  maxAmount?: number;
+  fee?: number;
+  freeAbove?: number;
+}
+
+export interface PaymentMethodsResponse {
+  methods: PaymentMethod[];
+}
+
 export type UpdateOrderStatusRequestStatus =
   (typeof UpdateOrderStatusRequestStatus)[keyof typeof UpdateOrderStatusRequestStatus];
 
@@ -352,6 +472,74 @@ export interface CategoryListResponse {
   categories: Category[];
 }
 
+export interface RideHistoryResponse {
+  rides: Ride[];
+}
+
+export interface SchoolRoute {
+  id: string;
+  schoolName: string;
+  area: string;
+  pickupTime?: string;
+  dropoffTime?: string;
+  monthlyFare: number;
+}
+
+export interface SchoolRoutesResponse {
+  routes: SchoolRoute[];
+}
+
+export type SchoolSubscribeRequestPaymentMethod =
+  (typeof SchoolSubscribeRequestPaymentMethod)[keyof typeof SchoolSubscribeRequestPaymentMethod];
+
+export const SchoolSubscribeRequestPaymentMethod = {
+  cash: "cash",
+  wallet: "wallet",
+} as const;
+
+export interface SchoolSubscribeRequest {
+  routeId: string;
+  studentName: string;
+  studentClass: string;
+  paymentMethod: SchoolSubscribeRequestPaymentMethod;
+}
+
+export interface GeocodeResponse {
+  formattedAddress?: string;
+  lat?: number;
+  lng?: number;
+  placeId?: string;
+}
+
+export interface PharmacyOrderItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+export type CreatePharmacyOrderRequestPaymentMethod =
+  (typeof CreatePharmacyOrderRequestPaymentMethod)[keyof typeof CreatePharmacyOrderRequestPaymentMethod];
+
+export const CreatePharmacyOrderRequestPaymentMethod = {
+  cash: "cash",
+  wallet: "wallet",
+} as const;
+
+export interface CreatePharmacyOrderRequest {
+  items: PharmacyOrderItem[];
+  prescriptionNote?: string | null;
+  deliveryAddress: string;
+  contactPhone: string;
+  paymentMethod: CreatePharmacyOrderRequestPaymentMethod;
+}
+
+export interface PharmacyOrderResponse {
+  id: string;
+  status: string;
+  estimatedMinutes?: number;
+}
+
 export type GetProfileParams = {
   userId: string;
 };
@@ -377,6 +565,30 @@ export type GetOrdersParams = {
 
 export type GetWalletParams = {
   userId: string;
+};
+
+export type CancelRideBody = {
+  reason?: string;
+};
+
+export type AcceptRideBidBody = {
+  bidId?: string;
+};
+
+export type CustomerCounterOfferBody = {
+  offeredFare?: number;
+};
+
+export type GeocodeAddressParams = {
+  /**
+   * Coordinates as 'lat,lng' or address string
+   */
+  address: string;
+};
+
+export type SubscribeSchoolRoute200 = {
+  message?: string;
+  subscriptionId?: string;
 };
 
 export type GetCategoriesParams = {

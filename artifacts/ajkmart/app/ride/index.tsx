@@ -24,10 +24,24 @@ import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import {
+  estimateFare, bookRide,
+  getRide as getRideApi,
+  getRideStops, getRideServices,
+  getPaymentMethods,
+  cancelRide as cancelRideApi,
+  acceptRideBid as acceptRideBidApi,
+  customerCounterOffer as customerCounterOfferApi,
+  updateLocation,
+  getRideHistory,
+  getSchoolRoutes,
+  subscribeSchoolRoute,
+  geocodeAddress,
+} from "@workspace/api-client-react";
+import type { BookRideRequest, EstimateFareRequest } from "@workspace/api-client-react";
 
 const C   = Colors.light;
 const W   = Dimensions.get("window").width;
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 /* ─── Haversine distance (km) ─── */
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -121,18 +135,11 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
   const [showUpdateOffer,   setShowUpdateOffer]    = useState(false);
   const [acceptBidId,       setAcceptBidId]        = useState<string | null>(null);  /* which bid is loading */
 
-  const authHdrs = token ? { Authorization: `Bearer ${token}` } : {};
-
   const acceptBid = async (bidId: string) => {
     setAcceptBidId(bidId);
     try {
-      const r = await fetch(`${API}/rides/${rideId}/accept-bid`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHdrs },
-        body: JSON.stringify({ bidId }),
-      });
-      const d = await r.json();
-      if (r.ok) setRide(d);
+      const d = await acceptRideBidApi(rideId, { bidId });
+      setRide(d as typeof ride);
     } catch {}
     setAcceptBidId(null);
   };
@@ -142,23 +149,20 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
     if (isNaN(amt) || amt <= 0) return;
     setUpdateOfferLoading(true);
     try {
-      const r = await fetch(`${API}/rides/${rideId}/customer-counter`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHdrs },
-        body: JSON.stringify({ offeredFare: amt }),
-      });
-      const d = await r.json();
-      if (r.ok) { setRide(d); setUpdateOfferInput(""); setShowUpdateOffer(false); }
+      const d = await customerCounterOfferApi(rideId, { offeredFare: amt });
+      setRide(d as typeof ride);
+      setUpdateOfferInput("");
+      setShowUpdateOffer(false);
     } catch {}
     setUpdateOfferLoading(false);
   };
 
-  /* ── Poll every 5s ── */
+  /* ── Poll ride status every 5s (via api-client-react) ── */
   useEffect(() => {
     const poll = async () => {
       try {
-        const r = await fetch(`${API}/rides/${rideId}`, { headers: authHdrs });
-        if (r.ok) setRide(await r.json());
+        const d = await getRideApi(rideId);
+        setRide(d as typeof ride);
       } catch {}
     };
     poll();
@@ -166,23 +170,18 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
     return () => clearInterval(iv);
   }, [rideId]);
 
-  const cancelRide = async () => {
+  const cancelRideHandler = async () => {
     setCancelling(true);
     setShowCancelModal(false);
     try {
-      await fetch(`${API}/rides/${rideId}/cancel`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHdrs },
-        body: JSON.stringify({}),
-      });
+      await cancelRideApi(rideId, {});
     } catch {}
     setCancelling(false);
   };
 
   const openInMaps = () => {
-    const oLat = ride?.pickupLat ?? 34.37, oLng = ride?.pickupLng ?? 73.47;
-    const dLat = ride?.dropLat   ?? 33.14, dLng = ride?.dropLng   ?? 73.75;
-    Linking.openURL(`https://www.google.com/maps/dir/?api=1&origin=${oLat},${oLng}&destination=${dLat},${dLng}&travelmode=driving`);
+    if (!ride?.pickupLat || !ride?.pickupLng || !ride?.dropLat || !ride?.dropLng) return;
+    Linking.openURL(`https://www.google.com/maps/dir/?api=1&origin=${ride.pickupLat},${ride.pickupLng}&destination=${ride.dropLat},${ride.dropLng}&travelmode=driving`);
   };
 
   const status   = ride?.status ?? "searching";
@@ -356,7 +355,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                 <Pressable onPress={() => setShowCancelModal(false)} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#F3F4F6" }}>
                   <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#374151" }}>Back</Text>
                 </Pressable>
-                <Pressable onPress={cancelRide} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
+                <Pressable onPress={cancelRideHandler} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
                   {cancelling
                     ? <ActivityIndicator color="#fff" size="small" />
                     : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Yes, Cancel</Text>}
@@ -450,7 +449,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                 <Pressable onPress={() => setShowCancelModal(false)} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#F3F4F6" }}>
                   <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#374151" }}>Back</Text>
                 </Pressable>
-                <Pressable onPress={cancelRide} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
+                <Pressable onPress={cancelRideHandler} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
                   {cancelling
                     ? <ActivityIndicator color="#fff" size="small" />
                     : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Yes, Cancel</Text>}
@@ -842,7 +841,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
               <Pressable onPress={() => setShowCancelModal(false)} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#F3F4F6" }}>
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#374151" }}>Back</Text>
               </Pressable>
-              <Pressable onPress={cancelRide} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
+              <Pressable onPress={cancelRideHandler} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
                 {cancelling
                   ? <ActivityIndicator color="#fff" size="small" />
                   : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Yes, Cancel</Text>}
@@ -862,6 +861,8 @@ export default function RideScreen() {
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
   const rideCfg = config.rides;
+  const inMaintenance = config.appStatus === "maintenance";
+  const ridesEnabled = config.features.rides;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   type LocObj = { lat: number; lng: number; address: string };
@@ -892,6 +893,7 @@ export default function RideScreen() {
   const [history,    setHistory]   = useState<any[]>([]);
   const [histLoading,setHistLoading] = useState(false);
   const [locLoading, setLocLoading] = useState(false);
+  const [locDenied,  setLocDenied]  = useState(false);
   const [showBargain,setShowBargain] = useState(false);
   const [offeredFare,setOfferedFare] = useState("");
   const [bargainNote,setBargainNote] = useState("");
@@ -912,29 +914,27 @@ export default function RideScreen() {
   const { predictions: pickupPreds, loading: pickupLoading } = useMapsAutocomplete(pickupFocus ? pickup : "");
   const { predictions: dropPreds,   loading: dropLoading }   = useMapsAutocomplete(dropFocus   ? drop   : "");
 
-  /* ── Fetch popular spots from API ── */
+  /* ── Fetch popular spots (via api-client-react) ── */
   useEffect(() => {
-    fetch(`${API}/rides/stops`)
-      .then(r => r.ok ? r.json() : null)
+    getRideStops()
       .then(data => { if (data?.locations?.length) setPopularSpots(data.locations); })
       .catch(() => {});
   }, []);
 
-  /* ── Fetch school routes when school_shift is selected ── */
+  /* ── Fetch school routes when school_shift is selected (via api-client-react) ── */
   useEffect(() => {
     if (rideType !== "school_shift") return;
-    fetch(`${API}/school/routes`)
-      .then(r => r.ok ? r.json() : null)
+    getSchoolRoutes()
       .then(data => { if (data?.routes?.length) setSchoolRoutes(data.routes); })
       .catch(() => {});
   }, [rideType]);
 
-  /* ── Fetch enabled payment methods from admin config ── */
+  /* ── Fetch enabled payment methods (via api-client-react) ── */
   useEffect(() => {
-    fetch(`${API}/payments/methods`)
-      .then(r => r.json())
-      .then((methods: Array<{ id: string; label: string }>) => {
-        const rideCompatible = methods.filter(m => m.id === "cash" || m.id === "wallet");
+    getPaymentMethods()
+      .then(data => {
+        if (!data?.methods) return;
+        const rideCompatible = data.methods.filter(m => m.id === "cash" || m.id === "wallet");
         if (rideCompatible.length > 0) {
           setPayMethods(rideCompatible);
           setPayMethod(rideCompatible[0]!.id as "cash" | "wallet");
@@ -943,14 +943,13 @@ export default function RideScreen() {
       .catch(() => {});
   }, []);
 
-  /* ── Fetch enabled ride service types from admin ── */
+  /* ── Fetch enabled ride service types (via api-client-react) ── */
   useEffect(() => {
-    fetch(`${API}/rides/services`)
-      .then(r => r.ok ? r.json() : null)
+    getRideServices()
       .then(data => {
-        if (!data?.services || data.services.length === 0) return;
+        if (!data?.services?.length) return;
         setServices(data.services);
-        setRideType(prev => data.services.find((s: any) => s.key === prev) ? prev : data.services[0].key);
+        setRideType(prev => data.services.find(s => s.key === prev) ? prev : data.services[0]!.key);
       })
       .catch(() => {});
   }, []);
@@ -958,16 +957,17 @@ export default function RideScreen() {
   /* ── Get device location for pickup auto-fill ── */
   const handleMyLocation = async () => {
     setLocLoading(true);
+    setLocDenied(false);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") { showToast("Location permission nahi mili", "error"); return; }
+      if (status !== "granted") { setLocDenied(true); return; }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude: lat, longitude: lng } = pos.coords;
-      const res  = await fetch(`https://${process.env.EXPO_PUBLIC_DOMAIN}/api/maps/geocode?address=${lat},${lng}`);
-      const data = await res.json();
-      const address = data.formattedAddress ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      const data = await geocodeAddress({ address: `${lat},${lng}` });
+      const address = data?.formattedAddress ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       setPickup(address);
       setPickupObj({ lat, lng, address });
+      setLocDenied(false);
     } catch {
       showToast("Location nahi mil saki. Manually likhein.", "error");
     } finally {
@@ -980,26 +980,21 @@ export default function RideScreen() {
     if (!pickupObj || !dropObj) { setEstimate(null); return; }
     let cancelled = false;
     setEstimating(true);
-    fetch(`${API}/rides/estimate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pickupLat: pickupObj.lat, pickupLng: pickupObj.lng,
-        dropLat:   dropObj.lat,   dropLng:   dropObj.lng,
-        type: rideType,
-      }),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
+    estimateFare({
+      pickupLat: pickupObj.lat, pickupLng: pickupObj.lng,
+      dropLat:   dropObj.lat,   dropLng:   dropObj.lng,
+      type: rideType,
+    } as EstimateFareRequest)
+      .then((data: Record<string, unknown> & { fare: number; distance: number; duration: string }) => {
         if (cancelled || !data) return;
         setEstimate({
           fare:           data.fare,
           dist:           data.distance,
           dur:            data.duration,
-          baseFare:       data.baseFare ?? data.fare,
-          gstAmount:      data.gstAmount ?? 0,
-          bargainEnabled: data.bargainEnabled ?? false,
-          minOffer:       data.minOffer ?? data.fare,
+          baseFare:       (data.baseFare as number | undefined) ?? data.fare,
+          gstAmount:      (data.gstAmount as number | undefined) ?? 0,
+          bargainEnabled: (data.bargainEnabled as boolean | undefined) ?? false,
+          minOffer:       (data.minOffer as number | undefined) ?? data.fare,
         });
       })
       .catch(() => {
@@ -1046,17 +1041,12 @@ export default function RideScreen() {
     if (!schoolClass.trim())   { showToast("Student ki class likhein", "error"); return; }
     setSubscribing(true);
     try {
-      const res = await fetch(`${API}/school/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({
-          routeId: selectedRoute.id,
-          studentName: schoolStudent.trim(), studentClass: schoolClass.trim(),
-          paymentMethod: payMethod,
-        }),
+      const json = await subscribeSchoolRoute({
+        routeId: selectedRoute.id,
+        studentName: schoolStudent.trim(),
+        studentClass: schoolClass.trim(),
+        paymentMethod: payMethod as "cash" | "wallet",
       });
-      const json = await res.json();
-      if (!res.ok) { showToast(json.error || "Subscribe nahi ho saka", "error"); return; }
       setShowSchoolModal(false);
       setSelectedRoute(null); setSchoolStudent(""); setSchoolClass("");
       showToast(`🎉 ${schoolStudent} ko ${selectedRoute.schoolName} ke liye subscribe kar diya!`, "success");
@@ -1094,25 +1084,22 @@ export default function RideScreen() {
 
     setBooking(true);
     try {
-      const res = await fetch(`${API}/rides`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({
-          type: rideType,
-          pickupAddress: pickup, dropAddress: drop,
-          pickupLat: pickupObj.lat, pickupLng: pickupObj.lng,
-          dropLat:   dropObj.lat,   dropLng:   dropObj.lng,
-          paymentMethod: payMethod,
-          ...(parsedOffer !== undefined && { offeredFare: parsedOffer }),
-          ...(bargainNote && { bargainNote }),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.error || "Booking fail ho gayi", "error"); return; }
-      if (payMethod === "wallet" && !data.isBargaining) {
-        updateUser({ walletBalance: (user.walletBalance ?? 0) - data.effectiveFare });
+      const rideData = await bookRide({
+        userId: user.id,
+        type: rideType,
+        pickupAddress: pickup, dropAddress: drop,
+        pickupLat: pickupObj.lat, pickupLng: pickupObj.lng,
+        dropLat:   dropObj.lat,   dropLng:   dropObj.lng,
+        paymentMethod: payMethod,
+        ...(parsedOffer !== undefined && { offeredFare: parsedOffer }),
+        ...(bargainNote && { bargainNote }),
+      } as BookRideRequest);
+      type BookedRide = typeof rideData & { isBargaining?: boolean; effectiveFare?: number };
+      const bookedRide = rideData as BookedRide;
+      if (payMethod === "wallet" && !bookedRide.isBargaining) {
+        updateUser({ walletBalance: (user.walletBalance ?? 0) - (bookedRide.effectiveFare ?? bookedRide.fare) });
       }
-      setBooked(data);
+      setBooked(bookedRide);
 
       /* ── Fire-and-forget: save customer GPS at booking time ── */
       (async () => {
@@ -1120,16 +1107,11 @@ export default function RideScreen() {
           const perm = await Location.getForegroundPermissionsAsync();
           if (perm.status !== "granted") return;
           const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          await fetch(`${API}/locations/update`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-            body: JSON.stringify({
-              latitude:  pos.coords.latitude,
-              longitude: pos.coords.longitude,
-              accuracy:  pos.coords.accuracy ?? null,
-              role:      "customer",
-              action:    "ride_booked",
-            }),
+          await updateLocation({
+            userId: user?.id ?? "",
+            latitude:  pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            role:      "customer",
           });
         } catch { /* silent — never block the user flow */ }
       })();
@@ -1141,12 +1123,29 @@ export default function RideScreen() {
     if (!user) return;
     setHistLoading(true);
     try {
-      const res = await fetch(`${API}/rides`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      const data = await res.json();
-      setHistory(data.rides || []);
+      const data = await getRideHistory();
+      setHistory(data?.rides || []);
     } catch { setHistory([]); }
     finally { setHistLoading(false); }
   };
+
+  /* ── Maintenance blocks ALL states including active ride ── */
+  if (inMaintenance) {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background, justifyContent: "center", alignItems: "center", padding: 32 }}>
+        <View style={{ backgroundColor: "#fff", borderRadius: 20, padding: 32, alignItems: "center", width: "100%", borderWidth: 1, borderColor: "#FEF3C7" }}>
+          <Text style={{ fontSize: 52, marginBottom: 12 }}>🔧</Text>
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#D97706", marginBottom: 8, textAlign: "center" }}>Under Maintenance</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 20 }}>
+            {config.content.maintenanceMsg}
+          </Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, textAlign: "center" }}>
+            Please check back later. We apologize for the inconvenience.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   if (booked) {
     return (
@@ -1158,6 +1157,26 @@ export default function RideScreen() {
         cancellationFee={rideCfg.cancellationFee ?? 30}
         onReset={() => { setBooked(null); setPickup(""); setDrop(""); setPickupObj(null); setDropObj(null); setEstimate(null); }}
       />
+    );
+  }
+
+  if (!ridesEnabled) {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background, justifyContent: "center", alignItems: "center", padding: 32 }}>
+        <Pressable onPress={() => router.back()} style={{ position: "absolute", top: topPad + 12, left: 16 }}>
+          <Ionicons name="arrow-back" size={24} color={C.text} />
+        </Pressable>
+        <View style={{ backgroundColor: "#fff", borderRadius: 20, padding: 32, alignItems: "center", width: "100%", borderWidth: 1, borderColor: "#FEE2E2" }}>
+          <Text style={{ fontSize: 52, marginBottom: 12 }}>🚫</Text>
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#EF4444", marginBottom: 8, textAlign: "center" }}>Service Unavailable</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 20 }}>
+            Ride service filhaal available nahi hai.{"\n"}Thodi der baad dobara try karein.
+          </Text>
+          <Pressable style={{ width: "100%", alignItems: "center", backgroundColor: "#FEF2F2", borderRadius: 14, paddingVertical: 14 }} onPress={() => router.back()}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#EF4444" }}>Back to Home</Text>
+          </Pressable>
+        </View>
+      </View>
     );
   }
 
@@ -1188,10 +1207,20 @@ export default function RideScreen() {
           <Pressable onPress={handleMyLocation} disabled={locLoading} style={rs.myLocBtn}>
             {locLoading
               ? <ActivityIndicator size="small" color="#059669" />
-              : <Ionicons name="locate-outline" size={14} color="#059669" />
+              : <Ionicons name="locate-outline" size={14} color={locDenied ? "#DC2626" : "#059669"} />
             }
-            <Text style={rs.myLocTxt}>{locLoading ? "Locating..." : "Use my location"}</Text>
+            <Text style={[rs.myLocTxt, locDenied && { color: "#DC2626" }]}>
+              {locLoading ? "Locating..." : locDenied ? "Location access required — tap to retry" : "Use my location"}
+            </Text>
           </Pressable>
+          {locDenied && (
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 4, paddingBottom: 4, gap: 6 }}>
+              <Ionicons name="warning-outline" size={12} color="#DC2626" />
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#DC2626", flex: 1 }}>
+                Location permission denied. Enable it in device settings or type your pickup manually.
+              </Text>
+            </View>
+          )}
 
           {/* Pickup */}
           <View style={rs.locRow}>
@@ -1661,6 +1690,7 @@ export default function RideScreen() {
           </ScrollView>
         </View>
       </Modal>
+
     </View>
   );
 }
