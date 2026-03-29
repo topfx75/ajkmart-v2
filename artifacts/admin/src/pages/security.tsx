@@ -10,15 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-type SecTab = "auth" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud";
+type SecTab = "auth" | "authmethods" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud";
 
 const SEC_TABS: { id: SecTab; label: string; emoji: string; active: string; desc: string }[] = [
-  { id: "auth",      label: "Auth & Sessions", emoji: "🔐", active: "bg-indigo-600",  desc: "OTP bypass, MFA, login lockout, session durations" },
-  { id: "ratelimit", label: "Rate Limiting",   emoji: "🛡️", active: "bg-blue-600",    desc: "API throttling and VPN/TOR blocking" },
-  { id: "gps",       label: "GPS & Location",  emoji: "📍", active: "bg-green-600",   desc: "Rider tracking, spoof detection, geofence" },
-  { id: "passwords", label: "Passwords",       emoji: "🔑", active: "bg-amber-600",   desc: "Password policy, JWT rotation, token expiry" },
-  { id: "uploads",   label: "File Uploads",    emoji: "📁", active: "bg-teal-600",    desc: "Upload limits, allowed file types, compression" },
-  { id: "fraud",     label: "Fraud Detection", emoji: "🚨", active: "bg-red-600",     desc: "Fake orders, IP auto-block, account limits, IP whitelist" },
+  { id: "auth",        label: "Auth & Sessions",  emoji: "🔐", active: "bg-indigo-600",  desc: "OTP bypass, MFA, login lockout, session durations" },
+  { id: "authmethods", label: "Auth Methods",      emoji: "🔑", active: "bg-cyan-600",    desc: "Per-role login method toggles: Phone OTP, Email OTP, Username/Password, Social, Magic Link, 2FA, Biometric" },
+  { id: "ratelimit",   label: "Rate Limiting",     emoji: "🛡️", active: "bg-blue-600",    desc: "API throttling and VPN/TOR blocking" },
+  { id: "gps",         label: "GPS & Location",    emoji: "📍", active: "bg-green-600",   desc: "Rider tracking, spoof detection, geofence" },
+  { id: "passwords",   label: "Passwords",         emoji: "🔑", active: "bg-amber-600",   desc: "Password policy, JWT rotation, token expiry" },
+  { id: "uploads",     label: "File Uploads",      emoji: "📁", active: "bg-teal-600",    desc: "Upload limits, allowed file types, compression" },
+  { id: "fraud",       label: "Fraud Detection",   emoji: "🚨", active: "bg-red-600",     desc: "Fake orders, IP auto-block, account limits, IP whitelist" },
 ];
 
 function Toggle({ checked, onChange, label, isDirty, danger, sub }: {
@@ -255,6 +256,194 @@ export default function SecurityPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <N k="security_login_max_attempts" label="Max Failed Login Attempts" placeholder="5"  hint="Before account lockout" />
               <N k="security_lockout_minutes"    label="Lockout Duration"          suffix="min"     placeholder="30" hint="0 = permanent until admin unlocks" />
+            </div>
+          </SecPanel>
+        </div>
+      )}
+
+      {/* ─── Auth Methods (per-role) ─── */}
+      {secTab === "authmethods" && (
+        <div className="space-y-4">
+          <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-3 text-xs text-cyan-800 flex gap-2 mb-1">
+            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>
+              Each auth method can be enabled or disabled per role (Customer, Rider, Vendor).
+              Values are stored as JSON: <code className="font-mono bg-white/60 px-1 rounded">{`{"customer":"on","rider":"on","vendor":"off"}`}</code>.
+              Changes take effect immediately for all apps.
+            </span>
+          </div>
+
+          {(() => {
+            const ROLE_AUTH_KEYS: { key: string; label: string; sub: string }[] = [
+              { key: "auth_phone_otp_enabled",         label: "Phone OTP Login",          sub: "Send OTP via SMS to verify phone number" },
+              { key: "auth_email_otp_enabled",         label: "Email OTP Login",          sub: "Send OTP via email to verify address" },
+              { key: "auth_username_password_enabled", label: "Username / Password Login", sub: "Traditional username + password credentials" },
+              { key: "auth_email_register_enabled",    label: "Email Registration",       sub: "Allow sign-up with email (no phone OTP)" },
+              { key: "auth_magic_link_enabled",        label: "Magic Link Login",         sub: "Send one-click login link via email" },
+              { key: "auth_2fa_enabled",               label: "Two-Factor Auth (TOTP)",   sub: "Require authenticator app code after login" },
+              { key: "auth_biometric_enabled",         label: "Biometric Login",          sub: "Fingerprint / Face ID on mobile devices" },
+            ];
+            const ROLES = ["customer", "rider", "vendor"] as const;
+            const ROLE_LABELS: Record<string, string> = { customer: "Customer", rider: "Rider", vendor: "Vendor" };
+            const ROLE_COLORS: Record<string, { on: string; off: string; bg: string }> = {
+              customer: { on: "bg-blue-500",   off: "bg-gray-300", bg: "text-blue-700"  },
+              rider:    { on: "bg-green-500",  off: "bg-gray-300", bg: "text-green-700" },
+              vendor:   { on: "bg-orange-500", off: "bg-gray-300", bg: "text-orange-700" },
+            };
+
+            function parseRoleVal(raw: string | undefined, def: string): Record<string, boolean> {
+              if (!raw) return { customer: def === "on", rider: def === "on", vendor: def === "on" };
+              try {
+                const parsed = JSON.parse(raw) as Record<string, string>;
+                return { customer: parsed.customer === "on", rider: parsed.rider === "on", vendor: parsed.vendor === "on" };
+              } catch {
+                return { customer: raw === "on", rider: raw === "on", vendor: raw === "on" };
+              }
+            }
+
+            function toggleRole(settingKey: string, role: string, current: Record<string, boolean>) {
+              const updated = { ...current, [role]: !current[role] };
+              const jsonVal = JSON.stringify({
+                customer: updated.customer ? "on" : "off",
+                rider:    updated.rider    ? "on" : "off",
+                vendor:   updated.vendor   ? "on" : "off",
+              });
+              handleChange(settingKey, jsonVal);
+            }
+
+            return (
+              <SecPanel title="Login Methods (Per Role)" icon={KeyRound} color="text-cyan-700">
+                <div className="space-y-3">
+                  {ROLE_AUTH_KEYS.map(({ key, label, sub }) => {
+                    const def = key.includes("2fa") || key.includes("biometric") || key.includes("magic_link") ? "off" : "on";
+                    const roles = parseRoleVal(localValues[key], def);
+                    const isDirty = dirtyKeys.has(key);
+                    return (
+                      <div key={key} className={`p-3.5 rounded-xl border transition-all ${isDirty ? "ring-2 ring-amber-300 border-amber-200 bg-amber-50/30" : "border-border bg-white hover:bg-muted/20"}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground leading-snug">{label}</p>
+                            <p className="text-xs text-muted-foreground">{sub}</p>
+                          </div>
+                          {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold flex-shrink-0 ml-2">CHANGED</Badge>}
+                        </div>
+                        <div className="flex gap-2">
+                          {ROLES.map(role => {
+                            const on = roles[role];
+                            const colors = ROLE_COLORS[role];
+                            return (
+                              <button key={role} onClick={() => toggleRole(key, role, roles)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all border ${
+                                  on ? `${colors.bg} bg-opacity-10 border-current` : "text-gray-400 bg-gray-50 border-gray-200"
+                                }`}>
+                                <div className={`w-3 h-3 rounded-full ${on ? colors.on : colors.off}`} />
+                                {ROLE_LABELS[role]}
+                                <span className="text-[10px] font-bold">{on ? "ON" : "OFF"}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </SecPanel>
+            );
+          })()}
+
+          <SecPanel title="Social Login (Global)" icon={Globe} color="text-cyan-700">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex gap-2 mb-3">
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>Social logins require Client ID / App ID to be configured below. The per-role toggles above control availability; these are the global legacy toggles.</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <Toggle label="Google Login (legacy)" sub="Global on/off for Google Sign-In" checked={tog("auth_social_google")}
+                onChange={v => handleToggle("auth_social_google", v)} isDirty={dirty("auth_social_google")} />
+              <Toggle label="Facebook Login (legacy)" sub="Global on/off for Facebook Login" checked={tog("auth_social_facebook")}
+                onChange={v => handleToggle("auth_social_facebook", v)} isDirty={dirty("auth_social_facebook")} />
+            </div>
+
+            {(() => {
+              const GLOBAL_AUTH_KEYS: { key: string; label: string; sub: string }[] = [
+                { key: "auth_google_enabled",   label: "Google Login (per-role)", sub: "Per-role control for Google Sign-In" },
+                { key: "auth_facebook_enabled", label: "Facebook Login (per-role)", sub: "Per-role control for Facebook Login" },
+              ];
+              const ROLES = ["customer", "rider", "vendor"] as const;
+              const ROLE_LABELS: Record<string, string> = { customer: "Customer", rider: "Rider", vendor: "Vendor" };
+              const ROLE_COLORS: Record<string, { on: string; off: string; bg: string }> = {
+                customer: { on: "bg-blue-500",   off: "bg-gray-300", bg: "text-blue-700"  },
+                rider:    { on: "bg-green-500",  off: "bg-gray-300", bg: "text-green-700" },
+                vendor:   { on: "bg-orange-500", off: "bg-gray-300", bg: "text-orange-700" },
+              };
+              function parseRoleVal(raw: string | undefined): Record<string, boolean> {
+                if (!raw) return { customer: false, rider: false, vendor: false };
+                try {
+                  const parsed = JSON.parse(raw) as Record<string, string>;
+                  return { customer: parsed.customer === "on", rider: parsed.rider === "on", vendor: parsed.vendor === "on" };
+                } catch { return { customer: raw === "on", rider: raw === "on", vendor: raw === "on" }; }
+              }
+              function toggleRole(settingKey: string, role: string, current: Record<string, boolean>) {
+                const updated = { ...current, [role]: !current[role] };
+                handleChange(settingKey, JSON.stringify({ customer: updated.customer ? "on" : "off", rider: updated.rider ? "on" : "off", vendor: updated.vendor ? "on" : "off" }));
+              }
+              return (
+                <div className="space-y-3">
+                  {GLOBAL_AUTH_KEYS.map(({ key, label, sub }) => {
+                    const roles = parseRoleVal(localValues[key]);
+                    const isDirtyK = dirtyKeys.has(key);
+                    return (
+                      <div key={key} className={`p-3.5 rounded-xl border transition-all ${isDirtyK ? "ring-2 ring-amber-300 border-amber-200 bg-amber-50/30" : "border-border bg-white hover:bg-muted/20"}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div><p className="text-sm font-semibold text-foreground">{label}</p><p className="text-xs text-muted-foreground">{sub}</p></div>
+                          {isDirtyK && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
+                        </div>
+                        <div className="flex gap-2">
+                          {ROLES.map(role => {
+                            const on = roles[role]; const colors = ROLE_COLORS[role];
+                            return (
+                              <button key={role} onClick={() => toggleRole(key, role, roles)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all border ${on ? `${colors.bg} bg-opacity-10 border-current` : "text-gray-400 bg-gray-50 border-gray-200"}`}>
+                                <div className={`w-3 h-3 rounded-full ${on ? colors.on : colors.off}`} />
+                                {ROLE_LABELS[role]}
+                                <span className="text-[10px] font-bold">{on ? "ON" : "OFF"}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </SecPanel>
+
+          <SecPanel title="Captcha & API Keys" icon={Shield} color="text-cyan-700">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <Toggle label="reCAPTCHA v3 Verification" sub="Require captcha on login / register / OTP" checked={tog("auth_captcha_enabled")}
+                onChange={v => handleToggle("auth_captcha_enabled", v)} isDirty={dirty("auth_captcha_enabled")} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SecretInput label="reCAPTCHA Site Key" value={val("recaptcha_site_key")} onChange={v => handleChange("recaptcha_site_key", v)}
+                isDirty={dirty("recaptcha_site_key")} placeholder="6Lc..." />
+              <SecretInput label="reCAPTCHA Secret Key" value={val("recaptcha_secret_key")} onChange={v => handleChange("recaptcha_secret_key", v)}
+                isDirty={dirty("recaptcha_secret_key")} placeholder="6Lc..." />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <SecretInput label="Google Client ID" value={val("google_client_id")} onChange={v => handleChange("google_client_id", v)}
+                isDirty={dirty("google_client_id")} placeholder="xxxx.apps.googleusercontent.com" />
+              <SecretInput label="Facebook App ID" value={val("facebook_app_id")} onChange={v => handleChange("facebook_app_id", v)}
+                isDirty={dirty("facebook_app_id")} placeholder="123456789" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <Field label="reCAPTCHA Min Score" value={val("recaptcha_min_score", "0.5")} onChange={v => handleChange("recaptcha_min_score", v)}
+                isDirty={dirty("recaptcha_min_score")} type="number" placeholder="0.5" hint="0.0 to 1.0 (higher = stricter)" />
+              <Field label="OTP Resend Cooldown" value={val("security_otp_cooldown_sec", "60")} onChange={v => handleChange("security_otp_cooldown_sec", v)}
+                isDirty={dirty("security_otp_cooldown_sec")} type="number" suffix="sec" placeholder="60" hint="Seconds between OTP sends" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <Field label="Trusted Device Expiry" value={val("auth_trusted_device_days", "30")} onChange={v => handleChange("auth_trusted_device_days", v)}
+                isDirty={dirty("auth_trusted_device_days")} type="number" suffix="days" placeholder="30" hint="Skip 2FA on trusted devices" />
             </div>
           </SecPanel>
         </div>

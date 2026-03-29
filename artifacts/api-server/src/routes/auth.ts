@@ -1652,7 +1652,7 @@ router.post("/social/google", async (req, res) => {
   if (user!.isBanned) { res.status(403).json({ error: "Account suspended" }); return; }
   if (!user!.isActive && user!.approvalStatus !== "pending") { res.status(403).json({ error: "Account inactive" }); return; }
 
-  if (user!.totpEnabled && settings["auth_2fa_enabled"] === "on") {
+  if (user!.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user!.role ?? undefined)) {
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
     if (!isDeviceTrusted(user!, deviceFingerprint, trustedDays)) {
       const tempToken = sign2faChallengeToken(user!.id, user!.phone ?? "", user!.role ?? "customer", user!.roles ?? "customer");
@@ -1728,7 +1728,7 @@ router.post("/social/facebook", async (req, res) => {
   if (user!.isBanned) { res.status(403).json({ error: "Account suspended" }); return; }
   if (!user!.isActive && user!.approvalStatus !== "pending") { res.status(403).json({ error: "Account inactive" }); return; }
 
-  if (user!.totpEnabled && settings["auth_2fa_enabled"] === "on") {
+  if (user!.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user!.role ?? undefined)) {
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
     if (!isDeviceTrusted(user!, deviceFingerprint, trustedDays)) {
       const tempToken = sign2faChallengeToken(user!.id, user!.phone ?? "", user!.role ?? "customer", user!.roles ?? "customer");
@@ -1750,12 +1750,13 @@ router.get("/2fa/setup", async (req, res) => {
   if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
 
   const settings = await getCachedSettings();
-  if (settings["auth_2fa_enabled"] !== "on") {
-    res.status(403).json({ error: "Two-factor authentication is currently disabled" }); return;
-  }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
+    res.status(403).json({ error: "Two-factor authentication is currently disabled" }); return;
+  }
   if (user.totpEnabled) { res.status(409).json({ error: "2FA is already enabled" }); return; }
 
   const secret = generateTotpSecret();
@@ -1784,12 +1785,13 @@ router.post("/2fa/verify-setup", async (req, res) => {
   if (!code) { res.status(400).json({ error: "TOTP code required" }); return; }
 
   const settings = await getCachedSettings();
-  if (settings["auth_2fa_enabled"] !== "on") {
-    res.status(403).json({ error: "Two-factor authentication is currently disabled" }); return;
-  }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
+    res.status(403).json({ error: "Two-factor authentication is currently disabled" }); return;
+  }
   if (user.totpEnabled) { res.status(409).json({ error: "2FA is already enabled" }); return; }
   if (!user.totpSecret) { res.status(400).json({ error: "Please call /auth/2fa/setup first" }); return; }
 
@@ -2060,7 +2062,7 @@ router.post("/magic-link/verify", async (req, res) => {
   if (user.isBanned) { res.status(403).json({ error: "Account suspended" }); return; }
   if (!user.isActive) { res.status(403).json({ error: "Account inactive" }); return; }
 
-  if (user.totpEnabled && settings["auth_2fa_enabled"] === "on") {
+  if (user.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
     if (!isDeviceTrusted(user, deviceFingerprint ?? "", trustedDays)) {
       if (!totpCode) {

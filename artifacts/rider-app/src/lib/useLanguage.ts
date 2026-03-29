@@ -1,47 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
-import { api } from "./api";
+import { useState, useCallback } from "react";
 import type { Language } from "@workspace/i18n";
-import { DEFAULT_LANGUAGE, LANGUAGE_OPTIONS, isRTL } from "@workspace/i18n";
-
-interface SettingsResponse {
-  language?: string;
-  [key: string]: unknown;
-}
-
-const VALID_LANGS = new Set<string>(LANGUAGE_OPTIONS.map(o => o.value));
-
-function applyRTL(lang: Language) {
-  const dir = isRTL(lang) ? "rtl" : "ltr";
-  document.documentElement.setAttribute("dir", dir);
-  document.documentElement.setAttribute("lang", lang === "ur" ? "ur" : "en");
-}
 
 export function useLanguage() {
-  const [language, setLang] = useState<Language>(DEFAULT_LANGUAGE);
-  const [loading, setLoading] = useState(false);
-  const [initialised, setInitialised] = useState(false);
+  const [language] = useState<Language>("en");
+  const [loading] = useState(false);
+  const [initialised] = useState(true);
 
-  useEffect(() => {
-    api.getSettings()
-      .then((s: SettingsResponse) => {
-        if (s?.language && VALID_LANGS.has(s.language)) {
-          const lang = s.language as Language;
-          setLang(lang);
-          applyRTL(lang);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setInitialised(true));
-  }, []);
-
-  const setLanguage = useCallback(async (lang: Language) => {
-    setLoading(true);
-    setLang(lang);
-    applyRTL(lang);
-    try {
-      await api.updateSettings({ language: lang });
-    } catch {}
-    setLoading(false);
+  const setLanguage = useCallback(async (_lang: Language) => {
   }, []);
 
   return { language, setLanguage, loading, initialised };

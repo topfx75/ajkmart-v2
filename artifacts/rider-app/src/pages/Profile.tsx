@@ -13,7 +13,7 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
-import { LANGUAGE_OPTIONS, tDual, type Language, type TranslationKey } from "@workspace/i18n";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
 const fd = (d: string | Date) => new Date(d).toLocaleDateString("en-PK", { day: "numeric", month: "long", year: "numeric" });
@@ -117,9 +117,8 @@ export default function Profile() {
   const [editing, setEditing]   = useState<EditSection>(null);
   const [saving, setSaving]     = useState(false);
   const [toast, setToast]       = useState("");
-  const [showLangPicker, setShowLangPicker] = useState(false);
 
-  const { language, setLanguage, loading: langLoading } = useLanguage();
+  const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
 
   const [name, setName]             = useState(user?.name || "");
@@ -558,50 +557,17 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* ══ LANGUAGE PICKER ══ */}
+        {/* ══ LANGUAGE ══ */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <button
-            onClick={() => setShowLangPicker(v => !v)}
-            className="w-full flex items-center justify-between px-5 py-4 active:bg-gray-50 transition-colors"
-          >
+          <div className="w-full flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-xl">🌐</div>
               <div className="text-left">
-                <div className="text-sm font-bold text-gray-800">Language / زبان</div>
-                <div className="text-xs text-gray-400">{LANGUAGE_OPTIONS.find(o => o.value === language)?.label || "Select Language"}</div>
+                <div className="text-sm font-bold text-gray-800">Language</div>
+                <div className="text-xs text-gray-400">English</div>
               </div>
             </div>
-            <ChevronRight size={16} className={`text-gray-400 transition-transform ${showLangPicker ? "rotate-90" : ""}`}/>
-          </button>
-          {showLangPicker && (
-            <div className="border-t border-gray-100 p-3.5 space-y-2">
-              {LANGUAGE_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  disabled={langLoading}
-                  onClick={async () => {
-                    await setLanguage(opt.value as Language);
-                    setShowLangPicker(false);
-                    showToast("Language save ho gayi!");
-                  }}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left ${
-                    language === opt.value
-                      ? "border-green-400 bg-green-50"
-                      : "border-gray-100 bg-gray-50 active:border-green-200"
-                  }`}
-                >
-                  <div>
-                    <div className={`text-sm font-semibold ${language === opt.value ? "text-green-700" : "text-gray-700"}`}>{opt.label}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{opt.nativeLabel}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {opt.rtl && <span className="text-[10px] bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded">RTL</span>}
-                    {language === opt.value && <CheckCircle size={18} className="text-green-500"/>}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          </div>
         </div>
 
         {/* ══ LOGOUT ══ */}
