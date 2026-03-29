@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Colors from "@/constants/colors";
+import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
@@ -37,9 +37,6 @@ function relativeTime(iso: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-/* ══════════════════════════════════════════
-   EDIT PROFILE MODAL  (name + email + phone)
-══════════════════════════════════════════ */
 const EXPO_CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Poonch","Neelum Valley","Rawalpindi","Islamabad","Other"];
 
 function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -51,7 +48,6 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
   const [city,   setCity]   = useState(user?.city  || "");
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState("");
-  const [showCityPicker, setShowCityPicker] = useState(false);
 
   useEffect(() => {
     if (visible) { setName(user?.name || ""); setEmail(user?.email || ""); setCnic(user?.cnic || ""); setCity(user?.city || ""); setError(""); }
@@ -77,89 +73,64 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={st.overlay} onPress={onClose}>
-        <Pressable style={st.sheet} onPress={e => e.stopPropagation()}>
-          <View style={st.sheetHandle} />
-          <Text style={st.sheetTitle}>Edit Profile</Text>
-          <Text style={st.sheetSub}>Update your information</Text>
+      <Pressable style={sheet.overlay} onPress={onClose}>
+        <Pressable style={sheet.container} onPress={e => e.stopPropagation()}>
+          <View style={sheet.handle} />
+          <Text style={sheet.title}>Edit Profile</Text>
+          <Text style={sheet.sub}>Update your information</Text>
 
-          {/* Phone (read-only) */}
-          <Text style={st.fldLabel}>Phone Number</Text>
-          <View style={[st.fldWrap, { backgroundColor: "#F8FAFC" }]}>
-            <View style={st.fldPre}>
-              <Text style={st.fldPreTxt}>🇵🇰 +92</Text>
-            </View>
-            <Text style={[st.fldTxt, { color: C.textMuted }]}>{user?.phone || "—"}</Text>
-            <View style={st.fldLock}>
+          <Text style={fld.label}>Phone Number</Text>
+          <View style={[fld.wrap, { backgroundColor: C.surfaceSecondary }]}>
+            <View style={fld.pre}><Text style={fld.preTxt}>🇵🇰 +92</Text></View>
+            <Text style={[fld.readOnly, { color: C.textMuted }]}>{user?.phone || "—"}</Text>
+            <View style={fld.lock}>
               <Ionicons name="lock-closed-outline" size={14} color={C.textMuted} />
-              <Text style={st.fldLockTxt}>Verified</Text>
+              <Text style={fld.lockTxt}>Verified</Text>
             </View>
           </View>
-          <Text style={st.fldHint}>To change phone, call helpline: 0300-AJKMART</Text>
+          <Text style={fld.hint}>To change phone, call helpline: 0300-AJKMART</Text>
 
-          {/* Full Name */}
-          <Text style={[st.fldLabel, { marginTop: 16 }]}>Full Name</Text>
-          <View style={st.fldWrap}>
-            <View style={[st.fldPre, { backgroundColor: "#EFF6FF" }]}>
+          <Text style={[fld.label, { marginTop: spacing.lg }]}>Full Name</Text>
+          <View style={fld.wrap}>
+            <View style={[fld.pre, { backgroundColor: C.primarySoft }]}>
               <Ionicons name="person-outline" size={16} color={C.primary} />
             </View>
-            <TextInput
-              style={st.fldInput}
-              value={name}
-              onChangeText={setName}
-              placeholder="Enter your name"
-              placeholderTextColor={C.textMuted}
-              autoCapitalize="words"
-            />
+            <TextInput style={fld.input} value={name} onChangeText={setName}
+              placeholder="Enter your name" placeholderTextColor={C.textMuted} autoCapitalize="words" />
           </View>
 
-          {/* Email */}
-          <Text style={[st.fldLabel, { marginTop: 12 }]}>Email Address</Text>
-          <View style={st.fldWrap}>
-            <View style={[st.fldPre, { backgroundColor: "#F0FDF4" }]}>
-              <Ionicons name="mail-outline" size={16} color="#059669" />
+          <Text style={[fld.label, { marginTop: spacing.md }]}>Email Address</Text>
+          <View style={fld.wrap}>
+            <View style={[fld.pre, { backgroundColor: C.successSoft }]}>
+              <Ionicons name="mail-outline" size={16} color={C.success} />
             </View>
-            <TextInput
-              style={st.fldInput}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="email@example.com (optional)"
-              placeholderTextColor={C.textMuted}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+            <TextInput style={fld.input} value={email} onChangeText={setEmail}
+              placeholder="email@example.com (optional)" placeholderTextColor={C.textMuted}
+              keyboardType="email-address" autoCapitalize="none" />
           </View>
 
-          {/* CNIC */}
-          <Text style={[st.fldLabel, { marginTop: 12 }]}>CNIC / National ID</Text>
-          <View style={st.fldWrap}>
-            <View style={[st.fldPre, { backgroundColor: "#FFF7ED" }]}>
-              <Ionicons name="card-outline" size={16} color="#D97706" />
+          <Text style={[fld.label, { marginTop: spacing.md }]}>CNIC / National ID</Text>
+          <View style={fld.wrap}>
+            <View style={[fld.pre, { backgroundColor: C.accentSoft }]}>
+              <Ionicons name="card-outline" size={16} color={C.accent} />
             </View>
-            <TextInput
-              style={st.fldInput}
-              value={cnic}
-              onChangeText={setCnic}
-              placeholder="XXXXX-XXXXXXX-X (optional)"
-              placeholderTextColor={C.textMuted}
-              keyboardType="numeric"
-              maxLength={15}
-            />
+            <TextInput style={fld.input} value={cnic} onChangeText={setCnic}
+              placeholder="XXXXX-XXXXXXX-X (optional)" placeholderTextColor={C.textMuted}
+              keyboardType="numeric" maxLength={15} />
           </View>
-          <Text style={st.fldHint}>For verification (optional)</Text>
+          <Text style={fld.hint}>For verification (optional)</Text>
 
-          {/* City */}
-          <Text style={[st.fldLabel, { marginTop: 12 }]}>City</Text>
-          <View style={[st.fldWrap, { paddingRight: 0, overflow: "hidden" }]}>
-            <View style={[st.fldPre, { backgroundColor: "#F0FDF4" }]}>
-              <Ionicons name="location-outline" size={16} color="#059669" />
+          <Text style={[fld.label, { marginTop: spacing.md }]}>City</Text>
+          <View style={[fld.wrap, { paddingRight: 0, overflow: "hidden" }]}>
+            <View style={[fld.pre, { backgroundColor: C.successSoft }]}>
+              <Ionicons name="location-outline" size={16} color={C.success} />
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", gap: 6, alignItems: "center", paddingRight: 12, paddingLeft: 8, height: 52 }}>
                 {EXPO_CITIES.map(c => (
                   <Pressable key={c} onPress={() => setCity(c)}
-                    style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, backgroundColor: city === c ? "#D1FAE5" : "#F8FAFC", borderWidth: 1, borderColor: city === c ? "#059669" : "#E2E8F0" }}>
-                    <Text style={{ fontSize: 12, fontWeight: "600", color: city === c ? "#059669" : C.textMuted }}>{c}</Text>
+                    style={[chip.base, city === c && chip.active]}>
+                    <Text style={[chip.text, city === c && chip.textActive]}>{c}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -167,20 +138,18 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
           </View>
 
           {error ? (
-            <View style={st.errorBox}>
-              <Ionicons name="alert-circle-outline" size={14} color="#DC2626" />
-              <Text style={st.errorTxt}>{error}</Text>
+            <View style={errStyle.box}>
+              <Ionicons name="alert-circle-outline" size={14} color={C.danger} />
+              <Text style={errStyle.txt}>{error}</Text>
             </View>
           ) : null}
 
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
-            <Pressable onPress={onClose} style={st.cancelBtn}>
-              <Text style={st.cancelTxt}>Cancel</Text>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: spacing.lg }}>
+            <Pressable onPress={onClose} style={btnStyles.cancel}>
+              <Text style={btnStyles.cancelTxt}>Cancel</Text>
             </Pressable>
-            <Pressable onPress={save} disabled={saving} style={[st.saveBtn, saving && { opacity: 0.7 }]}>
-              {saving
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={st.saveTxt}>Save Changes</Text>}
+            <Pressable onPress={save} disabled={saving} style={[btnStyles.save, saving && { opacity: 0.7 }]}>
+              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={btnStyles.saveTxt}>Save Changes</Text>}
             </Pressable>
           </View>
         </Pressable>
@@ -189,9 +158,6 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
   );
 }
 
-/* ══════════════════════════════════════════
-   NOTIFICATIONS MODAL
-══════════════════════════════════════════ */
 function NotificationsModal({ visible, userId, token, onClose }: {
   visible: boolean; userId: string; token?: string; onClose: (unread: number) => void;
 }) {
@@ -231,28 +197,28 @@ function NotificationsModal({ visible, userId, token, onClose }: {
 
   const unread = notifs.filter(n => !n.isRead).length;
   const typeMap: Record<string, [keyof typeof Ionicons.glyphMap, string, string]> = {
-    wallet: ["wallet-outline",         C.primary,  "#DBEAFE"],
-    ride:   ["car-outline",            "#059669",  "#D1FAE5"],
-    order:  ["bag-outline",            "#D97706",  "#FEF3C7"],
-    deal:   ["pricetag-outline",       "#7C3AED",  "#EDE9FE"],
-    system: ["notifications-outline",  "#64748B",  "#F1F5F9"],
+    wallet: ["wallet-outline",         C.primary,  C.primarySoft],
+    ride:   ["car-outline",            C.success,  C.successSoft],
+    order:  ["bag-outline",            C.accent,   C.accentSoft],
+    deal:   ["pricetag-outline",       C.info,     C.infoSoft],
+    system: ["notifications-outline",  C.textSecondary, C.surfaceSecondary],
   };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => onClose(unread)}>
-      <View style={{ flex: 1, backgroundColor: "#fff" }}>
-        <View style={nm.header}>
+      <View style={{ flex: 1, backgroundColor: C.surface }}>
+        <View style={modalHdr.wrap}>
           <View>
-            <Text style={nm.title}>Notifications</Text>
-            {unread > 0 && <Text style={nm.sub}>{unread} naye</Text>}
+            <Text style={modalHdr.title}>Notifications</Text>
+            {unread > 0 && <Text style={modalHdr.sub}>{unread} naye</Text>}
           </View>
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
             {unread > 0 && (
-              <Pressable onPress={markAll} disabled={marking} style={nm.markAllBtn}>
-                {marking ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={nm.markAllTxt}>Mark all as read</Text>}
+              <Pressable onPress={markAll} disabled={marking} style={modalHdr.action}>
+                {marking ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={modalHdr.actionTxt}>Mark all as read</Text>}
               </Pressable>
             )}
-            <Pressable onPress={() => onClose(unread)} style={nm.closeBtn}>
+            <Pressable onPress={() => onClose(unread)} style={modalHdr.close}>
               <Ionicons name="close" size={20} color={C.text} />
             </Pressable>
           </View>
@@ -261,27 +227,27 @@ function NotificationsModal({ visible, userId, token, onClose }: {
         {loading ? (
           <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
         ) : notifs.length === 0 ? (
-          <View style={nm.empty}>
+          <View style={empty.wrap}>
             <Text style={{ fontSize: 52 }}>🔔</Text>
-            <Text style={nm.emptyTitle}>No notifications</Text>
-            <Text style={nm.emptySub}>You're all caught up!</Text>
+            <Text style={empty.title}>No notifications</Text>
+            <Text style={empty.sub}>You're all caught up!</Text>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 6 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: 6 }}>
             {notifs.map(n => {
               const [icon, color, bg] = typeMap[n.type] || typeMap.system!;
               return (
-                <Pressable key={n.id} onPress={() => !n.isRead && markOne(n.id)} style={[nm.item, !n.isRead && nm.itemUnread]}>
-                  <View style={[nm.iIcon, { backgroundColor: bg }]}>
+                <Pressable key={n.id} onPress={() => !n.isRead && markOne(n.id)} style={[notifItem.wrap, !n.isRead && notifItem.unread]}>
+                  <View style={[notifItem.icon, { backgroundColor: bg }]}>
                     <Ionicons name={icon} size={19} color={color} />
-                    {!n.isRead && <View style={nm.dot} />}
+                    {!n.isRead && <View style={notifItem.dot} />}
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={[nm.iTitle, !n.isRead && { fontFamily: "Inter_700Bold" }]}>{n.title}</Text>
-                    <Text style={nm.iBody} numberOfLines={2}>{n.body}</Text>
-                    <Text style={nm.iTime}>{relativeTime(n.createdAt)}</Text>
+                    <Text style={[notifItem.title, !n.isRead && { fontFamily: "Inter_700Bold" }]}>{n.title}</Text>
+                    <Text style={notifItem.body} numberOfLines={2}>{n.body}</Text>
+                    <Text style={notifItem.time}>{relativeTime(n.createdAt)}</Text>
                   </View>
-                  <Pressable onPress={() => del(n.id)} style={nm.del}>
+                  <Pressable onPress={() => del(n.id)} style={notifItem.del}>
                     <Ionicons name="close" size={13} color={C.textMuted} />
                   </Pressable>
                 </Pressable>
@@ -295,9 +261,6 @@ function NotificationsModal({ visible, userId, token, onClose }: {
   );
 }
 
-/* ══════════════════════════════════════════
-   PRIVACY & SECURITY MODAL
-══════════════════════════════════════════ */
 function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; userId: string; token?: string; onClose: () => void }) {
   const { showToast } = useToast();
   const { biometricEnabled, setBiometricEnabled, user, updateUser } = useAuth();
@@ -355,19 +318,13 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
   };
 
   const handle2FAToggle = async () => {
-    if (user?.totpEnabled) {
-      setShowDisable2FA(true);
-      return;
-    }
-    setTwoFALoading(true);
-    setTwoFAError("");
+    if (user?.totpEnabled) { setShowDisable2FA(true); return; }
+    setTwoFALoading(true); setTwoFAError("");
     try {
       const res = await fetch(`${API}/auth/2fa/setup`, { headers: authHdrs });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setTwoFASecret(data.secret);
-      setTwoFAUri(data.uri);
-      setTwoFAQR(data.qrDataUrl ?? "");
+      setTwoFASecret(data.secret); setTwoFAUri(data.uri); setTwoFAQR(data.qrDataUrl ?? "");
       setShow2FASetup(true);
     } catch (e: any) { showToast(e.message || "2FA setup failed", "error"); }
     setTwoFALoading(false);
@@ -375,18 +332,16 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
 
   const handleVerify2FASetup = async () => {
     if (!twoFACode || twoFACode.length < 6) { setTwoFAError("Enter 6-digit code"); return; }
-    setTwoFALoading(true);
-    setTwoFAError("");
+    setTwoFALoading(true); setTwoFAError("");
     try {
       const res = await fetch(`${API}/auth/2fa/verify-setup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHdrs },
+        method: "POST", headers: { "Content-Type": "application/json", ...authHdrs },
         body: JSON.stringify({ code: twoFACode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setBackupCodes(data.backupCodes || []);
-      updateUser({ totpEnabled: true } as any);
+      updateUser({ totpEnabled: true });
       showToast("2FA enabled successfully!", "success");
     } catch (e: any) { setTwoFAError(e.message || "Verification failed"); }
     setTwoFALoading(false);
@@ -394,30 +349,27 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
 
   const handleDisable2FA = async () => {
     if (!disableCode || disableCode.length < 6) { setTwoFAError("Enter 6-digit code"); return; }
-    setTwoFALoading(true);
-    setTwoFAError("");
+    setTwoFALoading(true); setTwoFAError("");
     try {
       const res = await fetch(`${API}/auth/2fa/disable`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHdrs },
+        method: "POST", headers: { "Content-Type": "application/json", ...authHdrs },
         body: JSON.stringify({ code: disableCode }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      updateUser({ totpEnabled: false } as any);
-      setShowDisable2FA(false);
-      setDisableCode("");
+      updateUser({ totpEnabled: false });
+      setShowDisable2FA(false); setDisableCode("");
       showToast("2FA disabled", "success");
     } catch (e: any) { setTwoFAError(e.message || "Failed to disable 2FA"); }
     setTwoFALoading(false);
   };
 
-  const Row = ({ k, label, sub, icon, ic = C.primary, ib = C.rideLight }: { k: string; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap; ic?: string; ib?: string }) => (
-    <View style={pv.row}>
-      <View style={[pv.rIcon, { backgroundColor: ib }]}><Ionicons name={icon} size={17} color={ic} /></View>
+  const ToggleRow = ({ k, label, sub, icon, ic = C.primary, ib = C.primarySoft }: { k: string; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap; ic?: string; ib?: string }) => (
+    <View style={privRow.wrap}>
+      <View style={[privRow.icon, { backgroundColor: ib }]}><Ionicons name={icon} size={17} color={ic} /></View>
       <View style={{ flex: 1 }}>
-        <Text style={pv.rLabel}>{label}</Text>
-        <Text style={pv.rSub}>{sub}</Text>
+        <Text style={privRow.label}>{label}</Text>
+        <Text style={privRow.sub}>{sub}</Text>
       </View>
       {saving === k ? <ActivityIndicator size="small" color={C.primary} /> : (
         <Switch value={cfg[k] ?? false} onValueChange={v => toggle(k, v)} trackColor={{ false: C.border, true: C.primary }} thumbColor="#fff" />
@@ -430,38 +382,38 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: "#fff" }}>
-        <View style={pv.header}>
-          <Text style={pv.title}>Privacy & Security</Text>
-          <Pressable onPress={onClose} style={pv.closeBtn}><Ionicons name="close" size={20} color={C.text} /></Pressable>
+      <View style={{ flex: 1, backgroundColor: C.surface }}>
+        <View style={modalHdr.wrap}>
+          <Text style={modalHdr.title}>Privacy & Security</Text>
+          <Pressable onPress={onClose} style={modalHdr.close}><Ionicons name="close" size={20} color={C.text} /></Pressable>
         </View>
         {loading ? <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} /> : (
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: 40 }}>
+          <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.xl, paddingBottom: 40 }}>
             <View>
-              <Text style={pv.secTitle}>🔔 Notifications</Text>
-              <View style={pv.card}>
-                <Row k="notifOrders"  label="Order Updates"    sub="Delivery & order status"     icon="bag-outline"           ic={C.primary} ib={C.rideLight} />
-                <Row k="notifWallet"  label="Wallet Activity"  sub="Payment & top-up alerts"     icon="wallet-outline"        ic="#7C3AED"   ib="#EDE9FE" />
-                <Row k="notifDeals"   label="Deals & Offers"   sub="Discounts & promotions"      icon="pricetag-outline"      ic="#D97706"   ib="#FEF3C7" />
-                <Row k="notifRides"   label="Ride Updates"     sub="Driver assignment & ETA"     icon="car-outline"           ic="#059669"   ib="#D1FAE5" />
+              <Text style={secHdr.label}>🔔 Notifications</Text>
+              <View style={secCard.wrap}>
+                <ToggleRow k="notifOrders"  label="Order Updates"    sub="Delivery & order status"     icon="bag-outline"           ic={C.primary} ib={C.primarySoft} />
+                <ToggleRow k="notifWallet"  label="Wallet Activity"  sub="Payment & top-up alerts"     icon="wallet-outline"        ic={C.info}    ib={C.infoSoft} />
+                <ToggleRow k="notifDeals"   label="Deals & Offers"   sub="Discounts & promotions"      icon="pricetag-outline"      ic={C.accent}  ib={C.accentSoft} />
+                <ToggleRow k="notifRides"   label="Ride Updates"     sub="Driver assignment & ETA"     icon="car-outline"           ic={C.success} ib={C.successSoft} />
               </View>
             </View>
             <View>
-              <Text style={pv.secTitle}>🔒 Privacy</Text>
-              <View style={pv.card}>
-                <Row k="locationSharing" label="Location Sharing" sub="For rides and deliveries"  icon="location-outline"     ic="#059669" ib="#D1FAE5" />
-                <Row k="darkMode"        label="Dark Mode"        sub="App appearance"               icon="moon-outline"         ic="#7C3AED" ib="#EDE9FE" />
+              <Text style={secHdr.label}>🔒 Privacy</Text>
+              <View style={secCard.wrap}>
+                <ToggleRow k="locationSharing" label="Location Sharing" sub="For rides and deliveries"  icon="location-outline"     ic={C.success} ib={C.successSoft} />
+                <ToggleRow k="darkMode"        label="Dark Mode"        sub="App appearance"            icon="moon-outline"         ic={C.info}    ib={C.infoSoft} />
               </View>
             </View>
             <View>
-              <Text style={pv.secTitle}>🛡️ Security</Text>
-              <View style={pv.card}>
+              <Text style={secHdr.label}>🛡️ Security</Text>
+              <View style={secCard.wrap}>
                 {isBioEnabled && (
-                  <View style={pv.row}>
-                    <View style={[pv.rIcon, { backgroundColor: C.rideLight }]}><Ionicons name="finger-print-outline" size={17} color={C.primary} /></View>
+                  <View style={privRow.wrap}>
+                    <View style={[privRow.icon, { backgroundColor: C.primarySoft }]}><Ionicons name="finger-print-outline" size={17} color={C.primary} /></View>
                     <View style={{ flex: 1 }}>
-                      <Text style={pv.rLabel}>Biometric Login</Text>
-                      <Text style={pv.rSub}>Face ID / Fingerprint</Text>
+                      <Text style={privRow.label}>Biometric Login</Text>
+                      <Text style={privRow.sub}>Face ID / Fingerprint</Text>
                     </View>
                     {saving === "biometric" ? <ActivityIndicator size="small" color={C.primary} /> : (
                       <Switch value={biometricEnabled} onValueChange={handleBiometricToggle} trackColor={{ false: C.border, true: C.primary }} thumbColor="#fff" />
@@ -469,15 +421,15 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   </View>
                 )}
                 {is2FAEnabled && (
-                  <Pressable onPress={handle2FAToggle} style={pv.row}>
-                    <View style={[pv.rIcon, { backgroundColor: "#D1FAE5" }]}><Ionicons name="shield-outline" size={17} color="#059669" /></View>
+                  <Pressable onPress={handle2FAToggle} style={privRow.wrap}>
+                    <View style={[privRow.icon, { backgroundColor: C.successSoft }]}><Ionicons name="shield-outline" size={17} color={C.success} /></View>
                     <View style={{ flex: 1 }}>
-                      <Text style={pv.rLabel}>Two-Factor Auth</Text>
-                      <Text style={pv.rSub}>{user?.totpEnabled ? "Enabled — tap to disable" : "Authenticator app"}</Text>
+                      <Text style={privRow.label}>Two-Factor Auth</Text>
+                      <Text style={privRow.sub}>{user?.totpEnabled ? "Enabled — tap to disable" : "Authenticator app"}</Text>
                     </View>
                     {twoFALoading ? <ActivityIndicator size="small" color={C.primary} /> : (
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        {user?.totpEnabled && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />}
+                        {user?.totpEnabled && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.success }} />}
                         <Ionicons name="chevron-forward" size={15} color={C.textMuted} />
                       </View>
                     )}
@@ -486,11 +438,11 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
               </View>
             </View>
             <View>
-              <Text style={pv.secTitle}>⚙️ Account Actions</Text>
-              <View style={pv.card}>
-                <Pressable onPress={() => showToast("Your data will be emailed within 24 hours.", "info")} style={[pv.row, { borderBottomWidth: 0 }]}>
-                  <View style={[pv.rIcon, { backgroundColor: "#F1F5F9" }]}><Ionicons name="download-outline" size={17} color="#64748B" /></View>
-                  <View style={{ flex: 1 }}><Text style={pv.rLabel}>Download My Data</Text><Text style={pv.rSub}>Export all your data</Text></View>
+              <Text style={secHdr.label}>⚙️ Account Actions</Text>
+              <View style={secCard.wrap}>
+                <Pressable onPress={() => showToast("Your data will be emailed within 24 hours.", "info")} style={[privRow.wrap, { borderBottomWidth: 0 }]}>
+                  <View style={[privRow.icon, { backgroundColor: C.surfaceSecondary }]}><Ionicons name="download-outline" size={17} color={C.textSecondary} /></View>
+                  <View style={{ flex: 1 }}><Text style={privRow.label}>Download My Data</Text><Text style={privRow.sub}>Export all your data</Text></View>
                   <Ionicons name="chevron-forward" size={15} color={C.textMuted} />
                 </Pressable>
               </View>
@@ -499,57 +451,57 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
         )}
 
         <Modal visible={show2FASetup} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }}>
-          <View style={{ flex: 1, backgroundColor: "#fff" }}>
-            <View style={pv.header}>
-              <Text style={pv.title}>{backupCodes.length > 0 ? "Backup Codes" : "Setup 2FA"}</Text>
-              <Pressable onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }} style={pv.closeBtn}>
+          <View style={{ flex: 1, backgroundColor: C.surface }}>
+            <View style={modalHdr.wrap}>
+              <Text style={modalHdr.title}>{backupCodes.length > 0 ? "Backup Codes" : "Setup 2FA"}</Text>
+              <Pressable onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }} style={modalHdr.close}>
                 <Ionicons name="close" size={20} color={C.text} />
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+            <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}>
               {backupCodes.length > 0 ? (
                 <>
-                  <View style={{ alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <Ionicons name="checkmark-circle" size={48} color="#10B981" />
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: "#1F2937" }}>2FA Activated!</Text>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280", textAlign: "center" }}>
+                  <View style={{ alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
+                    <Ionicons name="checkmark-circle" size={48} color={C.success} />
+                    <Text style={{ ...typography.h2, color: C.text }}>2FA Activated!</Text>
+                    <Text style={{ ...typography.caption, color: C.textMuted, textAlign: "center" }}>
                       Save these backup codes securely. They cannot be shown again.
                     </Text>
                   </View>
-                  <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#FDE68A" }}>
+                  <View style={{ backgroundColor: C.accentSoft, borderRadius: radii.lg, padding: spacing.lg, borderWidth: 1, borderColor: "#FDE68A" }}>
                     {backupCodes.map((code, i) => (
-                      <Text key={i} style={{ fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#92400E", textAlign: "center", paddingVertical: 4, letterSpacing: 2 }}>{code}</Text>
+                      <Text key={i} style={{ ...typography.subtitle, color: "#92400E", textAlign: "center", paddingVertical: 4, letterSpacing: 2 }}>{code}</Text>
                     ))}
                   </View>
                 </>
               ) : (
                 <>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", lineHeight: 22 }}>
+                  <Text style={{ ...typography.body, color: C.textSecondary, lineHeight: 22 }}>
                     1. Install an authenticator app (Google Authenticator, Authy){"\n"}
                     2. Scan the QR code or enter the secret manually{"\n"}
                     3. Enter the 6-digit code to verify
                   </Text>
                   {twoFASecret ? (
-                    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E5E7EB" }}>
-                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#6B7280", marginBottom: 8 }}>Secret Key (manual entry):</Text>
-                      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#1F2937", letterSpacing: 2 }} selectable>{twoFASecret}</Text>
+                    <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: radii.lg, padding: spacing.lg, borderWidth: 1, borderColor: C.border }}>
+                      <Text style={{ ...typography.captionMedium, color: C.textMuted, marginBottom: spacing.sm }}>Secret Key (manual entry):</Text>
+                      <Text style={{ ...typography.subtitle, color: C.text, letterSpacing: 2 }} selectable>{twoFASecret}</Text>
                     </View>
                   ) : null}
                   <TextInput
-                    style={{ paddingHorizontal: 16, paddingVertical: 14, fontFamily: "Inter_700Bold", fontSize: 24, color: "#1F2937", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, textAlign: "center", letterSpacing: 8 }}
+                    style={otpStyle.input}
                     value={twoFACode} onChangeText={v => { setTwoFACode(v); setTwoFAError(""); }}
                     placeholder="6-digit code" placeholderTextColor={C.textMuted}
                     keyboardType="number-pad" maxLength={6}
                   />
                   {twoFAError ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#FECACA" }}>
-                      <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
-                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#DC2626" }}>{twoFAError}</Text>
+                    <View style={errStyle.box}>
+                      <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
+                      <Text style={errStyle.txt}>{twoFAError}</Text>
                     </View>
                   ) : null}
                   <Pressable onPress={handleVerify2FASetup} disabled={twoFALoading}
-                    style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: "center", opacity: twoFALoading ? 0.7 : 1 }}>
-                    {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" }}>Verify & Enable</Text>}
+                    style={[primaryBtn.base, twoFALoading && { opacity: 0.7 }]}>
+                    {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={primaryBtn.txt}>Verify & Enable</Text>}
                   </Pressable>
                 </>
               )}
@@ -558,30 +510,29 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
         </Modal>
 
         <Modal visible={showDisable2FA} animationType="slide" transparent onRequestClose={() => { setShowDisable2FA(false); setDisableCode(""); setTwoFAError(""); }}>
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }}>
-            <View style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24 }}>
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: "#1F2937", marginBottom: 8 }}>Disable 2FA</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280", marginBottom: 16 }}>Enter your authenticator code to disable two-factor authentication.</Text>
+          <View style={{ flex: 1, backgroundColor: C.overlay, justifyContent: "center", padding: spacing.xxl }}>
+            <View style={{ backgroundColor: C.surface, borderRadius: radii.xl, padding: spacing.xxl }}>
+              <Text style={{ ...typography.h3, color: C.text, marginBottom: spacing.sm }}>Disable 2FA</Text>
+              <Text style={{ ...typography.caption, color: C.textMuted, marginBottom: spacing.lg }}>Enter your authenticator code to disable two-factor authentication.</Text>
               <TextInput
-                style={{ paddingHorizontal: 16, paddingVertical: 14, fontFamily: "Inter_700Bold", fontSize: 24, color: "#1F2937", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, textAlign: "center", letterSpacing: 8, marginBottom: 12 }}
+                style={[otpStyle.input, { marginBottom: spacing.md }]}
                 value={disableCode} onChangeText={v => { setDisableCode(v); setTwoFAError(""); }}
                 placeholder="6-digit code" placeholderTextColor={C.textMuted}
                 keyboardType="number-pad" maxLength={6} autoFocus
               />
               {twoFAError ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: "#FECACA" }}>
-                  <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
-                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#DC2626" }}>{twoFAError}</Text>
+                <View style={[errStyle.box, { marginBottom: spacing.md }]}>
+                  <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
+                  <Text style={errStyle.txt}>{twoFAError}</Text>
                 </View>
               ) : null}
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable onPress={() => { setShowDisable2FA(false); setDisableCode(""); setTwoFAError(""); }}
-                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center" }}>
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#6B7280" }}>Cancel</Text>
+                <Pressable onPress={() => { setShowDisable2FA(false); setDisableCode(""); setTwoFAError(""); }} style={btnStyles.cancel}>
+                  <Text style={btnStyles.cancelTxt}>Cancel</Text>
                 </Pressable>
                 <Pressable onPress={handleDisable2FA} disabled={twoFALoading}
-                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center", opacity: twoFALoading ? 0.7 : 1 }}>
-                  {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>Disable</Text>}
+                  style={[btnStyles.save, { backgroundColor: C.danger }, twoFALoading && { opacity: 0.7 }]}>
+                  {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={btnStyles.saveTxt}>Disable</Text>}
                 </Pressable>
               </View>
             </View>
@@ -592,13 +543,10 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
   );
 }
 
-/* ══════════════════════════════════════════
-   SAVED ADDRESSES MODAL
-══════════════════════════════════════════ */
 const LABEL_OPTS = [
-  { label: "Home",  icon: "home-outline"      as const, color: "#059669", bg: "#D1FAE5" },
-  { label: "Work",  icon: "briefcase-outline" as const, color: C.primary, bg: C.rideLight },
-  { label: "Other", icon: "location-outline"  as const, color: "#D97706", bg: "#FEF3C7" },
+  { label: "Home",  icon: "home-outline"      as const, color: C.success, bg: C.successSoft },
+  { label: "Work",  icon: "briefcase-outline" as const, color: C.primary, bg: C.primarySoft },
+  { label: "Other", icon: "location-outline"  as const, color: C.accent,  bg: C.accentSoft },
 ];
 const AJK_CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Poonch","Neelum Valley"];
 
@@ -658,92 +606,92 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: "#fff" }}>
-        <View style={ad.header}>
-          <Text style={ad.title}>Saved Addresses</Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable onPress={() => setShowAdd(v => !v)} style={ad.addBtn}>
+      <View style={{ flex: 1, backgroundColor: C.surface }}>
+        <View style={modalHdr.wrap}>
+          <Text style={modalHdr.title}>Saved Addresses</Text>
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <Pressable onPress={() => setShowAdd(v => !v)} style={addrHdr.addBtn}>
               <Ionicons name={showAdd ? "close" : "add"} size={17} color="#fff" />
-              <Text style={ad.addBtnTxt}>{showAdd ? "Cancel" : "Add New"}</Text>
+              <Text style={addrHdr.addBtnTxt}>{showAdd ? "Cancel" : "Add New"}</Text>
             </Pressable>
-            <Pressable onPress={onClose} style={ad.closeBtn}><Ionicons name="close" size={20} color={C.text} /></Pressable>
+            <Pressable onPress={onClose} style={modalHdr.close}><Ionicons name="close" size={20} color={C.text} /></Pressable>
           </View>
         </View>
 
         {showAdd && (
-          <View style={ad.addPanel}>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+          <View style={addrAdd.panel}>
+            <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
               {LABEL_OPTS.map(o => (
-                <Pressable key={o.label} onPress={() => setLabel(o.label)} style={[ad.chip, label === o.label && { backgroundColor: o.bg, borderColor: o.color }]}>
+                <Pressable key={o.label} onPress={() => setLabel(o.label)} style={[chip.base, label === o.label && { backgroundColor: o.bg, borderColor: o.color }]}>
                   <Ionicons name={o.icon} size={13} color={label === o.label ? o.color : C.textMuted} />
-                  <Text style={[ad.chipTxt, label === o.label && { color: o.color }]}>{o.label}</Text>
+                  <Text style={[chip.text, label === o.label && { color: o.color }]}>{o.label}</Text>
                 </Pressable>
               ))}
             </View>
-            <View style={ad.fld}>
-              <TextInput value={addr} onChangeText={setAddr} placeholder="Enter full address..." placeholderTextColor={C.textMuted} style={ad.fldTxt} multiline />
+            <View style={addrAdd.fld}>
+              <TextInput value={addr} onChangeText={setAddr} placeholder="Enter full address..." placeholderTextColor={C.textMuted} style={addrAdd.fldTxt} multiline />
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
               <View style={{ flexDirection: "row", gap: 6 }}>
                 {AJK_CITIES.map(c => (
-                  <Pressable key={c} onPress={() => setCity(c)} style={[ad.cityChip, city === c && { backgroundColor: C.rideLight, borderColor: C.primary }]}>
-                    <Text style={[ad.cityTxt, city === c && { color: C.primary }]}>{c}</Text>
+                  <Pressable key={c} onPress={() => setCity(c)} style={[chip.base, city === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]}>
+                    <Text style={[chip.text, city === c && { color: C.primary }]}>{c}</Text>
                   </Pressable>
                 ))}
               </View>
             </ScrollView>
-            <Pressable onPress={add} disabled={saving} style={[ad.saveBtn, saving && { opacity: 0.7 }]}>
-              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={ad.saveBtnTxt}>Save Address</Text>}
+            <Pressable onPress={add} disabled={saving} style={[primaryBtn.base, saving && { opacity: 0.7 }]}>
+              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={primaryBtn.txt}>Save Address</Text>}
             </Pressable>
           </View>
         )}
 
         {loading ? <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} /> : list.length === 0 && !showAdd ? (
-          <View style={ad.empty}>
+          <View style={empty.wrap}>
             <Text style={{ fontSize: 52 }}>📍</Text>
-            <Text style={ad.emptyTitle}>No addresses</Text>
-            <Text style={ad.emptySub}>Save your home or office address</Text>
-            <Pressable onPress={() => setShowAdd(true)} style={ad.emptyBtn}>
+            <Text style={empty.title}>No addresses</Text>
+            <Text style={empty.sub}>Save your home or office address</Text>
+            <Pressable onPress={() => setShowAdd(true)} style={[primaryBtn.base, { flexDirection: "row", gap: 6, marginTop: spacing.md, alignSelf: "center", width: "auto", paddingHorizontal: spacing.xl }]}>
               <Ionicons name="add" size={16} color="#fff" />
-              <Text style={ad.emptyBtnTxt}>Add Address</Text>
+              <Text style={primaryBtn.txt}>Add Address</Text>
             </Pressable>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+          <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: 10 }}>
             {list.map(a => {
               const opt = LABEL_OPTS.find(o => o.label === a.label) || LABEL_OPTS[2]!;
               return (
-                <View key={a.id} style={ad.item}>
-                  <View style={[ad.iIcon, { backgroundColor: opt.bg }]}>
+                <View key={a.id} style={addrItem.wrap}>
+                  <View style={[addrItem.icon, { backgroundColor: opt.bg }]}>
                     <Ionicons name={opt.icon} size={19} color={opt.color} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={ad.iLabel}>{a.label}</Text>
-                      {a.isDefault && <View style={ad.defBadge}><Text style={ad.defTxt}>Default</Text></View>}
+                      <Text style={addrItem.label}>{a.label}</Text>
+                      {a.isDefault && <View style={addrItem.defBadge}><Text style={addrItem.defTxt}>Default</Text></View>}
                     </View>
-                    <Text style={ad.iAddr}>{a.address}</Text>
-                    <Text style={ad.iCity}>{a.city}, AJK</Text>
+                    <Text style={addrItem.addr}>{a.address}</Text>
+                    <Text style={addrItem.city}>{a.city}, AJK</Text>
                   </View>
                   <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
                     {!a.isDefault && (
-                      <Pressable onPress={() => setDefault(a.id)} disabled={settingDefault === a.id} style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE" }}>
+                      <Pressable onPress={() => setDefault(a.id)} disabled={settingDefault === a.id} style={addrItem.setDefBtn}>
                         {settingDefault === a.id
                           ? <ActivityIndicator size="small" color={C.primary} />
-                          : <Text style={{ fontSize: 10, color: C.primary, fontFamily: "Inter_600SemiBold" }}>Set Default</Text>}
+                          : <Text style={addrItem.setDefTxt}>Set Default</Text>}
                       </Pressable>
                     )}
                     {deleteConfirmId === a.id ? (
                       <View style={{ flexDirection: "row", gap: 6 }}>
-                        <Pressable onPress={() => del(a.id)} style={[ad.delBtn, { backgroundColor: "#FEE2E2", paddingHorizontal: 8, borderRadius: 6, width: "auto" as any }]}>
-                          <Text style={{ fontSize: 11, color: C.danger, fontWeight: "600" }}>Yes</Text>
+                        <Pressable onPress={() => del(a.id)} style={[addrItem.delBtn, { backgroundColor: C.dangerSoft, paddingHorizontal: 8 }]}>
+                          <Text style={{ ...typography.smallMedium, color: C.danger }}>Yes</Text>
                         </Pressable>
-                        <Pressable onPress={() => setDeleteConfirmId(null)} style={[ad.delBtn, { backgroundColor: "#F1F5F9", paddingHorizontal: 8, borderRadius: 6, width: "auto" as any }]}>
-                          <Text style={{ fontSize: 11, color: C.textMuted, fontWeight: "600" }}>No</Text>
+                        <Pressable onPress={() => setDeleteConfirmId(null)} style={[addrItem.delBtn, { backgroundColor: C.surfaceSecondary, paddingHorizontal: 8 }]}>
+                          <Text style={{ ...typography.smallMedium, color: C.textMuted }}>No</Text>
                         </Pressable>
                       </View>
                     ) : (
-                      <Pressable onPress={() => setDeleteConfirmId(a.id)} style={ad.delBtn}>
+                      <Pressable onPress={() => setDeleteConfirmId(a.id)} style={addrItem.delBtn}>
                         <Ionicons name="trash-outline" size={16} color={C.danger} />
                       </Pressable>
                     )}
@@ -759,15 +707,12 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
   );
 }
 
-/* ════════════════════════════════════════════════════
-   MAIN PROFILE SCREEN
-════════════════════════════════════════════════════ */
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const TAB_H  = Platform.OS === "web" ? 84 : 49;
+  const TAB_H  = Platform.OS === "web" ? 72 : 49;
 
   const [showEdit,    setShowEdit]    = useState(false);
   const [showNotifs,  setShowNotifs]  = useState(false);
@@ -835,45 +780,39 @@ export default function ProfileScreen() {
   const doSignOut = async () => {
     setSigningOut(true);
     setShowSignOutConfirm(false);
-    try {
-      await logout();
-      /* AuthGuard in _layout.tsx detects user=null and navigates to /auth */
-    } catch {
-      setSigningOut(false);
-    }
+    try { await logout(); } catch { setSigningOut(false); }
   };
 
   const roleMap: Record<string, { label: string; colors: [string, string] }> = {
-    customer: { label: "Customer",        colors: ["#1A56DB", "#3B82F6"] },
-    rider:    { label: "Delivery Rider",  colors: ["#059669", "#10B981"] },
-    vendor:   { label: "Store Vendor",    colors: ["#D97706", "#F59E0B"] },
+    customer: { label: "Customer",        colors: [C.primaryDark, C.primary] },
+    rider:    { label: "Delivery Rider",  colors: [C.success, "#00E6A0"] },
+    vendor:   { label: "Store Vendor",    colors: [C.accent, "#FFB340"] },
   };
   const role = roleMap[user?.role || "customer"] || roleMap.customer!;
   const initials = user?.name
     ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
     : user?.phone?.slice(-2) || "U";
 
-  /* ── Render Helpers ── */
   const SectionCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <View style={sc.wrap}>
-      <Text style={sc.title}>{title}</Text>
-      <View style={sc.card}>{children}</View>
+    <View style={sec.wrap}>
+      <Text style={sec.title}>{title}</Text>
+      <View style={sec.card}>{children}</View>
     </View>
   );
 
-  const Row = ({ icon, label, sub, onPress, iconColor = C.primary, iconBg = C.rideLight, right, danger, badge }: {
+  const Row = ({ icon, label, sub, onPress, iconColor = C.primary, iconBg = C.primarySoft, right, danger, badge }: {
     icon: keyof typeof Ionicons.glyphMap; label: string; sub?: string; onPress: () => void;
     iconColor?: string; iconBg?: string; right?: React.ReactNode; danger?: boolean; badge?: number;
   }) => (
-    <Pressable onPress={onPress} style={({ pressed }) => [sc.row, pressed && { opacity: 0.65 }]}>
-      <View style={[sc.rIcon, { backgroundColor: iconBg }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [row.wrap, pressed && { opacity: 0.65 }]}>
+      <View style={[row.icon, { backgroundColor: iconBg }]}>
         <Ionicons name={icon} size={18} color={iconColor} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[sc.rLabel, danger && { color: C.danger }]}>{label}</Text>
-        {sub ? <Text style={sc.rSub}>{sub}</Text> : null}
+        <Text style={[row.label, danger && { color: C.danger }]}>{label}</Text>
+        {sub ? <Text style={row.sub}>{sub}</Text> : null}
       </View>
-      {badge && badge > 0 ? <View style={sc.badge}><Text style={sc.badgeTxt}>{badge > 99 ? "99+" : badge}</Text></View> : null}
+      {badge && badge > 0 ? <View style={row.badge}><Text style={row.badgeTxt}>{badge > 99 ? "99+" : badge}</Text></View> : null}
       {right ?? <Ionicons name="chevron-forward" size={15} color={C.textMuted} />}
     </Pressable>
   );
@@ -884,12 +823,11 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />}
       >
-        {/* ── Profile Header ── */}
-        <LinearGradient colors={role.colors} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={[ph.card, { paddingTop: topPad + 16 }]}>
+        <LinearGradient colors={role.colors} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={[ph.card, { paddingTop: topPad + spacing.lg }]}>
           <View style={[ph.blob, { width:180, height:180, top:-50, right:-40 }]} />
           <View style={[ph.blob, { width:80,  height:80,  bottom:-15, left:16 }]} />
 
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
             <View style={ph.avatar}>
               <Text style={ph.avatarTxt}>{initials}</Text>
             </View>
@@ -906,7 +844,6 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          {/* Stats strip */}
           <View style={ph.statsStrip}>
             {statsLoading ? (
               <ActivityIndicator color="rgba(255,255,255,0.8)" />
@@ -931,12 +868,11 @@ export default function ProfileScreen() {
           </View>
         </LinearGradient>
 
-        {/* ── Wallet Banner ── */}
         <Pressable onPress={() => router.push("/(tabs)/wallet")} style={wb.wrap}>
-          <LinearGradient colors={["#1A56DB","#2563EB"]} style={wb.grad}>
+          <LinearGradient colors={[C.primaryDark, C.primary]} style={wb.grad}>
             <Ionicons name="wallet" size={18} color="#fff" />
           </LinearGradient>
-          <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flex: 1, marginLeft: spacing.md }}>
             <Text style={wb.lbl}>{platformCfg.appName} {T("wallet")}</Text>
             <Text style={wb.amt}>Rs. {(user?.walletBalance || 0).toLocaleString()}</Text>
           </View>
@@ -946,12 +882,11 @@ export default function ProfileScreen() {
           </View>
         </Pressable>
 
-        {/* ── Referral Program Card ── */}
         {platformConfig.features.referral && platformConfig.customer.referralEnabled && (
           <View style={rc.wrap}>
             <View style={rc.left}>
               <View style={rc.iconBox}>
-                <Ionicons name="gift-outline" size={22} color="#7C3AED" />
+                <Ionicons name="gift-outline" size={22} color={C.info} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={rc.title}>{T("referAndEarn")}</Text>
@@ -967,12 +902,11 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── Loyalty Points Card ── */}
         {platformConfig.customer.loyaltyEnabled && (
-          <View style={[rc.wrap, { borderColor: "#F59E0B22", backgroundColor: "#FFFBEB" }]}>
+          <View style={[rc.wrap, { borderColor: "#F59E0B22", backgroundColor: C.accentSoft }]}>
             <View style={rc.left}>
               <View style={[rc.iconBox, { backgroundColor: "#FEF3C7" }]}>
-                <Ionicons name="star-outline" size={22} color="#D97706" />
+                <Ionicons name="star-outline" size={22} color={C.accent} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={rc.title}>{T("loyaltyPointsLabel")}</Text>
@@ -988,54 +922,50 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── Account ── */}
         <SectionCard title={T("account")}>
           <Row icon="person-outline"          label={T("editProfile")}       sub={T("editProfileSub")}            onPress={() => setShowEdit(true)} />
-          <Row icon="notifications-outline"   label={T("notifications")}      sub={unread > 0 ? `${unread} ${T("notificationsSub")}` : T("noNewNotifs")} badge={unread} onPress={() => setShowNotifs(true)} iconColor={C.food} iconBg={C.foodLight} />
-          <Row icon="shield-checkmark-outline" label={T("privacySecurity")} sub="Toggles, biometric, location"       onPress={() => setShowPrivacy(true)} iconColor="#059669" iconBg="#D1FAE5"
-            right={<View style={{ flexDirection:"row", alignItems:"center", gap:4 }}><View style={sc.secureBadge}><Text style={sc.secureTxt}>Secure</Text></View><Ionicons name="chevron-forward" size={15} color={C.textMuted} /></View>}
+          <Row icon="notifications-outline"   label={T("notifications")}      sub={unread > 0 ? `${unread} ${T("notificationsSub")}` : T("noNewNotifs")} badge={unread} onPress={() => setShowNotifs(true)} iconColor={C.accent} iconBg={C.accentSoft} />
+          <Row icon="shield-checkmark-outline" label={T("privacySecurity")} sub="Toggles, biometric, location"       onPress={() => setShowPrivacy(true)} iconColor={C.success} iconBg={C.successSoft}
+            right={<View style={{ flexDirection:"row", alignItems:"center", gap:4 }}><View style={sec.secureBadge}><Text style={sec.secureTxt}>Secure</Text></View><Ionicons name="chevron-forward" size={15} color={C.textMuted} /></View>}
           />
-          <Row icon="language-outline" label="Language / زبان" sub={LANGUAGE_OPTIONS.find(o => o.value === language)?.label || "Select Language"} onPress={() => setShowLang(true)} iconColor="#7C3AED" iconBg="#F5F3FF" />
+          <Row icon="language-outline" label="Language / زبان" sub={LANGUAGE_OPTIONS.find(o => o.value === language)?.label || "Select Language"} onPress={() => setShowLang(true)} iconColor={C.info} iconBg={C.infoSoft} />
         </SectionCard>
 
-        {/* ── Activity ── */}
         <SectionCard title={T("myActivity")}>
-          <Row icon="bag-outline"      label={T("myOrders")}        sub={`${stats.orders} ${T("ordersCount")}`}       onPress={() => router.push("/(tabs)/orders")}  iconColor={C.primary} iconBg={C.rideLight} />
-          <Row icon="bicycle-outline"  label={T("rides")}         sub={`${stats.rides} ${T("ridesCount")}`}          onPress={() => router.push("/ride")}            iconColor="#8B5CF6"   iconBg="#EDE9FE" />
-          <Row icon="medkit-outline"   label={T("pharmacy")}         sub={T("medicineOrderHistory")}               onPress={() => router.push("/pharmacy")}        iconColor="#7C3AED"   iconBg="#F5F3FF" />
-          <Row icon="cube-outline"     label={T("parcelBookings")}  sub={T("courierHistory")}             onPress={() => router.push("/parcel")}          iconColor="#D97706"   iconBg="#FFFBEB" />
+          <Row icon="bag-outline"      label={T("myOrders")}        sub={`${stats.orders} ${T("ordersCount")}`}       onPress={() => router.push("/(tabs)/orders")}  iconColor={C.primary} iconBg={C.primarySoft} />
+          <Row icon="bicycle-outline"  label={T("rides")}         sub={`${stats.rides} ${T("ridesCount")}`}          onPress={() => router.push("/ride")}            iconColor={C.info}   iconBg={C.infoSoft} />
+          <Row icon="medkit-outline"   label={T("pharmacy")}         sub={T("medicineOrderHistory")}               onPress={() => router.push("/pharmacy")}        iconColor={C.pharmacy}   iconBg={C.pharmacyLight} />
+          <Row icon="cube-outline"     label={T("parcelBookings")}  sub={T("courierHistory")}             onPress={() => router.push("/parcel")}          iconColor={C.parcel}   iconBg={C.parcelLight} />
           <Row icon="location-outline" label={T("savedAddresses")}  sub={T("savedAddressesSub")}    onPress={() => setShowAddrs(true)}              iconColor={C.mart}    iconBg={C.martLight} />
         </SectionCard>
 
-        {/* ── Vendor / Rider dashboard ── */}
         {user?.role === "vendor" && (
           <SectionCard title="VENDOR DASHBOARD">
             <Row icon="storefront-outline" label="My Products"     sub="Manage products"       onPress={() => showToast("Product management coming soon!", "info")} iconColor={C.mart} iconBg={C.martLight} />
-            <Row icon="analytics-outline"  label="Sales Analytics" sub="Revenue & sales"     onPress={() => showToast("Analytics coming soon!", "info")}           iconColor={C.primary} iconBg={C.rideLight} />
-            <Row icon="receipt-outline"    label="Incoming Orders" sub="View new orders"     onPress={() => showToast("Order management coming soon!", "info")}    iconColor={C.food} iconBg={C.foodLight} />
+            <Row icon="analytics-outline"  label="Sales Analytics" sub="Revenue & sales"     onPress={() => showToast("Analytics coming soon!", "info")}           iconColor={C.primary} iconBg={C.primarySoft} />
+            <Row icon="receipt-outline"    label="Incoming Orders" sub="View new orders"     onPress={() => showToast("Order management coming soon!", "info")}    iconColor={C.accent} iconBg={C.accentSoft} />
           </SectionCard>
         )}
         {user?.role === "rider" && (
           <SectionCard title="RIDER DASHBOARD">
-            <Row icon="bicycle-outline" label="Active Deliveries" sub="Current deliveries"    onPress={() => showToast("Active deliveries feature coming soon!", "info")}     iconColor={C.success} iconBg="#D1FAE5" />
-            <Row icon="cash-outline"    label="My Earnings"       sub="Daily/monthly earnings" onPress={() => showToast("Earnings tracking coming soon!", "info")}      iconColor={C.food}    iconBg={C.foodLight} />
-            <Row icon="star-outline"    label="My Rating"         sub="4.9 ⭐ • 250+ trips"   onPress={() => showToast("Rating: ⭐⭐⭐⭐⭐ 4.9/5.0 • 250+ trips completed", "success")} iconColor="#F59E0B" iconBg="#FEF3C7" />
+            <Row icon="bicycle-outline" label="Active Deliveries" sub="Current deliveries"    onPress={() => showToast("Active deliveries feature coming soon!", "info")}     iconColor={C.success} iconBg={C.successSoft} />
+            <Row icon="cash-outline"    label="My Earnings"       sub="Daily/monthly earnings" onPress={() => showToast("Earnings tracking coming soon!", "info")}      iconColor={C.accent}    iconBg={C.accentSoft} />
+            <Row icon="star-outline"    label="My Rating"         sub="4.9 ⭐ • 250+ trips"   onPress={() => showToast("Rating: ⭐⭐⭐⭐⭐ 4.9/5.0 • 250+ trips completed", "success")} iconColor={C.accent} iconBg={C.accentSoft} />
           </SectionCard>
         )}
 
-        {/* ── Support ── */}
         <SectionCard title={T("helpSupport")}>
           <Row icon="call-outline"
                label={T("contactSupport")}
                sub={platformCfg.supportHours || `Call: ${platformCfg.supportPhone}`}
                onPress={() => Linking.openURL(`tel:${platformCfg.supportPhone}`).catch(() => showToast(`📞 ${platformCfg.supportPhone}`, "info"))}
-               iconColor="#64748B" iconBg="#F1F5F9" />
+               iconColor={C.textSecondary} iconBg={C.surfaceSecondary} />
           {platformCfg.supportEmail ? (
             <Row icon="mail-outline"
                  label={T("emailSupport")}
                  sub={platformCfg.supportEmail}
                  onPress={() => Linking.openURL(`mailto:${platformCfg.supportEmail}`).catch(() => showToast(platformCfg.supportEmail, "info"))}
-                 iconColor="#6366F1" iconBg="#EEF2FF" />
+                 iconColor={C.info} iconBg={C.infoSoft} />
           ) : null}
           {platformCfg.chat && (
             <Row icon="logo-whatsapp"
@@ -1049,97 +979,82 @@ export default function ProfileScreen() {
                  label={T("followUsLabel")}
                  sub={[platformCfg.socialFacebook && "Facebook", platformCfg.socialInstagram && "Instagram"].filter(Boolean).join(" • ")}
                  onPress={() => Linking.openURL(platformCfg.socialFacebook || platformCfg.socialInstagram).catch(() => {})}
-                 iconColor="#1877F2" iconBg="#EFF6FF" />
+                 iconColor="#1877F2" iconBg={C.primarySoft} />
           )}
           {platformCfg.tncUrl ? (
             <Row icon="document-text-outline"
                  label={T("termsOfService")}
                  sub={T("termsSubLabel")}
                  onPress={() => Linking.openURL(platformCfg.tncUrl).catch(() => {})}
-                 iconColor="#64748B" iconBg="#F1F5F9" />
+                 iconColor={C.textSecondary} iconBg={C.surfaceSecondary} />
           ) : (
             <Row icon="document-text-outline"
                  label={T("termsOfService")}
                  sub={T("termsSubLabel")}
                  onPress={() => showToast(`By using ${platformCfg.appName}, you agree to our terms.`, "info")}
-                 iconColor="#64748B" iconBg="#F1F5F9" />
+                 iconColor={C.textSecondary} iconBg={C.surfaceSecondary} />
           )}
           {platformCfg.privacyUrl && (
             <Row icon="shield-checkmark-outline"
                  label={T("privacyPolicy")}
                  sub={T("privacySubLabel")}
                  onPress={() => Linking.openURL(platformCfg.privacyUrl).catch(() => {})}
-                 iconColor="#0891B2" iconBg="#E0F2FE" />
+                 iconColor={C.primary} iconBg={C.primarySoft} />
           )}
           {platformCfg.refundPolicyUrl && (
             <Row icon="return-down-back-outline"
                  label={T("refundPolicy")}
                  sub={T("refundSubLabel")}
                  onPress={() => Linking.openURL(platformCfg.refundPolicyUrl).catch(() => {})}
-                 iconColor="#059669" iconBg="#ECFDF5" />
+                 iconColor={C.success} iconBg={C.successSoft} />
           )}
           {platformCfg.faqUrl && (
             <Row icon="help-circle-outline"
                  label={T("helpFaqsLabel")}
                  sub={T("faqSubLabel")}
                  onPress={() => Linking.openURL(platformCfg.faqUrl).catch(() => {})}
-                 iconColor="#7C3AED" iconBg="#F5F3FF" />
+                 iconColor={C.info} iconBg={C.infoSoft} />
           )}
           {platformCfg.aboutUrl && (
             <Row icon="information-circle-outline"
                  label={T("aboutUsLabel")}
                  sub={`${platformCfg.appName} ${T("aboutSubLabel")}`}
                  onPress={() => Linking.openURL(platformCfg.aboutUrl).catch(() => {})}
-                 iconColor="#EA580C" iconBg="#FFF7ED" />
+                 iconColor={C.parcel} iconBg={C.parcelLight} />
           )}
         </SectionCard>
 
-        {/* ── App Info ── */}
-        <View style={ai.wrap}>
-          <View style={ai.logo}><Ionicons name="storefront" size={26} color={C.primary} /></View>
-          <Text style={ai.name}>{platformCfg.appName}</Text>
-          <Text style={ai.version}>v{platformCfg.appVersion} • {platformCfg.businessAddress}</Text>
+        <View style={appInfo.wrap}>
+          <View style={appInfo.logo}><Ionicons name="storefront" size={26} color={C.primary} /></View>
+          <Text style={appInfo.name}>{platformCfg.appName}</Text>
+          <Text style={appInfo.version}>v{platformCfg.appVersion} • {platformCfg.businessAddress}</Text>
         </View>
 
-        {/* ── Sign Out ── */}
-        <View style={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+        <View style={{ paddingHorizontal: spacing.lg, paddingBottom: 40 }}>
           {showSignOutConfirm ? (
-            /* Inline confirmation — no Alert.alert (doesn't work in web iframe) */
-            <View style={so.confirmBox}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+            <View style={signOut.confirmBox}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.md }}>
+                <View style={{ width: 38, height: 38, borderRadius: radii.md, backgroundColor: C.dangerSoft, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="log-out-outline" size={18} color={C.danger} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={so.confirmTitle}>{T("signOutConfirm")}</Text>
-                  <Text style={so.confirmSub}>{T("signOutMsg")}</Text>
+                  <Text style={signOut.confirmTitle}>{T("signOutConfirm")}</Text>
+                  <Text style={signOut.confirmSub}>{T("signOutMsg")}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable
-                  onPress={() => setShowSignOutConfirm(false)}
-                  style={so.confirmCancel}
-                >
-                  <Text style={so.confirmCancelTxt}>{T("cancelNo")}</Text>
+                <Pressable onPress={() => setShowSignOutConfirm(false)} style={btnStyles.cancel}>
+                  <Text style={btnStyles.cancelTxt}>{T("cancelNo")}</Text>
                 </Pressable>
-                <Pressable
-                  onPress={doSignOut}
-                  disabled={signingOut}
-                  style={[so.confirmOk, signingOut && { opacity: 0.7 }]}
-                >
-                  {signingOut
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={so.confirmOkTxt}>{T("signOutYes")}</Text>}
+                <Pressable onPress={doSignOut} disabled={signingOut} style={[btnStyles.save, { backgroundColor: C.danger }, signingOut && { opacity: 0.7 }]}>
+                  {signingOut ? <ActivityIndicator color="#fff" size="small" /> : <Text style={btnStyles.saveTxt}>{T("signOutYes")}</Text>}
                 </Pressable>
               </View>
             </View>
           ) : (
-            <Pressable
-              onPress={() => setShowSignOutConfirm(true)}
-              style={so.btn}
-            >
+            <Pressable onPress={() => setShowSignOutConfirm(true)} style={signOut.btn}>
               <Ionicons name="log-out-outline" size={20} color={C.danger} />
-              <Text style={so.txt}>{T("signOutLabel")}</Text>
+              <Text style={signOut.txt}>{T("signOutLabel")}</Text>
             </Pressable>
           )}
         </View>
@@ -1147,20 +1062,18 @@ export default function ProfileScreen() {
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
       </ScrollView>
 
-      {/* ── Modals ── */}
       <EditProfileModal visible={showEdit} onClose={() => setShowEdit(false)} />
       <NotificationsModal visible={showNotifs} userId={user?.id || ""} token={token} onClose={count => { setUnread(count); setShowNotifs(false); }} />
       <PrivacyModal       visible={showPrivacy} userId={user?.id || ""} token={token} onClose={() => setShowPrivacy(false)} />
       <AddressesModal     visible={showAddrs}  userId={user?.id || ""} token={token} onClose={() => setShowAddrs(false)} />
 
-      {/* ── Language Picker Modal ── */}
       <Modal visible={showLang} transparent animationType="slide" onRequestClose={() => setShowLang(false)}>
-        <Pressable style={lm.overlay} onPress={() => setShowLang(false)}>
-          <Pressable style={lm.sheet} onPress={e => e.stopPropagation()}>
-            <View style={lm.handle} />
-            <Text style={lm.title}>Language / زبان</Text>
-            <Text style={lm.sub}>{T("selectLanguageSub")}</Text>
-            <View style={{ gap: 8, marginTop: 8 }}>
+        <Pressable style={sheet.overlay} onPress={() => setShowLang(false)}>
+          <Pressable style={sheet.container} onPress={e => e.stopPropagation()}>
+            <View style={sheet.handle} />
+            <Text style={langModal.title}>Language / زبان</Text>
+            <Text style={langModal.sub}>{T("selectLanguageSub")}</Text>
+            <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
               {LANGUAGE_OPTIONS.map(opt => {
                 const active = language === opt.value;
                 return (
@@ -1172,15 +1085,15 @@ export default function ProfileScreen() {
                       showToast("Language saved!", "success");
                     }}
                     disabled={langLoading}
-                    style={[lm.option, active && lm.optionActive]}
+                    style={[langModal.option, active && langModal.optionActive]}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={[lm.optLabel, active && lm.optLabelActive]}>{opt.label}</Text>
-                      <Text style={[lm.optNative, active && { color: C.primary }]}>{opt.nativeLabel}</Text>
+                      <Text style={[langModal.optLabel, active && langModal.optLabelActive]}>{opt.label}</Text>
+                      <Text style={[langModal.optNative, active && { color: C.primary }]}>{opt.nativeLabel}</Text>
                     </View>
                     {active && <Ionicons name="checkmark-circle" size={22} color={C.primary} />}
                     {opt.rtl && (
-                      <View style={lm.rtlBadge}><Text style={lm.rtlBadgeTxt}>RTL</Text></View>
+                      <View style={langModal.rtlBadge}><Text style={langModal.rtlBadgeTxt}>RTL</Text></View>
                     )}
                   </Pressable>
                 );
@@ -1193,187 +1106,198 @@ export default function ProfileScreen() {
   );
 }
 
-/* ══════════════════════════════════════ STYLES ══════════════════════════════════════ */
-
-/* Profile Header */
 const ph = StyleSheet.create({
-  card: { paddingHorizontal: 16, paddingBottom: 0, overflow: "hidden" },
+  card: { paddingHorizontal: spacing.lg, paddingBottom: 0, overflow: "hidden" },
   blob: { position: "absolute", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.1)" },
-  avatar: { width: 68, height: 68, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },
+  avatar: { width: 68, height: 68, borderRadius: radii.xl, backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },
   avatarTxt: { fontFamily: "Inter_700Bold", fontSize: 26, color: "#fff" },
-  name: { fontFamily: "Inter_700Bold", fontSize: 18, color: "#fff", marginBottom: 2 },
-  phone: { fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.85)" },
-  email: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 1 },
-  roleBadge: { backgroundColor: "rgba(255,255,255,0.22)", paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, alignSelf: "flex-start", marginTop: 6 },
-  roleTxt: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#fff" },
-  editBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  statsStrip: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: 14, marginTop: 14, marginBottom: 16, padding: 12 },
+  name: { ...typography.h3, color: "#fff", marginBottom: 2 },
+  phone: { ...typography.captionMedium, color: "rgba(255,255,255,0.85)" },
+  email: { ...typography.caption, color: "rgba(255,255,255,0.7)", marginTop: 1 },
+  roleBadge: { backgroundColor: "rgba(255,255,255,0.22)", paddingHorizontal: 10, paddingVertical: 3, borderRadius: radii.full, alignSelf: "flex-start", marginTop: 6 },
+  roleTxt: { ...typography.smallMedium, color: "#fff" },
+  editBtn: { width: 38, height: 38, borderRadius: radii.md, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  statsStrip: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: radii.lg, marginTop: spacing.lg, marginBottom: spacing.lg, padding: spacing.md },
   stat: { flex: 1, alignItems: "center" },
   statVal: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" },
-  statLbl: { fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.75)", marginTop: 2 },
+  statLbl: { ...typography.small, color: "rgba(255,255,255,0.75)", marginTop: 2 },
   statDiv: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.25)" },
 });
 
-/* Wallet Banner */
 const wb = StyleSheet.create({
-  wrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", marginHorizontal: 16, marginTop: 14, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: "#DBEAFE" },
-  grad: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  lbl: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginBottom: 2 },
+  wrap: { flexDirection: "row", alignItems: "center", backgroundColor: C.surface, marginHorizontal: spacing.lg, marginTop: spacing.lg, borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1, borderColor: C.borderLight, ...shadows.sm },
+  grad: { width: 42, height: 42, borderRadius: radii.md, alignItems: "center", justifyContent: "center" },
+  lbl: { ...typography.small, color: C.textMuted, marginBottom: 2 },
   amt: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
-  btn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.rideLight, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10 },
-  btnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.primary },
+  btn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.primarySoft, paddingHorizontal: 10, paddingVertical: 7, borderRadius: radii.md },
+  btnTxt: { ...typography.captionMedium, color: C.primary },
 });
 
-/* Referral / Loyalty Cards */
 const rc = StyleSheet.create({
-  wrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#FAF5FF", marginHorizontal: 16, marginTop: 12, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: "#E9D5FF" },
-  left: { flexDirection: "row", alignItems: "flex-start", gap: 12, flex: 1 },
-  iconBox: { width: 44, height: 44, borderRadius: 13, backgroundColor: "#F3E8FF", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  title: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, marginBottom: 3 },
-  sub: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, lineHeight: 17, marginBottom: 8 },
-  codeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  codeLabel: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.textMuted },
-  codePill: { backgroundColor: "#E9D5FF", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  code: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#6D28D9", letterSpacing: 1 },
+  wrap: { flexDirection: "row", alignItems: "center", backgroundColor: C.infoSoft, marginHorizontal: spacing.lg, marginTop: spacing.md, borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1, borderColor: "#C7D2FE" },
+  left: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, flex: 1 },
+  iconBox: { width: 44, height: 44, borderRadius: radii.lg, backgroundColor: "#E0E7FF", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  title: { ...typography.subtitle, color: C.text, marginBottom: 3 },
+  sub: { ...typography.caption, color: C.textSecondary, lineHeight: 17, marginBottom: spacing.sm },
+  codeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  codeLabel: { ...typography.smallMedium, color: C.textMuted },
+  codePill: { backgroundColor: "#C7D2FE", paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
+  code: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.info, letterSpacing: 1 },
 });
 
-/* Section Card */
-const sc = StyleSheet.create({
-  wrap: { paddingHorizontal: 16, marginTop: 20 },
+const sec = StyleSheet.create({
+  wrap: { paddingHorizontal: spacing.lg, marginTop: spacing.xl },
   title: { fontFamily: "Inter_700Bold", fontSize: 10, color: C.textMuted, letterSpacing: 1, marginBottom: 6 },
-  card: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.borderLight },
-  rIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  rLabel: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.text },
-  rSub: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginTop: 1 },
-  badge: { backgroundColor: "#EF4444", borderRadius: 10, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 5, marginRight: 4 },
+  card: { backgroundColor: C.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: C.borderLight, overflow: "hidden", ...shadows.sm },
+  secureBadge: { backgroundColor: C.successSoft, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radii.full },
+  secureTxt: { ...typography.smallMedium, color: C.success },
+});
+
+const row = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, borderBottomWidth: 1, borderBottomColor: C.borderLight },
+  icon: { width: 36, height: 36, borderRadius: radii.md, alignItems: "center", justifyContent: "center" },
+  label: { ...typography.bodyMedium, color: C.text },
+  sub: { ...typography.small, color: C.textMuted, marginTop: 1 },
+  badge: { backgroundColor: C.danger, borderRadius: 10, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 5, marginRight: 4 },
   badgeTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#fff" },
-  secureBadge: { backgroundColor: "#D1FAE5", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
-  secureTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#059669" },
 });
 
-/* App Info */
-const ai = StyleSheet.create({
-  wrap: { alignItems: "center", marginTop: 28, marginBottom: 16, gap: 6 },
-  logo: { width: 56, height: 56, borderRadius: 16, backgroundColor: "#EFF6FF", alignItems: "center", justifyContent: "center" },
-  name: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text },
-  version: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
+const appInfo = StyleSheet.create({
+  wrap: { alignItems: "center", marginTop: spacing.xxxl, marginBottom: spacing.lg, gap: 6 },
+  logo: { width: 56, height: 56, borderRadius: radii.xl, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center" },
+  name: { ...typography.subtitle, color: C.text },
+  version: { ...typography.caption, color: C.textMuted },
 });
 
-/* Sign Out */
-const so = StyleSheet.create({
-  btn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 15, backgroundColor: "#FEE2E2", borderRadius: 16 },
-  txt: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.danger },
-  confirmBox: { backgroundColor: "#fff", borderRadius: 16, padding: 16, borderWidth: 1.5, borderColor: "#FEE2E2" },
-  confirmTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text },
-  confirmSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
-  confirmCancel: { flex: 1, borderWidth: 1.5, borderColor: C.border, borderRadius: 12, paddingVertical: 13, alignItems: "center" },
-  confirmCancelTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textSecondary },
-  confirmOk: { flex: 2, backgroundColor: C.danger, borderRadius: 12, paddingVertical: 13, alignItems: "center" },
-  confirmOkTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+const signOut = StyleSheet.create({
+  btn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 15, backgroundColor: C.dangerSoft, borderRadius: radii.xl },
+  txt: { ...typography.bodySemiBold, color: C.danger },
+  confirmBox: { backgroundColor: C.surface, borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1.5, borderColor: C.dangerSoft },
+  confirmTitle: { ...typography.subtitle, color: C.text },
+  confirmSub: { ...typography.caption, color: C.textMuted, marginTop: 2 },
 });
 
-/* Edit Profile Sheet */
-const st = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 22, paddingBottom: Platform.OS === "web" ? 40 : 48, paddingTop: 12 },
-  sheetHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: 20 },
-  sheetTitle: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text, marginBottom: 4 },
-  sheetSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginBottom: 20 },
-  fldLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textSecondary, marginBottom: 7 },
-  fldWrap: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: 12, marginBottom: 6, overflow: "hidden" },
-  fldPre: { paddingHorizontal: 12, paddingVertical: 13, backgroundColor: "#F1F5F9", borderRightWidth: 1, borderRightColor: C.border, alignItems: "center", justifyContent: "center" },
-  fldPreTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.text },
-  fldTxt: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 14, color: C.text, paddingHorizontal: 12 },
-  fldInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, color: C.text, paddingHorizontal: 12, paddingVertical: 13 },
-  fldLock: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12 },
-  fldLockTxt: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
-  fldHint: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginBottom: 4, paddingLeft: 2 },
-  cancelBtn: { flex: 1, borderWidth: 1.5, borderColor: C.border, borderRadius: 13, paddingVertical: 14, alignItems: "center" },
-  cancelTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textSecondary },
-  saveBtn: { flex: 2, backgroundColor: C.primary, borderRadius: 13, paddingVertical: 14, alignItems: "center" },
-  saveTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
-  errorBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 8, borderWidth: 1, borderColor: "#FECACA" },
-  errorTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#DC2626", flex: 1 },
+const sheet = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: C.overlay, justifyContent: "flex-end" },
+  container: { backgroundColor: C.surface, borderTopLeftRadius: radii.xxl, borderTopRightRadius: radii.xxl, paddingHorizontal: spacing.xl, paddingBottom: Platform.OS === "web" ? 40 : 48, paddingTop: spacing.md },
+  handle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: spacing.xl },
+  title: { ...typography.h2, color: C.text, marginBottom: 4 },
+  sub: { ...typography.caption, color: C.textMuted, marginBottom: spacing.xl },
 });
 
-/* Notifications */
-const nm = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  title: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.text },
-  sub: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
-  markAllBtn: { backgroundColor: C.rideLight, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
-  markAllTxt: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.primary },
-  closeBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center" },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
-  emptyTitle: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: C.text },
-  emptySub: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted },
-  item: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.borderLight },
-  itemUnread: { backgroundColor: "#F8FAFF" },
-  iIcon: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 },
-  dot: { position: "absolute", top: -1, right: -1, width: 10, height: 10, borderRadius: 5, backgroundColor: C.danger, borderWidth: 2, borderColor: "#fff" },
-  iTitle: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.text, marginBottom: 2 },
-  iBody: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, lineHeight: 17 },
-  iTime: { fontFamily: "Inter_400Regular", fontSize: 10, color: C.textMuted, marginTop: 4 },
-  del: { width: 26, height: 26, borderRadius: 8, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+const fld = StyleSheet.create({
+  label: { ...typography.captionMedium, color: C.textSecondary, marginBottom: 7 },
+  wrap: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, marginBottom: 6, overflow: "hidden" },
+  pre: { paddingHorizontal: spacing.md, paddingVertical: 13, backgroundColor: C.surfaceSecondary, borderRightWidth: 1, borderRightColor: C.border, alignItems: "center", justifyContent: "center" },
+  preTxt: { ...typography.bodySemiBold, color: C.text },
+  readOnly: { flex: 1, ...typography.body, paddingHorizontal: spacing.md },
+  input: { flex: 1, ...typography.body, color: C.text, paddingHorizontal: spacing.md, paddingVertical: 13 },
+  lock: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md },
+  lockTxt: { ...typography.small, color: C.textMuted },
+  hint: { ...typography.small, color: C.textMuted, marginBottom: 4, paddingLeft: 2 },
 });
 
-/* Privacy */
-const pv = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  title: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.text },
-  closeBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center" },
-  secTitle: { fontFamily: "Inter_700Bold", fontSize: 13, color: C.text, marginBottom: 8 },
-  card: { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: C.border, overflow: "hidden" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.borderLight },
-  rIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  rLabel: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.text },
-  rSub: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginTop: 1 },
+const chip = StyleSheet.create({
+  base: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.full, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface },
+  active: {},
+  text: { ...typography.captionMedium, color: C.textMuted },
+  textActive: {},
 });
 
-/* Addresses */
-const ad = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  title: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.text },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
-  addBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#fff" },
-  closeBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center" },
-  addPanel: { borderBottomWidth: 1, borderBottomColor: C.border, padding: 16, backgroundColor: "#FAFAFA" },
-  chip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: C.border, backgroundColor: "#fff" },
-  chipTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textMuted },
-  fld: { borderWidth: 1.5, borderColor: C.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12, backgroundColor: "#fff" },
-  fldTxt: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.text },
-  cityChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: C.border, backgroundColor: "#fff" },
-  cityTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textMuted },
-  saveBtn: { backgroundColor: C.primary, borderRadius: 13, paddingVertical: 13, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6 },
-  saveBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 32 },
-  emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text },
-  emptySub: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center" },
-  emptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14, marginTop: 8 },
-  emptyBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
-  item: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: C.border },
-  iIcon: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  iLabel: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text },
-  iAddr: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, marginTop: 2 },
-  iCity: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginTop: 1 },
-  defBadge: { backgroundColor: "#D1FAE5", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 },
-  defTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#059669" },
-  delBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" },
+const errStyle = StyleSheet.create({
+  box: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.dangerSoft, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: 10, marginTop: spacing.sm, borderWidth: 1, borderColor: "#FECACA" },
+  txt: { ...typography.captionMedium, color: C.danger, flex: 1 },
 });
 
-/* Language Modal */
-const lm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 12 },
-  handle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: 20 },
-  title: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text, marginBottom: 4 },
-  sub: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginBottom: 8 },
-  option: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: C.border, backgroundColor: "#fff" },
-  optionActive: { borderColor: C.primary, backgroundColor: C.rideLight },
-  optLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
+const btnStyles = StyleSheet.create({
+  cancel: { flex: 1, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, paddingVertical: 14, alignItems: "center" },
+  cancelTxt: { ...typography.bodySemiBold, color: C.textSecondary },
+  save: { flex: 2, backgroundColor: C.primary, borderRadius: radii.lg, paddingVertical: 14, alignItems: "center" },
+  saveTxt: { ...typography.button, color: "#fff" },
+});
+
+const primaryBtn = StyleSheet.create({
+  base: { backgroundColor: C.primary, borderRadius: radii.lg, paddingVertical: spacing.lg, alignItems: "center", ...shadows.md },
+  txt: { ...typography.button, color: "#fff" },
+});
+
+const otpStyle = StyleSheet.create({
+  input: { paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, fontFamily: "Inter_700Bold", fontSize: 24, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, textAlign: "center", letterSpacing: 8 },
+});
+
+const modalHdr = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: C.borderLight },
+  title: { ...typography.h3, color: C.text },
+  sub: { ...typography.caption, color: C.textMuted, marginTop: 2 },
+  action: { backgroundColor: C.primarySoft, paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.full },
+  actionTxt: { ...typography.captionMedium, color: C.primary },
+  close: { width: 34, height: 34, borderRadius: radii.md, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
+});
+
+const empty = StyleSheet.create({
+  wrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: spacing.xxxl },
+  title: { ...typography.subtitle, color: C.text },
+  sub: { ...typography.caption, color: C.textMuted, textAlign: "center" },
+});
+
+const notifItem = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.borderLight },
+  unread: { backgroundColor: C.primarySoft },
+  icon: { width: 42, height: 42, borderRadius: radii.md, alignItems: "center", justifyContent: "center", position: "relative", flexShrink: 0 },
+  dot: { position: "absolute", top: -1, right: -1, width: 10, height: 10, borderRadius: 5, backgroundColor: C.danger, borderWidth: 2, borderColor: C.surface },
+  title: { ...typography.bodySemiBold, color: C.text, marginBottom: 2 },
+  body: { ...typography.caption, color: C.textSecondary, lineHeight: 17 },
+  time: { ...typography.small, color: C.textMuted, marginTop: 4 },
+  del: { width: 26, height: 26, borderRadius: radii.sm, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+});
+
+const privRow = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.borderLight },
+  icon: { width: 36, height: 36, borderRadius: radii.md, alignItems: "center", justifyContent: "center" },
+  label: { ...typography.bodyMedium, color: C.text },
+  sub: { ...typography.small, color: C.textMuted, marginTop: 1 },
+});
+
+const secHdr = StyleSheet.create({
+  label: { ...typography.subtitle, color: C.text, marginBottom: spacing.sm },
+});
+
+const secCard = StyleSheet.create({
+  wrap: { backgroundColor: C.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: C.borderLight, overflow: "hidden", ...shadows.sm },
+});
+
+const addrHdr = StyleSheet.create({
+  addBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.primary, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md },
+  addBtnTxt: { ...typography.captionMedium, color: "#fff" },
+});
+
+const addrAdd = StyleSheet.create({
+  panel: { borderBottomWidth: 1, borderBottomColor: C.borderLight, padding: spacing.lg, backgroundColor: C.surfaceSecondary },
+  fld: { borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, paddingHorizontal: spacing.md, paddingVertical: 10, marginBottom: spacing.md, backgroundColor: C.surface },
+  fldTxt: { ...typography.body, color: C.text },
+});
+
+const addrItem = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: C.surface, borderRadius: radii.lg, padding: spacing.lg, borderWidth: 1, borderColor: C.borderLight, ...shadows.sm },
+  icon: { width: 42, height: 42, borderRadius: radii.md, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  label: { ...typography.bodySemiBold, color: C.text },
+  addr: { ...typography.caption, color: C.textSecondary, marginTop: 2 },
+  city: { ...typography.small, color: C.textMuted, marginTop: 1 },
+  defBadge: { backgroundColor: C.successSoft, paddingHorizontal: 7, paddingVertical: 2, borderRadius: radii.full },
+  defTxt: { ...typography.smallMedium, color: C.success },
+  setDefBtn: { paddingHorizontal: spacing.sm, paddingVertical: 6, borderRadius: radii.sm, backgroundColor: C.primarySoft, borderWidth: 1, borderColor: "#B3D4FF" },
+  setDefTxt: { ...typography.smallMedium, color: C.primary },
+  delBtn: { width: 30, height: 30, borderRadius: radii.sm, alignItems: "center", justifyContent: "center" },
+});
+
+const langModal = StyleSheet.create({
+  title: { ...typography.h2, color: C.text, marginBottom: spacing.xs },
+  sub: { ...typography.caption, color: C.textMuted, marginBottom: spacing.sm },
+  option: { flexDirection: "row", alignItems: "center", gap: spacing.md, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, padding: spacing.lg },
+  optionActive: { borderColor: C.primary, backgroundColor: C.primarySoft },
+  optLabel: { ...typography.bodySemiBold, color: C.text },
   optLabelActive: { color: C.primary },
-  optNative: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
-  rtlBadge: { backgroundColor: "#FEF3C7", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 20 },
-  rtlBadgeTxt: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#D97706" },
+  optNative: { ...typography.caption, color: C.textMuted, marginTop: 2 },
+  rtlBadge: { backgroundColor: C.accentSoft, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radii.full },
+  rtlBadgeTxt: { ...typography.smallMedium, color: C.accent },
 });

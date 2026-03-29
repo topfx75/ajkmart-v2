@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 
-import Colors from "@/constants/colors";
+import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -26,12 +26,11 @@ import { tDual } from "@workspace/i18n";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
-const C      = Colors.light;
-const W      = Dimensions.get("window").width;
-const H_PAD  = 16;
-const HALF_W = (W - H_PAD * 2 - 12) / 2;
+const C = Colors.light;
+const W = Dimensions.get("window").width;
+const H_PAD = spacing.lg;
+const HALF_W = (W - H_PAD * 2 - spacing.md) / 2;
 
-/* ─────────────────────────── Active Order/Ride Tracker Strip ─────────────────────────── */
 function ActiveTrackerStrip({ userId }: { userId: string }) {
   const { token } = useAuth();
   const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -68,57 +67,111 @@ function ActiveTrackerStrip({ userId }: { userId: string }) {
 
   if (totalActive === 0) return null;
 
-  const hasRide  = activeRides.length > 0;
+  const hasRide = activeRides.length > 0;
   const hasOrder = activeOrders.length > 0;
 
   let label = "";
   let icon: keyof typeof Ionicons.glyphMap = "timer-outline";
-  let c1 = "#059669"; let c2 = "#10B981";
+  let c1 = C.success;
+  let c2 = "#00E6A0";
 
   if (hasRide && hasOrder) {
-    label = `${activeRides.length} active ride • ${activeOrders.length} active order`;
-    icon = "car-outline"; c1 = "#1D4ED8"; c2 = "#2563EB";
+    label = `${activeRides.length} active ride \u2022 ${activeOrders.length} active order`;
+    icon = "car-outline";
+    c1 = C.primary;
+    c2 = C.primaryLight;
   } else if (hasRide) {
     const r = activeRides[0];
-    const statusMap: Record<string, string> = { searching: "Finding your rider...", accepted: "Rider is on the way", arrived: "Rider has arrived!", in_transit: "Trip in progress 🚗" };
+    const statusMap: Record<string, string> = {
+      searching: "Finding your rider...",
+      accepted: "Rider is on the way",
+      arrived: "Rider has arrived!",
+      in_transit: "Trip in progress",
+    };
     label = statusMap[r.status] || "Ride is active";
-    icon = "car-outline"; c1 = "#059669"; c2 = "#10B981";
+    icon = "car-outline";
   } else {
     const o = activeOrders[0];
-    const statusMap: Record<string, string> = { pending: "Order received, being confirmed", confirmed: "Order confirmed! Being prepared", preparing: "Your food is being prepared 🍳", out_for_delivery: "Order is on its way! 🚴", ready: "Order ready for pickup" };
+    const statusMap: Record<string, string> = {
+      pending: "Order received, being confirmed",
+      confirmed: "Order confirmed! Being prepared",
+      preparing: "Your food is being prepared",
+      out_for_delivery: "Order is on its way!",
+      ready: "Order ready for pickup",
+    };
     label = statusMap[o.status] || `${activeOrders.length} active order`;
-    icon = o.type === "ride" ? "car-outline" : o.type === "food" ? "restaurant-outline" : "storefront-outline";
-    c1 = "#1D4ED8"; c2 = "#2563EB";
+    icon =
+      o.type === "ride"
+        ? "car-outline"
+        : o.type === "food"
+        ? "restaurant-outline"
+        : "storefront-outline";
+    c1 = C.primary;
+    c2 = C.primaryLight;
   }
 
   return (
     <Pressable onPress={() => router.push("/(tabs)/orders")} style={styles.trackerWrap}>
-      <LinearGradient colors={[c1, c2]} start={{ x:0,y:0 }} end={{ x:1,y:0 }} style={styles.trackerCard}>
-        <View style={styles.trackerDot} />
-        <Ionicons name={icon} size={15} color="#fff" />
-        <Text style={styles.trackerTxt} numberOfLines={1}>{label}</Text>
-        <Text style={styles.trackerCta}>Track →</Text>
+      <LinearGradient
+        colors={[c1, c2]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.trackerCard}
+      >
+        <View style={styles.trackerPulse}>
+          <View style={styles.trackerDot} />
+        </View>
+        <Ionicons name={icon} size={16} color="#fff" />
+        <Text style={styles.trackerTxt} numberOfLines={1}>
+          {label}
+        </Text>
+        <View style={styles.trackerCta}>
+          <Text style={styles.trackerCtaTxt}>Track</Text>
+          <Ionicons name="arrow-forward" size={12} color={c1} />
+        </View>
       </LinearGradient>
     </Pressable>
   );
 }
 
-/* ─────────────────────────── animated tap wrapper ─────────────────────────── */
-function Tap({ children, onPress, style, delay = 0 }: {
-  children: React.ReactNode; onPress: () => void; style?: any; delay?: number;
+function Tap({
+  children,
+  onPress,
+  style,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  onPress: () => void;
+  style?: any;
+  delay?: number;
 }) {
-  const sc  = useRef(new Animated.Value(0.94)).current;
-  const op  = useRef(new Animated.Value(0)).current;
+  const sc = useRef(new Animated.Value(0.94)).current;
+  const op = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(sc, { toValue: 1, useNativeDriver: true, delay, bounciness: 7 }),
-      Animated.timing(op, { toValue: 1, duration: 320, delay, useNativeDriver: true }),
+      Animated.spring(sc, {
+        toValue: 1,
+        useNativeDriver: true,
+        delay,
+        tension: 50,
+        friction: 7,
+      }),
+      Animated.timing(op, {
+        toValue: 1,
+        duration: 350,
+        delay,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, []);
 
-  const onIn  = () => Animated.spring(sc, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
-  const onOut = () => { Animated.spring(sc, { toValue: 1, useNativeDriver: true, speed: 35 }).start(); onPress(); };
+  const onIn = () =>
+    Animated.spring(sc, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
+  const onOut = () => {
+    Animated.spring(sc, { toValue: 1, useNativeDriver: true, speed: 35 }).start();
+    onPress();
+  };
 
   return (
     <Animated.View style={[{ opacity: op, transform: [{ scale: sc }] }, style]}>
@@ -129,13 +182,33 @@ function Tap({ children, onPress, style, delay = 0 }: {
   );
 }
 
-/* ─────────────────────────── HERO card ─────────────────────────── */
-function HeroCard({ onPress, appName = "AJKMart" }: { onPress: () => void; appName?: string }) {
+function HeroCard({
+  onPress,
+  appName = "AJKMart",
+}: {
+  onPress: () => void;
+  appName?: string;
+}) {
   return (
     <Tap onPress={onPress} style={styles.heroWrap} delay={80}>
-      <LinearGradient colors={["#0D47C0","#1A56DB","#2563EB"]} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={styles.heroCard}>
-        <View style={[styles.blob,{ width:200,height:200,top:-60,right:-40,opacity:0.11 }]} />
-        <View style={[styles.blob,{ width:80, height:80, bottom:10, right:80,opacity:0.09 }]} />
+      <LinearGradient
+        colors={["#0052CC", C.primary, "#3385FF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <View
+          style={[
+            styles.blob,
+            { width: 200, height: 200, top: -60, right: -40, opacity: 0.08 },
+          ]}
+        />
+        <View
+          style={[
+            styles.blob,
+            { width: 80, height: 80, bottom: 10, right: 80, opacity: 0.06 },
+          ]}
+        />
 
         <View style={styles.heroL}>
           <View style={styles.heroBadge}>
@@ -143,7 +216,9 @@ function HeroCard({ onPress, appName = "AJKMart" }: { onPress: () => void; appNa
             <Text style={styles.heroBadgeTxt}>Grocery Mart</Text>
           </View>
           <Text style={styles.heroTitle}>{appName}</Text>
-          <Text style={styles.heroSub}>Fresh groceries & essentials{"\n"}delivered to your door</Text>
+          <Text style={styles.heroSub}>
+            Fresh groceries & essentials{"\n"}delivered to your door
+          </Text>
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
               <Ionicons name="cube-outline" size={11} color="rgba(255,255,255,0.85)" />
@@ -162,7 +237,7 @@ function HeroCard({ onPress, appName = "AJKMart" }: { onPress: () => void; appNa
 
         <View style={styles.heroR}>
           <View style={styles.heroRing}>
-            <Ionicons name="storefront" size={46} color="#fff" />
+            <Ionicons name="storefront" size={44} color="#fff" />
           </View>
         </View>
       </LinearGradient>
@@ -170,32 +245,67 @@ function HeroCard({ onPress, appName = "AJKMart" }: { onPress: () => void; appNa
   );
 }
 
-/* ─────────────────────────── SERVICE card (Food / Ride) ─────────────────────────── */
-function SvcCard({ onPress, delay, g1, g2, ig1, ig2, icon, title, sub, tag, tagIcon, textC, tagC, tagBg, fullWidth }: any) {
+function SvcCard({
+  onPress,
+  delay,
+  g1,
+  g2,
+  ig1,
+  ig2,
+  icon,
+  title,
+  sub,
+  tag,
+  tagIcon,
+  textC,
+  tagC,
+  tagBg,
+  fullWidth,
+}: any) {
   return (
-    <Tap onPress={onPress} style={[styles.svcWrap, fullWidth ? { width: "100%" } : { width: HALF_W }]} delay={delay}>
-      <LinearGradient colors={[g1,g2]} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={styles.svcCard}>
-        <View style={[styles.blob,{ width:110,height:110,top:-30,right:-30,opacity:0.13,backgroundColor:"#fff" }]} />
-        <LinearGradient colors={[ig1,ig2]} style={styles.svcIcon}>
-          <Ionicons name={icon} size={26} color="#fff" />
+    <Tap
+      onPress={onPress}
+      style={[styles.svcWrap, fullWidth ? { width: "100%" } : { width: HALF_W }]}
+      delay={delay}
+    >
+      <LinearGradient
+        colors={[g1, g2]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.svcCard}
+      >
+        <View
+          style={[
+            styles.blob,
+            {
+              width: 110,
+              height: 110,
+              top: -30,
+              right: -30,
+              opacity: 0.1,
+              backgroundColor: "#fff",
+            },
+          ]}
+        />
+        <LinearGradient colors={[ig1, ig2]} style={styles.svcIcon}>
+          <Ionicons name={icon} size={24} color="#fff" />
         </LinearGradient>
-        <Text style={[styles.svcTitle,{ color: textC }]}>{title}</Text>
-        <Text style={[styles.svcSub,{ color: textC, opacity:0.75 }]}>{sub}</Text>
-        <View style={[styles.svcTag,{ backgroundColor: tagBg }]}>
+        <Text style={[styles.svcTitle, { color: textC }]}>{title}</Text>
+        <Text style={[styles.svcSub, { color: textC, opacity: 0.7 }]}>{sub}</Text>
+        <View style={[styles.svcTag, { backgroundColor: tagBg }]}>
           <Ionicons name={tagIcon} size={11} color={tagC} />
-          <Text style={[styles.svcTagTxt,{ color: tagC }]}>{tag}</Text>
+          <Text style={[styles.svcTagTxt, { color: tagC }]}>{tag}</Text>
         </View>
       </LinearGradient>
     </Tap>
   );
 }
 
-/* ─────────────────────────── NO SERVICES EMPTY STATE ─────────────────────────── */
 function NoServicesState() {
   return (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
-        <Ionicons name="storefront-outline" size={48} color="#94A3B8" />
+        <Ionicons name="storefront-outline" size={48} color={C.textMuted} />
       </View>
       <Text style={styles.emptyTitle}>No Services Available</Text>
       <Text style={styles.emptySub}>
@@ -205,15 +315,32 @@ function NoServicesState() {
   );
 }
 
-/* ─────────────────────────── WALLET strip ─────────────────────────── */
-function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: number; onPress: () => void; appName?: string }) {
+function WalletStrip({
+  balance,
+  onPress,
+  appName = "AJKMart",
+}: {
+  balance: number;
+  onPress: () => void;
+  appName?: string;
+}) {
   return (
     <Tap onPress={onPress} style={styles.walletWrap} delay={310}>
-      <LinearGradient colors={["#0F3BA8","#1A56DB"]} start={{ x:0,y:0 }} end={{ x:1,y:0 }} style={styles.walletCard}>
-        <View style={[styles.blob,{ width:140,height:140,top:-45,right:50,opacity:0.1 }]} />
+      <LinearGradient
+        colors={[C.primaryDark, C.primary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.walletCard}
+      >
+        <View
+          style={[
+            styles.blob,
+            { width: 140, height: 140, top: -45, right: 50, opacity: 0.08 },
+          ]}
+        />
         <View style={styles.walletL}>
           <View style={styles.walletIcon}>
-            <Ionicons name="wallet" size={22} color="#fff" />
+            <Ionicons name="wallet" size={20} color="#fff" />
           </View>
           <View>
             <Text style={styles.walletLbl}>{appName} Wallet</Text>
@@ -229,23 +356,44 @@ function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: numbe
   );
 }
 
-/* ─────────────────────────── QUICK PILL ─────────────────────────── */
-function Pill({ icon, label, color, bg, onPress, delay }: {
-  icon: keyof typeof Ionicons.glyphMap; label: string; color: string; bg: string; onPress: () => void; delay: number;
+function Pill({
+  icon,
+  label,
+  color,
+  bg,
+  onPress,
+  delay,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  bg: string;
+  onPress: () => void;
+  delay: number;
 }) {
   const op = useRef(new Animated.Value(0)).current;
   const ty = useRef(new Animated.Value(16)).current;
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(op, { toValue:1, duration:270, delay, useNativeDriver:true }),
-      Animated.timing(ty, { toValue:0, duration:270, delay, useNativeDriver:true }),
+      Animated.timing(op, {
+        toValue: 1,
+        duration: 300,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(ty, {
+        toValue: 0,
+        duration: 300,
+        delay,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, []);
   return (
-    <Animated.View style={{ opacity:op, transform:[{ translateY:ty }] }}>
+    <Animated.View style={{ opacity: op, transform: [{ translateY: ty }] }}>
       <Pressable onPress={onPress} style={styles.pill}>
-        <View style={[styles.pillIcon,{ backgroundColor: bg }]}>
-          <Ionicons name={icon} size={19} color={color} />
+        <View style={[styles.pillIcon, { backgroundColor: bg }]}>
+          <Ionicons name={icon} size={20} color={color} />
         </View>
         <Text style={styles.pillLbl}>{label}</Text>
       </Pressable>
@@ -253,13 +401,13 @@ function Pill({ icon, label, color, bg, onPress, delay }: {
   );
 }
 
-/* ─────────────────────────── AUTO-SLIDING BANNER CAROUSEL ─────────────────────────── */
 const ALL_BANNERS = [
   {
     title: "Free Delivery",
-    desc:  "Free delivery on your first order — try it today!",
-    tag:   "🎉 New Users",
-    c1: "#1A56DB", c2: "#2563EB",
+    desc: "Free delivery on your first order \u2014 try it today!",
+    tag: "New Users",
+    c1: C.primary,
+    c2: "#3385FF",
     icon: "cart-outline" as const,
     route: "/mart",
     cta: "Shop Now",
@@ -267,9 +415,10 @@ const ALL_BANNERS = [
   },
   {
     title: "Bike Ride 10% Off",
-    desc:  "Book a bike from just Rs. 45 — anywhere in AJK!",
-    tag:   "🏍️ Weekend Deal",
-    c1: "#059669", c2: "#10B981",
+    desc: "Book a bike from just Rs. 45 \u2014 anywhere in AJK!",
+    tag: "Weekend Deal",
+    c1: C.success,
+    c2: "#00E6A0",
     icon: "bicycle-outline" as const,
     route: "/ride",
     cta: "Book a Ride",
@@ -277,39 +426,43 @@ const ALL_BANNERS = [
   },
   {
     title: "Local Food Deal",
-    desc:  "Place 2 food orders and get 20% off your next one!",
-    tag:   "🍽️ Food Deal",
-    c1: "#D97706", c2: "#F59E0B",
+    desc: "Place 2 food orders and get 20% off your next one!",
+    tag: "Food Deal",
+    c1: "#E68600",
+    c2: C.food,
     icon: "restaurant-outline" as const,
     route: "/food",
     cta: "Order Now",
     service: "food" as const,
   },
   {
-    title: "⚡ Flash Deals",
-    desc:  "New deals daily — save 20% on fruits, veggies, milk & more!",
-    tag:   "🛒 Flash Sale",
-    c1: "#7C3AED", c2: "#8B5CF6",
+    title: "Flash Deals",
+    desc: "New deals daily \u2014 save 20% on fruits, veggies, milk & more!",
+    tag: "Flash Sale",
+    c1: "#4B47D6",
+    c2: C.info,
     icon: "flash-outline" as const,
     route: "/mart",
     cta: "View Deals",
     service: "mart" as const,
   },
   {
-    title: "💊 Pharmacy",
-    desc:  "Order medicines from home — delivery in 25-40 min!",
-    tag:   "🏥 On-Demand",
-    c1: "#7C3AED", c2: "#A855F7",
+    title: "Pharmacy",
+    desc: "Order medicines from home \u2014 delivery in 25-40 min!",
+    tag: "On-Demand",
+    c1: "#9B40D6",
+    c2: C.pharmacy,
     icon: "medkit-outline" as const,
     route: "/pharmacy",
     cta: "Order Now",
     service: "pharmacy" as const,
   },
   {
-    title: "📦 Parcel Delivery",
-    desc:  "Send parcels anywhere in AJK — starting from Rs. 150!",
-    tag:   "🚀 Fast Delivery",
-    c1: "#D97706", c2: "#F59E0B",
+    title: "Parcel Delivery",
+    desc: "Send parcels anywhere in AJK \u2014 starting from Rs. 150!",
+    tag: "Fast Delivery",
+    c1: "#E65500",
+    c2: C.parcel,
     icon: "cube-outline" as const,
     route: "/parcel",
     cta: "Book Now",
@@ -317,8 +470,18 @@ const ALL_BANNERS = [
   },
 ];
 
-function BannerCarousel({ features }: { features: { mart: boolean; food: boolean; rides: boolean; pharmacy: boolean; parcel: boolean } }) {
-  const banners = ALL_BANNERS.filter(b => features[b.service]);
+function BannerCarousel({
+  features,
+}: {
+  features: {
+    mart: boolean;
+    food: boolean;
+    rides: boolean;
+    pharmacy: boolean;
+    parcel: boolean;
+  };
+}) {
+  const banners = ALL_BANNERS.filter((b) => features[b.service]);
   const scrollRef = useRef<ScrollView>(null);
   const [active, setActive] = useState(0);
   const BANNER_W = W - H_PAD * 2;
@@ -326,7 +489,7 @@ function BannerCarousel({ features }: { features: { mart: boolean; food: boolean
   useEffect(() => {
     if (banners.length <= 1) return;
     const timer = setInterval(() => {
-      setActive(prev => {
+      setActive((prev) => {
         const next = (prev + 1) % banners.length;
         scrollRef.current?.scrollTo({ x: next * BANNER_W, animated: true });
         return next;
@@ -335,10 +498,13 @@ function BannerCarousel({ features }: { features: { mart: boolean; food: boolean
     return () => clearInterval(timer);
   }, [BANNER_W, banners.length]);
 
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const idx = Math.round(e.nativeEvent.contentOffset.x / BANNER_W);
-    setActive(idx);
-  }, [BANNER_W]);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const idx = Math.round(e.nativeEvent.contentOffset.x / BANNER_W);
+      setActive(idx);
+    },
+    [BANNER_W]
+  );
 
   if (banners.length === 0) return null;
 
@@ -360,18 +526,29 @@ function BannerCarousel({ features }: { features: { mart: boolean; food: boolean
         {banners.map((b, i) => (
           <Pressable
             key={i}
-            onPress={() => router.push(b.route as any)}
+            onPress={() => router.push(b.route as Href)}
             style={{ width: BANNER_W }}
           >
             <LinearGradient
               colors={[b.c1, b.c2]}
-              start={{ x:0,y:0 }} end={{ x:1,y:0 }}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
               style={styles.bannerCard}
             >
-              <View style={[styles.blob,{ width:130,height:130,top:-30,right:60,opacity:0.15 }]} />
-              <View style={[styles.blob,{ width:70, height:70, bottom:-10,right:10,opacity:0.12 }]} />
+              <View
+                style={[
+                  styles.blob,
+                  { width: 130, height: 130, top: -30, right: 60, opacity: 0.12 },
+                ]}
+              />
+              <View
+                style={[
+                  styles.blob,
+                  { width: 70, height: 70, bottom: -10, right: 10, opacity: 0.08 },
+                ]}
+              />
 
-              <View style={{ flex:1 }}>
+              <View style={{ flex: 1 }}>
                 <View style={styles.bannerTagRow}>
                   <View style={styles.bannerTagChip}>
                     <Text style={styles.bannerTagTxt}>{b.tag}</Text>
@@ -385,7 +562,13 @@ function BannerCarousel({ features }: { features: { mart: boolean; food: boolean
                 </View>
               </View>
 
-              <Ionicons name={b.icon} size={64} color="rgba(255,255,255,0.2)" style={{ marginLeft: 8 }} />
+              <View style={styles.bannerIconWrap}>
+                <Ionicons
+                  name={b.icon}
+                  size={56}
+                  color="rgba(255,255,255,0.15)"
+                />
+              </View>
             </LinearGradient>
           </Pressable>
         ))}
@@ -398,7 +581,10 @@ function BannerCarousel({ features }: { features: { mart: boolean; food: boolean
               key={i}
               onPress={() => {
                 setActive(i);
-                scrollRef.current?.scrollTo({ x: i * BANNER_W, animated: true });
+                scrollRef.current?.scrollTo({
+                  x: i * BANNER_W,
+                  animated: true,
+                });
               }}
               style={[styles.dot, active === i && styles.dotActive]}
             />
@@ -409,40 +595,101 @@ function BannerCarousel({ features }: { features: { mart: boolean; food: boolean
   );
 }
 
-/* ══════════════════════════════ MAIN HOME SCREEN ══════════════════════════════ */
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { itemCount } = useCart();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const TAB_H  = Platform.OS === "web" ? 84 : 49;
-  const hdOp   = useRef(new Animated.Value(0)).current;
+  const TAB_H = Platform.OS === "web" ? 72 : 49;
+  const hdOp = useRef(new Animated.Value(0)).current;
 
   const { config: platformConfig } = usePlatformConfig();
-  const features      = platformConfig.features;
-  const appName       = platformConfig.platform.appName;
+  const features = platformConfig.features;
+  const appName = platformConfig.platform.appName;
   const contentBanner = platformConfig.content.banner;
-  const announcement  = platformConfig.content.announcement;
+  const announcement = platformConfig.content.announcement;
   const [announceDismissed, setAnnounceDismissed] = useState(false);
 
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
 
   useEffect(() => {
-    Animated.timing(hdOp, { toValue:1, duration:480, useNativeDriver:true }).start();
+    Animated.timing(hdOp, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const allQuickActions = [
-    { icon: "leaf-outline"    as const, label: "Fruits",    color: C.mart,    bg: C.martLight,  route: "/mart",            service: "mart" as const },
-    { icon: "medkit-outline"  as const, label: "Pharmacy",  color: "#7C3AED", bg: "#F5F3FF",    route: "/pharmacy",        service: "pharmacy" as const },
-    { icon: "pizza-outline"   as const, label: "Pizza",     color: C.food,    bg: C.foodLight,  route: "/food",            service: "food" as const },
-    { icon: "bicycle-outline" as const, label: "Bike",      color: "#8B5CF6", bg: "#EDE9FE",    route: "/ride",            service: "rides" as const },
-    { icon: "cube-outline"    as const, label: "Parcel",    color: "#D97706", bg: "#FFFBEB",    route: "/parcel",          service: "parcel" as const },
-    { icon: "flash-outline"   as const, label: "Deals",     color: "#DC2626", bg: "#FEE2E2",    route: "/mart",            service: "mart" as const },
-    { icon: "car-outline"     as const, label: "Car",       color: "#059669", bg: "#D1FAE5",    route: "/ride",            service: "rides" as const },
-    { icon: "time-outline"    as const, label: "Track",     color: C.primary, bg: C.rideLight,  route: "/(tabs)/orders",   service: null },
+    {
+      icon: "leaf-outline" as const,
+      label: "Fruits",
+      color: C.mart,
+      bg: C.martLight,
+      route: "/mart",
+      service: "mart" as const,
+    },
+    {
+      icon: "medkit-outline" as const,
+      label: "Pharmacy",
+      color: C.pharmacy,
+      bg: C.pharmacyLight,
+      route: "/pharmacy",
+      service: "pharmacy" as const,
+    },
+    {
+      icon: "pizza-outline" as const,
+      label: "Pizza",
+      color: C.food,
+      bg: C.foodLight,
+      route: "/food",
+      service: "food" as const,
+    },
+    {
+      icon: "bicycle-outline" as const,
+      label: "Bike",
+      color: C.info,
+      bg: C.infoSoft,
+      route: "/ride",
+      service: "rides" as const,
+    },
+    {
+      icon: "cube-outline" as const,
+      label: "Parcel",
+      color: C.parcel,
+      bg: C.parcelLight,
+      route: "/parcel",
+      service: "parcel" as const,
+    },
+    {
+      icon: "flash-outline" as const,
+      label: "Deals",
+      color: C.danger,
+      bg: C.dangerSoft,
+      route: "/mart",
+      service: "mart" as const,
+    },
+    {
+      icon: "car-outline" as const,
+      label: "Car",
+      color: C.success,
+      bg: C.successSoft,
+      route: "/ride",
+      service: "rides" as const,
+    },
+    {
+      icon: "time-outline" as const,
+      label: "Track",
+      color: C.primary,
+      bg: C.primarySoft,
+      route: "/(tabs)/orders",
+      service: null,
+    },
   ];
-  const quickActions = allQuickActions.filter(q => q.service === null || features[q.service]);
+  const quickActions = allQuickActions.filter(
+    (q) => q.service === null || features[q.service]
+  );
 
   const allServices: Array<{
     key: string;
@@ -451,95 +698,166 @@ export default function HomeScreen() {
     props: any;
   }> = [
     {
-      key: "mart", featureKey: "mart", type: "hero",
+      key: "mart",
+      featureKey: "mart",
+      type: "hero",
       props: { onPress: () => router.push("/mart"), appName },
     },
     {
-      key: "food", featureKey: "food", type: "card",
+      key: "food",
+      featureKey: "food",
+      type: "card",
       props: {
-        onPress: () => router.push("/food"), delay: 160,
-        g1: "#FFFBEB", g2: "#FEF3C7", ig1: "#F59E0B", ig2: "#FBBF24",
-        icon: "restaurant", title: T("foodDelivery"), sub: T("restaurantsNearYou"),
-        tag: "30 min", tagIcon: "time-outline", textC: "#92400E", tagC: "#92400E", tagBg: "#FDE68A",
+        onPress: () => router.push("/food"),
+        delay: 160,
+        g1: C.foodLight,
+        g2: "#FEE8CC",
+        ig1: C.food,
+        ig2: "#FFB340",
+        icon: "restaurant",
+        title: T("foodDelivery"),
+        sub: T("restaurantsNearYou"),
+        tag: "30 min",
+        tagIcon: "time-outline",
+        textC: "#7A5A00",
+        tagC: "#7A5A00",
+        tagBg: "#FFE6B3",
       },
     },
     {
-      key: "rides", featureKey: "rides", type: "card",
+      key: "rides",
+      featureKey: "rides",
+      type: "card",
       props: {
-        onPress: () => router.push("/ride"), delay: 240,
-        g1: "#F0FDF4", g2: "#DCFCE7", ig1: "#10B981", ig2: "#34D399",
-        icon: "car", title: T("bikeCarRide"), sub: T("safeBooking"),
-        tag: T("instantLabel"), tagIcon: "flash-outline", textC: "#065F46", tagC: "#065F46", tagBg: "#A7F3D0",
+        onPress: () => router.push("/ride"),
+        delay: 240,
+        g1: C.successSoft,
+        g2: "#CCF5E7",
+        ig1: C.success,
+        ig2: "#33D4A7",
+        icon: "car",
+        title: T("bikeCarRide"),
+        sub: T("safeBooking"),
+        tag: T("instantLabel"),
+        tagIcon: "flash-outline",
+        textC: "#005C44",
+        tagC: "#005C44",
+        tagBg: "#99ECCC",
       },
     },
     {
-      key: "pharmacy", featureKey: "pharmacy", type: "card",
+      key: "pharmacy",
+      featureKey: "pharmacy",
+      type: "card",
       props: {
-        onPress: () => router.push("/pharmacy"), delay: 340,
-        g1: "#F5F3FF", g2: "#EDE9FE", ig1: "#7C3AED", ig2: "#A78BFA",
-        icon: "medkit", title: `💊 ${T("pharmacy")}`, sub: T("medicinesDelivered"),
-        tag: "25-40 min", tagIcon: "medkit-outline", textC: "#4C1D95", tagC: "#4C1D95", tagBg: "#DDD6FE",
+        onPress: () => router.push("/pharmacy"),
+        delay: 340,
+        g1: C.pharmacyLight,
+        g2: "#EDD6FF",
+        ig1: C.pharmacy,
+        ig2: "#C77DEB",
+        icon: "medkit",
+        title: T("pharmacy"),
+        sub: T("medicinesDelivered"),
+        tag: "25-40 min",
+        tagIcon: "medkit-outline",
+        textC: "#5A1D8C",
+        tagC: "#5A1D8C",
+        tagBg: "#DDB8FF",
       },
     },
     {
-      key: "parcel", featureKey: "parcel", type: "card",
+      key: "parcel",
+      featureKey: "parcel",
+      type: "card",
       props: {
-        onPress: () => router.push("/parcel"), delay: 420,
-        g1: "#FFFBEB", g2: "#FEF3C7", ig1: "#D97706", ig2: "#F59E0B",
-        icon: "cube", title: `📦 ${T("parcel")}`, sub: T("parcelsAnywhere"),
-        tag: "Rs. 150+", tagIcon: "cube-outline", textC: "#78350F", tagC: "#78350F", tagBg: "#FDE68A",
+        onPress: () => router.push("/parcel"),
+        delay: 420,
+        g1: C.parcelLight,
+        g2: "#FFD9CC",
+        ig1: C.parcel,
+        ig2: "#FF8F66",
+        icon: "cube",
+        title: T("parcel"),
+        sub: T("parcelsAnywhere"),
+        tag: "Rs. 150+",
+        tagIcon: "cube-outline",
+        textC: "#8C3300",
+        tagC: "#8C3300",
+        tagBg: "#FFBFA3",
       },
     },
   ];
 
-  const activeServices = allServices.filter(s => features[s.featureKey]);
+  const activeServices = allServices.filter((s) => features[s.featureKey]);
   const noServicesActive = activeServices.length === 0;
 
   return (
-    <View style={[styles.root,{ backgroundColor: C.background }]}>
-
-      {/* ──── ANNOUNCEMENT BAR ──── */}
+    <View style={[styles.root, { backgroundColor: C.background }]}>
       {announcement && !announceDismissed && (
-        <View style={{ backgroundColor:"#1D4ED8",flexDirection:"row",alignItems:"center",paddingHorizontal:12,paddingVertical:8,gap:8 }}>
-          <Text style={{ fontSize:14 }}>📢</Text>
-          <Text style={{ flex:1,fontFamily:"Inter_500Medium",fontSize:12,color:"#fff" }} numberOfLines={1}>{announcement}</Text>
-          <Pressable onPress={() => setAnnounceDismissed(true)} style={{ padding:2 }}>
-            <Text style={{ fontFamily:"Inter_700Bold",fontSize:16,color:"rgba(255,255,255,0.8)",lineHeight:18 }}>×</Text>
+        <View style={styles.announceBar}>
+          <View style={styles.announceIcon}>
+            <Ionicons name="megaphone" size={12} color="#fff" />
+          </View>
+          <Text style={styles.announceTxt} numberOfLines={1}>
+            {announcement}
+          </Text>
+          <Pressable
+            onPress={() => setAnnounceDismissed(true)}
+            style={styles.announceClose}
+          >
+            <Ionicons name="close" size={16} color="rgba(255,255,255,0.8)" />
           </Pressable>
         </View>
       )}
 
-      {/* ──── ACTIVE ORDER / RIDE TRACKER STRIP ──── */}
       {user?.id && <ActiveTrackerStrip userId={user.id} />}
 
-      {/* ──── HEADER ──── */}
       <Animated.View style={{ opacity: hdOp }}>
         <LinearGradient
-          colors={["#0F3BA8", C.primary, "#2563EB"]}
-          start={{ x:0,y:0 }} end={{ x:1,y:1 }}
-          style={[styles.header,{ paddingTop: topPad + 14 }]}
+          colors={[C.primaryDark, C.primary, C.primaryLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.header, { paddingTop: topPad + 14 }]}
         >
           <View style={styles.hdrRow}>
-            <View style={{ flex:1 }}>
-              <Text style={styles.greeting}>{user?.name ? `${T("salam")}, ${user.name.split(" ")[0]} 👋` : `${T("salam")}! 👋`}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.greeting}>
+                {user?.name
+                  ? `${T("salam")}, ${user.name.split(" ")[0]}`
+                  : `${T("salam")}!`}
+              </Text>
               <Text style={styles.hdrTitle}>{T("whatDoYouWant")}</Text>
               <View style={styles.locRow}>
-                <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.75)" />
-                <Text style={styles.locTxt}>{platformConfig.platform.businessAddress}</Text>
+                <Ionicons
+                  name="location"
+                  size={12}
+                  color="rgba(255,255,255,0.7)"
+                />
+                <Text style={styles.locTxt}>
+                  {platformConfig.platform.businessAddress}
+                </Text>
               </View>
             </View>
-            <Pressable onPress={() => router.push("/cart")} style={styles.cartBtn}>
-              <Ionicons name="bag-outline" size={22} color="#fff" />
+            <Pressable
+              onPress={() => router.push("/cart")}
+              style={styles.cartBtn}
+            >
+              <Ionicons name="bag-outline" size={20} color="#fff" />
               {itemCount > 0 && (
                 <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
+                  <Text style={styles.cartBadgeTxt}>
+                    {itemCount > 9 ? "9+" : itemCount}
+                  </Text>
                 </View>
               )}
             </Pressable>
           </View>
 
-          {/* Search bar */}
-          <Pressable onPress={() => router.push("/mart")} style={styles.searchBar}>
+          <Pressable
+            onPress={() => router.push("/mart")}
+            style={styles.searchBar}
+          >
             <View style={styles.searchIcon}>
               <Ionicons name="search" size={16} color={C.primary} />
             </View>
@@ -551,19 +869,21 @@ export default function HomeScreen() {
         </LinearGradient>
       </Animated.View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-
-        {/* ──── SERVICES ──── */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
         <View style={styles.secRow}>
           <Text style={styles.secTitle}>{T("ourServices")}</Text>
           <Text style={styles.secSub}>{T("allInOne")}</Text>
         </View>
 
-        {/* Announcement Banner */}
         {contentBanner ? (
           <View style={styles.announceBanner}>
-            <Ionicons name="megaphone-outline" size={14} color="#1D4ED8" />
-            <Text style={styles.announceTxt} numberOfLines={1}>{contentBanner}</Text>
+            <Ionicons name="megaphone-outline" size={14} color={C.primary} />
+            <Text style={styles.announceBannerTxt} numberOfLines={1}>
+              {contentBanner}
+            </Text>
           </View>
         ) : null}
 
@@ -573,12 +893,16 @@ export default function HomeScreen() {
           <>
             <View style={styles.grid}>
               {(() => {
-                const cards = activeServices.filter(s => s.type === "card");
-                const heroService = activeServices.find(s => s.type === "hero");
+                const cards = activeServices.filter((s) => s.type === "card");
+                const heroService = activeServices.find(
+                  (s) => s.type === "hero"
+                );
                 const elements: React.ReactNode[] = [];
 
                 if (heroService) {
-                  elements.push(<HeroCard key="hero" {...heroService.props} />);
+                  elements.push(
+                    <HeroCard key="hero" {...heroService.props} />
+                  );
                 }
 
                 for (let i = 0; i < cards.length; i += 2) {
@@ -592,19 +916,25 @@ export default function HomeScreen() {
                     );
                   } else {
                     elements.push(
-                      <SvcCard key={`single-${i}`} {...pair[0].props} fullWidth />
+                      <SvcCard
+                        key={`single-${i}`}
+                        {...pair[0].props}
+                        fullWidth
+                      />
                     );
                   }
-                }
-
-                if (!heroService && cards.length === 1) {
-                  /* nothing extra needed */
                 }
 
                 return elements;
               })()}
 
-              {features.wallet && <WalletStrip balance={user?.walletBalance || 0} onPress={() => router.push("/(tabs)/wallet")} appName={appName} />}
+              {features.wallet && (
+                <WalletStrip
+                  balance={user?.walletBalance || 0}
+                  onPress={() => router.push("/(tabs)/wallet")}
+                  appName={appName}
+                />
+              )}
             </View>
 
             {quickActions.length > 0 && (
@@ -612,7 +942,11 @@ export default function HomeScreen() {
                 <View style={styles.secRow}>
                   <Text style={styles.secTitle}>{T("quickAccess")}</Text>
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pillsRow}
+                >
                   {quickActions.map((q, i) => (
                     <Pill
                       key={q.label}
@@ -620,7 +954,7 @@ export default function HomeScreen() {
                       label={q.label}
                       color={q.color}
                       bg={q.bg}
-                      onPress={() => router.push(q.route as any)}
+                      onPress={() => router.push(q.route as Href)}
                       delay={70 + i * 50}
                     />
                   ))}
@@ -648,116 +982,417 @@ export default function HomeScreen() {
   );
 }
 
-/* ══════════════════════════════ STYLES ══════════════════════════════ */
 const styles = StyleSheet.create({
   root: { flex: 1 },
 
-  /* active order/ride tracker strip */
-  trackerWrap: { marginHorizontal: H_PAD, marginTop: 8, marginBottom: 0 },
-  trackerCard: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14 },
-  trackerDot:  { width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#fff", opacity: 0.9 },
-  trackerTxt:  { flex: 1, fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#fff" },
-  trackerCta:  { fontFamily: "Inter_700Bold", fontSize: 12, color: "rgba(255,255,255,0.85)" },
+  trackerWrap: { marginHorizontal: H_PAD, marginTop: spacing.sm },
+  trackerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radii.lg,
+  },
+  trackerPulse: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trackerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#fff",
+  },
+  trackerTxt: {
+    flex: 1,
+    ...typography.captionMedium,
+    color: "#fff",
+  },
+  trackerCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#fff",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+  },
+  trackerCtaTxt: {
+    ...typography.smallMedium,
+    color: C.primary,
+  },
 
-  /* header */
-  header: { paddingHorizontal: H_PAD, paddingBottom: 18 },
-  hdrRow: { flexDirection:"row", alignItems:"flex-start", marginBottom: 14 },
-  greeting: { fontFamily:"Inter_400Regular", fontSize:13, color:"rgba(255,255,255,0.8)", marginBottom:2 },
-  hdrTitle: { fontFamily:"Inter_700Bold", fontSize:22, color:"#fff", marginBottom:5 },
-  locRow: { flexDirection:"row", alignItems:"center", gap:4 },
-  locTxt: { fontFamily:"Inter_400Regular", fontSize:12, color:"rgba(255,255,255,0.75)" },
-  cartBtn: { width:44, height:44, borderRadius:14, backgroundColor:"rgba(255,255,255,0.18)", alignItems:"center", justifyContent:"center" },
-  cartBadge: { position:"absolute", top:-5, right:-5, backgroundColor:"#F59E0B", borderRadius:9, minWidth:18, height:18, alignItems:"center", justifyContent:"center", paddingHorizontal:3, borderWidth:1.5, borderColor:"#fff" },
-  cartBadgeTxt: { fontFamily:"Inter_700Bold", fontSize:9, color:"#fff" },
-  searchBar: { flexDirection:"row", alignItems:"center", gap:10, backgroundColor:"#fff", borderRadius:14, paddingHorizontal:12, paddingVertical:11 },
-  searchIcon: { width:30, height:30, borderRadius:8, backgroundColor:"#EFF6FF", alignItems:"center", justifyContent:"center" },
-  searchTxt: { flex:1, fontFamily:"Inter_400Regular", fontSize:13, color:C.textMuted },
-  searchFilter: { width:30, height:30, borderRadius:8, backgroundColor:"#F8FAFC", alignItems:"center", justifyContent:"center" },
+  header: { paddingHorizontal: H_PAD, paddingBottom: spacing.xl },
+  hdrRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: spacing.lg,
+  },
+  greeting: {
+    ...typography.caption,
+    color: "rgba(255,255,255,0.8)",
+    marginBottom: 2,
+  },
+  hdrTitle: {
+    ...typography.h2,
+    color: "#fff",
+    marginBottom: 5,
+  },
+  locRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  locTxt: {
+    ...typography.small,
+    color: "rgba(255,255,255,0.7)",
+  },
+  cartBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.lg,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  cartBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    backgroundColor: C.accent,
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: "#fff",
+  },
+  cartBadgeTxt: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    color: "#fff",
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#fff",
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+    ...shadows.sm,
+  },
+  searchIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    backgroundColor: C.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchTxt: {
+    flex: 1,
+    ...typography.body,
+    color: C.textMuted,
+  },
+  searchFilter: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    backgroundColor: C.surfaceSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-  /* section */
-  announceBanner: { flexDirection:"row", alignItems:"center", gap:8, marginHorizontal:H_PAD, marginBottom:12, backgroundColor:"#EFF6FF", borderRadius:10, paddingHorizontal:12, paddingVertical:8, borderWidth:1, borderColor:"#BFDBFE" },
-  announceTxt: { flex:1, fontFamily:"Inter_500Medium", fontSize:12, color:"#1D4ED8" },
-  secRow: { flexDirection:"row", alignItems:"baseline", justifyContent:"space-between", paddingHorizontal:H_PAD, marginTop:20, marginBottom:12 },
-  secTitle: { fontFamily:"Inter_700Bold", fontSize:17, color:C.text },
-  secSub: { fontFamily:"Inter_400Regular", fontSize:12, color:C.textMuted },
+  announceBar: {
+    backgroundColor: C.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  announceIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  announceTxt: {
+    flex: 1,
+    ...typography.captionMedium,
+    color: "#fff",
+  },
+  announceClose: {
+    padding: 4,
+  },
+
+  announceBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginHorizontal: H_PAD,
+    marginBottom: spacing.md,
+    backgroundColor: C.primarySoft,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: "#B3D4FF",
+  },
+  announceBannerTxt: {
+    flex: 1,
+    ...typography.captionMedium,
+    color: C.primary,
+  },
+
+  secRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: H_PAD,
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  secTitle: { ...typography.h3, color: C.text },
+  secSub: { ...typography.caption, color: C.textMuted },
 
   scroll: { paddingBottom: 0 },
 
-  /* bento */
-  grid: { paddingHorizontal: H_PAD, gap: 12 },
-  halfRow: { flexDirection:"row", gap:12 },
+  grid: { paddingHorizontal: H_PAD, gap: spacing.md },
+  halfRow: { flexDirection: "row", gap: spacing.md },
 
-  /* hero */
-  heroWrap: { borderRadius:22, overflow:"hidden" },
-  heroCard: { borderRadius:22, padding:20, flexDirection:"row", alignItems:"center", minHeight:162, overflow:"hidden" },
-  heroL: { flex:1, gap:7 },
-  heroBadge: { flexDirection:"row", alignItems:"center", gap:5, alignSelf:"flex-start", backgroundColor:"rgba(255,255,255,0.22)", paddingHorizontal:10, paddingVertical:4, borderRadius:20 },
-  heroBadgeTxt: { fontFamily:"Inter_600SemiBold", fontSize:11, color:"#fff" },
-  heroTitle: { fontFamily:"Inter_700Bold", fontSize:27, color:"#fff", lineHeight:31 },
-  heroSub: { fontFamily:"Inter_400Regular", fontSize:12, color:"rgba(255,255,255,0.85)", lineHeight:17 },
-  heroStats: { flexDirection:"row", gap:14, marginTop:2 },
-  heroStat: { flexDirection:"row", alignItems:"center", gap:4 },
-  heroStatTxt: { fontFamily:"Inter_400Regular", fontSize:11, color:"rgba(255,255,255,0.85)" },
-  heroBtn: { flexDirection:"row", alignItems:"center", gap:6, backgroundColor:"#fff", alignSelf:"flex-start", paddingHorizontal:14, paddingVertical:8, borderRadius:20, marginTop:4 },
-  heroBtnTxt: { fontFamily:"Inter_700Bold", fontSize:12, color:C.primary },
-  heroR: { alignItems:"center", marginLeft:10 },
-  heroRing: { width:76, height:76, borderRadius:22, backgroundColor:"rgba(255,255,255,0.18)", alignItems:"center", justifyContent:"center", borderWidth:1.5, borderColor:"rgba(255,255,255,0.25)" },
+  heroWrap: { borderRadius: radii.xxl, overflow: "hidden" },
+  heroCard: {
+    borderRadius: radii.xxl,
+    padding: spacing.xl,
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 165,
+    overflow: "hidden",
+  },
+  heroL: { flex: 1, gap: 7 },
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+  },
+  heroBadgeTxt: { ...typography.smallMedium, color: "#fff" },
+  heroTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 28,
+    color: "#fff",
+    lineHeight: 32,
+  },
+  heroSub: {
+    ...typography.caption,
+    color: "rgba(255,255,255,0.85)",
+    lineHeight: 17,
+  },
+  heroStats: { flexDirection: "row", gap: 14, marginTop: 2 },
+  heroStat: { flexDirection: "row", alignItems: "center", gap: 4 },
+  heroStatTxt: {
+    ...typography.small,
+    color: "rgba(255,255,255,0.85)",
+  },
+  heroBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#fff",
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+    marginTop: 4,
+  },
+  heroBtnTxt: {
+    ...typography.buttonSmall,
+    color: C.primary,
+  },
+  heroR: { alignItems: "center", marginLeft: 10 },
+  heroRing: {
+    width: 78,
+    height: 78,
+    borderRadius: radii.xxl,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
 
-  /* service cards */
-  svcWrap: { borderRadius:18, overflow:"hidden", height:178 },
-  svcCard: { flex:1, borderRadius:18, padding:16, overflow:"hidden", gap:5 },
-  svcIcon: { width:50, height:50, borderRadius:15, alignItems:"center", justifyContent:"center", marginBottom:4 },
-  svcTitle: { fontFamily:"Inter_700Bold", fontSize:16, lineHeight:21 },
-  svcSub: { fontFamily:"Inter_400Regular", fontSize:11, lineHeight:15, flex:1 },
-  svcTag: { flexDirection:"row", alignItems:"center", gap:4, alignSelf:"flex-start", paddingHorizontal:9, paddingVertical:5, borderRadius:20 },
-  svcTagTxt: { fontFamily:"Inter_600SemiBold", fontSize:10 },
+  svcWrap: { borderRadius: radii.xl, overflow: "hidden", height: 178 },
+  svcCard: {
+    flex: 1,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    overflow: "hidden",
+    gap: 5,
+  },
+  svcIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  svcTitle: { ...typography.subtitle, lineHeight: 21 },
+  svcSub: { ...typography.small, lineHeight: 15, flex: 1 },
+  svcTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+  },
+  svcTagTxt: { ...typography.smallMedium },
 
-  /* wallet */
-  walletWrap: { borderRadius:16, overflow:"hidden" },
-  walletCard: { flexDirection:"row", alignItems:"center", justifyContent:"space-between", borderRadius:16, paddingHorizontal:18, paddingVertical:16, overflow:"hidden" },
-  walletL: { flexDirection:"row", alignItems:"center", gap:12 },
-  walletIcon: { width:44, height:44, borderRadius:13, backgroundColor:"rgba(255,255,255,0.18)", alignItems:"center", justifyContent:"center" },
-  walletLbl: { fontFamily:"Inter_400Regular", fontSize:12, color:"rgba(255,255,255,0.8)", marginBottom:2 },
-  walletBal: { fontFamily:"Inter_700Bold", fontSize:20, color:"#fff" },
-  walletTopUp: { flexDirection:"row", alignItems:"center", gap:5, backgroundColor:"#fff", paddingHorizontal:14, paddingVertical:9, borderRadius:12 },
-  walletTopUpTxt: { fontFamily:"Inter_600SemiBold", fontSize:13, color:C.primary },
+  walletWrap: { borderRadius: radii.xl, overflow: "hidden" },
+  walletCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: radii.xl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    overflow: "hidden",
+  },
+  walletL: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  walletIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.lg,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  walletLbl: {
+    ...typography.caption,
+    color: "rgba(255,255,255,0.8)",
+    marginBottom: 2,
+  },
+  walletBal: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+    color: "#fff",
+  },
+  walletTopUp: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#fff",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: radii.md,
+  },
+  walletTopUpTxt: { ...typography.captionMedium, color: C.primary },
 
-  /* quick pills */
-  pillsRow: { paddingHorizontal:H_PAD, gap:10 },
-  pill: { alignItems:"center", gap:7, width:66 },
-  pillIcon: { width:56, height:56, borderRadius:17, alignItems:"center", justifyContent:"center" },
-  pillLbl: { fontFamily:"Inter_500Medium", fontSize:11, color:C.textSecondary, textAlign:"center" },
+  pillsRow: { paddingHorizontal: H_PAD, gap: spacing.md },
+  pill: { alignItems: "center", gap: 7, width: 68 },
+  pillIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.xl,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pillLbl: {
+    ...typography.smallMedium,
+    color: C.textSecondary,
+    textAlign: "center",
+  },
 
-  /* ─── CAROUSEL / BANNERS ─── */
-  carouselWrap: { paddingHorizontal: H_PAD, overflow:"hidden" },
+  carouselWrap: { paddingHorizontal: H_PAD, overflow: "hidden" },
 
   bannerCard: {
-    borderRadius: 20,
-    padding: 20,
-    minHeight: 130,
+    borderRadius: radii.xl,
+    padding: spacing.xl,
+    minHeight: 135,
     flexDirection: "row",
     alignItems: "center",
     overflow: "hidden",
   },
   bannerTagRow: { marginBottom: 7 },
-  bannerTagChip: { backgroundColor:"rgba(255,255,255,0.28)", alignSelf:"flex-start", paddingHorizontal:10, paddingVertical:4, borderRadius:20 },
-  bannerTagTxt: { fontFamily:"Inter_600SemiBold", fontSize:11, color:"#fff" },
-  bannerTitle: { fontFamily:"Inter_700Bold", fontSize:19, color:"#fff", marginBottom:5 },
-  bannerDesc: { fontFamily:"Inter_400Regular", fontSize:12, color:"rgba(255,255,255,0.9)", lineHeight:17, marginBottom:12 },
-  bannerCta: { flexDirection:"row", alignItems:"center", gap:6, backgroundColor:"rgba(255,255,255,0.22)", alignSelf:"flex-start", paddingHorizontal:12, paddingVertical:8, borderRadius:20 },
-  bannerCtaTxt: { fontFamily:"Inter_600SemiBold", fontSize:12, color:"#fff" },
+  bannerTagChip: {
+    backgroundColor: "rgba(255,255,255,0.22)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+  },
+  bannerTagTxt: { ...typography.smallMedium, color: "#fff" },
+  bannerTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 19,
+    color: "#fff",
+    marginBottom: 5,
+  },
+  bannerDesc: {
+    ...typography.caption,
+    color: "rgba(255,255,255,0.9)",
+    lineHeight: 17,
+    marginBottom: spacing.md,
+  },
+  bannerCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.full,
+  },
+  bannerCtaTxt: { ...typography.captionMedium, color: "#fff" },
+  bannerIconWrap: { marginLeft: spacing.sm },
 
-  /* dot indicators */
-  dotsRow: { flexDirection:"row", justifyContent:"center", gap:6, marginTop:12 },
-  dot: { width:6, height:6, borderRadius:3, backgroundColor:C.border },
-  dotActive: { width:20, borderRadius:3, backgroundColor:C.primary },
+  dotsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: spacing.md,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.border },
+  dotActive: { width: 22, borderRadius: 3, backgroundColor: C.primary },
 
-  /* empty state */
-  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 60, paddingHorizontal: 32 },
-  emptyIcon: { width: 96, height: 96, borderRadius: 48, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center", marginBottom: 20 },
-  emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#0F172A", marginBottom: 10, textAlign: "center" },
-  emptySub: { fontFamily: "Inter_400Regular", fontSize: 14, color: "#64748B", textAlign: "center", lineHeight: 21 },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: C.surfaceSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyTitle: { ...typography.h3, color: C.text, marginBottom: 10, textAlign: "center" },
+  emptySub: {
+    ...typography.body,
+    color: C.textMuted,
+    textAlign: "center",
+    lineHeight: 21,
+  },
 
-  /* shared */
-  blob: { position:"absolute", borderRadius:999, backgroundColor:"#fff" },
+  blob: { position: "absolute", borderRadius: 999, backgroundColor: "#fff" },
 });

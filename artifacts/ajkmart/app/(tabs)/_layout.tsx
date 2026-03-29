@@ -5,13 +5,15 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, Text, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import Colors from "@/constants/colors";
+import Colors, { radii, shadows, typography } from "@/constants/colors";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual } from "@workspace/i18n";
+
+const C = Colors.light;
 
 function NativeTabLayout() {
   return (
@@ -37,12 +39,9 @@ function NativeTabLayout() {
 }
 
 function ClassicTabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const insets = useSafeAreaInsets();
-  const C = Colors.light;
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
 
@@ -54,22 +53,25 @@ function ClassicTabLayout() {
         tabBarInactiveTintColor: C.tabIconDefault,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : "#fff",
-          borderTopWidth: isWeb ? 1 : 0,
-          borderTopColor: C.border,
+          backgroundColor: isIOS ? "transparent" : C.surface,
+          borderTopWidth: 0,
           elevation: 0,
           paddingBottom: insets.bottom,
-          ...(isWeb ? { height: 84 } : {}),
+          ...shadows.lg,
+          ...(isWeb ? { height: 72, borderTopWidth: 1, borderTopColor: C.borderLight } : {}),
         },
         tabBarBackground: () =>
           isIOS ? (
-            <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill} />
+            <BlurView intensity={95} tint="light" style={StyleSheet.absoluteFill} />
           ) : isWeb ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: "#fff" }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: C.surface }]} />
           ) : null,
         tabBarLabelStyle: {
-          fontFamily: "Inter_500Medium",
-          fontSize: 11,
+          ...typography.tabLabel,
+          marginTop: -2,
+        },
+        tabBarItemStyle: {
+          paddingTop: 6,
         },
       }}
     >
@@ -77,11 +79,13 @@ function ClassicTabLayout() {
         name="index"
         options={{
           title: T("home"),
-          tabBarIcon: ({ color, size }) =>
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
               <SymbolView name="house" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="home-outline" size={size} color={color} />
+              <View style={focused ? tabStyles.activeIconWrap : undefined}>
+                <Ionicons name={focused ? "home" : "home-outline"} size={22} color={color} />
+              </View>
             ),
         }}
       />
@@ -89,11 +93,13 @@ function ClassicTabLayout() {
         name="orders"
         options={{
           title: T("orders"),
-          tabBarIcon: ({ color, size }) =>
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
               <SymbolView name="bag" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="bag-outline" size={size} color={color} />
+              <View style={focused ? tabStyles.activeIconWrap : undefined}>
+                <Ionicons name={focused ? "bag" : "bag-outline"} size={22} color={color} />
+              </View>
             ),
         }}
       />
@@ -101,11 +107,13 @@ function ClassicTabLayout() {
         name="wallet"
         options={{
           title: T("wallet"),
-          tabBarIcon: ({ color, size }) =>
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
               <SymbolView name="creditcard" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="wallet-outline" size={size} color={color} />
+              <View style={focused ? tabStyles.activeIconWrap : undefined}>
+                <Ionicons name={focused ? "wallet" : "wallet-outline"} size={22} color={color} />
+              </View>
             ),
         }}
       />
@@ -113,17 +121,28 @@ function ClassicTabLayout() {
         name="profile"
         options={{
           title: T("profile"),
-          tabBarIcon: ({ color, size }) =>
+          tabBarIcon: ({ color, size, focused }) =>
             isIOS ? (
               <SymbolView name="person" tintColor={color} size={size} />
             ) : (
-              <Ionicons name="person-outline" size={size} color={color} />
+              <View style={focused ? tabStyles.activeIconWrap : undefined}>
+                <Ionicons name={focused ? "person" : "person-outline"} size={22} color={color} />
+              </View>
             ),
         }}
       />
     </Tabs>
   );
 }
+
+const tabStyles = StyleSheet.create({
+  activeIconWrap: {
+    backgroundColor: C.primarySoft,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+});
 
 const ms = StyleSheet.create({
   overlay: {
@@ -135,21 +154,18 @@ const ms = StyleSheet.create({
     padding: 24,
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
+    backgroundColor: C.surface,
+    borderRadius: radii.xxl,
     padding: 32,
     alignItems: "center",
     maxWidth: 380,
     width: "100%",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
+    ...shadows.xl,
   },
   icon: { fontSize: 52, marginBottom: 16 },
-  title: { fontSize: 22, fontWeight: "700", color: "#0F172A", marginBottom: 10, textAlign: "center" },
-  msg:   { fontSize: 15, color: "#475569", textAlign: "center", lineHeight: 22, marginBottom: 8 },
-  sub:   { fontSize: 13, color: "#94A3B8", textAlign: "center", lineHeight: 18 },
+  title: { ...typography.h2, color: C.text, marginBottom: 10, textAlign: "center" },
+  msg: { ...typography.body, color: C.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 8 },
+  sub: { ...typography.caption, color: C.textMuted, textAlign: "center", lineHeight: 18 },
 });
 
 function MaintenanceOverlay({ message }: { message: string }) {

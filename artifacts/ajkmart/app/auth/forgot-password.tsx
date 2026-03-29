@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Colors from "@/constants/colors";
+import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -32,7 +32,7 @@ function PasswordStrength({ password }: { password: string }) {
     { label: "Number", ok: /[0-9]/.test(password) },
   ];
   const score = checks.filter(c => c.ok).length;
-  const colors = ["#EF4444", "#F59E0B", "#10B981"];
+  const colors = [C.danger, C.accent, C.success];
   const labels = ["Weak", "Medium", "Strong"];
 
   if (!password) return null;
@@ -40,10 +40,10 @@ function PasswordStrength({ password }: { password: string }) {
     <View style={{ marginBottom: 12 }}>
       <View style={{ flexDirection: "row", gap: 4, marginBottom: 6 }}>
         {[0, 1, 2].map(i => (
-          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < score ? colors[Math.min(score - 1, 2)] : "#E5E7EB" }} />
+          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < score ? colors[Math.min(score - 1, 2)] : C.border }} />
         ))}
       </View>
-      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: colors[Math.min(score - 1, 2)] || "#9CA3AF" }}>
+      <Text style={{ ...typography.smallMedium, color: colors[Math.min(score - 1, 2)] || C.textMuted }}>
         {score > 0 ? labels[score - 1] : ""}
       </Text>
     </View>
@@ -156,10 +156,12 @@ export default function ForgotPasswordScreen() {
 
   if (step === "done") {
     return (
-      <LinearGradient colors={[C.primaryDark, C.primary, "#60A5FA"]} style={s.gradient}>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
+      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.xxl }}>
           <View style={s.doneCard}>
-            <Ionicons name="checkmark-circle" size={64} color="#10B981" />
+            <View style={s.doneIconWrap}>
+              <Ionicons name="checkmark-circle" size={64} color={C.success} />
+            </View>
             <Text style={s.doneTitle}>Password Reset!</Text>
             <Text style={s.doneSub}>Your password has been successfully changed. Please log in with your new password.</Text>
             <Pressable onPress={() => router.replace("/auth")} style={s.btn}>
@@ -173,12 +175,14 @@ export default function ForgotPasswordScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-      <LinearGradient colors={[C.primaryDark, C.primary, "#60A5FA"]} style={s.gradient}>
+      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
         <View style={[s.topSection, { paddingTop: topPad + 16 }]}>
           <Pressable onPress={() => step === "method" ? router.back() : setStep("method")} style={s.backBtn}>
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </Pressable>
-          <Ionicons name="lock-closed" size={40} color="rgba(255,255,255,0.9)" />
+          <View style={s.headerIcon}>
+            <Ionicons name="lock-closed" size={32} color="rgba(255,255,255,0.9)" />
+          </View>
           <Text style={s.headerTitle}>Reset Password</Text>
           <Text style={s.headerSub}>
             {step === "method" ? "Enter your phone or email to receive a reset code"
@@ -194,13 +198,13 @@ export default function ForgotPasswordScreen() {
               <View style={s.methodTabs}>
                 {isMethodEnabled(config.auth.phoneOtpEnabled) && (
                   <Pressable onPress={() => { setMethod("phone"); clearError(); }} style={[s.methodTab, method === "phone" && s.methodTabActive]}>
-                    <Ionicons name="call-outline" size={16} color={method === "phone" ? C.primary : "#9CA3AF"} />
+                    <Ionicons name="call-outline" size={16} color={method === "phone" ? C.primary : C.textMuted} />
                     <Text style={[s.methodTabText, method === "phone" && s.methodTabTextActive]}>Phone</Text>
                   </Pressable>
                 )}
                 {isMethodEnabled(config.auth.emailOtpEnabled) && (
                   <Pressable onPress={() => { setMethod("email"); clearError(); }} style={[s.methodTab, method === "email" && s.methodTabActive]}>
-                    <Ionicons name="mail-outline" size={16} color={method === "email" ? C.primary : "#9CA3AF"} />
+                    <Ionicons name="mail-outline" size={16} color={method === "email" ? C.primary : C.textMuted} />
                     <Text style={[s.methodTabText, method === "email" && s.methodTabTextActive]}>Email</Text>
                   </Pressable>
                 )}
@@ -266,7 +270,7 @@ export default function ForgotPasswordScreen() {
               />
               {devOtp ? (
                 <View style={s.devOtpBox}>
-                  <Ionicons name="key-outline" size={14} color="#059669" />
+                  <Ionicons name="key-outline" size={14} color={C.success} />
                   <Text style={s.devOtpTxt}>Dev OTP: <Text style={{ fontFamily: "Inter_700Bold", letterSpacing: 4 }}>{devOtp}</Text></Text>
                 </View>
               ) : null}
@@ -281,7 +285,7 @@ export default function ForgotPasswordScreen() {
                 </Text>
               </Pressable>
 
-              <Text style={[s.fieldLabel, { marginTop: 16 }]}>New Password</Text>
+              <Text style={[s.fieldLabel, { marginTop: spacing.lg }]}>New Password</Text>
               <View style={s.pwdWrapper}>
                 <TextInput
                   style={[s.input, { flex: 1, marginBottom: 0, borderWidth: 0 }]}
@@ -311,8 +315,10 @@ export default function ForgotPasswordScreen() {
 
           {step === "totp" && (
             <>
-              <View style={{ alignItems: "center", marginBottom: 20 }}>
-                <Text style={{ fontSize: 40 }}>🔐</Text>
+              <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
+                <View style={s.totpIcon}>
+                  <Ionicons name="shield-checkmark" size={36} color={C.primary} />
+                </View>
               </View>
               <Text style={[s.fieldLabel, { textAlign: "center" }]}>Two-Factor Authentication</Text>
               <Text style={[s.fieldSub, { textAlign: "center" }]}>
@@ -333,7 +339,7 @@ export default function ForgotPasswordScreen() {
 
           {error ? (
             <View style={s.errorBox}>
-              <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
+              <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
               <Text style={s.errorTxt}>{error}</Text>
             </View>
           ) : null}
@@ -358,8 +364,8 @@ export default function ForgotPasswordScreen() {
             )}
           </Pressable>
 
-          <Pressable onPress={() => router.replace("/auth")} style={{ alignItems: "center", marginTop: 16 }}>
-            <Text style={{ fontFamily: "Inter_500Medium", fontSize: 14, color: C.primary }}>Back to Login</Text>
+          <Pressable onPress={() => router.replace("/auth")} style={{ alignItems: "center", marginTop: spacing.lg }}>
+            <Text style={{ ...typography.bodyMedium, color: C.primary }}>Back to Login</Text>
           </Pressable>
         </ScrollView>
       </LinearGradient>
@@ -369,49 +375,53 @@ export default function ForgotPasswordScreen() {
 
 const s = StyleSheet.create({
   gradient: { flex: 1 },
-  topSection: { alignItems: "center", paddingBottom: 24, paddingHorizontal: 20 },
-  backBtn: { position: "absolute", left: 16, top: Platform.OS === "web" ? 67 : 50, width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#fff", marginTop: 12, marginBottom: 4 },
-  headerSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.85)", textAlign: "center" },
+  topSection: { alignItems: "center", paddingBottom: spacing.xxl, paddingHorizontal: spacing.xl },
+  backBtn: { position: "absolute", left: spacing.lg, top: Platform.OS === "web" ? 67 : 50, width: 40, height: 40, borderRadius: radii.md, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
+  headerIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
+  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#fff", marginBottom: 4 },
+  headerSub: { ...typography.body, color: "rgba(255,255,255,0.85)", textAlign: "center" },
 
-  card: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, flex: 1 },
+  card: { backgroundColor: C.surface, borderTopLeftRadius: radii.xxl + 4, borderTopRightRadius: radii.xxl + 4, padding: spacing.xxl, flex: 1 },
 
-  methodTabs: { flexDirection: "row", backgroundColor: "#F3F4F6", borderRadius: 12, padding: 3, marginBottom: 20, gap: 2 },
-  methodTab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 10, borderRadius: 10 },
-  methodTabActive: { backgroundColor: "#fff", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
-  methodTabText: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#9CA3AF" },
-  methodTabTextActive: { color: "#1F2937", fontFamily: "Inter_600SemiBold" },
+  methodTabs: { flexDirection: "row", backgroundColor: C.surfaceSecondary, borderRadius: radii.lg, padding: 3, marginBottom: spacing.xl, gap: 2 },
+  methodTab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 10, borderRadius: radii.md },
+  methodTabActive: { backgroundColor: C.surface, ...shadows.sm },
+  methodTabText: { ...typography.captionMedium, color: C.textMuted },
+  methodTabTextActive: { color: C.text, fontFamily: "Inter_600SemiBold" },
 
-  fieldLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#374151", marginBottom: 8 },
-  fieldSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280", marginBottom: 12 },
+  fieldLabel: { ...typography.captionMedium, color: C.textSecondary, marginBottom: spacing.sm },
+  fieldSub: { ...typography.caption, color: C.textMuted, marginBottom: spacing.md },
 
-  inputWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, overflow: "hidden", marginBottom: 12 },
-  countryCode: { paddingHorizontal: 14, paddingVertical: 16, backgroundColor: "#F9FAFB", borderRightWidth: 1, borderRightColor: "#E5E7EB" },
-  countryCodeText: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#374151" },
-  input: { flex: 1, paddingHorizontal: 16, paddingVertical: 15, fontFamily: "Inter_500Medium", fontSize: 16, color: "#1F2937" },
-  inputFull: { paddingHorizontal: 16, paddingVertical: 15, fontFamily: "Inter_500Medium", fontSize: 16, color: "#1F2937", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, marginBottom: 12 },
-  otpInput: { textAlign: "center", letterSpacing: 8, fontSize: 24, fontFamily: "Inter_700Bold" },
-  inputError: { borderColor: "#EF4444" },
+  inputWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: spacing.md, backgroundColor: C.surfaceSecondary },
+  countryCode: { paddingHorizontal: 14, paddingVertical: 16, backgroundColor: C.surface, borderRightWidth: 1, borderRightColor: C.border },
+  countryCodeText: { ...typography.subtitle, color: C.text },
+  input: { flex: 1, paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text },
+  inputFull: { paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, marginBottom: spacing.md, backgroundColor: C.surfaceSecondary },
+  otpInput: { textAlign: "center", letterSpacing: 8, ...typography.otp },
+  inputError: { borderColor: C.danger },
 
-  pwdWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, overflow: "hidden", marginBottom: 10 },
+  pwdWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: 10, backgroundColor: C.surfaceSecondary },
   eyeBtn: { paddingHorizontal: 14 },
 
-  changeBtn: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 12 },
-  changeBtnText: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.primary },
+  changeBtn: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: spacing.md },
+  changeBtnText: { ...typography.bodyMedium, color: C.primary },
 
-  errorBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12, borderWidth: 1, borderColor: "#FECACA" },
-  errorTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#DC2626", flex: 1 },
-  devOtpBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#ECFDF5", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8, borderWidth: 1, borderColor: "#A7F3D0" },
-  devOtpTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#059669", flex: 1 },
+  errorBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.dangerSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: spacing.md, borderWidth: 1, borderColor: "#FECACA" },
+  errorTxt: { ...typography.captionMedium, color: C.danger, flex: 1 },
+  devOtpBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.successSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: spacing.sm, borderWidth: 1, borderColor: "#80E6CC" },
+  devOtpTxt: { ...typography.captionMedium, color: C.success, flex: 1 },
 
-  resendBtn: { alignItems: "center", marginBottom: 8 },
-  resendText: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.primary },
+  resendBtn: { alignItems: "center", marginBottom: spacing.sm },
+  resendText: { ...typography.bodyMedium, color: C.primary },
 
-  btn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: "center", marginTop: 8 },
+  totpIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center" },
+
+  btn: { backgroundColor: C.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm, ...shadows.md },
   btnDisabled: { opacity: 0.7 },
-  btnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" },
+  btnText: { ...typography.button, color: "#fff" },
 
-  doneCard: { backgroundColor: "#fff", borderRadius: 24, padding: 32, alignItems: "center", width: "100%" },
-  doneTitle: { fontFamily: "Inter_700Bold", fontSize: 24, color: "#1F2937", marginTop: 16, marginBottom: 8 },
-  doneSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 24, lineHeight: 22 },
+  doneCard: { backgroundColor: C.surface, borderRadius: radii.xxl, padding: spacing.xxxl, alignItems: "center", width: "100%", ...shadows.lg },
+  doneIconWrap: { marginBottom: spacing.lg },
+  doneTitle: { ...typography.h2, color: C.text, marginBottom: spacing.sm },
+  doneSub: { ...typography.body, color: C.textMuted, textAlign: "center", marginBottom: spacing.xxl, lineHeight: 22 },
 });

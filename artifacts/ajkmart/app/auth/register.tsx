@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Colors from "@/constants/colors";
+import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
@@ -40,7 +40,7 @@ function PasswordStrength({ password }: { password: string }) {
     { label: "Number", ok: /[0-9]/.test(password) },
   ];
   const score = checks.filter(c => c.ok).length;
-  const colors = ["#EF4444", "#F59E0B", "#10B981"];
+  const colors = [C.danger, C.accent, C.success];
   const labels = ["Weak", "Medium", "Strong"];
 
   if (!password) return null;
@@ -48,19 +48,19 @@ function PasswordStrength({ password }: { password: string }) {
     <View style={{ marginBottom: 12 }}>
       <View style={{ flexDirection: "row", gap: 4, marginBottom: 6 }}>
         {[0, 1, 2].map(i => (
-          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < score ? colors[Math.min(score - 1, 2)] : "#E5E7EB" }} />
+          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < score ? colors[Math.min(score - 1, 2)] : C.border }} />
         ))}
       </View>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: colors[Math.min(score - 1, 2)] || "#9CA3AF" }}>
+        <Text style={{ ...typography.smallMedium, color: colors[Math.min(score - 1, 2)] || C.textMuted }}>
           {score > 0 ? labels[score - 1] : ""}
         </Text>
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
         {checks.map(c => (
           <View key={c.label} style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-            <Ionicons name={c.ok ? "checkmark-circle" : "ellipse-outline"} size={12} color={c.ok ? "#10B981" : "#9CA3AF"} />
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: c.ok ? "#10B981" : "#9CA3AF" }}>{c.label}</Text>
+            <Ionicons name={c.ok ? "checkmark-circle" : "ellipse-outline"} size={12} color={c.ok ? C.success : C.textMuted} />
+            <Text style={{ ...typography.small, color: c.ok ? C.success : C.textMuted }}>{c.label}</Text>
           </View>
         ))}
       </View>
@@ -277,17 +277,17 @@ export default function RegisterScreen() {
 
   if (step === 4) {
     return (
-      <LinearGradient colors={[C.primaryDark, C.primary, "#60A5FA"]} style={s.gradient}>
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "center", padding: 24, paddingTop: topPad }}>
+      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", alignItems: "center", padding: spacing.xxl, paddingTop: topPad }}>
           <View style={s.successCard}>
             <View style={s.successIcon}>
-              <Ionicons name="checkmark-circle" size={64} color="#10B981" />
+              <Ionicons name="checkmark-circle" size={64} color={C.success} />
             </View>
             <Text style={s.successTitle}>Registration Successful!</Text>
             <Text style={s.successSub}>Welcome to {config.platform.appName}! Your account is ready.</Text>
             {signupBonus > 0 && (
               <View style={s.bonusBanner}>
-                <Ionicons name="gift" size={24} color="#D97706" />
+                <Ionicons name="gift" size={24} color={C.accent} />
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={s.bonusTitle}>Welcome Bonus!</Text>
                   <Text style={s.bonusSub}>Rs. {signupBonus} has been added to your wallet</Text>
@@ -305,7 +305,7 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-      <LinearGradient colors={[C.primaryDark, C.primary, "#60A5FA"]} style={s.gradient}>
+      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
         <View style={[s.topSection, { paddingTop: topPad + 16 }]}>
           <Pressable onPress={() => step === 1 ? router.back() : setStep((step - 1) as RegStep)} style={s.backBtn}>
             <Ionicons name="arrow-back" size={20} color="#fff" />
@@ -357,7 +357,7 @@ export default function RegisterScreen() {
                   />
                   {devOtp ? (
                     <View style={s.devOtpBox}>
-                      <Ionicons name="key-outline" size={14} color="#059669" />
+                      <Ionicons name="key-outline" size={14} color={C.success} />
                       <Text style={s.devOtpTxt}>Dev OTP: <Text style={{ fontFamily: "Inter_700Bold", letterSpacing: 4 }}>{devOtp}</Text></Text>
                     </View>
                   ) : null}
@@ -399,7 +399,7 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
               />
 
-              <Text style={[s.fieldLabel, { marginTop: 14 }]}>CNIC / National ID *</Text>
+              <Text style={[s.fieldLabel, { marginTop: 14 }]}>CNIC / National ID</Text>
               <TextInput
                 style={[s.inputFull, error && cnic && !/^\d{5}-\d{7}-\d{1}$/.test(cnic) && s.inputError]}
                 value={cnic}
@@ -409,7 +409,7 @@ export default function RegisterScreen() {
                 keyboardType="numeric"
                 maxLength={15}
               />
-              <Text style={s.fieldHint}>Required for verification</Text>
+              <Text style={s.fieldHint}>Optional — for verification</Text>
             </>
           )}
 
@@ -445,7 +445,7 @@ export default function RegisterScreen() {
 
           {error ? (
             <View style={s.errorBox}>
-              <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
+              <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
               <Text style={s.errorTxt}>{error}</Text>
             </View>
           ) : null}
@@ -470,8 +470,8 @@ export default function RegisterScreen() {
           </Pressable>
 
           {step === 1 && (
-            <Pressable onPress={() => router.replace("/auth")} style={{ alignItems: "center", marginTop: 16 }}>
-              <Text style={{ fontFamily: "Inter_500Medium", fontSize: 14, color: C.primary }}>
+            <Pressable onPress={() => router.replace("/auth")} style={{ alignItems: "center", marginTop: spacing.lg }}>
+              <Text style={{ ...typography.bodyMedium, color: C.primary }}>
                 Already have an account? <Text style={{ fontFamily: "Inter_700Bold" }}>Login</Text>
               </Text>
             </Pressable>
@@ -484,62 +484,62 @@ export default function RegisterScreen() {
 
 const s = StyleSheet.create({
   gradient: { flex: 1 },
-  topSection: { alignItems: "center", paddingBottom: 20, paddingHorizontal: 20 },
-  backBtn: { position: "absolute", left: 16, top: Platform.OS === "web" ? 67 : 50, width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  topSection: { alignItems: "center", paddingBottom: spacing.xl, paddingHorizontal: spacing.xl },
+  backBtn: { position: "absolute", left: spacing.lg, top: Platform.OS === "web" ? 67 : 50, width: 40, height: 40, borderRadius: radii.md, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
   headerTitle: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#fff", marginBottom: 4 },
-  headerSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.85)", marginBottom: 16 },
+  headerSub: { ...typography.body, color: "rgba(255,255,255,0.85)", marginBottom: spacing.lg },
 
   steps: { flexDirection: "row", alignItems: "center" },
-  stepDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: "rgba(255,255,255,0.4)", alignItems: "center", justifyContent: "center" },
-  stepDotActive: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.2)" },
-  stepDotDone: { backgroundColor: "#10B981", borderColor: "#10B981" },
-  stepNum: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "rgba(255,255,255,0.5)" },
+  stepDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: "rgba(255,255,255,0.35)", alignItems: "center", justifyContent: "center" },
+  stepDotActive: { borderColor: "#fff", backgroundColor: "rgba(255,255,255,0.15)" },
+  stepDotDone: { backgroundColor: C.success, borderColor: C.success },
+  stepNum: { ...typography.captionMedium, color: "rgba(255,255,255,0.5)" },
   stepNumActive: { color: "#fff" },
-  stepLine: { width: 30, height: 2, backgroundColor: "rgba(255,255,255,0.3)", marginHorizontal: 4 },
-  stepLineActive: { backgroundColor: "#10B981" },
+  stepLine: { width: 30, height: 2, backgroundColor: "rgba(255,255,255,0.25)", marginHorizontal: 4 },
+  stepLineActive: { backgroundColor: C.success },
 
-  card: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, flex: 1 },
+  card: { backgroundColor: C.surface, borderTopLeftRadius: radii.xxl + 4, borderTopRightRadius: radii.xxl + 4, padding: spacing.xxl, flex: 1 },
 
-  fieldLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#374151", marginBottom: 8 },
-  fieldSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280", marginBottom: 12 },
-  fieldHint: { fontFamily: "Inter_400Regular", fontSize: 11, color: "#9CA3AF", marginTop: 4, marginBottom: 12 },
+  fieldLabel: { ...typography.captionMedium, color: C.textSecondary, marginBottom: spacing.sm },
+  fieldSub: { ...typography.caption, color: C.textMuted, marginBottom: spacing.md },
+  fieldHint: { ...typography.small, color: C.textMuted, marginBottom: 4, paddingLeft: 2 },
 
-  inputWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, overflow: "hidden", marginBottom: 12 },
-  countryCode: { paddingHorizontal: 14, paddingVertical: 16, backgroundColor: "#F9FAFB", borderRightWidth: 1, borderRightColor: "#E5E7EB" },
-  countryCodeText: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#374151" },
-  input: { flex: 1, paddingHorizontal: 16, paddingVertical: 15, fontFamily: "Inter_500Medium", fontSize: 16, color: "#1F2937" },
-  inputFull: { paddingHorizontal: 16, paddingVertical: 15, fontFamily: "Inter_500Medium", fontSize: 16, color: "#1F2937", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, marginBottom: 12 },
-  otpInput: { textAlign: "center", letterSpacing: 8, fontSize: 24, fontFamily: "Inter_700Bold" },
-  inputError: { borderColor: "#EF4444" },
+  inputWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: spacing.md, backgroundColor: C.surfaceSecondary },
+  countryCode: { paddingHorizontal: 14, paddingVertical: 16, backgroundColor: C.surface, borderRightWidth: 1, borderRightColor: C.border },
+  countryCodeText: { ...typography.subtitle, color: C.text },
+  input: { flex: 1, paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text },
+  inputFull: { paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, marginBottom: spacing.md, backgroundColor: C.surfaceSecondary },
+  otpInput: { textAlign: "center", letterSpacing: 8, ...typography.otp },
+  inputError: { borderColor: C.danger },
 
-  pwdWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, overflow: "hidden", marginBottom: 10 },
+  pwdWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: 10, backgroundColor: C.surfaceSecondary },
   eyeBtn: { paddingHorizontal: 14 },
 
-  changeBtn: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 12 },
-  changeBtnText: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.primary },
+  changeBtn: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: spacing.md },
+  changeBtnText: { ...typography.bodyMedium, color: C.primary },
 
-  errorBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12, borderWidth: 1, borderColor: "#FECACA" },
-  errorTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#DC2626", flex: 1 },
-  devOtpBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#ECFDF5", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8, borderWidth: 1, borderColor: "#A7F3D0" },
-  devOtpTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#059669", flex: 1 },
+  errorBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.dangerSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: spacing.md, borderWidth: 1, borderColor: "#FECACA" },
+  errorTxt: { ...typography.captionMedium, color: C.danger, flex: 1 },
+  devOtpBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.successSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: spacing.sm, borderWidth: 1, borderColor: "#80E6CC" },
+  devOtpTxt: { ...typography.captionMedium, color: C.success, flex: 1 },
 
-  resendBtn: { alignItems: "center", marginBottom: 12 },
-  resendText: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.primary },
+  resendBtn: { alignItems: "center", marginBottom: spacing.sm },
+  resendText: { ...typography.bodyMedium, color: C.primary },
 
-  termsRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 16, marginTop: 8 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "#D1D5DB", alignItems: "center", justifyContent: "center" },
+  termsRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingVertical: spacing.sm },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: C.border, alignItems: "center", justifyContent: "center", marginTop: 1 },
   checkboxChecked: { backgroundColor: C.primary, borderColor: C.primary },
-  termsText: { fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280", flex: 1, lineHeight: 20 },
+  termsText: { flex: 1, ...typography.caption, color: C.textSecondary, lineHeight: 19 },
 
-  btn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: "center", marginTop: 8 },
+  btn: { backgroundColor: C.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm, ...shadows.md },
   btnDisabled: { opacity: 0.7 },
-  btnText: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" },
+  btnText: { ...typography.button, color: "#fff" },
 
-  successCard: { backgroundColor: "#fff", borderRadius: 24, padding: 32, alignItems: "center", width: "100%" },
-  successIcon: { marginBottom: 20 },
-  successTitle: { fontFamily: "Inter_700Bold", fontSize: 24, color: "#1F2937", marginBottom: 8, textAlign: "center" },
-  successSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 24, lineHeight: 22 },
-  bonusBanner: { flexDirection: "row", alignItems: "center", backgroundColor: "#FEF3C7", borderRadius: 14, padding: 16, marginBottom: 24, width: "100%", borderWidth: 1, borderColor: "#FDE68A" },
-  bonusTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#92400E" },
-  bonusSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: "#B45309", marginTop: 2 },
+  successCard: { backgroundColor: C.surface, borderRadius: radii.xxl, padding: spacing.xxxl, alignItems: "center", width: "100%", ...shadows.lg },
+  successIcon: { marginBottom: spacing.xl },
+  successTitle: { ...typography.h2, color: C.text, marginBottom: spacing.sm, textAlign: "center" },
+  successSub: { ...typography.body, color: C.textMuted, textAlign: "center", marginBottom: spacing.xxl, lineHeight: 22 },
+  bonusBanner: { flexDirection: "row", alignItems: "center", backgroundColor: C.accentSoft, borderRadius: radii.lg, padding: spacing.lg, marginBottom: spacing.xxl, borderWidth: 1, borderColor: "#FFD580", width: "100%" },
+  bonusTitle: { ...typography.subtitle, color: C.text, marginBottom: 2 },
+  bonusSub: { ...typography.caption, color: C.textSecondary },
 });
