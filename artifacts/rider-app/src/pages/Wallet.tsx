@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
@@ -13,7 +13,7 @@ import {
   Banknote, ArrowUpFromLine, Lock, Wallet2, CreditCard,
   RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle,
   Landmark, Smartphone, ChevronDown, ChevronUp, ShieldCheck,
-  Eye, EyeOff, Sparkles,
+  Eye, EyeOff, Sparkles, BarChart3, ChevronRight,
 } from "lucide-react";
 
 const fc  = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
@@ -39,27 +39,28 @@ function dateGroupLabel(d: string): string {
 }
 
 function TxIcon({ type }: { type: string }) {
-  if (type === "credit")          return <TrendingUp      size={18} className="text-green-600"/>;
-  if (type === "bonus")           return <Gift            size={18} className="text-blue-600"/>;
-  if (type === "loyalty")         return <Star            size={18} className="text-purple-600"/>;
-  if (type === "cashback")        return <Heart           size={18} className="text-pink-600"/>;
-  if (type === "platform_fee")    return <Building2       size={18} className="text-orange-500"/>;
-  if (type === "deposit")         return <ArrowDownToLine size={18} className="text-teal-600"/>;
-  if (type === "cod_remittance")  return <Banknote        size={18} className="text-blue-600"/>;
-  if (type === "cash_collection") return <Banknote        size={18} className="text-blue-400"/>;
-  return                                 <ArrowUpFromLine size={18} className="text-red-500"/>;
+  const base = "w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0";
+  if (type === "credit")          return <div className={`${base} bg-green-50`}><TrendingUp size={18} className="text-green-600"/></div>;
+  if (type === "bonus")           return <div className={`${base} bg-blue-50`}><Gift size={18} className="text-blue-600"/></div>;
+  if (type === "loyalty")         return <div className={`${base} bg-purple-50`}><Star size={18} className="text-purple-600"/></div>;
+  if (type === "cashback")        return <div className={`${base} bg-pink-50`}><Heart size={18} className="text-pink-600"/></div>;
+  if (type === "platform_fee")    return <div className={`${base} bg-orange-50`}><Building2 size={18} className="text-orange-500"/></div>;
+  if (type === "deposit")         return <div className={`${base} bg-teal-50`}><ArrowDownToLine size={18} className="text-teal-600"/></div>;
+  if (type === "cod_remittance")  return <div className={`${base} bg-blue-50`}><Banknote size={18} className="text-blue-600"/></div>;
+  if (type === "cash_collection") return <div className={`${base} bg-blue-50`}><Banknote size={18} className="text-blue-400"/></div>;
+  return                                 <div className={`${base} bg-red-50`}><ArrowUpFromLine size={18} className="text-red-500"/></div>;
 }
 
 function txMeta(type: string) {
-  if (type === "credit")          return { labelKey: "earnings" as TranslationKey,    bg: "bg-green-50",   badge: "bg-green-100 text-green-700"    };
-  if (type === "bonus")           return { labelKey: "bonus" as TranslationKey,       bg: "bg-blue-50",    badge: "bg-blue-100 text-blue-700"      };
-  if (type === "loyalty")         return { labelKey: "loyalty" as TranslationKey,     bg: "bg-purple-50",  badge: "bg-purple-100 text-purple-700"  };
-  if (type === "cashback")        return { labelKey: "cashback" as TranslationKey,    bg: "bg-pink-50",    badge: "bg-pink-100 text-pink-700"      };
-  if (type === "platform_fee")    return { labelKey: "platformFare" as TranslationKey,bg: "bg-orange-50",  badge: "bg-orange-100 text-orange-700"  };
-  if (type === "deposit")         return { labelKey: "deposit" as TranslationKey,     bg: "bg-teal-50",    badge: "bg-teal-100 text-teal-700"      };
-  if (type === "cod_remittance")  return { labelKey: "remittanceLabel" as TranslationKey,   bg: "bg-blue-50",    badge: "bg-blue-100 text-blue-700"      };
-  if (type === "cash_collection") return { labelKey: "collected" as TranslationKey,  bg: "bg-blue-50",    badge: "bg-blue-100 text-blue-600"      };
-  return                                 { labelKey: "withdraw" as TranslationKey,  bg: "bg-red-50",     badge: "bg-red-100 text-red-600"        };
+  if (type === "credit")          return { labelKey: "earnings" as TranslationKey,    badge: "bg-green-100 text-green-700"    };
+  if (type === "bonus")           return { labelKey: "bonus" as TranslationKey,       badge: "bg-blue-100 text-blue-700"      };
+  if (type === "loyalty")         return { labelKey: "loyalty" as TranslationKey,     badge: "bg-purple-100 text-purple-700"  };
+  if (type === "cashback")        return { labelKey: "cashback" as TranslationKey,    badge: "bg-pink-100 text-pink-700"      };
+  if (type === "platform_fee")    return { labelKey: "platformFare" as TranslationKey,badge: "bg-orange-100 text-orange-700"  };
+  if (type === "deposit")         return { labelKey: "deposit" as TranslationKey,     badge: "bg-teal-100 text-teal-700"      };
+  if (type === "cod_remittance")  return { labelKey: "remittanceLabel" as TranslationKey, badge: "bg-blue-100 text-blue-700"  };
+  if (type === "cash_collection") return { labelKey: "collected" as TranslationKey,  badge: "bg-blue-100 text-blue-600"      };
+  return                                 { labelKey: "withdraw" as TranslationKey,  badge: "bg-red-100 text-red-600"        };
 }
 
 function MethodIcon({ method }: { method: string | null }) {
@@ -70,9 +71,6 @@ function MethodIcon({ method }: { method: string | null }) {
   return <Landmark size={16} className="text-blue-500"/>;
 }
 
-/* ══════════════════════════════════════════
-   7-DAY EARNINGS CHART
-══════════════════════════════════════════ */
 function EarningsChart({ transactions }: { transactions: WalletTx[] }) {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
@@ -97,35 +95,30 @@ function EarningsChart({ transactions }: { transactions: WalletTx[] }) {
 
   const maxVal = Math.max(...days.map(d => d.amount), 1);
   const weekTotal = days.reduce((s, d) => s + d.amount, 0);
+  const bestIdx = days.reduce((best, d, i) => d.amount > days[best].amount ? i : best, 0);
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <p className="font-bold text-gray-900 text-[15px]">{T("sevenDayEarnings")}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{T("lastSevenDays")}</p>
+    <div className="bg-white rounded-3xl border border-gray-100 p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <BarChart3 size={15} className="text-gray-400"/>
+          <p className="font-bold text-gray-800 text-sm">{T("sevenDayEarnings")}</p>
         </div>
-        <div className="text-right">
-          <p className="text-lg font-extrabold text-green-600">{fc(weekTotal)}</p>
-          <p className="text-[10px] text-gray-400">{T("thisWeek")}</p>
-        </div>
+        <p className="text-base font-black text-green-600">{fc(weekTotal)}</p>
       </div>
-      <div className="flex items-end gap-2 h-24">
+      <div className="flex items-end gap-3 h-20">
         {days.map((d, i) => (
           <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-            {d.amount > 0 && (
-              <p className="text-[8px] text-gray-400 font-bold">{fc(d.amount).replace("Rs. ", "")}</p>
-            )}
-            <div className="w-full flex items-end justify-center" style={{ height: "64px" }}>
+            <div className="w-full flex items-end justify-center" style={{ height: 56 }}>
               <div
-                className={`w-full max-w-[28px] rounded-lg transition-all duration-500 ${
-                  i === 6 ? "bg-gradient-to-t from-green-600 to-emerald-400" : "bg-gradient-to-t from-green-200 to-green-100"
+                className={`w-full max-w-[20px] rounded-md transition-all duration-500 ${
+                  i === bestIdx ? "bg-green-500" : "bg-gray-100"
                 }`}
-                style={{ height: `${Math.max((d.amount / maxVal) * 64, d.amount > 0 ? 6 : 2)}px` }}
+                style={{ height: Math.max((d.amount / maxVal) * 56, d.amount > 0 ? 4 : 2) }}
                 title={`${d.date}: ${fc(d.amount)}`}
               />
             </div>
-            <p className={`text-[10px] font-medium text-center leading-tight ${i === 6 ? "text-green-600 font-bold" : "text-gray-400"}`}>{d.label}</p>
+            <p className={`text-[9px] font-semibold ${i === bestIdx ? "text-green-600" : "text-gray-300"}`}>{d.label}</p>
           </div>
         ))}
       </div>
@@ -133,9 +126,6 @@ function EarningsChart({ transactions }: { transactions: WalletTx[] }) {
   );
 }
 
-/* ══════════════════════════════════════════
-   PENDING REQUEST CARD
-══════════════════════════════════════════ */
 function PendingRequestCard({ tx }: { tx: WalletTx }) {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
@@ -158,17 +148,17 @@ function PendingRequestCard({ tx }: { tx: WalletTx }) {
     <div className={`${statusConfig.bg} border ${statusConfig.border} rounded-2xl p-4`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm">
             <MethodIcon method={tx.paymentMethod || parsed.bank}/>
           </div>
           <div className="min-w-0">
-            <p className="font-extrabold text-gray-900 text-sm">{parsed.bank}</p>
+            <p className="font-black text-gray-900 text-sm">{parsed.bank}</p>
             <p className="text-xs text-gray-500 font-mono mt-0.5">{parsed.account}</p>
           </div>
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="text-lg font-extrabold text-gray-900">{fc(Number(tx.amount))}</p>
-          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${statusConfig.badge} inline-flex items-center gap-1`}>
+          <p className="text-lg font-black text-gray-900">{fc(Number(tx.amount))}</p>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusConfig.badge} inline-flex items-center gap-1`}>
             <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot} ${status === "pending" ? "animate-pulse" : ""}`}/>
             {statusConfig.icon} {statusConfig.label}
           </span>
@@ -191,9 +181,6 @@ function PendingRequestCard({ tx }: { tx: WalletTx }) {
   );
 }
 
-/* ══════════════════════════════════════════
-   TYPES & FILTERS
-══════════════════════════════════════════ */
 type WalletTx = {
   id: string; type: string; amount: string | number;
   description?: string; reference?: string; createdAt: string;
@@ -202,17 +189,6 @@ type WalletTx = {
 
 type TxFilter = "all" | "credit" | "debit" | "bonus" | "fees";
 
-const FILTER_TABS: { key: TxFilter; label: string }[] = [
-  { key: "all",    label: "All"         },
-  { key: "credit", label: "Earnings"    },
-  { key: "debit",  label: "Withdrawals" },
-  { key: "bonus",  label: "Bonuses"     },
-  { key: "fees",   label: "Fees"        },
-];
-
-/* ══════════════════════════════════════════
-   MAIN WALLET PAGE
-══════════════════════════════════════════ */
 export default function Wallet() {
   const { user, refreshUser } = useAuth();
   const { config } = usePlatformConfig();
@@ -228,13 +204,24 @@ export default function Wallet() {
   const [showWithdraw, setShowWithdraw]     = useState(false);
   const [showRemittance, setShowRemittance] = useState(false);
   const [showDeposit, setShowDeposit]       = useState(false);
-  const [toast, setToast]                   = useState("");
+  const [toast, setToast]                   = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [filter, setFilter]                 = useState<TxFilter>("all");
   const [showRequests, setShowRequests]     = useState(true);
   const [showCodHistory, setShowCodHistory] = useState(false);
   const [balanceHidden, setBalanceHidden]   = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3500); };
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  };
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["rider-wallet"],
@@ -316,49 +303,44 @@ export default function Wallet() {
 
   if (isLoading) {
     return (
-      <div className="bg-gray-50 pb-24 min-h-screen">
-        <div className="bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 px-5 pt-12 pb-28 relative overflow-hidden">
-          <div className="absolute inset-0 opacity-[0.07]">
-            <div className="absolute top-0 right-0 w-56 h-56 bg-white rounded-full -translate-y-1/3 translate-x-1/4"/>
-            <div className="absolute bottom-0 left-0 w-40 h-40 bg-white rounded-full translate-y-1/3 -translate-x-1/4"/>
-          </div>
-          <div className="relative flex items-center justify-between">
-            <div className="space-y-2">
-              <div className="h-7 w-28 bg-white/20 rounded-xl animate-pulse"/>
-              <div className="h-4 w-40 bg-white/10 rounded-xl animate-pulse"/>
+      <div className="bg-[#FAFBFC] pb-24 min-h-screen">
+        <div className="bg-white px-5 pt-14 pb-6 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-8">
+            <div className="space-y-2 animate-pulse">
+              <div className="h-3 w-16 bg-gray-200 rounded"/>
+              <div className="h-7 w-32 bg-gray-200 rounded-xl"/>
             </div>
-            <div className="w-10 h-10 bg-white/15 rounded-xl animate-pulse"/>
+            <div className="w-10 h-10 bg-gray-100 rounded-2xl animate-pulse"/>
+          </div>
+          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 animate-pulse">
+            <div className="h-3 w-24 bg-white/10 rounded mb-4"/>
+            <div className="h-10 w-48 bg-white/10 rounded-xl mb-4"/>
+            <div className="flex gap-3">
+              <div className="flex-1 h-14 bg-white/5 rounded-xl"/>
+              <div className="flex-1 h-14 bg-white/5 rounded-xl"/>
+            </div>
+            <div className="flex gap-2.5 mt-5">
+              <div className="flex-1 h-12 bg-white/15 rounded-2xl"/>
+              <div className="flex-1 h-12 bg-white/10 rounded-2xl"/>
+            </div>
           </div>
         </div>
-        <div className="px-4 -mt-20 space-y-4">
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-            <div className="space-y-3 animate-pulse">
-              <div className="h-3 w-28 bg-gray-200 rounded"/>
-              <div className="h-10 w-48 bg-gray-200 rounded-xl"/>
-              <div className="h-3 w-36 bg-gray-100 rounded"/>
-              <div className="flex gap-2 mt-4">
-                <div className="flex-1 h-14 bg-gray-200 rounded-xl"/>
-                <div className="flex-1 h-14 bg-gray-200 rounded-xl"/>
-                <div className="w-14 h-14 bg-gray-100 rounded-xl"/>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {[1,2,3,4].map(i => (
-              <div key={i} className="bg-white rounded-2xl p-4 border border-gray-100 animate-pulse">
-                <div className="h-5 w-5 bg-gray-200 rounded mb-2"/>
+        <div className="px-5 py-5 space-y-4">
+          <div className="flex gap-3">
+            {[1,2,3].map(i => (
+              <div key={i} className="flex-1 bg-white rounded-2xl p-3.5 border border-gray-100 animate-pulse">
                 <div className="h-5 w-20 bg-gray-200 rounded mb-1"/>
-                <div className="h-3 w-16 bg-gray-100 rounded"/>
+                <div className="h-3 w-12 bg-gray-100 rounded"/>
               </div>
             ))}
           </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 animate-pulse">
+          <div className="bg-white rounded-3xl border border-gray-100 p-5 animate-pulse">
             <div className="h-4 w-32 bg-gray-200 rounded mb-4"/>
-            <div className="flex items-end gap-2 h-24">
+            <div className="flex items-end gap-3 h-20">
               {[20, 35, 15, 45, 30, 50, 25].map((h, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-                  <div className="w-full max-w-[28px] bg-gray-100 rounded-lg" style={{ height: `${h}px` }}/>
-                  <div className="h-2 w-6 bg-gray-100 rounded"/>
+                  <div className="w-full max-w-[20px] bg-gray-100 rounded-md" style={{ height: `${h}px` }}/>
+                  <div className="h-2 w-4 bg-gray-100 rounded"/>
                 </div>
               ))}
             </div>
@@ -370,21 +352,18 @@ export default function Wallet() {
 
   if (!config.features.wallet) {
     return (
-      <div className="bg-gray-50 pb-24 min-h-screen">
-        <div className="bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 px-5 pt-12 pb-8 relative overflow-hidden">
-          <div className="absolute inset-0 opacity-[0.07]">
-            <div className="absolute top-0 right-0 w-56 h-56 bg-white rounded-full -translate-y-1/3 translate-x-1/4"/>
-            <div className="absolute bottom-0 left-0 w-40 h-40 bg-white rounded-full translate-y-1/3 -translate-x-1/4"/>
-          </div>
-          <h1 className="relative text-2xl font-extrabold text-white tracking-tight">Wallet</h1>
+      <div className="bg-[#FAFBFC] pb-24 min-h-screen">
+        <div className="bg-white px-5 pt-14 pb-6 border-b border-gray-100">
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">{T("wallet")}</p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight mt-0.5">{T("wallet")}</h1>
         </div>
-        <div className="px-4 py-8 text-center">
+        <div className="px-5 py-8 text-center">
           <div className="bg-white rounded-3xl p-10 shadow-sm border border-gray-100">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock size={32} className="text-gray-400"/>
+            <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Lock size={32} className="text-gray-300"/>
             </div>
-            <h3 className="text-lg font-extrabold text-gray-900 mb-2">{T("walletDisabled")}</h3>
-            <p className="text-sm text-gray-500">{T("withdrawalsDisabled")}</p>
+            <h3 className="text-lg font-black text-gray-900 mb-2">{T("walletDisabled")}</h3>
+            <p className="text-sm text-gray-400">{T("withdrawalsDisabled")}</p>
           </div>
         </div>
       </div>
@@ -392,128 +371,142 @@ export default function Wallet() {
   }
 
   return (
-    <div className="bg-gray-50 pb-28 min-h-screen">
+    <div className="bg-[#FAFBFC] pb-28 min-h-screen">
 
-      {/* ══ HEADER ══ */}
-      <div className="bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 px-5 pt-12 pb-28 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.07]">
-          <div className="absolute top-0 right-0 w-56 h-56 bg-white rounded-full -translate-y-1/3 translate-x-1/4"/>
-          <div className="absolute bottom-0 left-0 w-40 h-40 bg-white rounded-full translate-y-1/3 -translate-x-1/4"/>
-        </div>
-        <div className="relative flex items-center justify-between">
+      <div className="bg-white px-5 pt-14 pb-6 border-b border-gray-100">
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">{T("wallet")}</h1>
-            <p className="text-green-200 text-sm mt-0.5">{T("earningsPayoutsShort")}</p>
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">{T("wallet")}</p>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight mt-0.5">{T("availableBalance")}</h1>
           </div>
-          <button onClick={() => refetch()} className="h-10 w-10 bg-white/15 backdrop-blur-sm text-white rounded-xl flex items-center justify-center border border-white/10 active:bg-white/25 transition-colors">
-            <RefreshCw size={16}/>
+          <button onClick={() => refetch()} className="w-10 h-10 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-100 active:bg-gray-100 transition-colors">
+            <RefreshCw size={16} className="text-gray-400"/>
           </button>
         </div>
-      </div>
 
-      <div className="px-4 -mt-20 space-y-4">
+        <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3"/>
+          <div className="absolute bottom-0 left-0 w-28 h-28 bg-white/[0.03] rounded-full translate-y-1/3 -translate-x-1/4"/>
 
-        {/* ══ BALANCE CARD ══ */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5 relative overflow-hidden">
-          <div className="absolute -top-8 -right-8 w-28 h-28 bg-green-50 rounded-full opacity-50"/>
-          <div className="absolute -bottom-6 -left-6 w-20 h-20 bg-emerald-50 rounded-full opacity-50"/>
           <div className="relative">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{T("availableBalance")}</p>
-                  <button onClick={() => setBalanceHidden(v => !v)} className="text-gray-400 active:text-gray-600 transition-colors">
-                    {balanceHidden ? <EyeOff size={14}/> : <Eye size={14}/>}
-                  </button>
-                </div>
-                <p className="text-4xl font-extrabold text-green-600 leading-none">
-                  {balanceHidden ? "Rs. ••••••" : fc(balance)}
-                </p>
-                <p className="text-xs text-gray-400 mt-2">{riderKeepPct}% — {T("earningsCreditedInstantly")}</p>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-400 font-semibold">{T("availableBalance")}</p>
+                <button onClick={() => setBalanceHidden(v => !v)} className="text-gray-500 active:text-gray-300 transition-colors">
+                  {balanceHidden ? <EyeOff size={12}/> : <Eye size={12}/>}
+                </button>
               </div>
+              <div className="flex items-center gap-1 bg-green-500/15 px-2.5 py-1 rounded-full">
+                <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"/>
+                <span className="text-[10px] text-green-400 font-bold">{T("online" as TranslationKey)}</span>
+              </div>
+            </div>
+
+            <p className="text-4xl font-black text-white tracking-tight">
+              {balanceHidden ? "Rs. ••••••" : fc(balance)}
+            </p>
+
+            <div className="flex items-center gap-3 mt-4">
               {pendingAmt > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-right flex-shrink-0">
-                  <p className="text-[10px] text-amber-600 font-bold flex items-center gap-1 justify-end"><Clock size={10}/> {T("pending")}</p>
-                  <p className="text-sm font-extrabold text-amber-700">{fc(pendingAmt)}</p>
+                <div className="flex-1 bg-white/5 rounded-xl px-3 py-2">
+                  <p className="text-[9px] text-gray-500 uppercase tracking-wider font-bold">{T("pending")}</p>
+                  <p className="text-sm font-bold text-amber-400">{fc(pendingAmt)}</p>
+                </div>
+              )}
+              <div className="flex-1 bg-white/5 rounded-xl px-3 py-2">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wider font-bold">{T("yourShare" as TranslationKey)}</p>
+                <p className="text-sm font-bold text-white">{riderKeepPct}%</p>
+              </div>
+              {pendingAmt === 0 && (
+                <div className="flex-1 bg-white/5 rounded-xl px-3 py-2">
+                  <p className="text-[9px] text-gray-500 uppercase tracking-wider font-bold">{T("earnedToday")}</p>
+                  <p className="text-sm font-bold text-green-400">{fc(todayEarned)}</p>
                 </div>
               )}
             </div>
 
             {minBalance > 0 && balance < minBalance && (
-              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
-                <AlertTriangle size={16} className="text-amber-500 flex-shrink-0"/>
+              <div className="mt-3 bg-amber-500/15 rounded-xl px-3 py-2.5 flex items-center gap-2 border border-amber-500/20">
+                <AlertTriangle size={14} className="text-amber-400 flex-shrink-0"/>
                 <div>
-                  <p className="text-xs text-amber-700 font-bold">{T("cashMinBalance")}: {fc(minBalance)}</p>
-                  <p className="text-[10px] text-amber-600">{T("balanceAmount")}: {fc(balance)} — Rs. {Math.round(minBalance - balance)} {T("moreNeeded")}</p>
+                  <p className="text-xs text-amber-300 font-bold">{T("cashMinBalance")}: {fc(minBalance)}</p>
+                  <p className="text-[10px] text-amber-400/70">Rs. {Math.round(minBalance - balance)} {T("moreNeeded")}</p>
                 </div>
               </div>
             )}
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2.5 mt-5">
               {withdrawalEnabled ? (
                 <button onClick={() => setShowWithdraw(true)}
-                  className="flex-1 bg-green-600 text-white font-extrabold rounded-xl py-3.5 flex items-center justify-center gap-2 active:bg-green-700 transition-colors shadow-sm">
-                  <ArrowUpFromLine size={17}/> {T("withdraw")}
+                  className="flex-1 bg-white text-gray-900 font-black rounded-2xl py-3.5 text-sm flex items-center justify-center gap-2 active:bg-gray-100 transition-colors">
+                  <ArrowUpFromLine size={15}/> {T("withdraw")}
                 </button>
               ) : (
-                <button disabled className="flex-1 bg-gray-200 text-gray-400 font-bold rounded-xl py-3.5 flex items-center justify-center gap-2 cursor-not-allowed">
-                  <Lock size={16}/> {T("withdrawalsPaused")}
+                <button disabled className="flex-1 bg-white/10 text-white/40 font-bold rounded-2xl py-3.5 text-sm flex items-center justify-center gap-2 cursor-not-allowed border border-white/10">
+                  <Lock size={14}/> {T("withdrawalsPaused")}
                 </button>
               )}
               {depositEnabled && (
                 <button onClick={() => setShowDeposit(true)}
-                  className="flex-1 bg-teal-600 text-white font-extrabold rounded-xl py-3.5 flex items-center justify-center gap-2 active:bg-teal-700 transition-colors shadow-sm">
-                  <ArrowDownToLine size={17}/> {T("deposit")}
+                  className="flex-1 bg-white/10 text-white font-bold rounded-2xl py-3.5 text-sm flex items-center justify-center gap-2 border border-white/10 active:bg-white/15 transition-colors">
+                  <ArrowDownToLine size={15}/> {T("deposit")}
                 </button>
               )}
-              <button onClick={() => refetch()} className="w-[52px] h-[52px] bg-gray-50 text-gray-500 font-bold rounded-xl flex items-center justify-center active:bg-gray-100 transition-colors border border-gray-100">
-                <RefreshCw size={17}/>
-              </button>
             </div>
 
             {!withdrawalEnabled && (
-              <div className="mt-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5 flex items-center gap-2">
-                <XCircle size={14} className="text-red-500 flex-shrink-0"/>
-                <p className="text-xs text-red-600 font-medium">{T("withdrawalsDisabled")}</p>
+              <div className="mt-3 bg-red-500/15 rounded-xl px-3 py-2 flex items-center gap-2 border border-red-500/20">
+                <XCircle size={12} className="text-red-400 flex-shrink-0"/>
+                <p className="text-[10px] text-red-300 font-medium">{T("withdrawalsDisabled")}</p>
               </div>
             )}
           </div>
         </div>
+      </div>
 
-        {/* ══ STATS GRID ══ */}
-        <div className="grid grid-cols-2 gap-3">
+      <div className="px-5 py-5 space-y-5">
+
+        <div className="flex gap-3">
           {[
-            { label: T("earnedToday"),     value: fc(todayEarned),    icon: <TrendingUp size={18} className="text-amber-600"/>,   bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-100"  },
-            { label: T("earnedThisWeek"),  value: fc(weekEarned),     icon: <CreditCard size={18} className="text-blue-600"/>,    bg: "bg-blue-50",   text: "text-blue-700",   border: "border-blue-100"   },
-            { label: T("totalEarned"),      value: fc(totalEarned),    icon: <Wallet2    size={18} className="text-green-600"/>,   bg: "bg-green-50",  text: "text-green-700",  border: "border-green-100"  },
-            { label: T("totalWithdrawn"),   value: fc(totalWithdrawn), icon: <ArrowUpFromLine size={18} className="text-red-500"/>,bg: "bg-red-50",    text: "text-red-600",    border: "border-red-100"    },
+            { label: T("earnedToday"),    value: fc(todayEarned),    color: "text-green-600" },
+            { label: T("earnedThisWeek"), value: fc(weekEarned),     color: "text-blue-600"  },
+            { label: T("totalEarned"),     value: fc(totalEarned),    color: "text-purple-600" },
           ].map(s => (
-            <div key={s.label} className={`${s.bg} rounded-2xl p-4 border ${s.border}`}>
-              <div className="mb-1.5">{s.icon}</div>
-              <p className={`text-lg font-extrabold ${s.text} leading-tight`}>{s.value}</p>
-              <p className="text-[10px] text-gray-500 mt-1 font-semibold">{s.label}</p>
+            <div key={s.label} className="flex-1 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm">
+              <p className={`text-base font-black ${s.color}`}>{s.value}</p>
+              <p className="text-[10px] text-gray-400 mt-1 font-semibold">{s.label}</p>
             </div>
           ))}
         </div>
 
-        {/* ══ 7-DAY EARNINGS CHART ══ */}
+        {totalWithdrawn > 0 && (
+          <div className="bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center">
+                <ArrowUpFromLine size={14} className="text-red-500"/>
+              </div>
+              <p className="text-[10px] text-gray-400 font-semibold">{T("totalWithdrawn")}</p>
+            </div>
+            <p className="text-base font-black text-red-500">{fc(totalWithdrawn)}</p>
+          </div>
+        )}
+
         <EarningsChart transactions={transactions}/>
 
-        {/* ══ COD CASH SECTION ══ */}
         {codOrderCount > 0 && (
-          <div className={`rounded-2xl shadow-sm overflow-hidden border ${codNetOwed > 0 ? "border-blue-200 bg-white" : "border-green-200 bg-white"}`}>
+          <div className={`rounded-3xl shadow-sm overflow-hidden border ${codNetOwed > 0 ? "border-blue-100 bg-white" : "border-green-100 bg-white"}`}>
             <div className="px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${codNetOwed > 0 ? "bg-blue-100" : "bg-green-100"}`}>
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${codNetOwed > 0 ? "bg-blue-50" : "bg-green-50"}`}>
                   <Banknote size={20} className={codNetOwed > 0 ? "text-blue-600" : "text-green-600"}/>
                 </div>
                 <div>
-                  <p className="font-bold text-gray-900 text-[15px]">{T("codCashBalance")}</p>
-                  <p className="text-xs text-gray-500">{T("cashOnDelivery")}</p>
+                  <p className="font-bold text-gray-800 text-sm">{T("codCashBalance")}</p>
+                  <p className="text-[10px] text-gray-400">{T("cashOnDelivery")}</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className={`text-xl font-extrabold ${codNetOwed > 0 ? "text-blue-600" : "text-green-600"}`}>{fc(codNetOwed)}</p>
+                <p className={`text-xl font-black ${codNetOwed > 0 ? "text-blue-600" : "text-green-600"}`}>{fc(codNetOwed)}</p>
                 <p className="text-[10px] text-gray-400 flex items-center gap-1 justify-end">
                   {codNetOwed > 0 ? T("remitCodCashBtn") : <><CheckCircle size={10} className="text-green-500"/> {T("allClear")}</>}
                 </p>
@@ -521,16 +514,16 @@ export default function Wallet() {
             </div>
 
             <div className="px-5 pb-3 grid grid-cols-3 gap-2 text-center border-t border-gray-50 pt-3">
-              <div>
-                <p className="text-xs font-extrabold text-gray-800">{fc(codCollected)}</p>
+              <div className="bg-gray-50 rounded-xl py-2">
+                <p className="text-xs font-black text-gray-800">{fc(codCollected)}</p>
                 <p className="text-[9px] text-gray-400 font-medium">{T("collected")}</p>
               </div>
-              <div>
-                <p className="text-xs font-extrabold text-green-600">{fc(codVerified)}</p>
+              <div className="bg-gray-50 rounded-xl py-2">
+                <p className="text-xs font-black text-green-600">{fc(codVerified)}</p>
                 <p className="text-[9px] text-gray-400 font-medium">{T("verified")}</p>
               </div>
-              <div>
-                <p className={`text-xs font-extrabold ${codNetOwed > 0 ? "text-blue-600" : "text-gray-400"}`}>{fc(codNetOwed)}</p>
+              <div className="bg-gray-50 rounded-xl py-2">
+                <p className={`text-xs font-black ${codNetOwed > 0 ? "text-blue-600" : "text-gray-400"}`}>{fc(codNetOwed)}</p>
                 <p className="text-[9px] text-gray-400 font-medium">{T("owed")}</p>
               </div>
             </div>
@@ -545,12 +538,12 @@ export default function Wallet() {
             <div className="px-5 pb-4 flex gap-2">
               {codNetOwed > 0 && (
                 <button onClick={() => setShowRemittance(true)}
-                  className="flex-1 bg-blue-600 text-white font-extrabold rounded-xl py-3 flex items-center justify-center gap-2 text-sm active:bg-blue-700 transition-colors shadow-sm">
+                  className="flex-1 bg-gray-900 text-white font-black rounded-2xl py-3 flex items-center justify-center gap-2 text-sm active:bg-gray-800 transition-colors">
                   <Banknote size={16}/> {T("remitCodCashBtn")}
                 </button>
               )}
               <button onClick={() => setShowCodHistory(!showCodHistory)}
-                className={`${codNetOwed > 0 ? "w-auto px-4" : "flex-1"} bg-gray-50 text-gray-600 font-bold rounded-xl py-3 text-sm flex items-center justify-center gap-1.5 border border-gray-100 active:bg-gray-100 transition-colors`}>
+                className={`${codNetOwed > 0 ? "w-auto px-4" : "flex-1"} bg-gray-50 text-gray-600 font-bold rounded-2xl py-3 text-sm flex items-center justify-center gap-1.5 border border-gray-100 active:bg-gray-100 transition-colors`}>
                 {showCodHistory ? <><ChevronUp size={14}/> {T("hide")}</> : T("history")}
               </button>
             </div>
@@ -566,7 +559,7 @@ export default function Wallet() {
                   const parts = (r.description || "").replace("COD Remittance — ", "").split(" · ");
                   return (
                     <div key={r.id} className="px-5 py-3.5 flex items-center gap-3">
-                      <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 bg-blue-50 rounded-2xl flex items-center justify-center flex-shrink-0">
                         <Banknote size={16} className="text-blue-600"/>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -576,7 +569,7 @@ export default function Wallet() {
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 ${stBadge}`}>{stIcon} {stLabel}</span>
                         </div>
                       </div>
-                      <p className="text-sm font-extrabold text-blue-600 flex-shrink-0">{fc(Number(r.amount))}</p>
+                      <p className="text-sm font-black text-blue-600 flex-shrink-0">{fc(Number(r.amount))}</p>
                     </div>
                   );
                 })}
@@ -585,17 +578,16 @@ export default function Wallet() {
           </div>
         )}
 
-        {/* ══ WITHDRAWAL REQUESTS ══ */}
         {withdrawalRequests.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             <button
               className="w-full flex items-center justify-between px-5 py-4"
               onClick={() => setShowRequests(!showRequests)}
             >
               <div className="flex items-center gap-2.5">
-                <span className="font-bold text-gray-900 text-[15px]">{T("withdrawalRequests")}</span>
+                <span className="font-bold text-gray-800 text-sm">{T("withdrawalRequests")}</span>
                 {pendingRequests.length > 0 && (
-                  <span className="text-[10px] font-extrabold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex items-center gap-1">
                     <Clock size={9}/> {pendingRequests.length} {T("pending")}
                   </span>
                 )}
@@ -616,24 +608,23 @@ export default function Wallet() {
           </div>
         )}
 
-        {/* ══ HOW WALLET WORKS ══ */}
         {withdrawalRequests.length === 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <p className="font-bold text-gray-900 text-[15px] mb-4 flex items-center gap-2">
-              <Sparkles size={16} className="text-green-500"/> {T("howItWorks")}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
+            <p className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2">
+              <Sparkles size={15} className="text-green-500"/> {T("howItWorks")}
             </p>
             <div className="space-y-3">
               {[
-                { step: "1", icon: <TrendingUp size={15} className="text-green-600"/>, title: T("completeDeliveries"),    desc: `${riderKeepPct}% ${T("earningsAddedInstantly")}` },
-                { step: "2", icon: <Wallet2 size={15} className="text-green-600"/>,    title: T("buildBalance"),    desc: `${T("minToWithdraw")}: ${fc(minPayout)}`   },
-                { step: "3", icon: <ArrowUpFromLine size={15} className="text-green-600"/>, title: T("requestWithdrawal"), desc: T("selectPaymentMethod")     },
-                { step: "4", icon: <CheckCircle size={15} className="text-green-600"/>, title: T("receivePayment"),       desc: `${procDays * 24}–${procDays * 24 + 24}h ${T("transferTime")}` },
+                { step: "1", icon: <TrendingUp size={14} className="text-green-600"/>, title: T("completeDeliveries"),    desc: `${riderKeepPct}% ${T("earningsAddedInstantly")}` },
+                { step: "2", icon: <Wallet2 size={14} className="text-green-600"/>,    title: T("buildBalance"),    desc: `${T("minToWithdraw")}: ${fc(minPayout)}`   },
+                { step: "3", icon: <ArrowUpFromLine size={14} className="text-green-600"/>, title: T("requestWithdrawal"), desc: T("selectPaymentMethod")     },
+                { step: "4", icon: <CheckCircle size={14} className="text-green-600"/>, title: T("receivePayment"),       desc: `${procDays * 24}–${procDays * 24 + 24}h ${T("transferTime")}` },
               ].map(s => (
                 <div key={s.step} className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center text-sm font-extrabold text-green-600 flex-shrink-0">{s.step}</div>
+                  <div className="w-8 h-8 bg-green-50 rounded-xl flex items-center justify-center text-sm font-black text-green-600 flex-shrink-0">{s.step}</div>
                   <div className="min-w-0 pt-0.5">
                     <p className="text-sm font-bold text-gray-800 flex items-center gap-1.5">{s.icon} {s.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{s.desc}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{s.desc}</p>
                   </div>
                 </div>
               ))}
@@ -641,20 +632,19 @@ export default function Wallet() {
           </div>
         )}
 
-        {/* ══ TRANSACTION HISTORY ══ */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 pt-5 pb-3">
             <div className="flex items-center justify-between mb-3">
-              <p className="font-bold text-gray-900 text-[15px]">{T("transactionHistoryTitle")}</p>
-              <span className="text-xs text-gray-400 font-medium">{filtered.length} {T("records")}</span>
+              <p className="font-bold text-gray-800 text-sm">{T("transactionHistoryTitle")}</p>
+              <span className="text-[10px] text-gray-400 font-medium">{filtered.length} {T("records")}</span>
             </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5">
               {FILTER_TABS_LOCAL.map(tab => (
                 <button key={tab.key} onClick={() => setFilter(tab.key)}
-                  className={`flex-shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all ${
                     filter === tab.key
-                      ? "bg-green-600 text-white border-green-600"
-                      : "bg-gray-50 text-gray-500 border-gray-100 active:bg-gray-100"
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-50 text-gray-400 border border-gray-100 active:bg-gray-100"
                   }`}>
                   {tab.label}
                 </button>
@@ -669,14 +659,19 @@ export default function Wallet() {
               </div>
               <p className="font-bold text-gray-600">{T("noTransactionsFilter")}</p>
               <p className="text-sm text-gray-400 mt-1">{T("completeDeliveriesTrack")}</p>
+              {filter !== "all" && (
+                <button onClick={() => setFilter("all")} className="mt-3 text-xs text-green-600 font-bold flex items-center gap-0.5 mx-auto">
+                  {T("all")} {T("transactionHistoryTitle")} <ChevronRight size={12}/>
+                </button>
+              )}
             </div>
           ) : (
             <div className="border-t border-gray-50">
               {groupedTx.map(group => (
                 <div key={group.label}>
-                  <div className="px-5 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                  <div className="px-5 py-2.5 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
                     <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">{resolveGroupLabel(group.label)}</p>
-                    <span className="text-[10px] text-gray-400">{group.items.length}</span>
+                    <span className="text-[10px] text-gray-300">{group.items.length}</span>
                   </div>
                   <div className="divide-y divide-gray-50">
                     {group.items.map((t: WalletTx) => {
@@ -691,31 +686,27 @@ export default function Wallet() {
                         : (ref.startsWith("paid:") || ref.startsWith("approved:")) ? "approved"
                         : ref.startsWith("rejected:") ? "rejected" : null;
                       return (
-                        <div key={t.id} className="px-5 py-3.5 flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${meta.bg}`}>
-                            <TxIcon type={t.type}/>
-                          </div>
+                        <div key={t.id} className="px-5 py-3.5 flex items-center gap-3">
+                          <TxIcon type={t.type}/>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{t.description}</p>
-                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                              <p className="text-[10px] text-gray-400">{fd(t.createdAt)}</p>
+                            <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-1">{t.description}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <p className="text-[10px] text-gray-400">{fdr(t.createdAt)}</p>
                               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${meta.badge}`}>{T(meta.labelKey)}</span>
                               {wStatus === "pending"  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-0.5"><Clock size={8}/> {T("pending")}</span>}
                               {wStatus === "approved" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 flex items-center gap-0.5"><CheckCircle size={8}/> {isDeposit ? T("creditedLabel") : T("paid")}</span>}
                               {wStatus === "rejected" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 flex items-center gap-0.5"><XCircle size={8}/> {T("rejected")}</span>}
                             </div>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <p className={`text-[15px] font-extrabold ${
-                              isDeposit && wStatus === "pending" ? "text-amber-500"
-                              : isDeposit ? "text-teal-600"
-                              : isCredit ? "text-green-600"
-                              : wStatus === "rejected" ? "text-gray-400 line-through"
-                              : "text-red-500"
-                            }`}>
-                              {isDebitType ? "−" : "+"}{fc(Number(t.amount))}
-                            </p>
-                          </div>
+                          <p className={`text-sm font-black flex-shrink-0 ${
+                            isDeposit && wStatus === "pending" ? "text-amber-500"
+                            : isDeposit ? "text-teal-600"
+                            : isCredit ? "text-green-600"
+                            : wStatus === "rejected" ? "text-gray-400 line-through"
+                            : "text-red-500"
+                          }`}>
+                            {isDebitType ? "−" : "+"}{fc(Number(t.amount))}
+                          </p>
                         </div>
                       );
                     })}
@@ -726,33 +717,31 @@ export default function Wallet() {
           )}
         </div>
 
-        {/* ══ PAYOUT POLICY ══ */}
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-2xl p-5">
-          <p className="text-[15px] font-bold text-green-800 mb-3 flex items-center gap-2">
-            <ShieldCheck size={16}/> {T("payoutPolicy")}
-          </p>
-          <div className="space-y-2.5">
+        <div className="bg-green-50 rounded-3xl border border-green-100 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldCheck size={15} className="text-green-600"/>
+            <p className="text-sm font-bold text-green-800">{T("payoutPolicy")}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
             {[
-              { icon: <TrendingUp size={13}/>,   text: `${riderKeepPct}% ${T("yourShare")} — ${100 - riderKeepPct}% ${T("platformFeeLabel")}` },
-              { icon: <CreditCard size={13}/>,   text: `${T("minWithdrawalLabel")}: ${fc(minPayout)} · ${T("maxWithdrawalLabel")}: ${fc(maxPayout)}` },
-              { icon: <Clock size={13}/>,        text: `${procDays * 24}–${procDays * 24 + 24}h ${T("processedInHours")}` },
-              { icon: <Smartphone size={13}/>,   text: T("transferVia") },
-              { icon: <ShieldCheck size={13}/>,  text: T("rejectedAutoRefund") },
-            ].map((p, i) => (
-              <div key={i} className="flex items-center gap-2.5">
-                <span className="text-green-500 flex-shrink-0">{p.icon}</span>
-                <p className="text-xs text-green-700 font-medium">{p.text}</p>
+              { label: T("yourShare" as TranslationKey),       value: `${riderKeepPct}%` },
+              { label: T("minWithdrawalLabel"),  value: fc(minPayout) },
+              { label: T("processingTime"),      value: `${procDays * 24}-${procDays * 24 + 24}h` },
+              { label: T("maxWithdrawalLabel"),  value: fc(maxPayout) },
+            ].map(p => (
+              <div key={p.label} className="bg-white rounded-xl px-3 py-2.5 border border-green-100">
+                <p className="text-[10px] text-green-600/60 font-bold uppercase tracking-wider">{p.label}</p>
+                <p className="text-sm font-black text-green-800 mt-0.5">{p.value}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-400 pb-2 flex items-center justify-center gap-1.5">
-          <ShieldCheck size={12}/> {T("allTransactionsSecure")} {config.platform.appName}
+        <p className="text-center text-[10px] text-gray-300 pb-2 flex items-center justify-center gap-1.5">
+          <ShieldCheck size={10}/> {T("allTransactionsSecure")} {config.platform.appName}
         </p>
       </div>
 
-      {/* ══ MODALS ══ */}
       {showRemittance && (
         <RemittanceModal
           netOwed={codNetOwed}
@@ -788,10 +777,12 @@ export default function Wallet() {
         />
       )}
 
-      {/* ══ TOAST ══ */}
       {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold flex items-center gap-2 animate-[slideDown_0.3s_ease-out] max-w-[90vw]">
-          <CheckCircle size={15} className="text-green-400 flex-shrink-0"/> {toast}
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold flex items-center gap-2 animate-[slideDown_0.3s_ease-out] max-w-[90vw] ${
+          toast.type === "error" ? "bg-red-600 text-white" : "bg-gray-900 text-white"
+        }`}>
+          {toast.type === "error" ? <XCircle size={15} className="text-red-300 flex-shrink-0"/> : <CheckCircle size={15} className="text-green-400 flex-shrink-0"/>}
+          {toast.message}
         </div>
       )}
     </div>
