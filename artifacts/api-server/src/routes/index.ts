@@ -23,6 +23,7 @@ import reviewsRouter from "./reviews.js";
 import systemRouter from "./system.js";
 import mapsRouter from "./maps.js";
 import schoolRouter from "./school.js";
+import uploadsRouter from "./uploads.js";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use("/reviews", reviewsRouter);
 router.use("/admin/system", systemRouter);
 router.use("/maps", mapsRouter);
 router.use("/school", schoolRouter);
+router.use("/uploads", uploadsRouter);
 
 export default router;

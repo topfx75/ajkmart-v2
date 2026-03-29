@@ -94,10 +94,24 @@ export const api = {
   logout:       (refreshToken?: string) => apiFetch("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }).finally(clearTokens),
   refreshToken: () => attemptTokenRefresh(),
 
-  registerRider: (data: { name: string; phone: string; email: string; cnic: string; vehicleType: string; vehicleRegistration: string; drivingLicense: string; password: string; captchaToken?: string; username?: string }) =>
+  registerRider: (data: {
+    name: string; phone: string; email: string; cnic: string; vehicleType: string;
+    vehicleRegistration: string; drivingLicense: string; password: string;
+    captchaToken?: string; username?: string;
+    address?: string; city?: string; emergencyContact?: string;
+    vehiclePlate?: string; vehiclePhoto?: string; documents?: string;
+  }) =>
     apiFetch("/auth/register", { method: "POST", body: JSON.stringify({ ...data, role: "rider", vehicleRegNo: data.vehicleRegistration }) }),
-  emailRegisterRider: (data: { name: string; phone: string; email: string; cnic: string; vehicleType: string; vehicleRegistration: string; drivingLicense: string; password: string; captchaToken?: string; username?: string }) =>
+  emailRegisterRider: (data: {
+    name: string; phone: string; email: string; cnic: string; vehicleType: string;
+    vehicleRegistration: string; drivingLicense: string; password: string;
+    captchaToken?: string; username?: string;
+    address?: string; city?: string; emergencyContact?: string;
+    vehiclePlate?: string; vehiclePhoto?: string; documents?: string;
+  }) =>
     apiFetch("/auth/email-register", { method: "POST", body: JSON.stringify({ ...data, role: "rider" }) }),
+  uploadFile: (data: { file: string; filename?: string; mimeType?: string }) =>
+    apiFetch("/uploads", { method: "POST", body: JSON.stringify(data) }),
   forgotPassword: (data: { method: "phone" | "email"; phone?: string; email?: string; captchaToken?: string }) =>
     apiFetch("/auth/forgot-password", { method: "POST", body: JSON.stringify(data) }),
   resetPassword: (data: { phone?: string; email?: string; otp: string; newPassword: string; totpCode?: string; captchaToken?: string }) =>

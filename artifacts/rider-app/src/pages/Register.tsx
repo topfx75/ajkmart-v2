@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { api } from "../lib/api";
 import { usePlatformConfig, getRiderAuthConfig } from "../lib/useConfig";
@@ -8,6 +8,7 @@ import { executeCaptcha, loadGoogleGSIToken, loadFacebookAccessToken, decodeGoog
 import {
   Bike, ArrowLeft, ArrowRight, Loader2, Eye, EyeOff,
   Clock, User, Phone, Mail, FileText, Car, Shield, Lightbulb,
+  MapPin, AlertCircle, Camera, Upload, X, CheckCircle2, Image,
 } from "lucide-react";
 
 function formatPhoneForApi(localDigits: string): string {
@@ -50,8 +51,52 @@ const VEHICLE_TYPES = [
   { value: "Van", labelKey: "vanVehicle" as TranslationKey },
 ];
 
+const AJK_CITIES = [
+  "Muzaffarabad", "Mirpur", "Rawalakot", "Bagh", "Kotli",
+  "Bhimber", "Pallandri", "Hajira", "Athmuqam", "Hattian Bala",
+  "Neelum", "Haveli", "Jhelum Valley", "Other",
+];
+
 const INPUT = "w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all";
 const SELECT = "w-full h-12 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none transition-all";
+
+interface UploadedDoc {
+  label: string;
+  url: string;
+  preview: string;
+}
+
+function FileUploadBox({ label, icon, value, onChange, required, uploading }: {
+  label: string; icon: React.ReactNode; value: UploadedDoc | null;
+  onChange: (file: File) => void; required?: boolean; uploading?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className={`border-2 border-dashed rounded-xl p-3 transition-all ${value ? "border-green-300 bg-green-50/50" : "border-gray-200 bg-gray-50/50 hover:border-green-300"}`}>
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={e => { if (e.target.files?.[0]) onChange(e.target.files[0]); }} />
+      {value ? (
+        <div className="flex items-center gap-3">
+          <img src={value.preview} alt={label} className="w-14 h-14 rounded-lg object-cover border border-green-200" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-green-700 flex items-center gap-1"><CheckCircle2 size={12} /> {label}</p>
+            <p className="text-[10px] text-green-600 truncate">{value.url ? "Uploaded" : "Ready"}</p>
+          </div>
+          <button onClick={() => inputRef.current?.click()} className="text-[10px] text-green-600 font-bold hover:text-green-700 px-2 py-1 rounded-lg hover:bg-green-100">
+            Change
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="w-full flex flex-col items-center gap-1.5 py-2 disabled:opacity-50">
+          {uploading ? <Loader2 size={20} className="text-green-500 animate-spin" /> : icon}
+          <span className="text-xs font-semibold text-gray-600">{label} {required && <span className="text-red-500">*</span>}</span>
+          <span className="text-[10px] text-gray-400">Tap to capture or upload</span>
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function Register() {
   const { config } = usePlatformConfig();
@@ -72,10 +117,19 @@ export default function Register() {
   const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const usernameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [emergencyContact, setEmergencyContact] = useState("");
+
   const [cnic, setCnic] = useState("");
   const [vehicleType, setVehicleType] = useState("");
   const [vehicleReg, setVehicleReg] = useState("");
   const [drivingLicense, setDrivingLicense] = useState("");
+
+  const [vehiclePhoto, setVehiclePhoto] = useState<UploadedDoc | null>(null);
+  const [cnicPhoto, setCnicPhoto] = useState<UploadedDoc | null>(null);
+  const [licensePhoto, setLicensePhoto] = useState<UploadedDoc | null>(null);
+  const [uploadingField, setUploadingField] = useState("");
 
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -92,6 +146,24 @@ export default function Register() {
   const [availabilityStatus, setAvailabilityStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
 
   const clearError = () => setError("");
+
+  const handleFileUpload = useCallback(async (file: File, field: string, setter: (doc: UploadedDoc) => void) => {
+    setUploadingField(field);
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const preview = base64;
+      const res = await api.uploadFile({ file: base64, filename: file.name, mimeType: file.type });
+      setter({ label: file.name, url: res.url, preview });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Upload failed. Please try again.");
+    }
+    setUploadingField("");
+  }, []);
 
   useEffect(() => {
     if (!username || username.length < 3) { setUsernameStatus("idle"); return; }
@@ -162,6 +234,11 @@ export default function Register() {
     if (!name.trim()) { setError(T("nameRequired")); return false; }
     if (!phone || phone.length < 10) { setError(T("enterValidPhone")); return false; }
     if (!email || !email.includes("@")) { setError(T("enterValidEmail")); return false; }
+    if (!address.trim()) { setError("Home address is required"); return false; }
+    if (!city) { setError("Please select your city"); return false; }
+    if (!emergencyContact.trim() || emergencyContact.replace(/\D/g, "").length < 10) {
+      setError("Valid emergency contact number is required"); return false;
+    }
     if (availabilityStatus === "taken") { setError(T("loginFailed")); return false; }
     if (username && usernameStatus === "taken") { setError("Username is already taken. Please choose another."); return false; }
     return true;
@@ -173,6 +250,7 @@ export default function Register() {
     if (!vehicleType) { setError(T("vehicleTypeRequired")); return false; }
     if (!vehicleReg.trim()) { setError(T("vehicleRegRequired")); return false; }
     if (!drivingLicense.trim()) { setError(T("drivingLicenseRequired")); return false; }
+    if (!vehiclePhoto) { setError("Vehicle photo is required. Please upload a clear photo of your vehicle."); return false; }
     return true;
   };
 
@@ -220,6 +298,11 @@ export default function Register() {
           return verifyChannel;
         })();
         setVerifyChannel(selectedChannel);
+
+        const docsArray: { type: string; url: string }[] = [];
+        if (cnicPhoto?.url) docsArray.push({ type: "cnic", url: cnicPhoto.url });
+        if (licensePhoto?.url) docsArray.push({ type: "driving_license", url: licensePhoto.url });
+
         const regData = {
           name: name.trim(),
           phone: formatPhoneForRegister(phone),
@@ -230,6 +313,12 @@ export default function Register() {
           drivingLicense: drivingLicense.trim(),
           password,
           captchaToken,
+          address: address.trim(),
+          city: city.trim(),
+          emergencyContact: emergencyContact.trim(),
+          vehiclePlate: vehicleReg.trim(),
+          vehiclePhoto: vehiclePhoto?.url || undefined,
+          documents: docsArray.length > 0 ? JSON.stringify(docsArray) : undefined,
           ...(username ? { username: username.trim() } : {}),
         };
         if (auth.phoneOtp) {
@@ -278,9 +367,15 @@ export default function Register() {
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-3">{T("pendingAdminApproval")}</h2>
           <p className="text-gray-500 text-sm leading-relaxed mb-5">{T("pendingApprovalMsg")}</p>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-left flex gap-2">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-left flex gap-2">
             <Lightbulb size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
             <p className="text-amber-700 text-xs font-medium">{T("approvalTakes")}</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-5 text-left flex gap-2">
+            <Shield size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
+            <p className="text-blue-700 text-xs font-medium">
+              Admin will review your documents and vehicle photo before activating your account.
+            </p>
           </div>
           <Link href="/" className="w-full h-11 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
             <ArrowLeft size={15} /> {T("goToLogin")}
@@ -335,6 +430,32 @@ export default function Register() {
                   <Mail size={11} /> {T("emailRequired")}
                 </label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" className={INPUT} />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block flex items-center gap-1">
+                  <MapPin size={11} /> Home Address <span className="text-red-500">*</span>
+                </label>
+                <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Full home address" className={INPUT} />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block flex items-center gap-1">
+                  <MapPin size={11} /> City <span className="text-red-500">*</span>
+                </label>
+                <select value={city} onChange={e => setCity(e.target.value)} className={SELECT}>
+                  <option value="">Select your city</option>
+                  {AJK_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block flex items-center gap-1">
+                  <Phone size={11} /> Emergency Contact <span className="text-red-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="h-12 px-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center text-sm font-medium text-gray-600">+92</div>
+                  <input type="tel" value={emergencyContact} onChange={e => setEmergencyContact(e.target.value)}
+                    placeholder="Family member / friend" className={`flex-1 ${INPUT}`} />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">In case of emergency during delivery</p>
               </div>
               <div>
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block flex items-center gap-1">
@@ -414,8 +535,8 @@ export default function Register() {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block">
-                  {T("vehicleRegRequired")}
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block flex items-center gap-1">
+                  <Car size={11} /> Registration / Plate # <span className="text-red-500">*</span>
                 </label>
                 <input value={vehicleReg} onChange={e => setVehicleReg(e.target.value.toUpperCase())} placeholder="e.g. AJK 1234"
                   className={`${INPUT} uppercase`} />
@@ -426,6 +547,42 @@ export default function Register() {
                 </label>
                 <input value={drivingLicense} onChange={e => setDrivingLicense(e.target.value)} placeholder="License number"
                   className={INPUT} />
+              </div>
+
+              <div className="border-t border-gray-100 pt-3 mt-1">
+                <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Camera size={12} /> Photos & Documents
+                </p>
+                <div className="space-y-2">
+                  <FileUploadBox
+                    label="Vehicle Photo"
+                    icon={<Image size={20} className="text-green-500" />}
+                    value={vehiclePhoto}
+                    onChange={f => handleFileUpload(f, "vehicle", setVehiclePhoto)}
+                    required
+                    uploading={uploadingField === "vehicle"}
+                  />
+                  <FileUploadBox
+                    label="CNIC Photo (Front)"
+                    icon={<FileText size={20} className="text-blue-500" />}
+                    value={cnicPhoto}
+                    onChange={f => handleFileUpload(f, "cnic", setCnicPhoto)}
+                    uploading={uploadingField === "cnic"}
+                  />
+                  <FileUploadBox
+                    label="Driving License Photo"
+                    icon={<FileText size={20} className="text-purple-500" />}
+                    value={licensePhoto}
+                    onChange={f => handleFileUpload(f, "license", setLicensePhoto)}
+                    uploading={uploadingField === "license"}
+                  />
+                </div>
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 mt-2 flex items-start gap-2">
+                  <AlertCircle size={13} className="text-blue-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-blue-700 leading-relaxed">
+                    <strong>Vehicle photo is mandatory.</strong> Upload clear photos for faster admin approval. Documents will be verified before your account is activated.
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -535,7 +692,7 @@ export default function Register() {
                 <ArrowLeft size={14} /> {T("previousStep")}
               </button>
             )}
-            <button onClick={goNextStep} disabled={loading}
+            <button onClick={goNextStep} disabled={loading || !!uploadingField}
               className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
               {loading ? <Loader2 size={18} className="animate-spin" /> : null}
               {loading ? T("pleaseWait") :

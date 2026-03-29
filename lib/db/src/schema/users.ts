@@ -62,6 +62,8 @@ export const usersTable = pgTable("users", {
   nationalId:        text("national_id"),
   vehicleRegNo:      text("vehicle_reg_no"),
   drivingLicense:    text("driving_license"),
+  vehiclePhoto:      text("vehicle_photo"),
+  documents:         text("documents"),
   biometricEnabled:  boolean("biometric_enabled").notNull().default(false),
   /* ── 2FA / TOTP fields ── */
   totpSecret:        text("totp_secret"),

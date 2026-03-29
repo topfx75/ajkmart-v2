@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { rateLimitMiddleware, securityHeadersMiddleware } from "./middleware/security.js";
@@ -37,6 +38,7 @@ app.use(express.urlencoded({ extended: true }));
 /* Dynamic rate limiting — reads settings from DB (cached 30s) */
 app.use(rateLimitMiddleware);
 
+app.use("/api/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 app.use("/api", router);
 
 export default app;

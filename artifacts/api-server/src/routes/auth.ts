@@ -1060,6 +1060,7 @@ const PASSWORD_RULES = {
 router.post("/register", verifyCaptcha, async (req, res) => {
   const { phone, password, name, role, cnic, nationalId, email, username,
           vehicleType, vehicleRegNo, drivingLicense,
+          address, city, emergencyContact, vehiclePlate, vehiclePhoto, documents,
           businessName, businessType, storeAddress, ntn, storeName } = req.body;
 
   const ip = getClientIp(req);
@@ -1168,7 +1169,13 @@ router.post("/register", verifyCaptcha, async (req, res) => {
     nationalId: cnicValue || null,
     vehicleType: vehicleType || null,
     vehicleRegNo: vehicleRegNo || null,
+    vehiclePlate: vehiclePlate || vehicleRegNo || null,
     drivingLicense: drivingLicense || null,
+    address: address || null,
+    city: city || null,
+    emergencyContact: emergencyContact || null,
+    vehiclePhoto: vehiclePhoto || null,
+    documents: documents || null,
     businessName: businessName || storeName || null,
     storeName: storeName || businessName || null,
     businessType: businessType || null,
@@ -1397,7 +1404,8 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
 });
 
 router.post("/email-register", verifyCaptcha, async (req, res) => {
-  const { email, password, name, role, phone, username, cnic, vehicleType, vehicleRegNo, vehicleRegistration, drivingLicense } = req.body;
+  const { email, password, name, role, phone, username, cnic, vehicleType, vehicleRegNo, vehicleRegistration, drivingLicense,
+          address, city, emergencyContact, vehiclePlate, vehiclePhoto, documents } = req.body;
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
   const userRole = (role === "rider" || role === "vendor") ? role : "customer";
@@ -1479,6 +1487,12 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
     ...(vehicleType ? { vehicleType: vehicleType.trim() } : {}),
     ...(resolvedVehicleRegNo ? { vehicleRegNo: resolvedVehicleRegNo.trim() } : {}),
     ...(drivingLicense ? { drivingLicense: drivingLicense.trim() } : {}),
+    ...(address ? { address: address.trim() } : {}),
+    ...(city ? { city: city.trim() } : {}),
+    ...(emergencyContact ? { emergencyContact: emergencyContact.trim() } : {}),
+    ...(vehiclePlate ? { vehiclePlate: vehiclePlate.trim() } : {}),
+    ...(vehiclePhoto ? { vehiclePhoto } : {}),
+    ...(documents ? { documents } : {}),
   });
 
   const domain = process.env["REPLIT_DEV_DOMAIN"] || process.env["APP_DOMAIN"] || "localhost";
