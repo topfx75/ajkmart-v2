@@ -26,6 +26,7 @@ import {
   ArrowDownToLine,
   Search,
   Globe,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -45,28 +46,33 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    labelKey: "navLiveOps",
+    labelKey: "navCustomerApp",
     items: [
       { nameKey: "navOrders",       href: "/orders",       icon: ShoppingBag },
-      { nameKey: "navRides",        href: "/rides",        icon: Car },
       { nameKey: "navPharmacy",     href: "/pharmacy",     icon: Pill },
       { nameKey: "navParcels",      href: "/parcel",       icon: Box },
     ],
   },
   {
-    labelKey: "navPeople",
+    labelKey: "navRiderApp",
     items: [
-      { nameKey: "navUsers",        href: "/users",        icon: Users },
-      { nameKey: "navVendors",      href: "/vendors",      icon: Store },
+      { nameKey: "navRides",        href: "/rides",        icon: Car },
       { nameKey: "navRiders",       href: "/riders",       icon: Bike },
     ],
   },
   {
-    labelKey: "navCatalog",
+    labelKey: "navVendorPortal",
     items: [
+      { nameKey: "navVendors",      href: "/vendors",      icon: Store },
       { nameKey: "navProducts",     href: "/products",     icon: PackageSearch },
       { nameKey: "navFlashDeals",   href: "/flash-deals",  icon: Zap },
       { nameKey: "navPromoCodes",   href: "/promo-codes",  icon: Ticket },
+    ],
+  },
+  {
+    labelKey: "navUserManagement",
+    items: [
+      { nameKey: "navUsers",        href: "/users",        icon: Users },
     ],
   },
   {
@@ -83,6 +89,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { nameKey: "navNotifications", href: "/notifications",  icon: BellRing },
       { nameKey: "navBroadcast",     href: "/broadcast",      icon: Megaphone },
+    ],
+  },
+  {
+    labelKey: "navSecurity",
+    items: [
+      { nameKey: "navSecurityPage",  href: "/security",       icon: Shield },
     ],
   },
   {

@@ -27,6 +27,7 @@ import Notifications from "@/pages/notifications";
 import Withdrawals from "@/pages/Withdrawals";
 import CodRemittances from "@/pages/CodRemittances";
 import DepositRequests from "@/pages/DepositRequests";
+import Security from "@/pages/security";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -98,6 +99,7 @@ function Router() {
       <Route path="/withdrawals"><ProtectedRoute component={Withdrawals} /></Route>
       <Route path="/cod-remittances"><ProtectedRoute component={CodRemittances} /></Route>
       <Route path="/deposit-requests"><ProtectedRoute component={DepositRequests} /></Route>
+      <Route path="/security"><ProtectedRoute component={Security} /></Route>
 
       <Route component={NotFound} />
     </Switch>

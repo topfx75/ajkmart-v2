@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
 import {
   Settings2, Save, RefreshCw, Truck, Car, BarChart3,
   ShoppingCart, Globe, Users, Bike, Store, Zap, Info,
@@ -37,7 +38,7 @@ const NAV_GROUPS: { label: string; emoji: string; items: CatKey[] }[] = [
   { label: "Role Settings",   emoji: "👤", items: ["customer", "rider", "vendor"] },
   { label: "Finance",         emoji: "💰", items: ["finance", "payment"] },
   { label: "Communication",   emoji: "📢", items: ["content", "integrations"] },
-  { label: "System",          emoji: "🔧", items: ["security", "system"] },
+  { label: "System",          emoji: "🔧", items: ["system"] },
 ];
 
 const CATEGORY_CONFIG: Record<CatKey, { label: string; icon: any; color: string; bg: string; activeBg: string; description: string }> = {
@@ -4830,6 +4831,7 @@ function SystemSection() {
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [settings, setSettings] = useState<Setting[]>([]);
   const [localValues, setLocalValues] = useState<Record<string,string>>({});
   const [loading, setLoading] = useState(true);
@@ -4840,6 +4842,14 @@ export default function SettingsPage() {
     const cat = p.get("cat");
     return (cat && (CAT_ORDER as readonly string[]).includes(cat)) ? (cat as CatKey) : "features";
   });
+
+  /* Redirect legacy ?cat=security deep-links to the new Security page */
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("cat") === "security") {
+      setLocation("/security");
+    }
+  }, [setLocation]);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -5042,6 +5052,20 @@ export default function SettingsPage() {
           <div className="px-4 py-2.5 border-t border-border/40 bg-muted/20">
             <p className="text-[10px] text-muted-foreground">{settings.length} settings</p>
           </div>
+
+          {/* Security moved notice */}
+          <div className="px-3 pb-3">
+            <button
+              onClick={() => setLocation("/security")}
+              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-left"
+            >
+              <Shield className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-red-700 leading-tight">Security →</p>
+                <p className="text-[10px] text-red-500 truncate">Moved to its own page</p>
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* RIGHT content */}
@@ -5083,10 +5107,21 @@ export default function SettingsPage() {
                   handleChange={handleChange} handleToggle={handleToggle}
                 />
               ) : activeTab === "security" ? (
-                <SecuritySection
-                  localValues={localValues} dirtyKeys={dirtyKeys}
-                  handleChange={handleChange} handleToggle={handleToggle}
-                />
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-6 flex flex-col items-center text-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-red-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-foreground mb-1">Security settings have moved</h3>
+                    <p className="text-sm text-muted-foreground max-w-sm">
+                      OTP modes, sessions, rate limits, GPS tracking, fraud detection, IP whitelist, and audit log are now in a dedicated Security page.
+                    </p>
+                  </div>
+                  <Button onClick={() => setLocation("/security")} className="gap-2 bg-red-600 hover:bg-red-700 text-white">
+                    <Shield className="w-4 h-4" />
+                    Go to Security
+                  </Button>
+                </div>
               ) : activeTab === "system" ? (
                 <SystemSection />
               ) : activeSettings.length === 0 ? (

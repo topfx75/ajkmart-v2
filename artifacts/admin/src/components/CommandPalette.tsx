@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, ShoppingBag, Car, Pill, Box,
   PackageSearch, Megaphone, Receipt, Settings2, Zap,
   AppWindow, Store, Bike, Ticket, BellRing, BanknoteIcon,
-  Banknote, Search, ArrowRight, X, User, Hash,
+  Banknote, Search, ArrowRight, X, User, Hash, Shield,
 } from "lucide-react";
 
 /* ─── Static nav pages ─────────────────────────────────────────────────── */
@@ -29,6 +29,7 @@ const PAGES = [
   { label: "Broadcast",       href: "/broadcast",      icon: Megaphone,       group: "Pages" },
   { label: "App Management",  href: "/app-management", icon: AppWindow,       group: "Pages" },
   { label: "Settings",        href: "/settings",       icon: Settings2,       group: "Pages" },
+  { label: "Security",        href: "/security",       icon: Shield,          group: "Pages" },
 ];
 
 /* ─── Settings sections as searchable items ───────────────────────────── */
@@ -38,7 +39,7 @@ const SETTINGS_ITEMS = [
   { label: "Settings → Payment",        href: "/settings", group: "Settings", icon: Receipt,   hint: "JazzCash, EasyPaisa, COD, wallet" },
   { label: "Settings → Orders",         href: "/settings", group: "Settings", icon: ShoppingBag, hint: "Delivery, order rules, cart limits" },
   { label: "Settings → Finance",        href: "/settings", group: "Settings", icon: Banknote,  hint: "Commission, rider share, payouts" },
-  { label: "Settings → Security",       href: "/settings", group: "Settings", icon: Users,     hint: "OTP, MFA, session expiry, IP blocking" },
+  { label: "Security",                   href: "/security", group: "Settings", icon: Shield,    hint: "OTP, MFA, session expiry, IP blocking, audit log" },
   { label: "Settings → Features",       href: "/settings", group: "Settings", icon: Zap,       hint: "Toggle app features on/off" },
   { label: "Settings → Notifications",  href: "/settings", group: "Settings", icon: BellRing,  hint: "FCM, SMS, push notification settings" },
 ];
