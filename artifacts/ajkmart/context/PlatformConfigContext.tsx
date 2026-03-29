@@ -136,6 +136,19 @@ export interface PlatformConfig {
     sms: boolean;
     email: boolean;
   };
+  auth: {
+    phoneOtpEnabled: boolean | Record<string, boolean>;
+    emailOtpEnabled: boolean | Record<string, boolean>;
+    usernamePasswordEnabled: boolean | Record<string, boolean>;
+    googleEnabled: boolean | Record<string, boolean>;
+    facebookEnabled: boolean | Record<string, boolean>;
+    emailRegisterEnabled: boolean | Record<string, boolean>;
+    biometricEnabled: boolean | Record<string, boolean>;
+    captchaEnabled: boolean;
+    twoFactorEnabled: boolean | Record<string, boolean>;
+    magicLinkEnabled: boolean | Record<string, boolean>;
+    captchaSiteKey: string;
+  };
 }
 
 const DEFAULT: PlatformConfig = {
@@ -208,7 +221,27 @@ const DEFAULT: PlatformConfig = {
     maps: false, mapsAutocomplete: true, mapsGeocoding: true, mapsDistanceMatrix: true,
     whatsapp: false, sms: false, email: false,
   },
+  auth: {
+    phoneOtpEnabled: true,
+    emailOtpEnabled: true,
+    usernamePasswordEnabled: true,
+    googleEnabled: false,
+    facebookEnabled: false,
+    emailRegisterEnabled: true,
+    biometricEnabled: false,
+    captchaEnabled: false,
+    twoFactorEnabled: false,
+    magicLinkEnabled: false,
+    captchaSiteKey: "",
+  },
 };
+
+function isMethodEnabled(val: boolean | Record<string, boolean>, role = "customer"): boolean {
+  if (typeof val === "boolean") return val;
+  return val[role] ?? false;
+}
+
+export { isMethodEnabled };
 
 interface Ctx {
   config: PlatformConfig;
@@ -374,6 +407,19 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           whatsapp:              raw.integrations?.whatsapp              ?? DEFAULT.integrations.whatsapp,
           sms:                   raw.integrations?.sms                  ?? DEFAULT.integrations.sms,
           email:                 raw.integrations?.email                 ?? DEFAULT.integrations.email,
+        },
+        auth: {
+          phoneOtpEnabled:        raw.auth?.phoneOtpEnabled        ?? DEFAULT.auth.phoneOtpEnabled,
+          emailOtpEnabled:        raw.auth?.emailOtpEnabled        ?? DEFAULT.auth.emailOtpEnabled,
+          usernamePasswordEnabled:raw.auth?.usernamePasswordEnabled?? DEFAULT.auth.usernamePasswordEnabled,
+          googleEnabled:          raw.auth?.googleEnabled          ?? DEFAULT.auth.googleEnabled,
+          facebookEnabled:        raw.auth?.facebookEnabled        ?? DEFAULT.auth.facebookEnabled,
+          emailRegisterEnabled:   raw.auth?.emailRegisterEnabled   ?? DEFAULT.auth.emailRegisterEnabled,
+          biometricEnabled:       raw.auth?.biometricEnabled       ?? DEFAULT.auth.biometricEnabled,
+          captchaEnabled:         raw.auth?.captchaEnabled         ?? DEFAULT.auth.captchaEnabled,
+          twoFactorEnabled:       raw.auth?.twoFactorEnabled       ?? DEFAULT.auth.twoFactorEnabled,
+          magicLinkEnabled:       raw.auth?.magicLinkEnabled       ?? DEFAULT.auth.magicLinkEnabled,
+          captchaSiteKey:         raw.auth?.captchaSiteKey         ?? DEFAULT.auth.captchaSiteKey,
         },
       };
       _cached = parsed;

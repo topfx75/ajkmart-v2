@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
 import { useToast } from "@/context/ToastContext";
 import { LANGUAGE_OPTIONS, tDual, type Language, type TranslationKey } from "@workspace/i18n";
 
@@ -300,17 +300,30 @@ function NotificationsModal({ visible, userId, token, onClose }: {
 ══════════════════════════════════════════ */
 function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; userId: string; token?: string; onClose: () => void }) {
   const { showToast } = useToast();
+  const { biometricEnabled, setBiometricEnabled, user, updateUser } = useAuth();
+  const { config } = usePlatformConfig();
   const [cfg,     setCfg]     = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState<string | null>(null);
   const authHdrs = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const [show2FASetup, setShow2FASetup]   = useState(false);
+  const [twoFASecret, setTwoFASecret]     = useState("");
+  const [twoFAUri, setTwoFAUri]           = useState("");
+  const [twoFAQR, setTwoFAQR]             = useState("");
+  const [twoFACode, setTwoFACode]         = useState("");
+  const [backupCodes, setBackupCodes]      = useState<string[]>([]);
+  const [twoFALoading, setTwoFALoading]   = useState(false);
+  const [twoFAError, setTwoFAError]       = useState("");
+  const [showDisable2FA, setShowDisable2FA] = useState(false);
+  const [disableCode, setDisableCode]      = useState("");
 
   useEffect(() => {
     if (!visible || !userId) return;
     setLoading(true);
     fetch(`${API}/settings`, { headers: authHdrs })
       .then(r => r.json())
-      .then(d => setCfg({ notifOrders: d.notifOrders, notifWallet: d.notifWallet, notifDeals: d.notifDeals, notifRides: d.notifRides, locationSharing: d.locationSharing, biometric: d.biometric, twoFactor: d.twoFactor, darkMode: d.darkMode }))
+      .then(d => setCfg({ notifOrders: d.notifOrders, notifWallet: d.notifWallet, notifDeals: d.notifDeals, notifRides: d.notifRides, locationSharing: d.locationSharing, darkMode: d.darkMode }))
       .finally(() => setLoading(false));
   }, [visible, userId, token]);
 
@@ -321,6 +334,82 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
     try { await fetch(`${API}/settings`, { method: "PUT", headers: { "Content-Type": "application/json", ...authHdrs }, body: JSON.stringify(upd) }); }
     catch { setCfg(cfg); }
     setSaving(null);
+  };
+
+  const handleBiometricToggle = async (v: boolean) => {
+    setSaving("biometric");
+    try {
+      if (v) {
+        const LocalAuth = await import("expo-local-authentication");
+        const hasHardware = await LocalAuth.hasHardwareAsync();
+        if (!hasHardware) { showToast("Device does not support biometrics", "error"); setSaving(null); return; }
+        const isEnrolled = await LocalAuth.isEnrolledAsync();
+        if (!isEnrolled) { showToast("No biometrics enrolled on device", "error"); setSaving(null); return; }
+        const result = await LocalAuth.authenticateAsync({ promptMessage: "Enable Biometric Login", cancelLabel: "Cancel" });
+        if (!result.success) { setSaving(null); return; }
+      }
+      await setBiometricEnabled(v);
+      showToast(v ? "Biometric login enabled" : "Biometric login disabled", "success");
+    } catch { showToast("Biometric setup failed", "error"); }
+    setSaving(null);
+  };
+
+  const handle2FAToggle = async () => {
+    if (user?.totpEnabled) {
+      setShowDisable2FA(true);
+      return;
+    }
+    setTwoFALoading(true);
+    setTwoFAError("");
+    try {
+      const res = await fetch(`${API}/auth/2fa/setup`, { headers: authHdrs });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setTwoFASecret(data.secret);
+      setTwoFAUri(data.uri);
+      setTwoFAQR(data.qrDataUrl ?? "");
+      setShow2FASetup(true);
+    } catch (e: any) { showToast(e.message || "2FA setup failed", "error"); }
+    setTwoFALoading(false);
+  };
+
+  const handleVerify2FASetup = async () => {
+    if (!twoFACode || twoFACode.length < 6) { setTwoFAError("Enter 6-digit code"); return; }
+    setTwoFALoading(true);
+    setTwoFAError("");
+    try {
+      const res = await fetch(`${API}/auth/2fa/verify-setup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHdrs },
+        body: JSON.stringify({ code: twoFACode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setBackupCodes(data.backupCodes || []);
+      updateUser({ totpEnabled: true } as any);
+      showToast("2FA enabled successfully!", "success");
+    } catch (e: any) { setTwoFAError(e.message || "Verification failed"); }
+    setTwoFALoading(false);
+  };
+
+  const handleDisable2FA = async () => {
+    if (!disableCode || disableCode.length < 6) { setTwoFAError("Enter 6-digit code"); return; }
+    setTwoFALoading(true);
+    setTwoFAError("");
+    try {
+      const res = await fetch(`${API}/auth/2fa/disable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHdrs },
+        body: JSON.stringify({ code: disableCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      updateUser({ totpEnabled: false } as any);
+      setShowDisable2FA(false);
+      setDisableCode("");
+      showToast("2FA disabled", "success");
+    } catch (e: any) { setTwoFAError(e.message || "Failed to disable 2FA"); }
+    setTwoFALoading(false);
   };
 
   const Row = ({ k, label, sub, icon, ic = C.primary, ib = C.rideLight }: { k: string; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap; ic?: string; ib?: string }) => (
@@ -335,6 +424,9 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
       )}
     </View>
   );
+
+  const is2FAEnabled = isMethodEnabled(config.auth.twoFactorEnabled);
+  const isBioEnabled = isMethodEnabled(config.auth.biometricEnabled);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -364,8 +456,33 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
             <View>
               <Text style={pv.secTitle}>🛡️ Security</Text>
               <View style={pv.card}>
-                <Row k="biometric"   label="Biometric Login"   sub="Face ID / Fingerprint"        icon="finger-print-outline" ic={C.primary} ib={C.rideLight} />
-                <Row k="twoFactor"   label="Two-Factor Auth"   sub="SMS OTP extra security"       icon="shield-outline"       ic="#059669"   ib="#D1FAE5" />
+                {isBioEnabled && (
+                  <View style={pv.row}>
+                    <View style={[pv.rIcon, { backgroundColor: C.rideLight }]}><Ionicons name="finger-print-outline" size={17} color={C.primary} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={pv.rLabel}>Biometric Login</Text>
+                      <Text style={pv.rSub}>Face ID / Fingerprint</Text>
+                    </View>
+                    {saving === "biometric" ? <ActivityIndicator size="small" color={C.primary} /> : (
+                      <Switch value={biometricEnabled} onValueChange={handleBiometricToggle} trackColor={{ false: C.border, true: C.primary }} thumbColor="#fff" />
+                    )}
+                  </View>
+                )}
+                {is2FAEnabled && (
+                  <Pressable onPress={handle2FAToggle} style={pv.row}>
+                    <View style={[pv.rIcon, { backgroundColor: "#D1FAE5" }]}><Ionicons name="shield-outline" size={17} color="#059669" /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={pv.rLabel}>Two-Factor Auth</Text>
+                      <Text style={pv.rSub}>{user?.totpEnabled ? "Enabled — tap to disable" : "Authenticator app"}</Text>
+                    </View>
+                    {twoFALoading ? <ActivityIndicator size="small" color={C.primary} /> : (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        {user?.totpEnabled && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />}
+                        <Ionicons name="chevron-forward" size={15} color={C.textMuted} />
+                      </View>
+                    )}
+                  </Pressable>
+                )}
               </View>
             </View>
             <View>
@@ -380,6 +497,96 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
             </View>
           </ScrollView>
         )}
+
+        <Modal visible={show2FASetup} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }}>
+          <View style={{ flex: 1, backgroundColor: "#fff" }}>
+            <View style={pv.header}>
+              <Text style={pv.title}>{backupCodes.length > 0 ? "Backup Codes" : "Setup 2FA"}</Text>
+              <Pressable onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }} style={pv.closeBtn}>
+                <Ionicons name="close" size={20} color={C.text} />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+              {backupCodes.length > 0 ? (
+                <>
+                  <View style={{ alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <Ionicons name="checkmark-circle" size={48} color="#10B981" />
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: "#1F2937" }}>2FA Activated!</Text>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280", textAlign: "center" }}>
+                      Save these backup codes securely. They cannot be shown again.
+                    </Text>
+                  </View>
+                  <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#FDE68A" }}>
+                    {backupCodes.map((code, i) => (
+                      <Text key={i} style={{ fontFamily: "Inter_600SemiBold", fontSize: 16, color: "#92400E", textAlign: "center", paddingVertical: 4, letterSpacing: 2 }}>{code}</Text>
+                    ))}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", lineHeight: 22 }}>
+                    1. Install an authenticator app (Google Authenticator, Authy){"\n"}
+                    2. Scan the QR code or enter the secret manually{"\n"}
+                    3. Enter the 6-digit code to verify
+                  </Text>
+                  {twoFASecret ? (
+                    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#6B7280", marginBottom: 8 }}>Secret Key (manual entry):</Text>
+                      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#1F2937", letterSpacing: 2 }} selectable>{twoFASecret}</Text>
+                    </View>
+                  ) : null}
+                  <TextInput
+                    style={{ paddingHorizontal: 16, paddingVertical: 14, fontFamily: "Inter_700Bold", fontSize: 24, color: "#1F2937", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, textAlign: "center", letterSpacing: 8 }}
+                    value={twoFACode} onChangeText={v => { setTwoFACode(v); setTwoFAError(""); }}
+                    placeholder="6-digit code" placeholderTextColor={C.textMuted}
+                    keyboardType="number-pad" maxLength={6}
+                  />
+                  {twoFAError ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#FECACA" }}>
+                      <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
+                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#DC2626" }}>{twoFAError}</Text>
+                    </View>
+                  ) : null}
+                  <Pressable onPress={handleVerify2FASetup} disabled={twoFALoading}
+                    style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: "center", opacity: twoFALoading ? 0.7 : 1 }}>
+                    {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" }}>Verify & Enable</Text>}
+                  </Pressable>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </Modal>
+
+        <Modal visible={showDisable2FA} animationType="slide" transparent onRequestClose={() => { setShowDisable2FA(false); setDisableCode(""); setTwoFAError(""); }}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }}>
+            <View style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24 }}>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: "#1F2937", marginBottom: 8 }}>Disable 2FA</Text>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#6B7280", marginBottom: 16 }}>Enter your authenticator code to disable two-factor authentication.</Text>
+              <TextInput
+                style={{ paddingHorizontal: 16, paddingVertical: 14, fontFamily: "Inter_700Bold", fontSize: 24, color: "#1F2937", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 14, textAlign: "center", letterSpacing: 8, marginBottom: 12 }}
+                value={disableCode} onChangeText={v => { setDisableCode(v); setTwoFAError(""); }}
+                placeholder="6-digit code" placeholderTextColor={C.textMuted}
+                keyboardType="number-pad" maxLength={6} autoFocus
+              />
+              {twoFAError ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: "#FECACA" }}>
+                  <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "#DC2626" }}>{twoFAError}</Text>
+                </View>
+              ) : null}
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable onPress={() => { setShowDisable2FA(false); setDisableCode(""); setTwoFAError(""); }}
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1.5, borderColor: "#E5E7EB", alignItems: "center" }}>
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#6B7280" }}>Cancel</Text>
+                </Pressable>
+                <Pressable onPress={handleDisable2FA} disabled={twoFALoading}
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#EF4444", alignItems: "center", opacity: twoFALoading ? 0.7 : 1 }}>
+                  {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>Disable</Text>}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </Modal>
   );

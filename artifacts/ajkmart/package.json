@@ -58,7 +58,10 @@
   },
   "dependencies": {
     "@expo-google-fonts/noto-nastaliq-urdu": "^0.4.2",
+    "expo-auth-session": "^55.0.10",
     "expo-clipboard": "6.0.3",
+    "expo-local-authentication": "^55.0.9",
+    "expo-secure-store": "^55.0.9",
     "react-native-qrcode-svg": "^6.3.21"
   }
 }

@@ -13,10 +13,11 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setBaseUrl } from "@workspace/api-client-react";
 import * as Font from "expo-font";
+import * as Linking from "expo-linking";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -105,6 +106,51 @@ function MaintenanceScreen() {
   );
 }
 
+const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+
+function MagicLinkHandler() {
+  const { login, setTwoFactorPending } = useAuth();
+
+  useEffect(() => {
+    const handleUrl = async (url: string) => {
+      try {
+        const parsed = new URL(url);
+        const token = parsed.searchParams.get("magic_token") || parsed.searchParams.get("token");
+        if (!token) return;
+        if (!parsed.pathname.includes("magic-link") && !parsed.pathname.includes("auth")) return;
+
+        const res = await fetch(`${API_BASE}/auth/magic-link/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          Alert.alert("Magic Link Error", data.error || "Invalid or expired magic link.");
+          return;
+        }
+        if (data.requires2FA) {
+          setTwoFactorPending({ tempToken: data.tempToken, userId: data.userId });
+          router.replace("/auth");
+          return;
+        }
+        if (data.token && data.user) {
+          await login(data.user as any, data.token, data.refreshToken);
+          router.replace("/(tabs)");
+        }
+      } catch (err: any) {
+        console.warn("MagicLinkHandler error:", err.message || err);
+      }
+    };
+
+    const sub = Linking.addEventListener("url", (event) => handleUrl(event.url));
+    Linking.getInitialURL().then(url => { if (url) handleUrl(url); });
+    return () => sub.remove();
+  }, []);
+
+  return null;
+}
+
 function RootLayoutNav() {
   const { isSuspended, user } = useAuth();
   const { config } = usePlatformConfig();
@@ -115,10 +161,11 @@ function RootLayoutNav() {
   return (
     <>
       <AuthGuard />
+      <MagicLinkHandler />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index"          options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)"         options={{ headerShown: false }} />
-        <Stack.Screen name="auth/index"     options={{ headerShown: false }} />
+        <Stack.Screen name="auth"           options={{ headerShown: false }} />
         <Stack.Screen name="mart/index"     options={{ headerShown: false }} />
         <Stack.Screen name="food/index"     options={{ headerShown: false }} />
         <Stack.Screen name="ride/index"     options={{ headerShown: false }} />

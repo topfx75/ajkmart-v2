@@ -23,6 +23,12 @@ export interface AppUser {
   createdAt: string;
   cnic?: string;
   city?: string;
+  totpEnabled?: boolean;
+}
+
+interface TwoFactorPending {
+  tempToken: string;
+  userId: string;
 }
 
 interface AuthContextType {
@@ -31,15 +37,23 @@ interface AuthContextType {
   isLoading: boolean;
   isSuspended: boolean;
   suspendedMessage: string;
+  biometricEnabled: boolean;
+  twoFactorPending: TwoFactorPending | null;
   login: (user: AppUser, token: string, refreshToken?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<AppUser>) => void;
   clearSuspended: () => void;
+  setBiometricEnabled: (enabled: boolean) => Promise<void>;
+  setTwoFactorPending: (pending: TwoFactorPending | null) => void;
+  completeTwoFactorLogin: (user: AppUser, token: string, refreshToken?: string) => Promise<void>;
+  attemptBiometricLogin: () => Promise<boolean>;
 }
 
 const TOKEN_KEY         = "@ajkmart_token";
 const REFRESH_TOKEN_KEY = "@ajkmart_refresh_token";
 const USER_KEY          = "@ajkmart_user";
+const BIOMETRIC_KEY     = "@ajkmart_biometric_enabled";
+const BIOMETRIC_TOKEN   = "@ajkmart_biometric_token";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -49,6 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSuspended, setIsSuspended] = useState(false);
   const [suspendedMessage, setSuspendedMessage] = useState("");
+  const [biometricEnabled, setBiometricEnabledState] = useState(false);
+  const [twoFactorPending, setTwoFactorPending] = useState<TwoFactorPending | null>(null);
   const { syncToServer } = useLanguage();
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -104,6 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.multiRemove([USER_KEY, TOKEN_KEY, REFRESH_TOKEN_KEY]);
     setUser(null);
     setToken(null);
+    setTwoFactorPending(null);
     setAuthTokenGetter(null);
     setRefreshTokenGetter(null);
     setOnTokenRefreshed(null);
@@ -140,11 +157,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadAuth = async () => {
       try {
-        const [[, storedUser], [, storedToken], [, storedRefresh]] = await AsyncStorage.multiGet([
+        const [[, storedUser], [, storedToken], [, storedRefresh], [, bioPref]] = await AsyncStorage.multiGet([
           USER_KEY,
           TOKEN_KEY,
           REFRESH_TOKEN_KEY,
+          BIOMETRIC_KEY,
         ]);
+        if (bioPref === "true") setBiometricEnabledState(true);
         if (storedUser && storedToken) {
           const parsedUser = JSON.parse(storedUser);
           setUser(parsedUser);
@@ -166,8 +185,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.multiSet(pairs);
     setUser(userData);
     setToken(userToken);
+    setTwoFactorPending(null);
     registerAuth(userToken, refreshToken ?? null);
     syncToServer(userToken).catch(() => {});
+  };
+
+  const completeTwoFactorLogin = async (userData: AppUser, userToken: string, refreshToken?: string) => {
+    setTwoFactorPending(null);
+    await login(userData, userToken, refreshToken);
   };
 
   const logout = async () => {
@@ -188,8 +213,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     doLogout();
   };
 
+  const setBiometricEnabled = async (enabled: boolean) => {
+    setBiometricEnabledState(enabled);
+    await AsyncStorage.setItem(BIOMETRIC_KEY, enabled ? "true" : "false");
+    if (enabled && token) {
+      try {
+        const SecureStore = await import("expo-secure-store");
+        const refreshTok = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+        if (refreshTok) {
+          await SecureStore.setItemAsync(BIOMETRIC_TOKEN, refreshTok);
+        }
+      } catch {}
+    } else if (!enabled) {
+      try {
+        const SecureStore = await import("expo-secure-store");
+        await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN);
+      } catch {}
+    }
+  };
+
+  const attemptBiometricLogin = async (): Promise<boolean> => {
+    if (!biometricEnabled) return false;
+    try {
+      const LocalAuth = await import("expo-local-authentication");
+      const hasHardware = await LocalAuth.hasHardwareAsync();
+      if (!hasHardware) return false;
+      const isEnrolled = await LocalAuth.isEnrolledAsync();
+      if (!isEnrolled) return false;
+
+      const result = await LocalAuth.authenticateAsync({
+        promptMessage: "Login with Biometrics",
+        cancelLabel: "Cancel",
+        fallbackLabel: "Use password",
+        disableDeviceFallback: false,
+      });
+      if (!result.success) return false;
+
+      const SecureStore = await import("expo-secure-store");
+      const storedRefreshToken = await SecureStore.getItemAsync(BIOMETRIC_TOKEN);
+      if (!storedRefreshToken) return false;
+
+      const base = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`;
+      const res = await fetch(`${base}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: storedRefreshToken }),
+      });
+      if (!res.ok) {
+        await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN);
+        setBiometricEnabledState(false);
+        await AsyncStorage.setItem(BIOMETRIC_KEY, "false");
+        return false;
+      }
+      const data = await res.json() as any;
+      if (!data.token) return false;
+
+      const storedUser = await AsyncStorage.getItem(USER_KEY);
+      if (!storedUser) return false;
+      const parsedUser = JSON.parse(storedUser);
+
+      await login(parsedUser, data.token, data.refreshToken);
+      if (data.refreshToken) {
+        await SecureStore.setItemAsync(BIOMETRIC_TOKEN, data.refreshToken);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, isSuspended, suspendedMessage, login, logout, updateUser, clearSuspended }}>
+    <AuthContext.Provider value={{
+      user, token, isLoading, isSuspended, suspendedMessage,
+      biometricEnabled, twoFactorPending,
+      login, logout, updateUser, clearSuspended,
+      setBiometricEnabled, setTwoFactorPending,
+      completeTwoFactorLogin, attemptBiometricLogin,
+    }}>
       {children}
     </AuthContext.Provider>
   );
