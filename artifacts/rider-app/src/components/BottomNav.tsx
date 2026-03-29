@@ -52,10 +52,10 @@ export function BottomNav() {
             <Link key={item.href} href={item.href}
               className="flex-1 flex flex-col items-center pt-2 pb-1 gap-0.5 relative android-press min-h-0">
               <div className="relative">
-                <span className={`flex items-center justify-center w-11 h-8 rounded-2xl transition-all duration-200 ${active ? "bg-green-100" : ""}`}>
-                  <Icon size={21} strokeWidth={active ? 2.5 : 1.8} className={`transition-colors duration-200 ${active ? "text-green-600" : "text-gray-400"}`} />
+                <span className={`flex items-center justify-center w-11 h-8 rounded-full transition-all duration-200 ${active ? "bg-gray-900/10" : ""}`}>
+                  <Icon size={21} strokeWidth={active ? 2.5 : 1.8} className={`transition-colors duration-200 ${active ? "text-gray-900" : "text-gray-400"}`} />
                 </span>
-                {active && <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-5 h-[3px] bg-green-600 rounded-full"/>}
+                {active && <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-5 h-[3px] bg-gray-900 rounded-full"/>}
                 {item.href === "/notifications" && unread > 0 && (
                   <span className="absolute -top-1 -right-0.5 bg-red-500 text-white text-[9px] font-extrabold rounded-full w-4 h-4 flex items-center justify-center shadow-sm">
                     {unread > 9 ? "9+" : unread}
@@ -70,7 +70,7 @@ export function BottomNav() {
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] font-semibold leading-none transition-colors duration-200 ${active ? "text-green-700 font-bold" : "text-gray-400"}`}>{T(item.labelKey)}</span>
+              <span className={`text-[10px] font-semibold leading-none transition-colors duration-200 ${active ? "text-gray-900 font-bold" : "text-gray-400"}`}>{T(item.labelKey)}</span>
             </Link>
           );
         })}

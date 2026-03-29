@@ -93,15 +93,17 @@ export default function SecuritySettings() {
 
   if (view === "setup" && setupData) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-24">
-        <div className="bg-gradient-to-br from-green-600 to-emerald-700 px-5 pt-12 pb-6">
-          <button onClick={() => setView("main")} className="text-white text-sm font-semibold mb-3 flex items-center gap-1">
+      <div className="min-h-screen bg-[#F5F6F8] pb-24">
+        <div className="bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 px-5 pt-14 pb-8 rounded-b-[2rem] relative overflow-hidden">
+          <div className="absolute top-[-30%] right-[-15%] w-64 h-64 rounded-full bg-white/[0.02]" />
+          <div className="absolute bottom-[-20%] left-[-10%] w-48 h-48 rounded-full bg-green-500/[0.04]" />
+          <button onClick={() => setView("main")} className="text-white/60 text-sm font-semibold mb-3 flex items-center gap-1 relative z-10">
             <ArrowLeft size={14} /> {T("back")}
           </button>
-          <h1 className="text-xl font-bold text-white">{T("twoFactorAuthentication")}</h1>
+          <h1 className="text-xl font-bold text-white relative z-10">{T("twoFactorAuthentication")}</h1>
         </div>
-        <div className="px-4 -mt-2">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <div className="px-4 -mt-4 relative z-10">
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
             <TwoFactorSetup
               qrCodeDataUrl={setupData.qrCodeDataUrl}
               secret={setupData.secret}
@@ -119,15 +121,17 @@ export default function SecuritySettings() {
 
   if (view === "verify-disable") {
     return (
-      <div className="min-h-screen bg-gray-50 pb-24">
-        <div className="bg-gradient-to-br from-green-600 to-emerald-700 px-5 pt-12 pb-6">
-          <button onClick={() => setView("main")} className="text-white text-sm font-semibold mb-3 flex items-center gap-1">
+      <div className="min-h-screen bg-[#F5F6F8] pb-24">
+        <div className="bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 px-5 pt-14 pb-8 rounded-b-[2rem] relative overflow-hidden">
+          <div className="absolute top-[-30%] right-[-15%] w-64 h-64 rounded-full bg-white/[0.02]" />
+          <div className="absolute bottom-[-20%] left-[-10%] w-48 h-48 rounded-full bg-green-500/[0.04]" />
+          <button onClick={() => setView("main")} className="text-white/60 text-sm font-semibold mb-3 flex items-center gap-1 relative z-10">
             <ArrowLeft size={14} /> {T("back")}
           </button>
-          <h1 className="text-xl font-bold text-white">{T("twoFactorVerification")}</h1>
+          <h1 className="text-xl font-bold text-white relative z-10">{T("twoFactorVerification")}</h1>
         </div>
-        <div className="px-4 -mt-2">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <div className="px-4 -mt-4 relative z-10">
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
             <TwoFactorVerify
               onVerify={handleDisableVerify}
               verifyLoading={verifyLoading}
@@ -141,10 +145,12 @@ export default function SecuritySettings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 px-5 pt-12 pb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <Link href="/profile" className="text-white">
+    <div className="min-h-screen bg-[#F5F6F8] pb-24">
+      <div className="bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 px-5 pt-14 pb-8 rounded-b-[2rem] relative overflow-hidden">
+        <div className="absolute top-[-30%] right-[-15%] w-64 h-64 rounded-full bg-white/[0.02]" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-48 h-48 rounded-full bg-green-500/[0.04]" />
+        <div className="flex items-center gap-3 mb-2 relative z-10">
+          <Link href="/profile" className="text-white/60 hover:text-white transition-colors">
             <ArrowLeft size={20} />
           </Link>
           <h1 className="text-xl font-bold text-white">{T("securitySettings")}</h1>
@@ -152,7 +158,7 @@ export default function SecuritySettings() {
       </div>
 
       <div className="px-4 mt-4 space-y-4 max-w-md mx-auto">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-start gap-4">
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${is2faEnabled ? "bg-green-100" : "bg-gray-100"}`}>
               {is2faEnabled ? <ShieldCheck size={24} className="text-green-600" /> : <Shield size={24} className="text-gray-400" />}
@@ -172,7 +178,7 @@ export default function SecuritySettings() {
             <button onClick={handleToggle2fa} disabled={loading}
               className={`w-full h-11 font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60 ${is2faEnabled
                   ? "border-2 border-red-200 text-red-500 hover:bg-red-50"
-                  : "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-gray-900 hover:bg-gray-800 text-white"
                 }`}>
               {loading ? <Loader2 size={16} className="animate-spin" /> : is2faEnabled ? <ShieldOff size={16} /> : <ShieldCheck size={16} />}
               {loading ? T("pleaseWait") : is2faEnabled ? T("disable2fa") : T("enable2fa")}

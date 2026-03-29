@@ -57,8 +57,8 @@ const AJK_CITIES = [
   "Neelum", "Haveli", "Jhelum Valley", "Other",
 ];
 
-const INPUT = "w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:bg-white transition-all";
-const SELECT = "w-full h-12 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 appearance-none transition-all";
+const INPUT = "w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:bg-white transition-all";
+const SELECT = "w-full h-12 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 appearance-none transition-all";
 
 interface UploadedDoc {
   label: string;
@@ -72,7 +72,7 @@ function FileUploadBox({ label, icon, value, onChange, required, uploading }: {
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <div className={`border-2 border-dashed rounded-xl p-3 transition-all ${value ? "border-green-300 bg-green-50/50" : "border-gray-200 bg-gray-50/50 hover:border-green-300"}`}>
+    <div className={`border-2 border-dashed rounded-xl p-3 transition-all ${value ? "border-green-300 bg-green-50/50" : "border-gray-200 bg-gray-50/50 hover:border-gray-400"}`}>
       <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden"
         onChange={e => { if (e.target.files?.[0]) onChange(e.target.files[0]); }} />
       {value ? (
@@ -82,14 +82,14 @@ function FileUploadBox({ label, icon, value, onChange, required, uploading }: {
             <p className="text-xs font-bold text-green-700 flex items-center gap-1"><CheckCircle2 size={12} /> {label}</p>
             <p className="text-[10px] text-green-600 truncate">{value.url ? "Uploaded" : "Ready"}</p>
           </div>
-          <button onClick={() => inputRef.current?.click()} className="text-[10px] text-green-600 font-bold hover:text-green-700 px-2 py-1 rounded-lg hover:bg-green-100">
+          <button onClick={() => inputRef.current?.click()} className="text-[10px] text-gray-600 font-bold hover:text-gray-900 px-2 py-1 rounded-lg hover:bg-gray-100">
             Change
           </button>
         </div>
       ) : (
         <button onClick={() => inputRef.current?.click()} disabled={uploading}
           className="w-full flex flex-col items-center gap-1.5 py-2 disabled:opacity-50">
-          {uploading ? <Loader2 size={20} className="text-green-500 animate-spin" /> : icon}
+          {uploading ? <Loader2 size={20} className="text-gray-500 animate-spin" /> : icon}
           <span className="text-xs font-semibold text-gray-600">{label} {required && <span className="text-red-500">*</span>}</span>
           <span className="text-[10px] text-gray-400">Tap to capture or upload</span>
         </button>
@@ -360,8 +360,10 @@ export default function Register() {
 
   if (completed) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-600 to-emerald-800 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute top-[-20%] right-[-10%] w-72 h-72 rounded-full bg-white/[0.02]" />
+        <div className="absolute bottom-[-15%] left-[-10%] w-64 h-64 rounded-full bg-green-500/[0.04]" />
+        <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative z-10">
           <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
             <Clock size={40} className="text-amber-500" />
           </div>
@@ -377,7 +379,7 @@ export default function Register() {
               Admin will review your documents and vehicle photo before activating your account.
             </p>
           </div>
-          <Link href="/" className="w-full h-11 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+          <Link href="/" className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
             <ArrowLeft size={15} /> {T("goToLogin")}
           </Link>
         </div>
@@ -386,22 +388,26 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 to-emerald-800 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute top-[-20%] right-[-10%] w-72 h-72 rounded-full bg-white/[0.02]" />
+      <div className="absolute bottom-[-15%] left-[-10%] w-64 h-64 rounded-full bg-green-500/[0.04]" />
+      <div className="absolute top-[30%] left-[5%] w-40 h-40 rounded-full bg-white/[0.015]" />
+
+      <div className="w-full max-w-sm relative z-10">
         <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xl">
-            <Bike size={32} className="text-green-600" />
+          <div className="w-16 h-16 bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xl">
+            <Bike size={32} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white">{T("registerAsRider")}</h1>
-          <p className="text-green-200 mt-1 text-sm">{T("joinAsDeliveryPartner")}</p>
+          <p className="text-white/40 mt-1 text-sm">{T("joinAsDeliveryPartner")}</p>
         </div>
 
         <div className="bg-white rounded-3xl p-6 shadow-2xl">
           <div className="flex items-center gap-1 mb-6">
             {[1, 2, 3, 4].map(s => (
               <div key={s} className="flex-1 flex flex-col items-center gap-1">
-                <div className={`w-full h-1.5 rounded-full transition-all ${s <= step ? "bg-green-500" : "bg-gray-200"}`} />
-                <span className={`text-[10px] font-semibold ${s <= step ? "text-green-600" : "text-gray-400"}`}>
+                <div className={`w-full h-1.5 rounded-full transition-all ${s <= step ? "bg-gray-900" : "bg-gray-200"}`} />
+                <span className={`text-[10px] font-semibold ${s <= step ? "text-gray-900" : "text-gray-400"}`}>
                   {T(stepLabels[s - 1])}
                 </span>
               </div>
@@ -556,7 +562,7 @@ export default function Register() {
                 <div className="space-y-2">
                   <FileUploadBox
                     label="Vehicle Photo"
-                    icon={<Image size={20} className="text-green-500" />}
+                    icon={<Image size={20} className="text-gray-500" />}
                     value={vehiclePhoto}
                     onChange={f => handleFileUpload(f, "vehicle", setVehiclePhoto)}
                     required
@@ -623,14 +629,14 @@ export default function Register() {
               </div>
               <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer">
                 <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 accent-green-600" />
+                  className="mt-0.5 w-4 h-4 accent-gray-900" />
                 <span className="text-xs text-gray-600 leading-relaxed">
                   {T("acceptTerms")}
                   {config.content.tncUrl && (
-                    <> — <a href={config.content.tncUrl} target="_blank" rel="noopener noreferrer" className="text-green-600 underline">Terms</a></>
+                    <> — <a href={config.content.tncUrl} target="_blank" rel="noopener noreferrer" className="text-gray-900 underline font-semibold">Terms</a></>
                   )}
                   {config.content.privacyUrl && (
-                    <> | <a href={config.content.privacyUrl} target="_blank" rel="noopener noreferrer" className="text-green-600 underline">Privacy</a></>
+                    <> | <a href={config.content.privacyUrl} target="_blank" rel="noopener noreferrer" className="text-gray-900 underline font-semibold">Privacy</a></>
                   )}
                 </span>
               </label>
@@ -655,7 +661,7 @@ export default function Register() {
                       if (res.otp) setDevOtp(res.otp);
                     } catch {}
                   }}
-                    className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${verifyChannel === "phone" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors ${verifyChannel === "phone" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
                     {T("verifyViaPhone")}
                   </button>
                   <button type="button" onClick={async () => {
@@ -666,19 +672,19 @@ export default function Register() {
                       if (res.otp) setDevOtp(res.otp);
                     } catch {}
                   }}
-                    className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${verifyChannel === "email" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors ${verifyChannel === "email" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
                     {T("verifyViaEmail")}
                   </button>
                 </div>
               )}
               {devOtp && (
-                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm text-green-700">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700">
                   <strong>{T("devOtp")}:</strong> {devOtp}
                 </div>
               )}
               <input type="number" placeholder={T("enterOtpDigits")} value={otp} onChange={e => setOtp(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && goNextStep()}
-                className="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-2xl font-bold tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-2xl font-bold tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-gray-900"
                 maxLength={6} autoFocus />
             </div>
           )}
@@ -693,7 +699,7 @@ export default function Register() {
               </button>
             )}
             <button onClick={goNextStep} disabled={loading || !!uploadingField}
-              className="flex-1 h-12 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+              className="flex-1 h-12 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
               {loading ? <Loader2 size={18} className="animate-spin" /> : null}
               {loading ? T("pleaseWait") :
                 step === 4 ? T("verifyAndLogin") :
@@ -704,7 +710,7 @@ export default function Register() {
           </div>
 
           <div className="mt-4 text-center">
-            <Link href="/" className="text-sm text-green-600 font-semibold hover:text-green-700">
+            <Link href="/" className="text-sm text-gray-900 font-semibold hover:text-gray-700">
               {T("alreadyHaveAccount")} {T("login")}
             </Link>
           </div>
