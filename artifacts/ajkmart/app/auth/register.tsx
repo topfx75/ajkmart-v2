@@ -87,6 +87,10 @@ export default function RegisterScreen() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [userId, setUserId] = useState("");
 
+  const [authToken, setAuthToken] = useState("");
+  const [authRefreshToken, setAuthRefreshToken] = useState("");
+  const [authUser, setAuthUser] = useState<any>(null);
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [cnic, setCnic] = useState("");
@@ -105,36 +109,58 @@ export default function RegisterScreen() {
 
   const clearError = () => setError("");
 
+  const normalizedPhone = (() => {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("0")) return digits.slice(1);
+    if (digits.startsWith("92")) return digits.slice(2);
+    return digits;
+  })();
+
+  const formattedDashPhone = (() => {
+    const d = normalizedPhone.startsWith("3") ? `0${normalizedPhone}` : `03${normalizedPhone}`;
+    const clean = d.replace(/\D/g, "").slice(0, 11);
+    return `${clean.slice(0, 4)}-${clean.slice(4)}`;
+  })();
+
   const handleSendOtp = async () => {
     clearError();
-    if (!phone || phone.length < 10) { setError("Valid phone number enter karein (10 digits)"); return; }
+    if (!phone || normalizedPhone.length < 10) { setError("Valid phone number enter karein (10 digits)"); return; }
     if (resendCooldown > 0) return;
     setLoading(true);
     try {
-      const formatted = `03${phone.replace(/^0?3?/, "").slice(0, 9)}`;
-      const formattedDash = `${formatted.slice(0, 4)}-${formatted.slice(4)}`;
-      const res = await fetch(`${API}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: formattedDash, password: "TempPass1", name: "Pending" }),
-      });
-      const data = await res.json();
-      if (!res.ok && !data.otp) {
-        if (res.status === 409) {
-          setError("Is number se pehle se account bana hua hai. Login karein.");
-        } else {
-          setError(data.error || "Registration fail. Dobara try karein.");
+      if (!otpSent) {
+        const regRes = await fetch(`${API}/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: formattedDashPhone, password: "TempPass123", name: "User" }),
+        });
+        const regData = await regRes.json();
+        if (!regRes.ok) {
+          if (regRes.status === 409) {
+            setError("Is number se pehle se account bana hua hai. Login karein.");
+          } else {
+            setError(regData.error || "Registration fail. Dobara try karein.");
+          }
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-        return;
+        if (regData.userId) setUserId(regData.userId);
       }
 
       const sendOtpRes = await fetch(`${API}/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.replace(/^0/, "") }),
+        body: JSON.stringify({ phone: normalizedPhone }),
       });
       const sendOtpData = await sendOtpRes.json();
+      if (!sendOtpRes.ok) {
+        const msg: string = sendOtpData.error || "OTP send nahi hua.";
+        setError(msg);
+        const match = msg.match(/wait (\d+) second/);
+        if (match) setResendCooldown(parseInt(match[1]!, 10));
+        setLoading(false);
+        return;
+      }
       if (sendOtpData.otp) setDevOtp(sendOtpData.otp);
       setResendCooldown(60);
       setOtpSent(true);
@@ -152,11 +178,14 @@ export default function RegisterScreen() {
       const res = await fetch(`${API}/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.replace(/^0/, ""), otp }),
+        body: JSON.stringify({ phone: normalizedPhone, otp }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "OTP galat hai."); setLoading(false); return; }
       if (data.user?.id) setUserId(data.user.id);
+      if (data.token) setAuthToken(data.token);
+      if (data.refreshToken) setAuthRefreshToken(data.refreshToken);
+      if (data.user) setAuthUser(data.user);
       setStep(2);
     } catch (e: any) { setError(e.message || "Verification fail."); }
     setLoading(false);
@@ -178,24 +207,34 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      const storedToken = await fetch(`${API}/auth/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.replace(/^0/, ""), otp }),
-      }).then(r => r.json()).catch(() => null);
-
-      const token = storedToken?.token;
-      if (token) {
-        await fetch(`${API}/auth/complete-profile`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-          body: JSON.stringify({
-            name: name.trim(),
-            ...(email && { email: email.trim().toLowerCase() }),
-            ...(password && { password }),
-          }),
-        });
+      if (!authToken) {
+        setError("Session expired. Please go back and verify OTP again.");
+        setLoading(false);
+        return;
       }
+
+      const profileRes = await fetch(`${API}/auth/complete-profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({
+          name: name.trim(),
+          ...(email && { email: email.trim().toLowerCase() }),
+          ...(cnic && { cnic: cnic.trim() }),
+          password,
+        }),
+      });
+      const profileData = await profileRes.json();
+
+      if (!profileRes.ok) {
+        setError(profileData.error || "Profile save nahi hua. Dobara try karein.");
+        setLoading(false);
+        return;
+      }
+
+      if (profileData.token) setAuthToken(profileData.token);
+      if (profileData.refreshToken) setAuthRefreshToken(profileData.refreshToken);
+      if (profileData.user) setAuthUser(profileData.user);
+
       setStep(4);
     } catch (e: any) { setError(e.message || "Profile save nahi hua."); }
     setLoading(false);
@@ -204,19 +243,20 @@ export default function RegisterScreen() {
   const handleFinish = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/auth/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone.replace(/^0/, ""), otp }),
-      });
-      const data = await res.json();
-      if (data.token && data.user) {
-        await login(data.user as any, data.token, data.refreshToken);
+      if (authToken && authUser) {
+        const userData = {
+          ...authUser,
+          walletBalance: authUser.walletBalance ?? 0,
+          isActive: authUser.isActive ?? true,
+          createdAt: authUser.createdAt ?? new Date().toISOString(),
+        };
+        await login(userData, authToken, authRefreshToken || undefined);
         router.replace("/(tabs)");
       } else {
         router.replace("/auth");
       }
-    } catch {
+    } catch (e: any) {
+      console.warn("Login after registration failed:", e.message);
       router.replace("/auth");
     }
     setLoading(false);

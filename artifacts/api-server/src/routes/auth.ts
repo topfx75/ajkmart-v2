@@ -335,41 +335,45 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
 
   resetAttempts(phone);
 
+  /* ── Re-fetch user to get latest data (wallet balance, name, etc.) ── */
+  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+  const u = freshUser ?? user;
+
   /* ── Admin approval check ── */
   const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
-  if (requireApproval && user.approvalStatus === "pending") {
+  if (requireApproval && u.approvalStatus === "pending") {
     addAuditEntry({ action: "user_login_pending", ip, details: `Pending approval login for phone: ${phone}`, result: "pending" });
-    const token = signAccessToken(user.id, phone, user.role ?? "customer", user.roles ?? "customer", user.tokenVersion ?? 0);
+    const token = signAccessToken(u.id, phone, u.role ?? "customer", u.roles ?? "customer", u.tokenVersion ?? 0);
     res.json({
       token, pendingApproval: true,
       message: "Aapka account admin approval ke liye bheja gaya hai. Approve hone par aap login kar sakenge.",
-      user: { id: user.id, phone: user.phone, name: user.name, role: user.role, approvalStatus: "pending" },
+      user: { id: u.id, phone: u.phone, name: u.name, role: u.role, approvalStatus: "pending" },
     });
     return;
   }
-  if (user.approvalStatus === "rejected") {
-    res.status(403).json({ error: "Aapka account reject kar diya gaya hai. Admin se rabta karein.", approvalStatus: "rejected", approvalNote: user.approvalNote });
+  if (u.approvalStatus === "rejected") {
+    res.status(403).json({ error: "Aapka account reject kar diya gaya hai. Admin se rabta karein.", approvalStatus: "rejected", approvalNote: u.approvalNote });
     return;
   }
 
-  addAuditEntry({ action: "user_login", ip, details: `Successful login for phone: ${phone} (role: ${user.role})`, result: "success" });
-  writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone, role: user.role } });
+  addAuditEntry({ action: "user_login", ip, details: `Successful login for phone: ${phone} (role: ${u.role})`, result: "success" });
+  writeAuthAuditLog("login_success", { userId: u.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone, role: u.role } });
 
   /* ── Issue short-lived access token + long-lived refresh token ── */
-  const accessToken  = signAccessToken(user.id, phone, user.role ?? "customer", user.roles ?? user.role ?? "customer", user.tokenVersion ?? 0);
+  const accessToken  = signAccessToken(u.id, phone, u.role ?? "customer", u.roles ?? u.role ?? "customer", u.tokenVersion ?? 0);
   const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
   const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   await db.insert(refreshTokensTable).values({
     id:        generateId(),
-    userId:    user.id,
+    userId:    u.id,
     tokenHash: refreshHash,
     expiresAt: refreshExpiresAt,
   });
 
   /* Clean up expired refresh tokens for this user (housekeeping) */
   db.delete(refreshTokensTable)
-    .where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date())))
+    .where(and(eq(refreshTokensTable.userId, u.id), lt(refreshTokensTable.expiresAt, new Date())))
     .catch(() => {});
 
   res.json({
@@ -378,18 +382,20 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
     expiresAt:    new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     sessionDays:  REFRESH_TOKEN_TTL_DAYS,
     user: {
-      id:            user.id,
-      phone:         user.phone,
-      name:          user.name,
-      email:         user.email,
-      role:          user.role,
-      roles:         user.roles,
-      avatar:        user.avatar,
-      walletBalance: parseFloat(user.walletBalance ?? "0"),
-      isActive:      user.isActive,
-      cnic:          user.cnic,
-      city:          user.city,
-      createdAt:     user.createdAt.toISOString(),
+      id:            u.id,
+      phone:         u.phone,
+      name:          u.name,
+      email:         u.email,
+      username:      u.username,
+      role:          u.role,
+      roles:         u.roles,
+      avatar:        u.avatar,
+      walletBalance: parseFloat(u.walletBalance ?? "0"),
+      isActive:      u.isActive,
+      cnic:          u.cnic,
+      city:          u.city,
+      totpEnabled:   u.totpEnabled ?? false,
+      createdAt:     u.createdAt.toISOString(),
     },
   });
 });
@@ -859,7 +865,7 @@ router.post("/complete-profile", async (req, res) => {
   /* Accept token from body OR Authorization: Bearer header */
   const authHeader = req.headers["authorization"] as string | undefined;
   const rawToken = req.body?.token || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
-  const { name, email, username, password, currentPassword } = req.body;
+  const { name, email, username, password, currentPassword, cnic } = req.body;
   if (!rawToken) { res.status(401).json({ error: "Token required" }); return; }
 
   /* Verify JWT to get userId */
@@ -904,9 +910,17 @@ router.post("/complete-profile", async (req, res) => {
     updates.username = clean;
   }
 
+  if (cnic && cnic.trim()) {
+    const cnicClean = cnic.trim();
+    if (CNIC_REGEX.test(cnicClean)) {
+      updates.cnic = cnicClean;
+      updates.nationalId = cnicClean;
+    }
+  }
+
   if (password && password.length >= 8) {
-    /* If a password already exists, require the current one — same rule as set-password */
-    if (user.passwordHash) {
+    const isNewRegistration = !user.name || user.name === "User" || user.name === "Pending";
+    if (user.passwordHash && !isNewRegistration) {
       if (!currentPassword) {
         res.status(400).json({ error: "Current password required to change password" }); return;
       }
@@ -945,7 +959,7 @@ router.post("/complete-profile", async (req, res) => {
     message: "Profile update ho gaya",
     token: accessToken,
     refreshToken: refreshRaw,
-    user: { id: updated!.id, phone: updated!.phone, name: updated!.name, email: updated!.email, username: updated!.username, role: updated!.role, roles: updated!.roles, emailVerified: updated!.emailVerified, phoneVerified: updated!.phoneVerified, walletBalance: parseFloat(updated!.walletBalance ?? "0"), isActive: updated!.isActive, createdAt: updated!.createdAt.toISOString() },
+    user: { id: updated!.id, phone: updated!.phone, name: updated!.name, email: updated!.email, username: updated!.username, role: updated!.role, roles: updated!.roles, avatar: updated!.avatar, cnic: updated!.cnic, city: updated!.city, totpEnabled: updated!.totpEnabled ?? false, emailVerified: updated!.emailVerified, phoneVerified: updated!.phoneVerified, walletBalance: parseFloat(updated!.walletBalance ?? "0"), isActive: updated!.isActive, createdAt: updated!.createdAt.toISOString() },
   });
 });
 
