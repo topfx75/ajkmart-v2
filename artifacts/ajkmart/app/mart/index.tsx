@@ -200,8 +200,8 @@ function MartScreenInner() {
         ) : isError ? (
           <View style={styles.center}>
             <Ionicons name="cloud-offline-outline" size={56} color={C.textMuted} />
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 17, color: C.text, marginTop: 12 }}>Load nahi ho saka</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 4 }}>Internet check karein aur retry karein</Text>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 17, color: C.text, marginTop: 12 }}>Could not load</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 4 }}>Check your internet and retry</Text>
             <Pressable onPress={() => refetch()} style={{ backgroundColor: C.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 16 }}>
               <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Retry</Text>
             </Pressable>

@@ -600,7 +600,7 @@ export default function OrdersScreen() {
     if (!order.items || order.items.length === 0) return;
     const validItems = order.items.filter((i: any) => i.productId);
     if (validItems.length === 0) {
-      showToast("Is order ke items ab available nahi hain", "error");
+      showToast("Items from this order are no longer available", "error");
       return;
     }
     let count = 0;
@@ -616,9 +616,9 @@ export default function OrdersScreen() {
       count++;
     }
     if (validItems.length < order.items.length) {
-      showToast(`${count} items add — ${order.items.length - validItems.length} unavailable items skip kiye gaye`, "info");
+      showToast(`${count} items added — ${order.items.length - validItems.length} unavailable items skipped`, "info");
     } else {
-      showToast(`${count} items cart mein add ho gaye`, "success");
+      showToast(`${count} items added to cart`, "success");
     }
     router.push("/cart");
   }, [addItem, showToast]);

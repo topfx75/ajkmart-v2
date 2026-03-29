@@ -140,8 +140,8 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
 
   const goToConfirm = () => {
     const amt = parseFloat(amount);
-    if (!amount || isNaN(amt) || amt < 100) { setErr("Minimum deposit Rs. 100 hai"); return; }
-    if (!txId.trim()) { setErr("Transaction ID daalna zaroori hai"); return; }
+    if (!amount || isNaN(amt) || amt < 100) { setErr("Minimum deposit is Rs. 100"); return; }
+    if (!txId.trim()) { setErr("Transaction ID is required"); return; }
     setErr("");
     setStep("confirm");
   };
@@ -166,11 +166,11 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setErr(data.error || "Request fail ho gayi"); setSubmitting(false); return; }
+      if (!res.ok) { setErr(data.error || "Request failed"); setSubmitting(false); return; }
       setStep("done");
       onSuccess();
     } catch {
-      setErr("Network error. Dobara try karein.");
+      setErr("Network error. Please try again.");
     }
     setSubmitting(false);
   };
@@ -207,7 +207,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
                   <Ionicons name="checkmark-circle" size={64} color={C.primary} />
                 </View>
                 <Text style={ds.doneTitle}>Request Submitted!</Text>
-                <Text style={ds.doneSub}>1-2 hours mein approve ho ga. Wallet automatically credit ho jayega.</Text>
+                <Text style={ds.doneSub}>Will be approved within 1-2 hours. Your wallet will be credited automatically.</Text>
                 <View style={ds.doneSummary}>
                   <View style={ds.summaryRow}>
                     <Text style={ds.summaryLbl}>Method</Text>
@@ -232,14 +232,14 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
             {step === "method" && (
               <View>
                 <Text style={ws.sheetTitle}>💳 Add Money</Text>
-                <Text style={ds.subLbl}>Kahan se deposit karna chahte hain?</Text>
+                <Text style={ds.subLbl}>Choose your deposit method</Text>
                 {loadingMethods ? (
                   <ActivityIndicator color={C.primary} style={{ marginTop: 24 }} />
                 ) : methodsError ? (
                   <View style={ds.errorBox}>
                     <Ionicons name="alert-circle-outline" size={28} color={C.danger} />
                     <Text style={ds.errorTitle}>Payment methods unavailable</Text>
-                    <Text style={ds.errorSub}>Admin ne koi manual payment method enable nahi ki. Support se contact karein.</Text>
+                    <Text style={ds.errorSub}>No manual payment methods are enabled by admin. Please contact support.</Text>
                   </View>
                 ) : (
                   <View style={{ gap: 12 }}>
@@ -250,7 +250,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={ds.methodName}>{m.label}</Text>
-                          <Text style={ds.methodDesc}>{m.description || `${m.label} se deposit karein`}</Text>
+                          <Text style={ds.methodDesc}>{m.description || `Deposit via ${m.label}`}</Text>
                           {m.manualNumber && <Text style={ds.methodNum}>{m.manualNumber}</Text>}
                         </View>
                         <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
@@ -265,7 +265,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
             {step === "details" && selectedMethod && (
               <View>
                 <Text style={ws.sheetTitle}>{selectedMethod.label} Details</Text>
-                <Text style={ds.subLbl}>Neeche diye account par payment karein:</Text>
+                <Text style={ds.subLbl}>Make payment to the account below:</Text>
 
                 <View style={ds.detailBox}>
                   {selectedMethod.manualNumber && (
@@ -311,7 +311,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
 
                 <View style={ds.noteBox}>
                   <Ionicons name="information-circle-outline" size={16} color={C.primary} />
-                  <Text style={ds.noteTxt}>Payment karne ke baad neeche wale step mein Transaction ID daalen</Text>
+                  <Text style={ds.noteTxt}>After making the payment, enter the Transaction ID in the next step</Text>
                 </View>
 
                 <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
@@ -319,7 +319,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
                     <Text style={[ws.actionBtnTxt, { color: C.text }]}>Back</Text>
                   </Pressable>
                   <Pressable onPress={goToAmount} style={[ws.actionBtn, { flex: 2, backgroundColor: C.primary }]}>
-                    <Text style={ws.actionBtnTxt}>Payment kar liya ✓</Text>
+                    <Text style={ws.actionBtnTxt}>Payment Done ✓</Text>
                   </Pressable>
                 </View>
               </View>
@@ -329,7 +329,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
             {step === "amount" && selectedMethod && (
               <View>
                 <Text style={ws.sheetTitle}>Transaction Details</Text>
-                <Text style={ds.subLbl}>Payment ki details enter karein</Text>
+                <Text style={ds.subLbl}>Enter payment details</Text>
 
                 <Text style={ws.sheetLbl}>Amount (PKR) *</Text>
                 <View style={ws.amtWrap}>
@@ -362,7 +362,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
                   />
                 </View>
 
-                <Text style={ws.sheetLbl}>Aapka Account / Phone (Optional)</Text>
+                <Text style={ws.sheetLbl}>Your Account / Phone (Optional)</Text>
                 <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
                   <TextInput
                     value={senderAcNo}
@@ -378,7 +378,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
                   <TextInput
                     value={note}
                     onChangeText={setNote}
-                    placeholder="Koi aur info..."
+                    placeholder="Any additional info..."
                     placeholderTextColor={C.textMuted}
                     style={[ws.sendInput, { paddingVertical: 0 }]}
                   />
@@ -406,7 +406,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
             {step === "confirm" && selectedMethod && (
               <View>
                 <Text style={ws.sheetTitle}>Confirm Request</Text>
-                <Text style={ds.subLbl}>Submit se pehle details check karein</Text>
+                <Text style={ds.subLbl}>Review details before submitting</Text>
 
                 <View style={ds.confirmBox}>
                   <View style={ds.summaryRow}>
@@ -437,7 +437,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
 
                 <View style={ds.noteBox}>
                   <Ionicons name="alert-circle-outline" size={16} color="#D97706" />
-                  <Text style={[ds.noteTxt, { color: "#92400E" }]}>Galat TxID se deposit reject ho sakti hai. Real transaction ID daalen.</Text>
+                  <Text style={[ds.noteTxt, { color: "#92400E" }]}>An incorrect TxID may cause your deposit to be rejected. Enter the real transaction ID.</Text>
                 </View>
 
                 {err ? (
@@ -531,13 +531,13 @@ export default function WalletScreen() {
 
   const handleDepositSuccess = () => {
     qc.invalidateQueries({ queryKey: ["getWallet"] });
-    showToast("Deposit request submit ho gayi! 1-2 hours mein approve ho ga.", "success");
+    showToast("Deposit request submitted! It will be approved within 1-2 hours.", "success");
   };
 
   const handleP2PTopup = async () => {
-    if (!p2pSenderPhone.trim()) { showToast("Sender ka phone number enter karein", "error"); return; }
+    if (!p2pSenderPhone.trim()) { showToast("Please enter sender's phone number", "error"); return; }
     const amt = parseFloat(p2pAmount);
-    if (!amt || amt < 100) { showToast("Minimum Rs. 100 topup karein", "error"); return; }
+    if (!amt || amt < 100) { showToast("Minimum top-up amount is Rs. 100", "error"); return; }
     setP2pLoading(true);
     try {
       const res = await fetch(`${API}/wallet/p2p-topup`, {
@@ -546,13 +546,13 @@ export default function WalletScreen() {
         body: JSON.stringify({ senderPhone: p2pSenderPhone.trim(), amount: amt, note: p2pNote || null }),
       });
       const d = await res.json();
-      if (!res.ok) { showToast(d.error || "Request fail ho gayi", "error"); setP2pLoading(false); return; }
+      if (!res.ok) { showToast(d.error || "Request failed", "error"); setP2pLoading(false); return; }
       qc.invalidateQueries({ queryKey: ["getWallet"] });
       setPendingTopups(prev => ({ count: prev.count + 1, total: prev.total + amt }));
       setShowP2PTopup(false);
       setP2pSenderPhone(""); setP2pAmount(""); setP2pNote("");
-      showToast("P2P Topup request submit ho gayi! Admin approval ke baad credit hoga.", "success");
-    } catch { showToast("Network error. Dobara try karein.", "error"); }
+      showToast("P2P Topup request submitted! It will be credited after admin approval.", "success");
+    } catch { showToast("Network error. Please try again.", "error"); }
     setP2pLoading(false);
   };
 
@@ -563,10 +563,10 @@ export default function WalletScreen() {
   };
 
   const handleSend = async () => {
-    if (!sendPhone.trim()) { showToast("Receiver ka phone number enter karein", "error"); return; }
+    if (!sendPhone.trim()) { showToast("Please enter receiver's phone number", "error"); return; }
     const num = parseFloat(sendAmount);
-    if (!num || num < minTransfer) { showToast(`Minimum Rs. ${minTransfer.toLocaleString()} transfer karein`, "error"); return; }
-    if (num > balance)             { showToast("Wallet mein enough balance nahi", "error"); return; }
+    if (!num || num < minTransfer) { showToast(`Minimum transfer amount is Rs. ${minTransfer.toLocaleString()}`, "error"); return; }
+    if (num > balance)             { showToast("Insufficient wallet balance", "error"); return; }
     setSendLoading(true);
     try {
       const res = await fetch(`${API}/wallet/send`, {
@@ -575,13 +575,13 @@ export default function WalletScreen() {
         body: JSON.stringify({ receiverPhone: sendPhone.trim(), amount: num, note: sendNote || null }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.error || "Transfer fail ho gaya", "error"); setSendLoading(false); return; }
+      if (!res.ok) { showToast(data.error || "Transfer failed", "error"); setSendLoading(false); return; }
       updateUser({ walletBalance: data.newBalance });
       qc.invalidateQueries({ queryKey: ["getWallet"] });
       setShowSend(false);
       setSendPhone(""); setSendAmount(""); setSendNote("");
-      showToast(`Rs. ${num.toLocaleString()} ${data.receiverName || sendPhone} ko bhej diye!`, "success");
-    } catch { showToast("Network error. Dobara try karein.", "error"); }
+      showToast(`Rs. ${num.toLocaleString()} sent to ${data.receiverName || sendPhone}!`, "success");
+    } catch { showToast("Network error. Please try again.", "error"); }
     setSendLoading(false);
   };
 
@@ -747,7 +747,7 @@ export default function WalletScreen() {
 
             <Text style={ws.sheetLbl}>Note (Optional)</Text>
             <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
-              <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Khana ka bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} />
+              <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} />
             </View>
 
             <View style={[ws.sheetNote, { marginTop: 8 }]}>
@@ -773,7 +773,7 @@ export default function WalletScreen() {
           <Pressable style={[ws.sheet, { borderRadius: 24, paddingVertical: 28 }]} onPress={e => e.stopPropagation()}>
             <Text style={[ws.sheetTitle, { textAlign: "center" }]}>Receive Money</Text>
             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 20 }}>
-              Yeh QR code scan karein ya phone number batayein
+              Scan this QR code or share your phone number
             </Text>
 
             <View style={ws.qrBox}>
@@ -791,7 +791,7 @@ export default function WalletScreen() {
 
             <View style={ws.sheetNote}>
               <Ionicons name="shield-checkmark-outline" size={14} color={C.success} />
-              <Text style={ws.sheetNoteTxt}>{appName} users direct wallet mein bhej sakte hain</Text>
+              <Text style={ws.sheetNoteTxt}>{appName} users can send directly to your wallet</Text>
             </View>
 
             <Pressable onPress={() => setShowQR(false)} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 8 }]}>
@@ -808,7 +808,7 @@ export default function WalletScreen() {
             <View style={ws.handle} />
             <Text style={ws.sheetTitle}>P2P Topup Request</Text>
             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginBottom: 16 }}>
-              Kisi se paise receive karke admin se wallet credit karwayein
+              Receive money from someone and get your wallet credited by admin
             </Text>
 
             <Text style={ws.sheetLbl}>Sender's Phone Number</Text>
@@ -839,7 +839,7 @@ export default function WalletScreen() {
 
             <View style={[ws.sheetNote, { marginTop: 8, backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10 }]}>
               <Ionicons name="alert-circle-outline" size={14} color="#D97706" />
-              <Text style={[ws.sheetNoteTxt, { color: "#92400E" }]}>Admin verify karke wallet credit karega. 1-2 hours lag sakte hain.</Text>
+              <Text style={[ws.sheetNoteTxt, { color: "#92400E" }]}>Admin will verify and credit your wallet. This may take 1-2 hours.</Text>
             </View>
 
             <Pressable onPress={handleP2PTopup} disabled={p2pLoading || !p2pSenderPhone || !p2pAmount} style={[ws.actionBtn, { backgroundColor: "#059669" }, (!p2pSenderPhone || !p2pAmount || p2pLoading) && { opacity: 0.5 }]}>

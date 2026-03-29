@@ -80,12 +80,12 @@ function ActiveTrackerStrip({ userId }: { userId: string }) {
     icon = "car-outline"; c1 = "#1D4ED8"; c2 = "#2563EB";
   } else if (hasRide) {
     const r = activeRides[0];
-    const statusMap: Record<string, string> = { searching: "Rider dhoondh raha hai...", accepted: "Rider aa raha hai", arrived: "Rider pohonch gaya!", in_transit: "Safar jari hai 🚗" };
-    label = statusMap[r.status] || "Ride active hai";
+    const statusMap: Record<string, string> = { searching: "Finding your rider...", accepted: "Rider is on the way", arrived: "Rider has arrived!", in_transit: "Trip in progress 🚗" };
+    label = statusMap[r.status] || "Ride is active";
     icon = "car-outline"; c1 = "#059669"; c2 = "#10B981";
   } else {
     const o = activeOrders[0];
-    const statusMap: Record<string, string> = { pending: "Order mila, confirm ho raha hai", confirmed: "Order confirm! Prepare ho raha hai", preparing: "Aapka khaana tayyar ho raha hai 🍳", out_for_delivery: "Order aa raha hai! 🚴", ready: "Order ready for pickup" };
+    const statusMap: Record<string, string> = { pending: "Order received, being confirmed", confirmed: "Order confirmed! Being prepared", preparing: "Your food is being prepared 🍳", out_for_delivery: "Order is on its way! 🚴", ready: "Order ready for pickup" };
     label = statusMap[o.status] || `${activeOrders.length} active order`;
     icon = o.type === "ride" ? "car-outline" : o.type === "food" ? "restaurant-outline" : "storefront-outline";
     c1 = "#1D4ED8"; c2 = "#2563EB";
@@ -199,7 +199,7 @@ function NoServicesState() {
       </View>
       <Text style={styles.emptyTitle}>No Services Available</Text>
       <Text style={styles.emptySub}>
-        Abhi koi service available nahi hai.{"\n"}Please check back later!
+        No services are currently available.{"\n"}Please check back later!
       </Text>
     </View>
   );
@@ -257,62 +257,62 @@ function Pill({ icon, label, color, bg, onPress, delay }: {
 const ALL_BANNERS = [
   {
     title: "Free Delivery",
-    desc:  "Pehle order pe delivery free — ajj hi try karein!",
-    tag:   "🎉 Naye Users",
+    desc:  "Free delivery on your first order — try it today!",
+    tag:   "🎉 New Users",
     c1: "#1A56DB", c2: "#2563EB",
     icon: "cart-outline" as const,
     route: "/mart",
-    cta: "Shop Karo",
+    cta: "Shop Now",
     service: "mart" as const,
   },
   {
     title: "Bike Ride 10% Off",
-    desc:  "Sirf Rs. 45 se bike book karein — AJK mein kahin bhi!",
+    desc:  "Book a bike from just Rs. 45 — anywhere in AJK!",
     tag:   "🏍️ Weekend Deal",
     c1: "#059669", c2: "#10B981",
     icon: "bicycle-outline" as const,
     route: "/ride",
-    cta: "Ride Book Karo",
+    cta: "Book a Ride",
     service: "rides" as const,
   },
   {
-    title: "Desi Khana Deal",
-    desc:  "2 food orders karo, agla order 20% off pao!",
+    title: "Local Food Deal",
+    desc:  "Place 2 food orders and get 20% off your next one!",
     tag:   "🍽️ Food Deal",
     c1: "#D97706", c2: "#F59E0B",
     icon: "restaurant-outline" as const,
     route: "/food",
-    cta: "Order Karo",
+    cta: "Order Now",
     service: "food" as const,
   },
   {
     title: "⚡ Flash Deals",
-    desc:  "Roz nayi deals — fruits, sabziyan, doodh sab pe 20% bachao!",
+    desc:  "New deals daily — save 20% on fruits, veggies, milk & more!",
     tag:   "🛒 Flash Sale",
     c1: "#7C3AED", c2: "#8B5CF6",
     icon: "flash-outline" as const,
     route: "/mart",
-    cta: "Deals Dekho",
+    cta: "View Deals",
     service: "mart" as const,
   },
   {
     title: "💊 Pharmacy",
-    desc:  "Ghar baithe medicines mangao — 25-40 min mein delivery!",
+    desc:  "Order medicines from home — delivery in 25-40 min!",
     tag:   "🏥 On-Demand",
     c1: "#7C3AED", c2: "#A855F7",
     icon: "medkit-outline" as const,
     route: "/pharmacy",
-    cta: "Order Karo",
+    cta: "Order Now",
     service: "pharmacy" as const,
   },
   {
     title: "📦 Parcel Delivery",
-    desc:  "AJK mein kahin bhi parcel bhejein — Rs. 150 se shuru!",
+    desc:  "Send parcels anywhere in AJK — starting from Rs. 150!",
     tag:   "🚀 Fast Delivery",
     c1: "#D97706", c2: "#F59E0B",
     icon: "cube-outline" as const,
     route: "/parcel",
-    cta: "Book Karo",
+    cta: "Book Now",
     service: "parcel" as const,
   },
 ];

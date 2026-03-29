@@ -8,7 +8,7 @@ export const LANGUAGE_OPTIONS: { value: Language; label: string; nativeLabel: st
   { value: "en_ur",    label: "English + Urdu",        nativeLabel: "English + اردو",   rtl: false },
 ];
 
-export const DEFAULT_LANGUAGE: Language = "en_roman";
+export const DEFAULT_LANGUAGE: Language = "en";
 
 export type TranslationKey = keyof typeof translations.en;
 

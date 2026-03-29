@@ -85,10 +85,10 @@ export default function ForgotPasswordScreen() {
   const handleSendResetCode = async () => {
     clearError();
     if (method === "phone" && (!phone || phone.length < 10)) {
-      setError("Valid phone number enter karein"); return;
+      setError("Please enter a valid phone number"); return;
     }
     if (method === "email" && (!email || !email.includes("@"))) {
-      setError("Valid email address enter karein"); return;
+      setError("Please enter a valid email address"); return;
     }
     if (resendCooldown > 0) return;
 
@@ -108,17 +108,17 @@ export default function ForgotPasswordScreen() {
       if (data.otp) setDevOtp(data.otp);
       setResendCooldown(60);
       setStep("otp");
-    } catch (e: any) { setError(e.message || "Dobara try karein."); }
+    } catch (e: any) { setError(e.message || "Please try again."); }
     setLoading(false);
   };
 
   const handleVerifyAndReset = async () => {
     clearError();
-    if (!otp || otp.length < 4) { setError("OTP enter karein"); return; }
-    if (!newPassword || newPassword.length < 8) { setError("Naya password kam az kam 8 characters ka ho"); return; }
-    if (!/[A-Z]/.test(newPassword)) { setError("Password mein uppercase letter chahiye"); return; }
-    if (!/[0-9]/.test(newPassword)) { setError("Password mein number chahiye"); return; }
-    if (newPassword !== confirmPassword) { setError("Passwords match nahi karte"); return; }
+    if (!otp || otp.length < 4) { setError("Please enter the OTP"); return; }
+    if (!newPassword || newPassword.length < 8) { setError("New password must be at least 8 characters"); return; }
+    if (!/[A-Z]/.test(newPassword)) { setError("Password must contain an uppercase letter"); return; }
+    if (!/[0-9]/.test(newPassword)) { setError("Password must contain a number"); return; }
+    if (newPassword !== confirmPassword) { setError("Passwords do not match"); return; }
 
     setLoading(true);
     try {
@@ -145,12 +145,12 @@ export default function ForgotPasswordScreen() {
         return;
       }
       setStep("done");
-    } catch (e: any) { setError(e.message || "Dobara try karein."); }
+    } catch (e: any) { setError(e.message || "Please try again."); }
     setLoading(false);
   };
 
   const handleTotpSubmit = async () => {
-    if (!totpCode || totpCode.length < 6) { setError("6-digit 2FA code enter karein"); return; }
+    if (!totpCode || totpCode.length < 6) { setError("Please enter the 6-digit 2FA code"); return; }
     await handleVerifyAndReset();
   };
 
@@ -161,7 +161,7 @@ export default function ForgotPasswordScreen() {
           <View style={s.doneCard}>
             <Ionicons name="checkmark-circle" size={64} color="#10B981" />
             <Text style={s.doneTitle}>Password Reset!</Text>
-            <Text style={s.doneSub}>Aapka password successfully change ho gaya hai. Ab naye password se login karein.</Text>
+            <Text style={s.doneSub}>Your password has been successfully changed. Please log in with your new password.</Text>
             <Pressable onPress={() => router.replace("/auth")} style={s.btn}>
               <Text style={s.btnText}>Login</Text>
             </Pressable>
@@ -232,7 +232,7 @@ export default function ForgotPasswordScreen() {
                     style={s.inputFull}
                     value={email}
                     onChangeText={v => { setEmail(v); clearError(); }}
-                    placeholder="aapka@email.com"
+                    placeholder="your@email.com"
                     placeholderTextColor={C.textMuted}
                     keyboardType="email-address"
                     autoCapitalize="none"
@@ -287,7 +287,7 @@ export default function ForgotPasswordScreen() {
                   style={[s.input, { flex: 1, marginBottom: 0, borderWidth: 0 }]}
                   value={newPassword}
                   onChangeText={v => { setNewPassword(v); clearError(); }}
-                  placeholder="Naya password"
+                  placeholder="New password"
                   placeholderTextColor={C.textMuted}
                   secureTextEntry={!showPwd}
                 />
@@ -302,7 +302,7 @@ export default function ForgotPasswordScreen() {
                 style={[s.inputFull, confirmPassword && newPassword !== confirmPassword && s.inputError]}
                 value={confirmPassword}
                 onChangeText={v => { setConfirmPassword(v); clearError(); }}
-                placeholder="Password dobara likhein"
+                placeholder="Re-enter password"
                 placeholderTextColor={C.textMuted}
                 secureTextEntry={!showPwd}
               />

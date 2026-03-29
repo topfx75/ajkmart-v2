@@ -63,7 +63,7 @@ function AddressPickerModal({
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>Delivery Address Chunein</Text>
+          <Text style={styles.sheetTitle}>Choose Delivery Address</Text>
           <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
             {addresses.map(addr => {
               const isSel = selected === addr.id;
@@ -130,8 +130,8 @@ export default function CartScreen() {
   const [addrLoading, setAddrLoading] = useState(false);
 
   const [allPayMethods, setAllPayMethods] = useState<PaymentMethod[]>([
-    { id: "cash",   label: "Cash on Delivery",    logo: "💵", available: true,  description: "Delivery par payment karein" },
-    { id: "wallet", label: `${appName} Wallet`,   logo: "💰", available: true,  description: "Wallet se instant pay" },
+    { id: "cash",   label: "Cash on Delivery",    logo: "💵", available: true,  description: "Pay on delivery" },
+    { id: "wallet", label: `${appName} Wallet`,   logo: "💰", available: true,  description: "Instant pay from wallet" },
   ]);
 
   // Promo code state
@@ -236,7 +236,7 @@ export default function CartScreen() {
         setPromoCode(null);
         setPromoDiscount(0);
         setPromoApplied(false);
-        showToast("Promo code ab valid nahi raha — removed", "error");
+        showToast("Promo code is no longer valid — removed", "error");
       }
     } catch { /* silent */ }
   };
@@ -257,7 +257,7 @@ export default function CartScreen() {
         setPromoDiscount(data.discount);
         setPromoApplied(true);
         setPromoError(null);
-        showToast(`Promo code apply ho gaya! Rs. ${data.discount} discount mila`, "success");
+        showToast(`Promo code applied! Rs. ${data.discount} discount received`, "success");
       } else {
         setPromoCode(null);
         setPromoDiscount(0);
@@ -265,7 +265,7 @@ export default function CartScreen() {
         setPromoError(data.error || "Invalid promo code");
       }
     } catch {
-      setPromoError("Network error — dobara try karein");
+      setPromoError("Network error — please try again");
     } finally {
       setPromoLoading(false);
     }
@@ -328,30 +328,30 @@ export default function CartScreen() {
 
   const handleCheckout = async () => {
     if (loading) return;
-    if (!user) { showToast("Login karein order place karne ke liye", "error"); return; }
-    if (items.length === 0) { showToast("Cart mein koi item nahi", "error"); return; }
+    if (!user) { showToast("Please log in to place an order", "error"); return; }
+    if (items.length === 0) { showToast("Your cart is empty", "error"); return; }
     if (!deliveryLine) {
-      showToast("Delivery address select karein", "error");
+      showToast("Please select a delivery address", "error");
       setShowAddrPicker(true);
       return;
     }
     if (total < orderRules.minOrderAmount) {
-      showToast(`Minimum order Rs.${orderRules.minOrderAmount} — Rs.${orderRules.minOrderAmount - total} aur add karein`, "error");
+      showToast(`Minimum order Rs.${orderRules.minOrderAmount} — add Rs.${orderRules.minOrderAmount - total} more`, "error");
       return;
     }
     if (total > orderRules.maxCartValue) {
-      showToast(`Cart value Rs.${orderRules.maxCartValue.toLocaleString()} se zyada nahi ho sakti`, "error");
+      showToast(`Cart value cannot exceed Rs.${orderRules.maxCartValue.toLocaleString()}`, "error");
       return;
     }
 
     if (payMethod === "wallet") {
       if ((user.walletBalance ?? 0) < grandTotal) {
-        showToast(`Wallet mein Rs. ${user.walletBalance} hain — Rs. ${grandTotal} chahiye`, "error");
+        showToast(`Wallet has Rs. ${user.walletBalance} — Rs. ${grandTotal} required`, "error");
         return;
       }
       setLoading(true);
       try { await placeOrder("wallet"); }
-      catch (e: any) { showToast(e.message || "Order place nahi ho saka.", "error"); }
+      catch (e: any) { showToast(e.message || "Could not place order.", "error"); }
       setLoading(false);
       return;
     }
@@ -366,13 +366,13 @@ export default function CartScreen() {
     // Cash on delivery
     setLoading(true);
     try { await placeOrder("cash"); }
-    catch (e: any) { showToast(e.message || "Order place nahi ho saka. Dobara try karein.", "error"); }
+    catch (e: any) { showToast(e.message || "Could not place order. Please try again.", "error"); }
     setLoading(false);
   };
 
   const handleGwPay = async () => {
     if (!gwMobile || gwMobile.replace(/\D/g, "").length < 10) {
-      showToast("Sahih mobile number darj karein (03XX-XXXXXXX)", "error");
+      showToast("Please enter a valid mobile number (03XX-XXXXXXX)", "error");
       return;
     }
     setGwPaying(true);
@@ -392,7 +392,7 @@ export default function CartScreen() {
         ...(promoCode ? { promoCode } : {}),
       } as any);
       const realOrderId = (order as any).id;
-      if (!realOrderId) throw new Error("Order create nahi ho saka");
+      if (!realOrderId) throw new Error("Could not create order");
 
       const r = await fetch(`${API_BASE}/payments/initiate`, {
         method: "POST",
@@ -410,7 +410,7 @@ export default function CartScreen() {
       const data = await r.json() as any;
       if (!r.ok) {
         await cancelPendingOrder(realOrderId);
-        throw new Error(data.error || "Payment initiate nahi ho saka");
+        throw new Error(data.error || "Could not initiate payment");
       }
 
       const isSandbox = data.mode === "sandbox";
@@ -450,7 +450,7 @@ export default function CartScreen() {
               setShowGwModal(false);
             } else if (statusData.status === "failed" || statusData.status === "expired") {
               await cancelPendingOrder(realOrderId);
-              throw new Error(statusData.message || "Payment fail ho gaya");
+              throw new Error(statusData.message || "Payment failed");
             }
           } catch (pollErr: any) {
             if (pollErr.message && pollErr.message !== "Failed to fetch") {
@@ -461,11 +461,11 @@ export default function CartScreen() {
 
         if (!resolved) {
           await cancelPendingOrder(realOrderId);
-          throw new Error("Payment timeout — 2 minute mein response nahi aaya. Apna account check karein.");
+          throw new Error("Payment timeout — no response in 2 minutes. Please check your account.");
         }
       }
     } catch (e: any) {
-      showToast(e.message || "Payment fail ho gaya. Dobara try karein.", "error");
+      showToast(e.message || "Payment failed. Please try again.", "error");
       setGwStep("input");
     }
     setGwPaying(false);
@@ -521,7 +521,7 @@ export default function CartScreen() {
           {/* Header */}
           <View style={{ alignItems: "center", marginBottom: 20 }}>
             <Text style={{ fontSize: 36, marginBottom: 8 }}>{gwLogo}</Text>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: C.text }}>{gwName} se Pay Karein</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: C.text }}>Pay with {gwName}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
               <View style={{ backgroundColor: gwMode === "live" ? "#DCFCE7" : "#FEF9C3", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
                 <Text style={{ fontSize: 11, fontWeight: "700", color: gwMode === "live" ? "#15803D" : "#92400E" }}>
@@ -570,7 +570,7 @@ export default function CartScreen() {
                 <View style={{ backgroundColor: "#FEF9C3", borderRadius: 10, padding: 12, flexDirection: "row", gap: 8 }}>
                   <Text style={{ fontSize: 13 }}>🧪</Text>
                   <Text style={{ fontSize: 12, color: "#92400E", flex: 1 }}>
-                    Sandbox mode: koi bhi number enter karein — payment simulate hogi
+                    Sandbox mode: enter any number — payment will be simulated
                   </Text>
                 </View>
               )}
@@ -588,8 +588,8 @@ export default function CartScreen() {
               </Text>
               <Text style={{ fontSize: 13, color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
                 {gwMode === "sandbox"
-                  ? "Sandbox mein payment simulate ho rahi hai..."
-                  : `${gwMobile} pe ${gwName} notification aayegi — approve karein`}
+                  ? "Simulating payment in sandbox mode..."
+                  : `A ${gwName} notification will be sent to ${gwMobile} — please approve`}
               </Text>
             </View>
           )}
@@ -598,10 +598,10 @@ export default function CartScreen() {
             <View style={{ alignItems: "center", paddingVertical: 24 }}>
               <Text style={{ fontSize: 48 }}>✅</Text>
               <Text style={{ fontSize: 16, fontWeight: "700", color: "#16A34A", marginTop: 12 }}>
-                Payment Kamyab!
+                Payment Successful!
               </Text>
               <Text style={{ fontSize: 13, color: C.textSecondary, marginTop: 6 }}>
-                Order place ho raha hai...
+                Placing your order...
               </Text>
             </View>
           )}
@@ -621,7 +621,7 @@ export default function CartScreen() {
           <LinearGradient colors={["#065F46", "#059669"]} style={styles.successCircle}>
             <Ionicons name="checkmark" size={44} color="#fff" />
           </LinearGradient>
-          <Text style={styles.successTitle}>Order Place Ho Gaya!</Text>
+          <Text style={styles.successTitle}>Order Placed Successfully!</Text>
           <Text style={styles.successId}>Order #{orderSuccess.id}</Text>
           <Text style={styles.successAddr} numberOfLines={2}>{deliveryLine}</Text>
           <Text style={styles.successEta}>ETA: {orderSuccess.time}</Text>
@@ -661,8 +661,8 @@ export default function CartScreen() {
           <View style={styles.emptyIconBox}>
             <Ionicons name="bag-outline" size={52} color={C.primary} />
           </View>
-          <Text style={styles.emptyTitle}>Cart Khaali Hai</Text>
-          <Text style={styles.emptyText}>Mart ya Food section se items add karein</Text>
+          <Text style={styles.emptyTitle}>Your Cart is Empty</Text>
+          <Text style={styles.emptyText}>Add items from Mart or Food section</Text>
           <View style={styles.emptyBtns}>
             <Pressable onPress={() => router.push("/mart")} style={styles.emptyBtn}>
               <Ionicons name="storefront-outline" size={16} color="#fff" />
@@ -701,13 +701,13 @@ export default function CartScreen() {
 
         {showClearConfirm && (
           <View style={styles.clearConfirm}>
-            <Text style={styles.clearConfirmTxt}>Saare items remove karein?</Text>
+            <Text style={styles.clearConfirmTxt}>Remove all items?</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Pressable onPress={() => setShowClearConfirm(false)} style={styles.clearNo}>
-                <Text style={styles.clearNoTxt}>Nahi</Text>
+                <Text style={styles.clearNoTxt}>No</Text>
               </Pressable>
               <Pressable onPress={() => { clearCart(); setShowClearConfirm(false); }} style={styles.clearYes}>
-                <Text style={styles.clearYesTxt}>Haan</Text>
+                <Text style={styles.clearYesTxt}>Yes</Text>
               </Pressable>
             </View>
           </View>
@@ -717,7 +717,7 @@ export default function CartScreen() {
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Items */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Aapke Items</Text>
+          <Text style={styles.sectionTitle}>Your Items</Text>
           {items.map(item => (
             <View key={item.productId} style={styles.cartItem}>
               <View style={[styles.itemThumb, { backgroundColor: item.type === "food" ? "#FFF3E0" : "#E3F2FD" }]}>
@@ -751,7 +751,7 @@ export default function CartScreen() {
           <Pressable
             onPress={() => {
               if (addresses.length === 0) {
-                showToast("Profile mein pehle address add karein", "info");
+                showToast("Please add an address in your profile first", "info");
                 return;
               }
               setShowAddrPicker(true);
@@ -770,7 +770,7 @@ export default function CartScreen() {
                     {selectedAddr ? selectedAddr.label : "Delivery Address"}
                   </Text>
                   <Text style={styles.addrCardValue} numberOfLines={2}>
-                    {selectedAddr ? `${selectedAddr.address}, ${selectedAddr.city}` : "Address select karein"}
+                    {selectedAddr ? `${selectedAddr.address}, ${selectedAddr.city}` : "Select an address"}
                   </Text>
                 </>
               )}
@@ -840,7 +840,7 @@ export default function CartScreen() {
                   {method.id === "wallet" ? (
                     <Text style={[styles.paySub, user && user.walletBalance < grandTotal && { color: C.danger }]}>
                       Balance: Rs. {user?.walletBalance?.toLocaleString() || 0}
-                      {user && user.walletBalance < grandTotal ? " (kam hai)" : ""}
+                      {user && user.walletBalance < grandTotal ? " (insufficient)" : ""}
                     </Text>
                   ) : (
                     <Text style={styles.paySub}>{method.description}</Text>
@@ -871,7 +871,7 @@ export default function CartScreen() {
                   <Text style={{ fontSize: 18 }}>🏷️</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 13, fontWeight: "700", color: "#065F46" }}>{promoCode}</Text>
-                    <Text style={{ fontSize: 12, color: "#059669" }}>Rs. {promoDiscount.toLocaleString()} discount apply hua!</Text>
+                    <Text style={{ fontSize: 12, color: "#059669" }}>Rs. {promoDiscount.toLocaleString()} discount applied!</Text>
                   </View>
                 </View>
                 <Pressable onPress={removePromo} style={{ padding: 8 }}>
@@ -884,7 +884,7 @@ export default function CartScreen() {
                   <TextInput
                     value={promoInput}
                     onChangeText={t => { setPromoInput(t.toUpperCase()); setPromoError(null); }}
-                    placeholder="Promo code enter karein"
+                    placeholder="Enter promo code"
                     placeholderTextColor={C.textSecondary}
                     autoCapitalize="characters"
                     style={{

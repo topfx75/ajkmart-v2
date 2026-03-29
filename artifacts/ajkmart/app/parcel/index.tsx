@@ -181,7 +181,7 @@ function ParcelScreenInner() {
       setConfirmed(true);
     } catch (err: unknown) {
       const errMsg = (err as { message?: string })?.message;
-      showToast(errMsg || "Parcel book nahi ho saka", "error");
+      showToast(errMsg || "Could not book parcel", "error");
     } finally {
       setLoading(false);
     }
@@ -506,7 +506,7 @@ function ParcelScreenInner() {
             <TextInput
               value={locSearch}
               onChangeText={setLocSearch}
-              placeholder="Location ya area search karein..."
+              placeholder="Search location or area..."
               placeholderTextColor={C.textMuted}
               autoFocus
               style={ss.locSearchInput}
@@ -545,7 +545,7 @@ function ParcelScreenInner() {
             ))}
             {predictions.length === 0 && !locLoading && locSearch.length > 2 && (
               <View style={{ padding: 24, alignItems: "center" }}>
-                <Text style={{ color: C.textMuted, fontSize: 13 }}>Koi location nahi mili</Text>
+                <Text style={{ color: C.textMuted, fontSize: 13 }}>No location found</Text>
               </View>
             )}
           </ScrollView>

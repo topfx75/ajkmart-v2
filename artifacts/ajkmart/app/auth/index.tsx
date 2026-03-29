@@ -167,7 +167,7 @@ export default function AuthScreen() {
 
   const handleSendPhoneOtp = async () => {
     clearError();
-    if (!phone || phone.length < 10) { setError("Valid phone number enter karein (10 digits)"); return; }
+    if (!phone || phone.length < 10) { setError("Please enter a valid phone number (10 digits)"); return; }
     if (resendCooldown > 0) { setError(`Please wait ${resendCooldown}s before resending.`); return; }
     setLoading(true);
     try {
@@ -176,7 +176,7 @@ export default function AuthScreen() {
       setResendCooldown(60);
       slide(); setStep("otp");
     } catch (e: any) {
-      const msg: string = e.message || "OTP send nahi hua.";
+      const msg: string = e.message || "Could not send OTP.";
       setError(msg);
       const match = msg.match(/wait (\d+) second/);
       if (match) setResendCooldown(parseInt(match[1]!, 10));
@@ -186,18 +186,18 @@ export default function AuthScreen() {
 
   const handleVerifyPhoneOtp = async () => {
     clearError();
-    if (!otp || otp.length < 4) { setError("OTP enter karein"); return; }
+    if (!otp || otp.length < 4) { setError("Please enter the OTP"); return; }
     setLoading(true);
     try {
       const res = await verifyOtp({ phone, otp });
       await handleLoginResult(res);
-    } catch (e: any) { setError(e.message || "OTP galat hai."); }
+    } catch (e: any) { setError(e.message || "Invalid OTP."); }
     setLoading(false);
   };
 
   const handleSendEmailOtp = async () => {
     clearError();
-    if (!email || !email.includes("@")) { setError("Valid email address enter karein"); return; }
+    if (!email || !email.includes("@")) { setError("Please enter a valid email address"); return; }
     if (emailResendCooldown > 0) return;
     setLoading(true);
     try {
@@ -205,30 +205,30 @@ export default function AuthScreen() {
       if (res.otp) setEmailDevOtp(res.otp);
       setEmailResendCooldown(60);
       slide(); setStep("otp");
-    } catch (e: any) { setError(e.message || "OTP send nahi hua."); }
+    } catch (e: any) { setError(e.message || "Could not send OTP."); }
     setLoading(false);
   };
 
   const handleVerifyEmailOtp = async () => {
     clearError();
-    if (!emailOtp || emailOtp.length < 6) { setError("6-digit OTP enter karein"); return; }
+    if (!emailOtp || emailOtp.length < 6) { setError("Please enter the 6-digit OTP"); return; }
     setLoading(true);
     try {
       const res = await authPost("/auth/verify-email-otp", { email, otp: emailOtp });
       await handleLoginResult(res);
-    } catch (e: any) { setError(e.message || "OTP galat hai."); }
+    } catch (e: any) { setError(e.message || "Invalid OTP."); }
     setLoading(false);
   };
 
   const handleUsernameLogin = async () => {
     clearError();
-    if (!username || username.length < 3) { setError("Username enter karein"); return; }
-    if (!password || password.length < 6) { setError("Password enter karein"); return; }
+    if (!username || username.length < 3) { setError("Please enter your username"); return; }
+    if (!password || password.length < 6) { setError("Please enter your password"); return; }
     setLoading(true);
     try {
       const res = await authPost("/auth/login/username", { username, password });
       await handleLoginResult(res);
-    } catch (e: any) { setError(e.message || "Username ya password galat hai."); }
+    } catch (e: any) { setError(e.message || "Invalid username or password."); }
     setLoading(false);
   };
 
@@ -271,7 +271,7 @@ export default function AuthScreen() {
 
   const handleMagicLink = async () => {
     clearError();
-    if (!magicEmail || !magicEmail.includes("@")) { setError("Valid email enter karein"); return; }
+    if (!magicEmail || !magicEmail.includes("@")) { setError("Please enter a valid email"); return; }
     if (magicCooldown > 0) return;
     setLoading(true);
     try {
@@ -289,7 +289,7 @@ export default function AuthScreen() {
       if (success) {
         router.replace("/(tabs)");
       } else {
-        setError("Biometric login fail. Koi aur method se login karein.");
+        setError("Biometric login failed. Please use another login method.");
       }
     } catch {
       setError("Biometric not available.");
@@ -312,7 +312,7 @@ export default function AuthScreen() {
 
   const handleTotpVerify = async () => {
     clearError();
-    if (!totpCode || totpCode.length < 6) { setError("6-digit code enter karein"); return; }
+    if (!totpCode || totpCode.length < 6) { setError("Please enter the 6-digit code"); return; }
     setLoading(true);
     try {
       const fingerprint = await getDeviceFingerprint();
@@ -334,7 +334,7 @@ export default function AuthScreen() {
       }
       await completeTwoFactorLogin(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
-    } catch (e: any) { setError(e.message || "2FA code galat hai."); }
+    } catch (e: any) { setError(e.message || "Invalid 2FA code."); }
     setLoading(false);
   };
 
@@ -348,13 +348,13 @@ export default function AuthScreen() {
       });
       await completeTwoFactorLogin(res.user as any, res.token, res.refreshToken);
       router.replace("/(tabs)");
-    } catch (e: any) { setError(e.message || "Backup code galat hai."); }
+    } catch (e: any) { setError(e.message || "Invalid backup code."); }
     setLoading(false);
   };
 
   const handleCompleteProfile = async () => {
     clearError();
-    if (!profileName || profileName.trim().length < 2) { setError("Apna naam enter karein"); return; }
+    if (!profileName || profileName.trim().length < 2) { setError("Please enter your name"); return; }
     setLoading(true);
     try {
       const res = await fetch(`${API}/auth/complete-profile`, {
@@ -373,7 +373,7 @@ export default function AuthScreen() {
         } as any, res.token ?? pendingToken, res.refreshToken ?? pendingRefreshToken);
         router.replace("/(tabs)");
       }
-    } catch (e: any) { setError(e.message || "Profile save nahi hua."); }
+    } catch (e: any) { setError(e.message || "Could not save profile."); }
     setLoading(false);
   };
 
@@ -410,7 +410,7 @@ export default function AuthScreen() {
                   style={[styles.input, { marginBottom: 12 }]}
                   value={backupCode}
                   onChangeText={v => { setBackupCode(v); clearError(); }}
-                  placeholder="Backup code enter karein"
+                  placeholder="Enter backup code"
                   placeholderTextColor={C.textMuted}
                   autoCapitalize="none"
                   autoFocus
@@ -495,7 +495,7 @@ export default function AuthScreen() {
               <TextInput
                 style={[styles.input2, error && profileName.trim().length < 2 && styles.inputError]}
                 value={profileName} onChangeText={v => { setProfileName(v); clearError(); }}
-                placeholder="Full name enter karein" placeholderTextColor={C.textMuted} autoFocus
+                placeholder="Enter your full name" placeholderTextColor={C.textMuted} autoFocus
               />
               <Text style={styles.fieldLabel}>{T("emailOptional")}</Text>
               <TextInput
@@ -618,7 +618,7 @@ export default function AuthScreen() {
               <Text style={styles.cardSubtitle}>{T("enterRegisteredEmail")}</Text>
               <TextInput style={[styles.input, { marginBottom: 8 }]} value={email}
                 onChangeText={v => { setEmail(v); clearError(); }}
-                placeholder="aapka@email.com" placeholderTextColor={C.textMuted}
+                placeholder="your@email.com" placeholderTextColor={C.textMuted}
                 keyboardType="email-address" autoCapitalize="none" />
             </>
           )}

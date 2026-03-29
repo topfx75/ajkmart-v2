@@ -30,11 +30,11 @@ const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 function relativeTime(iso: string) {
   const d = Date.now() - new Date(iso).getTime();
   const m = Math.floor(d / 60000);
-  if (m < 1)  return "Abhi abhi";
-  if (m < 60) return `${m}m pehle`;
+  if (m < 1)  return "Just now";
+  if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h pehle`;
-  return `${Math.floor(h / 24)}d pehle`;
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 /* ══════════════════════════════════════════
@@ -58,7 +58,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
   }, [visible, user]);
 
   const save = async () => {
-    if (!name.trim()) { setError("Naam zaroor likhein"); return; }
+    if (!name.trim()) { setError("Name is required"); return; }
     setError("");
     setSaving(true);
     try {
@@ -70,8 +70,8 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
       if (!res.ok) throw new Error();
       updateUser({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() });
       onClose();
-      showToast("Profile update ho gayi!", "success");
-    } catch { showToast("Update fail. Dobara try karein.", "error"); }
+      showToast("Profile updated!", "success");
+    } catch { showToast("Update failed. Please try again.", "error"); }
     setSaving(false);
   };
 
@@ -81,7 +81,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
         <Pressable style={st.sheet} onPress={e => e.stopPropagation()}>
           <View style={st.sheetHandle} />
           <Text style={st.sheetTitle}>Edit Profile</Text>
-          <Text style={st.sheetSub}>Apni information update karein</Text>
+          <Text style={st.sheetSub}>Update your information</Text>
 
           {/* Phone (read-only) */}
           <Text style={st.fldLabel}>Phone Number</Text>
@@ -95,7 +95,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               <Text style={st.fldLockTxt}>Verified</Text>
             </View>
           </View>
-          <Text style={st.fldHint}>Phone change ke liye helpline: 0300-AJKMART</Text>
+          <Text style={st.fldHint}>To change phone, call helpline: 0300-AJKMART</Text>
 
           {/* Full Name */}
           <Text style={[st.fldLabel, { marginTop: 16 }]}>Full Name</Text>
@@ -107,7 +107,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               style={st.fldInput}
               value={name}
               onChangeText={setName}
-              placeholder="Apna naam likhein"
+              placeholder="Enter your name"
               placeholderTextColor={C.textMuted}
               autoCapitalize="words"
             />
@@ -146,7 +146,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               maxLength={15}
             />
           </View>
-          <Text style={st.fldHint}>Verification ke liye (optional)</Text>
+          <Text style={st.fldHint}>For verification (optional)</Text>
 
           {/* City */}
           <Text style={[st.fldLabel, { marginTop: 12 }]}>City</Text>
@@ -249,7 +249,7 @@ function NotificationsModal({ visible, userId, token, onClose }: {
           <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             {unread > 0 && (
               <Pressable onPress={markAll} disabled={marking} style={nm.markAllBtn}>
-                {marking ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={nm.markAllTxt}>Sab read karein</Text>}
+                {marking ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={nm.markAllTxt}>Mark all as read</Text>}
               </Pressable>
             )}
             <Pressable onPress={() => onClose(unread)} style={nm.closeBtn}>
@@ -263,8 +263,8 @@ function NotificationsModal({ visible, userId, token, onClose }: {
         ) : notifs.length === 0 ? (
           <View style={nm.empty}>
             <Text style={{ fontSize: 52 }}>🔔</Text>
-            <Text style={nm.emptyTitle}>Koi notification nahi</Text>
-            <Text style={nm.emptySub}>Aap fully updated hain!</Text>
+            <Text style={nm.emptyTitle}>No notifications</Text>
+            <Text style={nm.emptySub}>You're all caught up!</Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 6 }}>
@@ -440,17 +440,17 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
             <View>
               <Text style={pv.secTitle}>🔔 Notifications</Text>
               <View style={pv.card}>
-                <Row k="notifOrders"  label="Order Updates"    sub="Delivery aur order status"   icon="bag-outline"           ic={C.primary} ib={C.rideLight} />
-                <Row k="notifWallet"  label="Wallet Activity"  sub="Payment aur top-up alerts"   icon="wallet-outline"        ic="#7C3AED"   ib="#EDE9FE" />
-                <Row k="notifDeals"   label="Deals & Offers"   sub="Discount aur promotions"     icon="pricetag-outline"      ic="#D97706"   ib="#FEF3C7" />
-                <Row k="notifRides"   label="Ride Updates"     sub="Driver assignment aur ETA"   icon="car-outline"           ic="#059669"   ib="#D1FAE5" />
+                <Row k="notifOrders"  label="Order Updates"    sub="Delivery & order status"     icon="bag-outline"           ic={C.primary} ib={C.rideLight} />
+                <Row k="notifWallet"  label="Wallet Activity"  sub="Payment & top-up alerts"     icon="wallet-outline"        ic="#7C3AED"   ib="#EDE9FE" />
+                <Row k="notifDeals"   label="Deals & Offers"   sub="Discounts & promotions"      icon="pricetag-outline"      ic="#D97706"   ib="#FEF3C7" />
+                <Row k="notifRides"   label="Ride Updates"     sub="Driver assignment & ETA"     icon="car-outline"           ic="#059669"   ib="#D1FAE5" />
               </View>
             </View>
             <View>
               <Text style={pv.secTitle}>🔒 Privacy</Text>
               <View style={pv.card}>
-                <Row k="locationSharing" label="Location Sharing" sub="Rider aur delivery ke liye"  icon="location-outline"     ic="#059669" ib="#D1FAE5" />
-                <Row k="darkMode"        label="Dark Mode"        sub="App ka appearance"           icon="moon-outline"         ic="#7C3AED" ib="#EDE9FE" />
+                <Row k="locationSharing" label="Location Sharing" sub="For rides and deliveries"  icon="location-outline"     ic="#059669" ib="#D1FAE5" />
+                <Row k="darkMode"        label="Dark Mode"        sub="App appearance"               icon="moon-outline"         ic="#7C3AED" ib="#EDE9FE" />
               </View>
             </View>
             <View>
@@ -488,9 +488,9 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
             <View>
               <Text style={pv.secTitle}>⚙️ Account Actions</Text>
               <View style={pv.card}>
-                <Pressable onPress={() => showToast("Aapka data 24 ghante mein email par bheja jayega.", "info")} style={[pv.row, { borderBottomWidth: 0 }]}>
+                <Pressable onPress={() => showToast("Your data will be emailed within 24 hours.", "info")} style={[pv.row, { borderBottomWidth: 0 }]}>
                   <View style={[pv.rIcon, { backgroundColor: "#F1F5F9" }]}><Ionicons name="download-outline" size={17} color="#64748B" /></View>
-                  <View style={{ flex: 1 }}><Text style={pv.rLabel}>Download My Data</Text><Text style={pv.rSub}>Apna pura data export karein</Text></View>
+                  <View style={{ flex: 1 }}><Text style={pv.rLabel}>Download My Data</Text><Text style={pv.rSub}>Export all your data</Text></View>
                   <Ionicons name="chevron-forward" size={15} color={C.textMuted} />
                 </Pressable>
               </View>
@@ -627,21 +627,21 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const add = async () => {
-    if (!addr.trim()) { showToast("Address zaroor likhein", "error"); return; }
+    if (!addr.trim()) { showToast("Address is required", "error"); return; }
     setSaving(true);
     const opt = LABEL_OPTS.find(o => o.label === label)!;
     try {
       await fetch(`${API}/addresses`, { method: "POST", headers: { "Content-Type": "application/json", ...authHdrs }, body: JSON.stringify({ label, address: addr.trim(), city, icon: opt.icon, isDefault: list.length === 0 }) });
       setAddr(""); setCity("Muzaffarabad"); setShowAdd(false); await load();
-      showToast("Address save ho gaya!", "success");
-    } catch { showToast("Address save nahi ho saka", "error"); }
+      showToast("Address saved!", "success");
+    } catch { showToast("Could not save address", "error"); }
     setSaving(false);
   };
   const del = async (id: string) => {
     await fetch(`${API}/addresses/${id}`, { method: "DELETE", headers: authHdrs });
     setList(p => p.filter(a => a.id !== id));
     setDeleteConfirmId(null);
-    showToast("Address delete ho gaya", "info");
+    showToast("Address deleted", "info");
   };
 
   const [settingDefault, setSettingDefault] = useState<string | null>(null);
@@ -651,8 +651,8 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
       const r = await fetch(`${API}/addresses/${id}/set-default`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHdrs } });
       if (!r.ok) throw new Error();
       setList(p => p.map(a => ({ ...a, isDefault: a.id === id })));
-      showToast("Default address set ho gaya!", "success");
-    } catch { showToast("Default set nahi ho saka", "error"); }
+      showToast("Default address set!", "success");
+    } catch { showToast("Could not set default", "error"); }
     setSettingDefault(null);
   };
 
@@ -681,7 +681,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
               ))}
             </View>
             <View style={ad.fld}>
-              <TextInput value={addr} onChangeText={setAddr} placeholder="Full address likhein..." placeholderTextColor={C.textMuted} style={ad.fldTxt} multiline />
+              <TextInput value={addr} onChangeText={setAddr} placeholder="Enter full address..." placeholderTextColor={C.textMuted} style={ad.fldTxt} multiline />
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
               <View style={{ flexDirection: "row", gap: 6 }}>
@@ -701,11 +701,11 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
         {loading ? <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} /> : list.length === 0 && !showAdd ? (
           <View style={ad.empty}>
             <Text style={{ fontSize: 52 }}>📍</Text>
-            <Text style={ad.emptyTitle}>Koi address nahi</Text>
-            <Text style={ad.emptySub}>Ghar, office save karein</Text>
+            <Text style={ad.emptyTitle}>No addresses</Text>
+            <Text style={ad.emptySub}>Save your home or office address</Text>
             <Pressable onPress={() => setShowAdd(true)} style={ad.emptyBtn}>
               <Ionicons name="add" size={16} color="#fff" />
-              <Text style={ad.emptyBtnTxt}>Address Add Karein</Text>
+              <Text style={ad.emptyBtnTxt}>Add Address</Text>
             </Pressable>
           </View>
         ) : (
@@ -736,10 +736,10 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                     {deleteConfirmId === a.id ? (
                       <View style={{ flexDirection: "row", gap: 6 }}>
                         <Pressable onPress={() => del(a.id)} style={[ad.delBtn, { backgroundColor: "#FEE2E2", paddingHorizontal: 8, borderRadius: 6, width: "auto" as any }]}>
-                          <Text style={{ fontSize: 11, color: C.danger, fontWeight: "600" }}>Haan</Text>
+                          <Text style={{ fontSize: 11, color: C.danger, fontWeight: "600" }}>Yes</Text>
                         </Pressable>
                         <Pressable onPress={() => setDeleteConfirmId(null)} style={[ad.delBtn, { backgroundColor: "#F1F5F9", paddingHorizontal: 8, borderRadius: 6, width: "auto" as any }]}>
-                          <Text style={{ fontSize: 11, color: C.textMuted, fontWeight: "600" }}>Nahi</Text>
+                          <Text style={{ fontSize: 11, color: C.textMuted, fontWeight: "600" }}>No</Text>
                         </Pressable>
                       </View>
                     ) : (
@@ -955,9 +955,9 @@ export default function ProfileScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={rc.title}>{T("referAndEarn")}</Text>
-                <Text style={rc.sub}>Dost ko invite karein — dono ko Rs. {platformConfig.customer.referralBonus.toLocaleString()} milega</Text>
+                <Text style={rc.sub}>Invite a friend — both of you get Rs. {platformConfig.customer.referralBonus.toLocaleString()}</Text>
                 <View style={rc.codeRow}>
-                  <Text style={rc.codeLabel}>Aapka Code:</Text>
+                  <Text style={rc.codeLabel}>Your Code:</Text>
                   <View style={rc.codePill}>
                     <Text style={rc.code}>{user?.id?.slice(-8).toUpperCase() ?? "AJKXXXX"}</Text>
                   </View>
@@ -976,9 +976,9 @@ export default function ProfileScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={rc.title}>{T("loyaltyPointsLabel")}</Text>
-                <Text style={rc.sub}>Har Rs. 100 spend karne par {platformConfig.customer.loyaltyPtsPerRs100} points milte hain</Text>
+                <Text style={rc.sub}>Earn {platformConfig.customer.loyaltyPtsPerRs100} points for every Rs. 100 spent</Text>
                 <View style={rc.codeRow}>
-                  <Text style={rc.codeLabel}>Aap kama sakte hain:</Text>
+                  <Text style={rc.codeLabel}>You can earn:</Text>
                   <View style={[rc.codePill, { backgroundColor: "#FDE68A" }]}>
                     <Text style={[rc.code, { color: "#92400E" }]}>{platformConfig.customer.loyaltyPtsPerRs100} pts / Rs.100</Text>
                   </View>
@@ -1010,15 +1010,15 @@ export default function ProfileScreen() {
         {/* ── Vendor / Rider dashboard ── */}
         {user?.role === "vendor" && (
           <SectionCard title="VENDOR DASHBOARD">
-            <Row icon="storefront-outline" label="My Products"     sub="Manage products"       onPress={() => showToast("Product management jald aa raha hai!", "info")} iconColor={C.mart} iconBg={C.martLight} />
-            <Row icon="analytics-outline"  label="Sales Analytics" sub="Revenue aur sales"     onPress={() => showToast("Analytics jald aa raha hai!", "info")}           iconColor={C.primary} iconBg={C.rideLight} />
-            <Row icon="receipt-outline"    label="Incoming Orders" sub="Naye orders dekho"     onPress={() => showToast("Order management jald aa raha hai!", "info")}    iconColor={C.food} iconBg={C.foodLight} />
+            <Row icon="storefront-outline" label="My Products"     sub="Manage products"       onPress={() => showToast("Product management coming soon!", "info")} iconColor={C.mart} iconBg={C.martLight} />
+            <Row icon="analytics-outline"  label="Sales Analytics" sub="Revenue & sales"     onPress={() => showToast("Analytics coming soon!", "info")}           iconColor={C.primary} iconBg={C.rideLight} />
+            <Row icon="receipt-outline"    label="Incoming Orders" sub="View new orders"     onPress={() => showToast("Order management coming soon!", "info")}    iconColor={C.food} iconBg={C.foodLight} />
           </SectionCard>
         )}
         {user?.role === "rider" && (
           <SectionCard title="RIDER DASHBOARD">
-            <Row icon="bicycle-outline" label="Active Deliveries" sub="Current deliveries"    onPress={() => showToast("Active deliveries feature jald aa raha hai!", "info")}     iconColor={C.success} iconBg="#D1FAE5" />
-            <Row icon="cash-outline"    label="My Earnings"       sub="Daily/monthly earnings" onPress={() => showToast("Earnings tracking jald aa raha hai!", "info")}      iconColor={C.food}    iconBg={C.foodLight} />
+            <Row icon="bicycle-outline" label="Active Deliveries" sub="Current deliveries"    onPress={() => showToast("Active deliveries feature coming soon!", "info")}     iconColor={C.success} iconBg="#D1FAE5" />
+            <Row icon="cash-outline"    label="My Earnings"       sub="Daily/monthly earnings" onPress={() => showToast("Earnings tracking coming soon!", "info")}      iconColor={C.food}    iconBg={C.foodLight} />
             <Row icon="star-outline"    label="My Rating"         sub="4.9 ⭐ • 250+ trips"   onPress={() => showToast("Rating: ⭐⭐⭐⭐⭐ 4.9/5.0 • 250+ trips completed", "success")} iconColor="#F59E0B" iconBg="#FEF3C7" />
           </SectionCard>
         )}
@@ -1061,7 +1061,7 @@ export default function ProfileScreen() {
             <Row icon="document-text-outline"
                  label={T("termsOfService")}
                  sub={T("termsSubLabel")}
-                 onPress={() => showToast(`${platformCfg.appName} use karte hue aap hamare terms se agree karte hain.`, "info")}
+                 onPress={() => showToast(`By using ${platformCfg.appName}, you agree to our terms.`, "info")}
                  iconColor="#64748B" iconBg="#F1F5F9" />
           )}
           {platformCfg.privacyUrl && (
@@ -1169,7 +1169,7 @@ export default function ProfileScreen() {
                     onPress={async () => {
                       await setLanguage(opt.value as Language);
                       setShowLang(false);
-                      showToast("Language save ho gayi!", "success");
+                      showToast("Language saved!", "success");
                     }}
                     disabled={langLoading}
                     style={[lm.option, active && lm.optionActive]}

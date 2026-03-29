@@ -180,7 +180,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
       await cancelRideApi(rideId, {});
       setRide((r: any) => r ? { ...r, status: "cancelled" } : r);
     } catch {
-      showToast("Cancel nahi ho saka. Dobara try karein.", "error");
+      showToast("Could not cancel. Please try again.", "error");
     }
     setCancelling(false);
   };
@@ -210,14 +210,14 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
         {/* Header */}
         <View style={{ paddingTop: topPad + 16, paddingHorizontal: 24, paddingBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <View>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" }}>Mol-Tol Jari Hai 💬</Text>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff" }}>Negotiation In Progress 💬</Text>
             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.7)" }}>
               #{rideId.slice(-8).toUpperCase()} · {elapsedStr}
             </Text>
           </View>
           <View style={{ backgroundColor: "rgba(255,255,255,0.18)", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, alignItems: "center" }}>
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: "#FCD34D" }}>Rs. {offeredFare}</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.7)" }}>aapka offer</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.7)" }}>your offer</Text>
           </View>
         </View>
 
@@ -234,9 +234,9 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                   <Text style={{ fontSize: 34 }}>💬</Text>
                 </View>
               </View>
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff", textAlign: "center" }}>Riders Dekh Rahe Hain</Text>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff", textAlign: "center" }}>Riders Are Reviewing</Text>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.7)", textAlign: "center", marginTop: 6, lineHeight: 20 }}>
-                Jab koi rider bid karega, aap yahaan dekh sakte hain aur best offer choose kar sakte hain
+                When a rider bids, you can view it here and choose the best offer
               </Text>
             </View>
           )}
@@ -245,7 +245,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
           {hasBids && (
             <>
               <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>
-                {bids.length} Rider{bids.length > 1 ? "s ne" : " ne"} Bid Diya — Best choose karein:
+                {bids.length} Rider{bids.length > 1 ? "s" : ""} Placed a Bid — Choose the best:
               </Text>
               {bids.map((bid: any) => (
                 <View key={bid.id} style={{ backgroundColor: "rgba(255,255,255,0.14)", borderRadius: 20, padding: 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.22)" }}>
@@ -264,10 +264,10 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                       <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#FCD34D" }}>Rs. {Math.round(bid.fare)}</Text>
                       <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.6)" }}>
                         {bid.fare === offeredFare
-                          ? "aapke offer par"
+                          ? "matches your offer"
                           : bid.fare > offeredFare
-                            ? `Rs. ${Math.round(bid.fare - offeredFare)} zyada aapke offer se`
-                            : `Rs. ${Math.round(offeredFare - bid.fare)} aapki bachat`}
+                            ? `Rs. ${Math.round(bid.fare - offeredFare)} above your offer`
+                            : `Rs. ${Math.round(offeredFare - bid.fare)} savings for you`}
                       </Text>
                     </View>
                   </View>
@@ -296,13 +296,13 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
             <Pressable
               onPress={() => setShowUpdateOffer(v => !v)}
               style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16 }}>
-              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>✏️ Apna Offer Update Karein</Text>
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>✏️ Update Your Offer</Text>
               <Ionicons name={showUpdateOffer ? "chevron-up" : "chevron-down"} size={18} color="rgba(255,255,255,0.7)" />
             </Pressable>
             {showUpdateOffer && (
               <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
                 <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-                  Naya offer dene se sab pending bids cancel ho jayenge aur riders fresh bid karenge
+                  Submitting a new offer will cancel all pending bids, and riders will place fresh bids
                 </Text>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <View style={{ flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 12 }}>
@@ -354,7 +354,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                 </View>
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 19, color: "#111827" }}>Cancel Offer?</Text>
                 <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 }}>
-                  Kya aap apna offer cancel karna chahte hain? Sab pending rider bids bhi cancel ho jayenge.
+                  Are you sure you want to cancel your offer? All pending rider bids will also be cancelled.
                 </Text>
               </View>
               <View style={{ flexDirection: "row", gap: 10 }}>
@@ -388,10 +388,10 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
               <Ionicons name="sad-outline" size={52} color="#fff" />
             </View>
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: "#fff", textAlign: "center", marginBottom: 10 }}>
-              Koi Driver Nahi Mila
+              No Driver Found
             </Text>
             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.8)", textAlign: "center", lineHeight: 21, marginBottom: 32 }}>
-              3 minute search karne ke baad koi driver available nahi mila. Dobara try karein ya baad mein book karein.
+              No driver was available after 3 minutes of searching. Please try again or book later.
             </Text>
             <Pressable
               onPress={() => { cancelRideHandler(); }}
@@ -435,10 +435,10 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
           </View>
 
           <Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: "#fff", marginTop: 36, textAlign: "center" }}>
-            Driver Dhund Rahe Hain
+            Finding Your Driver
           </Text>
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.75)", marginTop: 8, textAlign: "center", lineHeight: 21 }}>
-            AJK mein qareeb driver assign ho raha hai
+            Assigning the nearest driver in AJK
           </Text>
 
           {/* Elapsed timer */}
@@ -480,7 +480,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                 </View>
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 19, color: "#111827" }}>Cancel Ride?</Text>
                 <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 }}>
-                  Kya aap wakai is ride ko cancel karna chahte hain? Driver abhi assign nahi hua isliye cancellation fee nahi hogi.
+                  Are you sure you want to cancel this ride? No driver has been assigned yet, so there will be no cancellation fee.
                 </Text>
               </View>
               <View style={{ flexDirection: "row", gap: 10 }}>
@@ -510,7 +510,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
             <Ionicons name="close-circle" size={44} color="#fff" />
           </View>
           <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff" }}>Ride Cancelled</Text>
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.85)", textAlign: "center" }}>Aapki ride cancel ho gayi hai</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.85)", textAlign: "center" }}>Your ride has been cancelled</Text>
         </LinearGradient>
         <ScrollView contentContainerStyle={{ margin: 16, gap: 12 }}>
           {wasWallet && (
@@ -520,7 +520,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#065F46" }}>Refund Initiated</Text>
               </View>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#374151", lineHeight: 19 }}>
-                Rs. {ride?.fare} aapki wallet mein refund ho raha hai.{cancellationFee > 0 ? ` Agar rider assign tha to Rs. ${cancellationFee} cancellation fee apply hogi.` : ""}
+                Rs. {ride?.fare} will be refunded to your wallet.{cancellationFee > 0 ? ` If a rider was assigned, a Rs. ${cancellationFee} cancellation fee will apply.` : ""}
               </Text>
             </View>
           )}
@@ -560,7 +560,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
           {/* Rating */}
           {!ratingDone ? (
             <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 18, alignItems: "center", gap: 10, borderWidth: 1.5, borderColor: "#D1FAE5" }}>
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#065F46" }}>Driver ko Rate Karein</Text>
+              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#065F46" }}>Rate Your Driver</Text>
               <View style={{ flexDirection: "row", gap: 10 }}>
                 {[1,2,3,4,5].map(s => (
                   <Pressable key={s} onPress={() => { setRating(s); setTimeout(() => setRatingDone(true), 500); }}>
@@ -662,9 +662,9 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
   /* ════════════════ ACTIVE (accepted / arrived / in_transit) ════════════════ */
   type StatusCfg = { colors: [string,string]; icon: string; title: string; sub: string };
   const statusCfgs: Record<string, StatusCfg> = {
-    accepted:   { colors: ["#1565C0","#1976D2"],  icon: "car",      title: "Driver Aa Raha Hai! 🚗",  sub: "Driver ne ride accept kar li"       },
-    arrived:    { colors: ["#B45309","#D97706"],  icon: "location", title: "Driver Pahunch Gaya! 📍", sub: "Driver aapke pickup point pe hai"   },
-    in_transit: { colors: ["#065F46","#059669"],  icon: "navigate", title: "Aap Route Mein Hain! 🛣", sub: "Safar jari — manzil qareeb hai"     },
+    accepted:   { colors: ["#1565C0","#1976D2"],  icon: "car",      title: "Driver Is Coming! 🚗",  sub: "Driver has accepted your ride"       },
+    arrived:    { colors: ["#B45309","#D97706"],  icon: "location", title: "Driver Has Arrived! 📍", sub: "Driver is at your pickup point"   },
+    in_transit: { colors: ["#065F46","#059669"],  icon: "navigate", title: "You're On Your Way! 🛣", sub: "Trip in progress — destination is near"     },
   };
   const hdrCfg  = statusCfgs[status] ?? statusCfgs["accepted"]!;
   const canCancel = status === "accepted";
@@ -758,9 +758,9 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: nearby ? "#DCFCE7" : "#EFF6FF", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 }}>
                     <Text style={{ fontSize: 15 }}>{nearby ? "📍" : "🚗"}</Text>
                     <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: nearby ? "#065F46" : "#1E40AF", flex: 1 }}>
-                      {nearby ? "Driver qareeb hai!" : `Driver ${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`} durr hai`}
+                      {nearby ? "Driver is nearby!" : `Driver is ${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`} away`}
                     </Text>
-                    {stale && <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "#9CA3AF" }}>• purani</Text>}
+                    {stale && <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "#9CA3AF" }}>• stale</Text>}
                   </View>
                 );
               })()}
@@ -864,13 +864,13 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
               <Text style={{ fontFamily: "Inter_700Bold", fontSize: 19, color: "#111827" }}>Cancel Ride?</Text>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 }}>
                 {cancellationFee > 0
-                  ? `Driver pehle se assign ho chuka hai. Cancel karne par Rs. ${cancellationFee} cancellation fee apply hogi.`
-                  : "Kya aap wakai is ride ko cancel karna chahte hain?"}
+                  ? `A driver has already been assigned. Cancelling will incur a Rs. ${cancellationFee} cancellation fee.`
+                  : "Are you sure you want to cancel this ride?"}
               </Text>
               {ride?.paymentMethod === "wallet" && (
                 <View style={{ backgroundColor: "#ECFDF5", borderRadius: 12, padding: 12, width: "100%" }}>
                   <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#065F46", textAlign: "center" }}>
-                    💚 Baaki rakam aapki wallet mein refund ho jayega
+                    💚 The remaining amount will be refunded to your wallet
                   </Text>
                 </View>
               )}
@@ -1007,7 +1007,7 @@ function RideScreenInner() {
       setPickupObj({ lat, lng, address });
       setLocDenied(false);
     } catch {
-      showToast("Location nahi mil saki. Manually likhein.", "error");
+      showToast("Could not get location. Please type it manually.", "error");
     } finally {
       setLocLoading(false);
     }
@@ -1073,10 +1073,10 @@ function RideScreenInner() {
 
   /* ── School Shift subscribe ── */
   const handleSchoolSubscribe = async () => {
-    if (!user)          { showToast("Login karein", "error"); return; }
-    if (!selectedRoute) { showToast("Route select karein", "error"); return; }
-    if (!schoolStudent.trim()) { showToast("Student ka naam likhein", "error"); return; }
-    if (!schoolClass.trim())   { showToast("Student ki class likhein", "error"); return; }
+    if (!user)          { showToast("Please log in first", "error"); return; }
+    if (!selectedRoute) { showToast("Please select a route", "error"); return; }
+    if (!schoolStudent.trim()) { showToast("Please enter the student's name", "error"); return; }
+    if (!schoolClass.trim())   { showToast("Please enter the student's class", "error"); return; }
     setSubscribing(true);
     try {
       const json = await subscribeSchoolRoute({
@@ -1087,36 +1087,36 @@ function RideScreenInner() {
       });
       setShowSchoolModal(false);
       setSelectedRoute(null); setSchoolStudent(""); setSchoolClass("");
-      showToast(`🎉 ${schoolStudent} ko ${selectedRoute.schoolName} ke liye subscribe kar diya!`, "success");
+      showToast(`🎉 ${schoolStudent} has been subscribed to ${selectedRoute.schoolName}!`, "success");
     } catch {
-      showToast("Network error. Dobara try karein.", "error");
+      showToast("Network error. Please try again.", "error");
     } finally {
       setSubscribing(false);
     }
   };
 
   const handleBook = async () => {
-    if (!pickup || !drop)    { showToast("Pickup aur drop location select karein", "error"); return; }
-    if (!pickupObj)          { showToast("Pickup location list se select karein (exact location required)", "error"); return; }
-    if (!dropObj)            { showToast("Drop location list se select karein (exact location required)", "error"); return; }
-    if (!user)               { showToast("Login karein ride book karne ke liye", "error"); return; }
-    if (!estimate)           { showToast("Fare estimate calculate ho raha hai. Thoda wait karein.", "error"); return; }
+    if (!pickup || !drop)    { showToast("Please select pickup and drop locations", "error"); return; }
+    if (!pickupObj)          { showToast("Please select pickup location from the list (exact location required)", "error"); return; }
+    if (!dropObj)            { showToast("Please select drop location from the list (exact location required)", "error"); return; }
+    if (!user)               { showToast("Please log in to book a ride", "error"); return; }
+    if (!estimate)           { showToast("Fare estimate is being calculated. Please wait.", "error"); return; }
 
     /* Validate bargaining offer */
     let parsedOffer: number | undefined;
     if (showBargain && offeredFare) {
       parsedOffer = parseFloat(offeredFare);
       if (isNaN(parsedOffer) || parsedOffer <= 0) {
-        showToast("Valid amount enter karein offer ke liye", "error"); return;
+        showToast("Please enter a valid amount for your offer", "error"); return;
       }
       if (parsedOffer < estimate.minOffer) {
-        showToast(`Minimum offer Rs. ${estimate.minOffer} hai (${Math.round((estimate.minOffer / estimate.fare) * 100)}% of platform fare)`, "error"); return;
+        showToast(`Minimum offer is Rs. ${estimate.minOffer} (${Math.round((estimate.minOffer / estimate.fare) * 100)}% of platform fare)`, "error"); return;
       }
     }
 
     const effectiveFare = parsedOffer ?? estimate.fare;
     if (payMethod === "wallet" && (user.walletBalance ?? 0) < effectiveFare) {
-      showToast(`Wallet balance Rs. ${user.walletBalance} — Rs. ${effectiveFare} se kam hai. Top up karein.`, "error");
+      showToast(`Wallet balance Rs. ${user.walletBalance} — less than Rs. ${effectiveFare} required. Please top up.`, "error");
       return;
     }
 
@@ -1153,7 +1153,7 @@ function RideScreenInner() {
           });
         } catch { /* silent — never block the user flow */ }
       })();
-    } catch { showToast("Network error. Dobara try karein.", "error"); }
+    } catch { showToast("Network error. Please try again.", "error"); }
     finally { setBooking(false); }
   };
 
@@ -1208,7 +1208,7 @@ function RideScreenInner() {
           <Text style={{ fontSize: 52, marginBottom: 12 }}>🚫</Text>
           <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#EF4444", marginBottom: 8, textAlign: "center" }}>Service Unavailable</Text>
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 20 }}>
-            Ride service filhaal available nahi hai.{"\n"}Thodi der baad dobara try karein.
+            Ride service is currently unavailable.{"\n"}Please try again later.
           </Text>
           <Pressable style={{ width: "100%", alignItems: "center", backgroundColor: "#FEF2F2", borderRadius: 14, paddingVertical: 14 }} onPress={() => router.back()}>
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#EF4444" }}>Back to Home</Text>
@@ -1232,7 +1232,7 @@ function RideScreenInner() {
           </Pressable>
           <View style={{ flex:1, marginLeft:10 }}>
             <Text style={rs.hdrTitle}>🚗 Book a Ride</Text>
-            <Text style={rs.hdrSub}>AJK mein kahin bhi, kabhi bhi</Text>
+            <Text style={rs.hdrSub}>Anywhere in AJK, anytime</Text>
           </View>
           <Pressable onPress={() => { setShowHistory(true); fetchHistory(); }} style={rs.histBtn}>
             <Ionicons name="time-outline" size={18} color="#fff" />
@@ -1268,7 +1268,7 @@ function RideScreenInner() {
               onChangeText={v => { setPickup(v); setPickupObj(null); }}
               onFocus={() => setPickupFocus(true)}
               onBlur={() => setTimeout(() => setPickupFocus(false), 250)}
-              placeholder="Pickup location type karein..."
+              placeholder="Type pickup location..."
               placeholderTextColor={C.textMuted}
               style={rs.locInput}
             />
@@ -1316,7 +1316,7 @@ function RideScreenInner() {
               onChangeText={v => { setDrop(v); setDropObj(null); }}
               onFocus={() => setDropFocus(true)}
               onBlur={() => setTimeout(() => setDropFocus(false), 250)}
-              placeholder="Drop location type karein..."
+              placeholder="Type drop location..."
               placeholderTextColor={C.textMuted}
               style={rs.locInput}
             />
@@ -1425,7 +1425,7 @@ function RideScreenInner() {
         {estimating && (
           <View style={[rs.fareCard, { alignItems: "center", padding: 16 }]}>
             <ActivityIndicator color="#059669" />
-            <Text style={{ marginTop: 6, fontSize: 12, color: C.textMuted }}>Route calculate ho raha hai...</Text>
+            <Text style={{ marginTop: 6, fontSize: 12, color: C.textMuted }}>Calculating route...</Text>
           </View>
         )}
         {!estimating && estimate && (
@@ -1485,7 +1485,7 @@ function RideScreenInner() {
                     {showBargain ? "Bargaining Mode ON" : "Make an Offer"}
                   </Text>
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: showBargain ? "#EA580C" : "#6B7280" }}>
-                    {showBargain ? `Min: Rs. ${estimate.minOffer}` : `Apna price suggest karein (min Rs. ${estimate.minOffer})`}
+                    {showBargain ? `Min: Rs. ${estimate.minOffer}` : `Suggest your price (min Rs. ${estimate.minOffer})`}
                   </Text>
                 </View>
               </View>
@@ -1521,7 +1521,7 @@ function RideScreenInner() {
                   style={{ backgroundColor: "#fff", borderWidth: 1, borderColor: "#FED7AA", borderRadius: 10, padding: 10, fontFamily: "Inter_400Regular", fontSize: 13, color: "#374151" }}
                 />
                 <Text style={{ fontSize: 11, color: "#9A3412", lineHeight: 16 }}>
-                  💡 Rider aapka offer dekh ke accept, counter, ya reject kar sakta hai. Counter aane par aapko notification milegi.
+                  💡 The rider can accept, counter, or reject your offer. You'll be notified if a counter offer is made.
                 </Text>
               </View>
             )}
@@ -1602,7 +1602,7 @@ function RideScreenInner() {
           ) : history.length === 0 ? (
             <View style={rs.histEmpty}>
               <Text style={{ fontSize: 48 }}>🚗</Text>
-              <Text style={rs.histEmptyTxt}>Abhi tak koi ride book nahi hui</Text>
+              <Text style={rs.histEmptyTxt}>No rides booked yet</Text>
             </View>
           ) : (
             <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8 }}>
@@ -1621,7 +1621,7 @@ function RideScreenInner() {
                     <Text style={rs.histFare}>Rs. {ride.fare}</Text>
                     <View style={[rs.histStatus, { backgroundColor: ride.status === "completed" ? "#D1FAE5" : ride.status === "cancelled" ? "#FEE2E2" : "#FEF3C7" }]}>
                       <Text style={[rs.histStatusTxt, { color: ride.status === "completed" ? "#059669" : ride.status === "cancelled" ? "#DC2626" : "#D97706" }]}>
-                        {{ searching: "Finding Rider", bargaining: "Mol-Tol Jari", accepted: "Accepted", arrived: "Arrived", in_transit: "In Transit", completed: "Completed", cancelled: "Cancelled", ongoing: "In Transit" }[ride.status as string] ?? ride.status}
+                        {{ searching: "Finding Rider", bargaining: "Negotiating", accepted: "Accepted", arrived: "Arrived", in_transit: "In Transit", completed: "Completed", cancelled: "Cancelled", ongoing: "In Transit" }[ride.status as string] ?? ride.status}
                       </Text>
                     </View>
                   </View>
@@ -1643,12 +1643,12 @@ function RideScreenInner() {
             </Pressable>
           </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 16 }}>
-            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#374151", marginBottom: 4 }}>Route Select Karein</Text>
+            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#374151", marginBottom: 4 }}>Select a Route</Text>
             {schoolRoutes.length === 0 ? (
               <View style={{ backgroundColor: "#F8FAFC", borderRadius: 14, padding: 24, alignItems: "center" }}>
                 <Text style={{ fontSize: 24, marginBottom: 8 }}>🚌</Text>
-                <Text style={{ fontFamily: "Inter_600SemiBold", color: "#64748B" }}>Koi route available nahi</Text>
-                <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 4, textAlign: "center" }}>Admin se contact karein school shift routes add karne ke liye</Text>
+                <Text style={{ fontFamily: "Inter_600SemiBold", color: "#64748B" }}>No routes available</Text>
+                <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 4, textAlign: "center" }}>Contact admin to add school shift routes</Text>
               </View>
             ) : (
               schoolRoutes.map((r: any) => (
@@ -1688,12 +1688,12 @@ function RideScreenInner() {
                 <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#374151" }}>Student Details</Text>
                 <View style={{ gap: 12 }}>
                   <View>
-                    <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 6, fontFamily: "Inter_500Medium" }}>Student Ka Naam *</Text>
+                    <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 6, fontFamily: "Inter_500Medium" }}>Student Name *</Text>
                     <View style={{ borderWidth: 1.5, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: "#FAFAFA" }}>
                       <TextInput
                         value={schoolStudent}
                         onChangeText={setSchoolStudent}
-                        placeholder="Masalan: Ali Khan"
+                        placeholder="e.g. Ali Khan"
                         style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#1E293B" }}
                         placeholderTextColor="#9CA3AF"
                       />
@@ -1705,7 +1705,7 @@ function RideScreenInner() {
                       <TextInput
                         value={schoolClass}
                         onChangeText={setSchoolClass}
-                        placeholder="Masalan: 7th Grade"
+                        placeholder="e.g. 7th Grade"
                         style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#1E293B" }}
                         placeholderTextColor="#9CA3AF"
                       />
@@ -1714,13 +1714,13 @@ function RideScreenInner() {
                 </View>
                 <View style={{ backgroundColor: "#FFFBEB", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#FDE68A", marginTop: 4 }}>
                   <Text style={{ fontSize: 12, color: "#92400E", fontFamily: "Inter_500Medium" }}>
-                    💳 First month payment: Rs. {selectedRoute.monthlyPrice?.toLocaleString()} — {payMethod === "wallet" ? "Wallet se katega" : "Cash on pickup"}
+                    💳 First month payment: Rs. {selectedRoute.monthlyPrice?.toLocaleString()} — {payMethod === "wallet" ? "Deducted from wallet" : "Cash on pickup"}
                   </Text>
                 </View>
                 <Pressable onPress={handleSchoolSubscribe} disabled={subscribing}
                   style={{ backgroundColor: subscribing ? "#93C5FD" : "#3B82F6", borderRadius: 14, padding: 16, alignItems: "center", marginTop: 8, opacity: subscribing ? 0.8 : 1 }}>
                   <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>
-                    {subscribing ? "Subscribe Ho Raha Hai..." : `🚌 Subscribe — Rs. ${selectedRoute.monthlyPrice?.toLocaleString()}/month`}
+                    {subscribing ? "Subscribing..." : `🚌 Subscribe — Rs. ${selectedRoute.monthlyPrice?.toLocaleString()}/month`}
                   </Text>
                 </Pressable>
               </>

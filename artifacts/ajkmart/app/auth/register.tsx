@@ -124,7 +124,7 @@ export default function RegisterScreen() {
 
   const handleSendOtp = async () => {
     clearError();
-    if (!phone || normalizedPhone.length < 10) { setError("Valid phone number enter karein (10 digits)"); return; }
+    if (!phone || normalizedPhone.length < 10) { setError("Please enter a valid phone number (10 digits)"); return; }
     if (resendCooldown > 0) return;
     setLoading(true);
     try {
@@ -137,9 +137,9 @@ export default function RegisterScreen() {
         const regData = await regRes.json();
         if (!regRes.ok) {
           if (regRes.status === 409) {
-            setError("Is number se pehle se account bana hua hai. Login karein.");
+            setError("An account already exists with this number. Please log in.");
           } else {
-            setError(regData.error || "Registration fail. Dobara try karein.");
+            setError(regData.error || "Registration failed. Please try again.");
           }
           setLoading(false);
           return;
@@ -154,7 +154,7 @@ export default function RegisterScreen() {
       });
       const sendOtpData = await sendOtpRes.json();
       if (!sendOtpRes.ok) {
-        const msg: string = sendOtpData.error || "OTP send nahi hua.";
+        const msg: string = sendOtpData.error || "Could not send OTP.";
         setError(msg);
         const match = msg.match(/wait (\d+) second/);
         if (match) setResendCooldown(parseInt(match[1]!, 10));
@@ -165,14 +165,14 @@ export default function RegisterScreen() {
       setResendCooldown(60);
       setOtpSent(true);
     } catch (e: any) {
-      setError(e.message || "OTP send nahi hua.");
+      setError(e.message || "Could not send OTP.");
     }
     setLoading(false);
   };
 
   const handleVerifyOtp = async () => {
     clearError();
-    if (!otp || otp.length < 4) { setError("OTP enter karein"); return; }
+    if (!otp || otp.length < 4) { setError("Please enter the OTP"); return; }
     setLoading(true);
     try {
       const res = await fetch(`${API}/auth/verify-otp`, {
@@ -181,7 +181,7 @@ export default function RegisterScreen() {
         body: JSON.stringify({ phone: normalizedPhone, otp }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || "OTP galat hai."); setLoading(false); return; }
+      if (!res.ok) { setError(data.error || "Invalid OTP."); setLoading(false); return; }
       if (data.user?.id) setUserId(data.user.id);
       if (data.token) setAuthToken(data.token);
       if (data.refreshToken) setAuthRefreshToken(data.refreshToken);
@@ -193,17 +193,17 @@ export default function RegisterScreen() {
 
   const handleStep2 = () => {
     clearError();
-    if (!name.trim() || name.trim().length < 2) { setError("Apna naam likhein (kam az kam 2 letters)"); return; }
+    if (!name.trim() || name.trim().length < 2) { setError("Please enter your name (at least 2 characters)"); return; }
     if (cnic && !/^\d{5}-\d{7}-\d{1}$/.test(cnic)) { setError("CNIC format: XXXXX-XXXXXXX-X"); return; }
     setStep(3);
   };
 
   const handleStep3 = async () => {
     clearError();
-    if (!password || password.length < 8) { setError("Password kam az kam 8 characters ka ho"); return; }
-    if (!/[A-Z]/.test(password)) { setError("Password mein kam az kam 1 uppercase letter ho"); return; }
-    if (!/[0-9]/.test(password)) { setError("Password mein kam az kam 1 number ho"); return; }
-    if (!termsAccepted) { setError("Terms & Conditions accept karein"); return; }
+    if (!password || password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    if (!/[A-Z]/.test(password)) { setError("Password must contain at least 1 uppercase letter"); return; }
+    if (!/[0-9]/.test(password)) { setError("Password must contain at least 1 number"); return; }
+    if (!termsAccepted) { setError("Please accept the Terms & Conditions"); return; }
 
     setLoading(true);
     try {
@@ -226,7 +226,7 @@ export default function RegisterScreen() {
       const profileData = await profileRes.json();
 
       if (!profileRes.ok) {
-        setError(profileData.error || "Profile save nahi hua. Dobara try karein.");
+        setError(profileData.error || "Could not save profile. Please try again.");
         setLoading(false);
         return;
       }
@@ -236,7 +236,7 @@ export default function RegisterScreen() {
       if (profileData.user) setAuthUser(profileData.user);
 
       setStep(4);
-    } catch (e: any) { setError(e.message || "Profile save nahi hua."); }
+    } catch (e: any) { setError(e.message || "Could not save profile."); }
     setLoading(false);
   };
 
@@ -382,7 +382,7 @@ export default function RegisterScreen() {
                 style={[s.inputFull, error && !name.trim() && s.inputError]}
                 value={name}
                 onChangeText={v => { setName(v); clearError(); }}
-                placeholder="Apna poora naam likhein"
+                placeholder="Enter your full name"
                 placeholderTextColor={C.textMuted}
                 autoCapitalize="words"
                 autoFocus
@@ -409,7 +409,7 @@ export default function RegisterScreen() {
                 keyboardType="numeric"
                 maxLength={15}
               />
-              <Text style={s.fieldHint}>Verification ke liye zaroori hai</Text>
+              <Text style={s.fieldHint}>Required for verification</Text>
             </>
           )}
 
