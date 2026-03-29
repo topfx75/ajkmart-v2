@@ -3,7 +3,7 @@ import {
   Search, CheckCircle2, XCircle, Wallet, RefreshCw, Trash2,
   Activity, ShoppingBag, Car, Pill, Package, Shield, UserCog,
   Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
-  Download, FileText, CalendarDays, Eye, AlertCircle,
+  Download, FileText, CalendarDays, Eye, AlertCircle, MessageSquare,
   Users as UsersIcon, Loader2,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
@@ -460,19 +460,60 @@ function exportUsersCSV(users: any[]) {
 }
 
 /* ── KYC Doc Viewer ── */
+function parseUserDocuments(user: any): { files: { type: string; url: string; label: string }[]; note?: string } {
+  const result: { files: { type: string; url: string; label: string }[]; note?: string } = { files: [] };
+  const seenUrls = new Set<string>();
+  if (user.vehiclePhoto) {
+    result.files.push({ type: "vehicle_photo", url: user.vehiclePhoto, label: "Vehicle Photo" });
+    seenUrls.add(user.vehiclePhoto);
+  }
+  if (user.documents) {
+    try {
+      const parsed = JSON.parse(user.documents);
+      if (parsed.files && Array.isArray(parsed.files)) {
+        for (const f of parsed.files) {
+          if (f.url && !seenUrls.has(f.url)) {
+            const label = DOC_TYPE_LABELS[f.type] || f.label || f.type;
+            result.files.push({ type: f.type, url: f.url, label });
+            seenUrls.add(f.url);
+          }
+        }
+        if (parsed.note) result.note = parsed.note;
+      } else if (Array.isArray(parsed)) {
+        for (const f of parsed) {
+          if (f.url && !seenUrls.has(f.url)) {
+            const label = DOC_TYPE_LABELS[f.type] || f.label || f.type;
+            result.files.push({ type: f.type, url: f.url, label });
+            seenUrls.add(f.url);
+          }
+        }
+      }
+    } catch {}
+  }
+  return result;
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  cnic_front: "CNIC Front",
+  cnic_back: "CNIC Back",
+  cnic: "CNIC Front",
+  driving_license: "Driving License",
+  vehicle_photo: "Vehicle Photo",
+};
+
 function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
   const correctionMutation = useRequestUserCorrection();
   const { toast } = useToast();
   const [corrField, setCorrField] = useState("");
   const [corrNote, setCorrNote]   = useState("");
   const [showCorrForm, setShowCorrForm] = useState(false);
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
 
-  const docs: { label: string; field: string; value: string | null }[] = [
-    { label: "CNIC Front", field: "cnicFront", value: user.cnicFrontUrl || null },
-    { label: "CNIC Back",  field: "cnicBack",  value: user.cnicBackUrl  || null },
-    { label: "Profile Photo", field: "profilePhoto", value: user.profilePhotoUrl || null },
-    { label: "Vehicle License", field: "vehicleLicense", value: user.vehicleLicenseUrl || null },
-  ].filter(d => d.value);
+  const parsed = parseUserDocuments(user);
+  const docs = parsed.files;
+  const riderNote = parsed.note;
+
+  const allChecked = ["cnic_legible", "photo_match", "details_correct", "not_expired"].every(k => checklist[k]);
 
   const handleRequestCorrection = () => {
     if (!user.id) return;
@@ -482,46 +523,104 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
         setShowCorrForm(false);
         onClose();
       },
-      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+      onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
   };
 
+  const toggleCheck = (key: string) => setChecklist(prev => ({ ...prev, [key]: !prev[key] }));
+
   return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-lg max-h-[85dvh] overflow-y-auto rounded-2xl">
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-blue-600" /> KYC Documents — {user.name || user.phone}
           </DialogTitle>
         </DialogHeader>
 
-        {docs.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground text-sm">No documents uploaded yet.</div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            {docs.map(doc => (
-              <div key={doc.field} className="space-y-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{doc.label}</p>
-                <a href={doc.value!} target="_blank" rel="noopener noreferrer" className="block">
-                  <img src={doc.value!} alt={doc.label} className="w-full h-28 object-cover rounded-xl border border-border/50 hover:opacity-80 transition-opacity" />
-                </a>
-              </div>
-            ))}
+        <div className="flex flex-wrap gap-3 mt-1">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
+            <span className="font-semibold text-muted-foreground">CNIC:</span>
+            <span className="font-mono">{user.cnic || "N/A"}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
+            <span className="font-semibold text-muted-foreground">Vehicle:</span>
+            <span>{user.vehicleType || "N/A"}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
+            <span className="font-semibold text-muted-foreground">Plate:</span>
+            <span className="font-mono">{user.vehiclePlate || user.vehicleRegNo || "N/A"}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
+            <span className="font-semibold text-muted-foreground">License #:</span>
+            <span className="font-mono">{user.drivingLicense || "N/A"}</span>
+          </div>
+        </div>
+
+        {riderNote && (
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <MessageSquare className="w-3.5 h-3.5" /> Rider's Note
+            </p>
+            <p className="text-sm text-blue-900 leading-relaxed">{riderNote}</p>
           </div>
         )}
 
-        {/* Verification Checklist */}
+        {docs.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground text-sm">
+            <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
+            No documents uploaded yet.
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mt-3 mb-1">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Uploaded Documents ({docs.length})
+              </p>
+              {docs.length < 4 && (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                  {4 - docs.length} missing
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {docs.map((doc, i) => (
+                <div key={`${doc.type}-${i}`} className="space-y-1 group">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {DOC_TYPE_LABELS[doc.type] || doc.label}
+                  </p>
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer" className="block relative rounded-xl overflow-hidden border border-border/50">
+                    <img src={doc.url} alt={doc.label} className="w-full h-32 object-cover group-hover:opacity-80 transition-opacity" />
+                    <span className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-medium">
+                      Click to zoom
+                    </span>
+                  </a>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="mt-4 space-y-2">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Verification Checklist</p>
-          {["CNIC legible and valid", "Photo matches ID", "Details correct (name, DOB)", "Documents not expired"].map(item => (
-            <label key={item} className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" className="w-4 h-4 rounded" />
-              <span>{item}</span>
+          {[
+            { key: "cnic_legible", label: "CNIC is legible and valid" },
+            { key: "photo_match", label: "Photo matches ID / person" },
+            { key: "details_correct", label: "Name, DOB, and details are correct" },
+            { key: "not_expired", label: "Documents are not expired" },
+          ].map(item => (
+            <label key={item.key} className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={!!checklist[item.key]} onChange={() => toggleCheck(item.key)} className="w-4 h-4 rounded accent-green-600" />
+              <span className={checklist[item.key] ? "text-green-700 font-medium" : ""}>{item.label}</span>
             </label>
           ))}
+          {allChecked && (
+            <p className="text-xs text-green-600 font-semibold flex items-center gap-1 mt-1">
+              <CheckCircle2 className="w-3.5 h-3.5" /> All checks passed — ready to approve
+            </p>
+          )}
         </div>
 
-        {/* Request Correction */}
         {!showCorrForm ? (
           <button onClick={() => setShowCorrForm(true)} className="mt-4 text-xs text-amber-600 flex items-center gap-1 hover:underline font-semibold">
             <AlertCircle className="w-3.5 h-3.5" /> Request document correction
@@ -531,12 +630,13 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
             <p className="text-xs font-bold text-amber-800">Request Correction</p>
             <select value={corrField} onChange={e => setCorrField(e.target.value)} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm">
               <option value="">Select document</option>
-              <option value="cnicFront">CNIC Front</option>
-              <option value="cnicBack">CNIC Back</option>
-              <option value="profilePhoto">Profile Photo</option>
-              <option value="vehicleLicense">Vehicle License</option>
+              <option value="cnic_front">CNIC Front</option>
+              <option value="cnic_back">CNIC Back</option>
+              <option value="driving_license">Driving License</option>
+              <option value="vehicle_photo">Vehicle Photo</option>
+              <option value="all">All Documents</option>
             </select>
-            <Input placeholder="Note to user..." value={corrNote} onChange={e => setCorrNote(e.target.value)} className="h-9 rounded-lg text-sm" />
+            <Input placeholder="Note to user (e.g., photo is blurry, CNIC not readable)..." value={corrNote} onChange={e => setCorrNote(e.target.value)} className="h-9 rounded-lg text-sm" />
             <div className="flex gap-2">
               <button onClick={() => setShowCorrForm(false)} className="flex-1 h-9 border border-border/50 rounded-lg text-xs font-semibold">Cancel</button>
               <button onClick={handleRequestCorrection} disabled={correctionMutation.isPending}
@@ -736,11 +836,28 @@ export default function Users() {
                       <p className="text-xs text-muted-foreground font-mono">{u.phone}</p>
                       {u.email && <p className="text-xs text-muted-foreground">· {u.email}</p>}
                       <Badge variant="outline" className={`text-[10px] capitalize px-1.5 border ${ROLE_COLORS[u.role] || ROLE_COLORS.customer}`}>{u.role || "customer"}</Badge>
+                      {(() => { const d = parseUserDocuments(u); return d.files.length > 0 ? (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${d.files.length >= 4 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                          {d.files.length} doc{d.files.length !== 1 ? "s" : ""}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">No docs</span>
+                      ); })()}
+                      {(() => { const d = parseUserDocuments(u); return d.note ? <MessageSquare className="w-3 h-3 text-blue-500" /> : null; })()}
                       <p className="text-xs text-amber-600">{formatDate(u.createdAt)}</p>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setKycUser(u)}
+                    className="h-8 px-3 border-blue-200 text-blue-600 hover:bg-blue-50 rounded-lg text-xs gap-1"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    Documents
+                  </Button>
                   <Button
                     size="sm"
                     onClick={() => handleApprove(u.id)}

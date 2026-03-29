@@ -128,8 +128,10 @@ export default function Register() {
 
   const [vehiclePhoto, setVehiclePhoto] = useState<UploadedDoc | null>(null);
   const [cnicPhoto, setCnicPhoto] = useState<UploadedDoc | null>(null);
+  const [cnicBackPhoto, setCnicBackPhoto] = useState<UploadedDoc | null>(null);
   const [licensePhoto, setLicensePhoto] = useState<UploadedDoc | null>(null);
   const [uploadingField, setUploadingField] = useState("");
+  const [registrationNote, setRegistrationNote] = useState("");
 
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -251,6 +253,9 @@ export default function Register() {
     if (!vehicleReg.trim()) { setError(T("vehicleRegRequired")); return false; }
     if (!drivingLicense.trim()) { setError(T("drivingLicenseRequired")); return false; }
     if (!vehiclePhoto) { setError("Vehicle photo is required. Please upload a clear photo of your vehicle."); return false; }
+    if (!cnicPhoto) { setError("CNIC front photo is required for KYC verification."); return false; }
+    if (!cnicBackPhoto) { setError("CNIC back photo is required for KYC verification."); return false; }
+    if (!licensePhoto) { setError("Driving license photo is required for verification."); return false; }
     return true;
   };
 
@@ -299,9 +304,12 @@ export default function Register() {
         })();
         setVerifyChannel(selectedChannel);
 
-        const docsArray: { type: string; url: string }[] = [];
-        if (cnicPhoto?.url) docsArray.push({ type: "cnic", url: cnicPhoto.url });
-        if (licensePhoto?.url) docsArray.push({ type: "driving_license", url: licensePhoto.url });
+        const docsPayload: { files: { type: string; url: string; label: string }[]; note?: string } = { files: [] };
+        if (cnicPhoto?.url) docsPayload.files.push({ type: "cnic_front", url: cnicPhoto.url, label: "CNIC Front" });
+        if (cnicBackPhoto?.url) docsPayload.files.push({ type: "cnic_back", url: cnicBackPhoto.url, label: "CNIC Back" });
+        if (licensePhoto?.url) docsPayload.files.push({ type: "driving_license", url: licensePhoto.url, label: "Driving License" });
+        if (vehiclePhoto?.url) docsPayload.files.push({ type: "vehicle_photo", url: vehiclePhoto.url, label: "Vehicle Photo" });
+        if (registrationNote.trim()) docsPayload.note = registrationNote.trim();
 
         const regData = {
           name: name.trim(),
@@ -318,7 +326,7 @@ export default function Register() {
           emergencyContact: emergencyContact.trim(),
           vehiclePlate: vehicleReg.trim(),
           vehiclePhoto: vehiclePhoto?.url || undefined,
-          documents: docsArray.length > 0 ? JSON.stringify(docsArray) : undefined,
+          documents: JSON.stringify(docsPayload),
           ...(username ? { username: username.trim() } : {}),
         };
         if (auth.phoneOtp) {
@@ -557,7 +565,7 @@ export default function Register() {
 
               <div className="border-t border-gray-100 pt-3 mt-1">
                 <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <Camera size={12} /> Photos & Documents
+                  <Camera size={12} /> KYC Documents <span className="text-red-500">*</span>
                 </p>
                 <div className="space-y-2">
                   <FileUploadBox
@@ -569,26 +577,51 @@ export default function Register() {
                     uploading={uploadingField === "vehicle"}
                   />
                   <FileUploadBox
-                    label="CNIC Photo (Front)"
+                    label="CNIC Front"
                     icon={<FileText size={20} className="text-blue-500" />}
                     value={cnicPhoto}
                     onChange={f => handleFileUpload(f, "cnic", setCnicPhoto)}
+                    required
                     uploading={uploadingField === "cnic"}
+                  />
+                  <FileUploadBox
+                    label="CNIC Back"
+                    icon={<FileText size={20} className="text-blue-400" />}
+                    value={cnicBackPhoto}
+                    onChange={f => handleFileUpload(f, "cnicBack", setCnicBackPhoto)}
+                    required
+                    uploading={uploadingField === "cnicBack"}
                   />
                   <FileUploadBox
                     label="Driving License Photo"
                     icon={<FileText size={20} className="text-purple-500" />}
                     value={licensePhoto}
                     onChange={f => handleFileUpload(f, "license", setLicensePhoto)}
+                    required
                     uploading={uploadingField === "license"}
                   />
                 </div>
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 mt-2 flex items-start gap-2">
                   <AlertCircle size={13} className="text-blue-500 flex-shrink-0 mt-0.5" />
                   <p className="text-[10px] text-blue-700 leading-relaxed">
-                    <strong>Vehicle photo is mandatory.</strong> Upload clear photos for faster admin approval. Documents will be verified before your account is activated.
+                    <strong>All 4 documents are mandatory.</strong> Upload clear, legible photos for faster admin approval. Your account will be activated after document verification.
                   </p>
                 </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-3 mt-1">
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block flex items-center gap-1">
+                  <FileText size={11} /> Additional Notes (Optional)
+                </label>
+                <textarea
+                  value={registrationNote}
+                  onChange={e => setRegistrationNote(e.target.value)}
+                  placeholder="Any additional information you'd like to share with the admin (e.g., experience, availability, preferred areas...)"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:bg-white transition-all resize-none"
+                  rows={3}
+                  maxLength={500}
+                />
+                <p className="text-[10px] text-gray-400 mt-1 text-right">{registrationNote.length}/500</p>
               </div>
             </div>
           )}
