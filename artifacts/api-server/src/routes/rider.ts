@@ -41,7 +41,15 @@ const orderStatusSchema = z.object({
 
 const rideStatusSchema = z.object({
   status: z.enum(["arrived", "in_transit", "completed", "cancelled"]),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
 });
+
+const RIDE_STATUS_TRANSITIONS: Record<string, string[]> = {
+  accepted:   ["arrived", "cancelled"],
+  arrived:    ["in_transit", "cancelled"],
+  in_transit: ["completed", "cancelled"],
+};
 
 const counterSchema = z.object({
   counterFare: z.number().positive(),
@@ -833,10 +841,43 @@ router.patch("/rides/:id/status", async (req, res) => {
   const parsed = rideStatusSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid status" }); return; }
   const riderId = req.riderId!;
-  const { status } = parsed.data;
+  const { status, lat, lng } = parsed.data;
 
   const [ride] = await db.select().from(ridesTable).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found or not yours" }); return; }
+
+  /* ── State Machine: enforce valid transitions ── */
+  const allowed = RIDE_STATUS_TRANSITIONS[ride.status];
+  if (!allowed || !allowed.includes(status)) {
+    res.status(400).json({ error: `Cannot transition from "${ride.status}" to "${status}". Allowed: ${(allowed || []).join(", ") || "none"}` }); return;
+  }
+
+  /* ── Proximity check: "arrived" requires rider to be near pickup ── */
+  if (status === "arrived" && ride.pickupLat && ride.pickupLng) {
+    const s = await getPlatformSettings();
+    const proximityM = parseFloat(s["dispatch_ride_start_proximity_m"] ?? "500");
+
+    /* Prefer server-stored live location (trusted) over client-supplied coords */
+    let riderLat: number | undefined;
+    let riderLng: number | undefined;
+    const [storedLoc] = await db.select().from(liveLocationsTable).where(eq(liveLocationsTable.userId, riderId)).limit(1);
+    if (storedLoc) {
+      riderLat = parseFloat(storedLoc.latitude);
+      riderLng = parseFloat(storedLoc.longitude);
+    } else if (lat != null && lng != null) {
+      riderLat = lat;
+      riderLng = lng;
+    }
+
+    if (riderLat == null || riderLng == null) {
+      res.status(400).json({ error: "Unable to verify your location. Please enable GPS and try again." }); return;
+    }
+
+    const distKm = calcDistance(riderLat, riderLng, parseFloat(ride.pickupLat), parseFloat(ride.pickupLng));
+    if (distKm * 1000 > proximityM) {
+      res.status(400).json({ error: `You must be within ${proximityM}m of the pickup location to mark arrived. Current distance: ${(distKm * 1000).toFixed(0)}m` }); return;
+    }
+  }
 
   /* Include riderId in WHERE to close TOCTOU between ownership check and update */
   const [updated] = await db.update(ridesTable).set({ status, updatedAt: new Date() }).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).returning();

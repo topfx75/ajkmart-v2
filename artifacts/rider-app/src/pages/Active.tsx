@@ -281,7 +281,8 @@ export default function Active() {
   });
 
   const updateRideMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => api.updateRide(id, status),
+    mutationFn: ({ id, status, lat, lng }: { id: string; status: string; lat?: number; lng?: number }) =>
+      api.updateRide(id, status, lat != null && lng != null ? { lat, lng } : undefined),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["rider-active"] });
       qc.invalidateQueries({ queryKey: ["rider-history"] });
@@ -722,7 +723,17 @@ export default function Active() {
               <div className="flex gap-2 pt-1">
                 {ride.status === "accepted" && (
                   <button
-                    onClick={() => updateRideMut.mutate({ id: ride.id, status: "arrived" })}
+                    onClick={() => {
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => updateRideMut.mutate({ id: ride.id, status: "arrived", lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                          () => updateRideMut.mutate({ id: ride.id, status: "arrived" }),
+                          { enableHighAccuracy: true, timeout: 5000 }
+                        );
+                      } else {
+                        updateRideMut.mutate({ id: ride.id, status: "arrived" });
+                      }
+                    }}
                     disabled={updateRideMut.isPending}
                     onTouchStart={() => setPressedBtn("arrived")} onTouchEnd={() => setPressedBtn(null)}
                     className={`flex-1 bg-gray-900 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg transition-transform ${pressedBtn === "arrived" ? "scale-[0.97]" : ""}`}>

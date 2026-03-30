@@ -95,6 +95,8 @@ The project is structured as a pnpm monorepo using TypeScript. The frontend leve
 - **Notification Sound:** Professional 8-tone double-burst in `notificationSound.ts`. Silence mode API: `silenceFor(minutes)`, `isSilenced()`, `unsilence()`, `getSilenceRemaining()` using localStorage. Rider App Home shows mute button with 15/30/60min duration picker.
 - **Customer App Theme:** Ride tracker searching screen uses rider app dark theme (gray-900 gradient, green accents) for consistent brand experience.
 - **Dispatch Status:** `GET /rides/:id/status` returns dispatch metadata (loop count, attempts, expiry) for customer polling.
+- **Ride State Machine:** `RIDE_STATUS_TRANSITIONS` map in `rider.ts` enforces valid status transitions: `accepted→[arrived,cancelled]`, `arrived→[in_transit,cancelled]`, `in_transit→[completed,cancelled]`. Prevents status jumps (e.g. `accepted→completed` is blocked).
+- **Arrival Proximity Validation:** When a rider marks "arrived", the server validates their GPS distance from the pickup point using Haversine formula against `dispatch_ride_start_proximity_m` (default 500m). Prefers server-stored `live_locations` (trusted) over client-supplied coordinates. Rejects if no location is available or distance exceeds threshold.
 
 ### Accordion Components
 - **Customer App (Expo):** Custom `Accordion` component at `artifacts/ajkmart/components/Accordion.tsx` with animated chevron rotation, `LayoutAnimation` transitions, icon/badge support. `AccordionGroup` wrapper for grouped sections. Used in: Profile (Help & Support sections), Privacy Modal (Notification/Privacy/Security/Account sections), Orders (expandable item lists on OrderCard and PharmacyCard).
