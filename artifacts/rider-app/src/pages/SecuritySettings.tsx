@@ -1,21 +1,90 @@
 import { useState, useCallback } from "react";
 import { Link } from "wouter";
-import { api } from "../lib/api";
+import { api, apiFetch } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { useAuth } from "../lib/auth";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { TwoFactorSetup, TwoFactorVerify } from "@workspace/auth-utils";
 import {
-  ArrowLeft, Shield, ShieldCheck, ShieldOff, Loader2,
+  ArrowLeft, Shield, ShieldCheck, ShieldOff, Loader2, Lock, Eye, EyeOff,
 } from "lucide-react";
+
+function PasswordChangeSection({ token, showToastFn, T }: { token: string | null; showToastFn: (msg: string) => void; T: (key: TranslationKey) => string }) {
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState("");
+
+  const handleChangePassword = async () => {
+    setPwError("");
+    if (!newPw || newPw.length < 8) { setPwError("Password must be at least 8 characters"); return; }
+    if (newPw !== confirmPw) { setPwError("Passwords do not match"); return; }
+    setPwLoading(true);
+    try {
+      await apiFetch("/auth/set-password", {
+        method: "POST",
+        body: JSON.stringify({ token, password: newPw, currentPassword: currentPw || undefined }),
+      });
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      showToastFn("Password updated successfully");
+    } catch (e: unknown) {
+      setPwError(e instanceof Error ? e.message : "Failed to change password");
+    }
+    setPwLoading(false);
+  };
+
+  return (
+    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
+      <div className="flex items-start gap-4 mb-4">
+        <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+          <Lock size={24} className="text-blue-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[15px] font-bold text-gray-900">{T("password")}</h3>
+          <p className="text-xs text-gray-500 mt-1 leading-relaxed">Change your account password</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="relative">
+          <input type={showCurrent ? "text" : "password"} value={currentPw} onChange={e => setCurrentPw(e.target.value)}
+            placeholder="Current password (if set)" className="w-full h-11 px-4 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:bg-white transition-all" />
+          <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+            {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        <div className="relative">
+          <input type={showNew ? "text" : "password"} value={newPw} onChange={e => setNewPw(e.target.value)}
+            placeholder="New password" className="w-full h-11 px-4 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:bg-white transition-all" />
+          <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+            {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+          placeholder="Confirm new password" className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:bg-white transition-all" />
+
+        {pwError && <p className="text-red-500 text-xs bg-red-50 rounded-lg px-3 py-2">{pwError}</p>}
+
+        <button onClick={handleChangePassword} disabled={pwLoading || !newPw}
+          className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+          {pwLoading ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
+          {pwLoading ? T("pleaseWait") : "Update Password"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type ViewState = "main" | "setup" | "verify-disable";
 
 export default function SecuritySettings() {
   const { config } = usePlatformConfig();
   const { language } = useLanguage();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const T = (key: TranslationKey) => tDual(key, language);
 
   const [view, setView] = useState<ViewState>("main");
@@ -158,6 +227,8 @@ export default function SecuritySettings() {
       </div>
 
       <div className="px-4 mt-4 space-y-4 max-w-md mx-auto">
+        <PasswordChangeSection token={token} showToastFn={showToast} T={T} />
+
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-start gap-4">
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${is2faEnabled ? "bg-green-100" : "bg-gray-100"}`}>

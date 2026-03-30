@@ -273,7 +273,6 @@ export default function Home() {
       stopRequestSound();
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
       qc.invalidateQueries({ queryKey: ["rider-active"] });
-      logRideEvent(id, "accepted");
       showToast("Order accepted! Check Active tab.", "success");
     },
     onError: (e: any) => {
@@ -343,7 +342,16 @@ export default function Home() {
   };
 
   const getDeliveryEarn = (type: string) => {
-    const fee = (config.deliveryFee as Record<string, unknown>)[type] as number ?? config.deliveryFee.mart;
+    const df = config.deliveryFee;
+    let fee: number;
+    if (typeof df === "number") {
+      fee = df;
+    } else if (df && typeof df === "object") {
+      const raw = (df as Record<string, unknown>)[type] ?? (df as Record<string, unknown>).mart ?? 0;
+      fee = typeof raw === "number" ? raw : parseFloat(String(raw)) || 0;
+    } else {
+      fee = parseFloat(String(df)) || 0;
+    }
     return fee * (config.finance.riderEarningPct / 100);
   };
 

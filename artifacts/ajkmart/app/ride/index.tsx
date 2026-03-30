@@ -852,7 +852,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
               {ride.riderLat != null && ride.riderLng != null && ride.pickupLat != null && (status === "accepted" || status === "arrived") && (() => {
                 const km = haversineKm(ride.riderLat, ride.riderLng, ride.pickupLat, ride.pickupLng);
                 const nearby = km < 0.2;
-                const stale  = ride.riderLocAge != null && ride.riderLocAge > 60;
+                const stale  = ride.riderLocAge != null && ride.riderLocAge > 90;
                 return (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: nearby ? "#F0FDF4" : "#EFF6FF", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 14, borderWidth: 1, borderColor: nearby ? "#D1FAE5" : "#DBEAFE" }}>
                     <Ionicons name={nearby ? "location" : "navigate-outline"} size={16} color={nearby ? "#10B981" : C.primary} />

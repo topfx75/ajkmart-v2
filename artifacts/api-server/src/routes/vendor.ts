@@ -172,11 +172,19 @@ router.get("/orders", async (req, res) => {
   const conditions: any[] = [eq(ordersTable.vendorId, vendorId)];
   if (status && status !== "all") {
     if (status === "new") conditions.push(or(eq(ordersTable.status, "pending"), eq(ordersTable.status, "confirmed")));
-    else if (status === "active") conditions.push(or(eq(ordersTable.status, "preparing"), eq(ordersTable.status, "ready")));
+    else if (status === "active") conditions.push(or(eq(ordersTable.status, "preparing"), eq(ordersTable.status, "ready"), eq(ordersTable.status, "picked_up"), eq(ordersTable.status, "out_for_delivery")));
     else conditions.push(eq(ordersTable.status, status));
   }
-  const orders = await db.select().from(ordersTable).where(and(...conditions)).orderBy(desc(ordersTable.createdAt)).limit(100);
-  res.json({ orders: orders.map(o => ({ ...o, total: safeNum(o.total) })) });
+  const orders = await db.select({
+    order: ordersTable,
+    riderName: usersTable.name,
+    riderPhone: usersTable.phone,
+  }).from(ordersTable)
+    .leftJoin(usersTable, eq(ordersTable.riderId, usersTable.id))
+    .where(and(...conditions))
+    .orderBy(desc(ordersTable.createdAt))
+    .limit(100);
+  res.json({ orders: orders.map(row => ({ ...row.order, total: safeNum(row.order.total), riderName: row.riderName ?? undefined, riderPhone: row.riderPhone ?? undefined })) });
 });
 
 /* ── PATCH /vendor/orders/:id/status ── */

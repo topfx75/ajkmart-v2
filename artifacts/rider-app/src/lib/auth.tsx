@@ -4,10 +4,12 @@ import { api } from "./api";
 interface AuthUser {
   id: string; phone: string; name?: string; email?: string;
   avatar?: string; isOnline: boolean; walletBalance: number;
+  isRestricted?: boolean;
   createdAt?: string; lastLoginAt?: string;
   stats: { deliveriesToday: number; earningsToday: number; totalDeliveries: number; totalEarnings: number; rating?: number };
   cnic?: string; city?: string; address?: string; emergencyContact?: string;
   vehicleType?: string; vehiclePlate?: string;
+  vehicleRegNo?: string; drivingLicense?: string;
   bankName?: string; bankAccount?: string; bankAccountTitle?: string;
   twoFactorEnabled?: boolean;
 }

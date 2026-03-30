@@ -32,6 +32,7 @@ type ProfilePayload = {
   name?: string; email?: string; cnic?: string; city?: string;
   address?: string; emergencyContact?: string;
   vehicleType?: string; vehiclePlate?: string;
+  vehicleRegNo?: string; drivingLicense?: string;
   bankName?: string; bankAccount?: string; bankAccountTitle?: string;
 };
 
@@ -131,8 +132,10 @@ export default function Profile() {
   const [address, setAddress]       = useState(user?.address || "");
   const [emergency, setEmergency]   = useState(user?.emergencyContact || "");
 
-  const [vehicleType, setVehicleType]   = useState(user?.vehicleType || "");
-  const [vehiclePlate, setVehiclePlate] = useState(user?.vehiclePlate || "");
+  const [vehicleType, setVehicleType]       = useState(user?.vehicleType || "");
+  const [vehiclePlate, setVehiclePlate]     = useState(user?.vehiclePlate || "");
+  const [vehicleRegNo, setVehicleRegNo]     = useState(user?.vehicleRegNo || "");
+  const [drivingLicense, setDrivingLicense] = useState(user?.drivingLicense || "");
 
   const [bankName, setBankName]               = useState(user?.bankName || "");
   const [bankAccount, setBankAccount]         = useState(user?.bankAccount || "");
@@ -183,6 +186,7 @@ export default function Profile() {
       setCity(user?.city || ""); setAddress(user?.address || ""); setEmergency(user?.emergencyContact || "");
     } else if (section === "vehicle") {
       setVehicleType(user?.vehicleType || ""); setVehiclePlate(user?.vehiclePlate || "");
+      setVehicleRegNo(user?.vehicleRegNo || ""); setDrivingLicense(user?.drivingLicense || "");
     } else if (section === "bank") {
       setBankName(user?.bankName || ""); setBankAccount(user?.bankAccount || ""); setBankAccountTitle(user?.bankAccountTitle || "");
     }
@@ -204,7 +208,7 @@ export default function Profile() {
         }
         Object.assign(payload, { name, email, cnic: cnic.trim(), city, address, emergencyContact: emergency });
       }
-      if (section === "vehicle")  Object.assign(payload, { vehicleType, vehiclePlate });
+      if (section === "vehicle")  Object.assign(payload, { vehicleType, vehiclePlate, vehicleRegNo, drivingLicense });
       if (section === "bank")     Object.assign(payload, { bankName, bankAccount, bankAccountTitle });
       await api.updateProfile(payload);
       await refreshUser();
@@ -539,6 +543,14 @@ export default function Profile() {
                       <label className={LABEL}>{T("vehiclePlateRequired")}</label>
                       <input value={vehiclePlate} onChange={e => setVehiclePlate(e.target.value)} placeholder="ABC-1234" className={INPUT}/>
                     </div>
+                    <div>
+                      <label className={LABEL}>Vehicle Registration No.</label>
+                      <input value={vehicleRegNo} onChange={e => setVehicleRegNo(e.target.value)} placeholder="REG-12345" className={INPUT}/>
+                    </div>
+                    <div>
+                      <label className={LABEL}>Driving License No.</label>
+                      <input value={drivingLicense} onChange={e => setDrivingLicense(e.target.value)} placeholder="DL-12345678" className={INPUT}/>
+                    </div>
                     <button onClick={() => saveSection("vehicle")} disabled={saving}
                       className="w-full h-12 bg-gray-900 text-white font-bold rounded-xl disabled:opacity-60 flex items-center justify-center gap-2 active:bg-gray-800 transition-colors shadow-sm">
                       {saving ? <><RefreshCcw size={15} className="animate-spin"/> {T("saving")}</> : <><CheckCircle size={15}/> {T("saveChangesBtn")}</>}
@@ -554,11 +566,25 @@ export default function Profile() {
                       </div>
                       <p className="text-xl font-extrabold tracking-wide mb-1">{user.vehiclePlate || "---"}</p>
                       <p className="text-sm text-gray-300 font-medium">{user.vehicleType}</p>
-                      <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
-                        <span className="text-[10px] text-gray-400">{T("plateNumber")}</span>
-                        <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                          <CheckCircle size={9}/> {T("activeVerified")}
-                        </span>
+                      <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-gray-400">{T("plateNumber")}</span>
+                          <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            <CheckCircle size={9}/> {T("activeVerified")}
+                          </span>
+                        </div>
+                        {user.vehicleRegNo && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400">Reg. No.</span>
+                            <span className="text-[10px] text-gray-300 font-medium">{user.vehicleRegNo}</span>
+                          </div>
+                        )}
+                        {user.drivingLicense && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400">License</span>
+                            <span className="text-[10px] text-gray-300 font-medium">{user.drivingLicense}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

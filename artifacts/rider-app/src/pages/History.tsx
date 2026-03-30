@@ -26,6 +26,8 @@ type HistoryItem = {
 export default function History() {
   const [period, setPeriod]   = useState<FilterPeriod>("all");
   const [kind,   setKind]     = useState<FilterKind>("all");
+  const [visibleCount, setVisibleCount] = useState(20);
+  const PAGE_SIZE = 20;
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
 
@@ -48,6 +50,9 @@ export default function History() {
     if (kind === "ride"    && item.kind !== "ride")  return false;
     return true;
   });
+
+  const visibleItems = filtered.slice(0, visibleCount);
+  const hasMore = visibleCount < filtered.length;
 
   const totalEarnings  = filtered.reduce((s, i) => s + (i.earnings || 0), 0);
   const completedItems = filtered.filter(i => i.status === "delivered" || i.status === "completed");
@@ -109,7 +114,7 @@ export default function History() {
       <div className="px-4 pt-4 space-y-3 sticky top-0 bg-[#F5F6F8] pb-2 z-10">
         <div className="flex bg-white rounded-full p-1 shadow-sm gap-1 border border-gray-100">
           {PERIOD_TABS.map(tab => (
-            <button key={tab.key} onClick={() => setPeriod(tab.key)}
+            <button key={tab.key} onClick={() => { setPeriod(tab.key); setVisibleCount(PAGE_SIZE); }}
               className={`flex-1 py-2.5 text-xs font-bold rounded-full transition-all ${period === tab.key ? "bg-gray-900 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
               {tab.label}
             </button>
@@ -117,7 +122,7 @@ export default function History() {
         </div>
         <div className="flex gap-2">
           {KIND_TABS.map(tab => (
-            <button key={tab.key} onClick={() => setKind(tab.key)}
+            <button key={tab.key} onClick={() => { setKind(tab.key); setVisibleCount(PAGE_SIZE); }}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all ${kind === tab.key ? "bg-gray-900 text-white shadow-sm" : "bg-white text-gray-500 border border-gray-200"}`}>
               {tab.icon} {tab.label}
             </button>
@@ -139,48 +144,77 @@ export default function History() {
             </p>
           </div>
         ) : (
-          filtered.map((item: HistoryItem) => {
-            const completed = item.status === "delivered" || item.status === "completed";
-            const cancelled = item.status === "cancelled";
-            return (
-              <div key={item.id} className="bg-white rounded-3xl shadow-sm overflow-hidden border border-gray-100">
-                <div className="p-4 flex items-center gap-3.5">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${item.kind === "ride" ? "bg-green-50" : "bg-blue-50"}`}>
-                    <ItemIcon kind={item.kind} type={item.type}/>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-800 capitalize text-[15px]">
-                      {item.kind === "ride" ? `${item.type} ${T("ride")}` : `${item.type} ${T("deliveryLabel")}`}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">{item.address || "—"}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">{formatDate(item.createdAt)}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    {completed ? (
-                      <p className="font-extrabold text-green-600 text-[15px]">+{formatCurrency(item.earnings || 0)}</p>
-                    ) : (
-                      <p className="font-bold text-gray-400">{formatCurrency(item.amount || 0)}</p>
+          (() => {
+            const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+            const getGroup = (d: Date) => {
+              if (d >= todayStart) return T("today");
+              if (d >= yesterdayStart) return "Yesterday";
+              if (d >= weekStart) return T("thisWeek");
+              return "Earlier";
+            };
+            let lastGroup = "";
+            return visibleItems.map((item: HistoryItem) => {
+              const d = new Date(item.createdAt);
+              const group = getGroup(d);
+              const showHeader = group !== lastGroup;
+              lastGroup = group;
+              const completed = item.status === "delivered" || item.status === "completed";
+              const cancelled = item.status === "cancelled";
+              return (
+                <div key={item.id}>
+                  {showHeader && (
+                    <div className="flex items-center gap-2 pt-2 pb-1">
+                      <Calendar size={12} className="text-gray-400"/>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{group}</p>
+                      <div className="flex-1 h-px bg-gray-200"/>
+                    </div>
+                  )}
+                  <div className="bg-white rounded-3xl shadow-sm overflow-hidden border border-gray-100">
+                    <div className="p-4 flex items-center gap-3.5">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${item.kind === "ride" ? "bg-green-50" : "bg-blue-50"}`}>
+                        <ItemIcon kind={item.kind} type={item.type}/>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-800 capitalize text-[15px]">
+                          {item.kind === "ride" ? `${item.type} ${T("ride")}` : `${item.type} ${T("deliveryLabel")}`}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate mt-0.5">{item.address || "—"}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{formatDate(item.createdAt)}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        {completed ? (
+                          <p className="font-extrabold text-green-600 text-[15px]">+{formatCurrency(item.earnings || 0)}</p>
+                        ) : (
+                          <p className="font-bold text-gray-400">{formatCurrency(item.amount || 0)}</p>
+                        )}
+                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full mt-1 inline-block ${
+                          completed  ? "bg-green-100 text-green-700" :
+                          cancelled  ? "bg-red-100 text-red-600"     :
+                                       "bg-gray-100 text-gray-600"
+                        }`}>
+                          {item.status.replace(/_/g, " ").toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                    {completed && item.earnings > 0 && (
+                      <div className="px-4 pb-3">
+                        <div className="bg-green-50 rounded-xl px-3.5 py-2 flex items-center justify-between border border-green-100">
+                          <span className="text-xs text-green-600 font-medium flex items-center gap-1.5"><CreditCard size={12}/> {T("earningsCredited")}</span>
+                          <span className="text-xs font-extrabold text-green-700">{formatCurrency(item.earnings)}</span>
+                        </div>
+                      </div>
                     )}
-                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full mt-1 inline-block ${
-                      completed  ? "bg-green-100 text-green-700" :
-                      cancelled  ? "bg-red-100 text-red-600"     :
-                                   "bg-gray-100 text-gray-600"
-                    }`}>
-                      {item.status.replace(/_/g, " ").toUpperCase()}
-                    </span>
                   </div>
                 </div>
-                {completed && item.earnings > 0 && (
-                  <div className="px-4 pb-3">
-                    <div className="bg-green-50 rounded-xl px-3.5 py-2 flex items-center justify-between border border-green-100">
-                      <span className="text-xs text-green-600 font-medium flex items-center gap-1.5"><CreditCard size={12}/> {T("earningsCredited")}</span>
-                      <span className="text-xs font-extrabold text-green-700">{formatCurrency(item.earnings)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
+              );
+            });
+          })()
+        )}
+        {!isLoading && hasMore && (
+          <button onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+            className="w-full py-3 text-sm font-bold text-gray-600 bg-white rounded-2xl border border-gray-200 shadow-sm active:bg-gray-50 transition-colors">
+            Show more ({filtered.length - visibleCount} remaining)
+          </button>
         )}
       </div>
     </div>

@@ -30,12 +30,14 @@ const NEXT_KEYS: Record<string, { next: string; labelKey: TranslationKey; bg: st
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  pending:   "bg-yellow-100 text-yellow-700",
-  confirmed: "bg-blue-100 text-blue-700",
-  preparing: "bg-purple-100 text-purple-700",
-  ready:     "bg-indigo-100 text-indigo-700",
-  delivered: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-600",
+  pending:          "bg-yellow-100 text-yellow-700",
+  confirmed:        "bg-blue-100 text-blue-700",
+  preparing:        "bg-purple-100 text-purple-700",
+  ready:            "bg-indigo-100 text-indigo-700",
+  picked_up:        "bg-cyan-100 text-cyan-700",
+  out_for_delivery: "bg-teal-100 text-teal-700",
+  delivered:        "bg-green-100 text-green-700",
+  cancelled:        "bg-red-100 text-red-600",
 };
 
 const ORDER_ICON: Record<string, string> = { food: "🍔", mart: "🛒", pharmacy: "💊", parcel: "📦" };
@@ -222,11 +224,23 @@ export default function Orders() {
                           <p className="text-sm text-gray-600 leading-relaxed">{o.deliveryAddress}</p>
                         </div>
                       )}
+                      {o.riderName && (
+                        <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-50">
+                          <span className="text-base">🏍️</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-700 font-semibold">{o.riderName}</p>
+                            {o.riderPhone && <p className="text-xs text-gray-400">{o.riderPhone}</p>}
+                          </div>
+                          {o.riderPhone && (
+                            <a href={`tel:${o.riderPhone}`} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200">📞 Call</a>
+                          )}
+                        </div>
+                      )}
                       <div className="px-4 py-3 flex items-center gap-2 border-t border-gray-50">
                         <span className="text-base">💳</span>
                         <p className="text-sm text-gray-600 capitalize font-medium">{o.paymentMethod || T("cashOnDelivery")}</p>
                       </div>
-                      {next && (
+                      {next && !["picked_up", "out_for_delivery"].includes(o.status) && (
                         <div className="px-4 pb-4 pt-2 flex gap-2">
                           <button onClick={() => updateMut.mutate({ id: o.id, status: next.next })} disabled={updateMut.isPending}
                             className={`flex-1 h-11 ${next.bg} font-bold rounded-xl text-sm android-press disabled:opacity-60`}>

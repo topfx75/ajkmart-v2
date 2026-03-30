@@ -32,6 +32,8 @@ const ORDER_STATUS: Record<string, { color: string; bg: string; icon: string; la
   pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",            labelKey: "pending" },
   confirmed:        { color: "#2563EB", bg: "#DBEAFE", icon: "checkmark-circle-outline", labelKey: "confirmed" },
   preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",            labelKey: "preparing" },
+  ready:            { color: "#6366F1", bg: "#E0E7FF", icon: "bag-check-outline",       labelKey: "confirmed" },
+  picked_up:        { color: "#0891B2", bg: "#CFFAFE", icon: "cube-outline",            labelKey: "onTheWay" },
   out_for_delivery: { color: "#059669", bg: "#D1FAE5", icon: "bicycle-outline",          labelKey: "onTheWay" },
   delivered:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   labelKey: "delivered" },
   cancelled:        { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",     labelKey: "cancelled" },

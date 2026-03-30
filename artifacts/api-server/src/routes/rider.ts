@@ -22,6 +22,8 @@ const profileSchema = z.object({
   emergencyContact: z.string().optional(),
   vehicleType: z.string().optional(),
   vehiclePlate: z.string().optional(),
+  vehicleRegNo: z.string().optional(),
+  drivingLicense: z.string().optional(),
   bankName: z.string().optional(),
   bankAccount: z.string().optional(),
   bankAccountTitle: z.string().optional(),
@@ -30,7 +32,7 @@ const profileSchema = z.object({
 
 const MAX_PROOF_PHOTO_BYTES = 5 * 1024 * 1024;
 const orderStatusSchema = z.object({
-  status: z.enum(["out_for_delivery", "delivered", "cancelled"]),
+  status: z.enum(["out_for_delivery", "picked_up", "delivered", "cancelled"]),
   proofPhoto: z.string()
     .refine(v => v.startsWith("data:image/"), "proofPhoto must be a base64 data URI (data:image/...)")
     .refine(v => v.length <= MAX_PROOF_PHOTO_BYTES, "proofPhoto exceeds 5 MB limit")
@@ -92,7 +94,9 @@ async function riderAuth(req: Request, res: Response, next: NextFunction) {
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ error: "User not found" }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account is inactive" }); return; }
+  if (!user.isActive && !(user.isRestricted || (user.cancelCount ?? 0) > 0)) {
+    res.status(403).json({ error: "Account is inactive" }); return;
+  }
   if (user.isBanned) { res.status(403).json({ error: "Account is banned" }); return; }
 
   /* Enforce rider role — check BOTH the JWT claim and the DB roles field */
@@ -137,13 +141,18 @@ router.get("/me", async (req, res) => {
   const totalDeliveries = (ordersAllStats[0]?.c ?? 0) + (ridesAllStats[0]?.c ?? 0);
   const totalEarnings   = (safeNum(ordersAllStats[0]?.s) + safeNum(ridesAllStats[0]?.s)) * riderKeepPct;
 
+  const [ratingRow] = await db.select({ avg: avg(reviewsTable.rating) }).from(reviewsTable).where(eq(reviewsTable.riderId, riderId));
+  const avgRating = ratingRow?.avg ? parseFloat(parseFloat(String(ratingRow.avg)).toFixed(1)) : null;
+
   res.json({
     id: user.id, phone: user.phone, name: user.name, email: user.email,
     avatar: user.avatar, isOnline: user.isOnline,
+    isRestricted: user.isRestricted ?? (!user.isActive && (user.cancelCount ?? 0) > 0),
     walletBalance: safeNum(user.walletBalance),
     cnic: user.cnic, address: user.address, city: user.city,
     emergencyContact: user.emergencyContact,
     vehicleType: user.vehicleType, vehiclePlate: user.vehiclePlate,
+    vehicleRegNo: user.vehicleRegNo, drivingLicense: user.drivingLicense,
     bankName: user.bankName, bankAccount: user.bankAccount, bankAccountTitle: user.bankAccountTitle,
     twoFactorEnabled: !!user.totpEnabled,
     lastLoginAt: user.lastLoginAt, createdAt: user.createdAt,
@@ -152,6 +161,7 @@ router.get("/me", async (req, res) => {
       earningsToday:   parseFloat(earningsToday.toFixed(2)),
       totalDeliveries,
       totalEarnings:   parseFloat(totalEarnings.toFixed(2)),
+      rating: avgRating,
     },
   });
 });
@@ -171,7 +181,7 @@ router.patch("/profile", async (req, res) => {
   const parsed = profileSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
   const riderId = req.riderId!;
-  const { name, email, cnic, address, city, emergencyContact, vehicleType, vehiclePlate, bankName, bankAccount, bankAccountTitle, avatar } = parsed.data;
+  const { name, email, cnic, address, city, emergencyContact, vehicleType, vehiclePlate, vehicleRegNo, drivingLicense, bankName, bankAccount, bankAccountTitle, avatar } = parsed.data;
   const updates: any = { updatedAt: new Date() };
   if (name             !== undefined) updates.name             = name;
   if (email            !== undefined) updates.email            = email;
@@ -181,6 +191,8 @@ router.patch("/profile", async (req, res) => {
   if (emergencyContact !== undefined) updates.emergencyContact = emergencyContact;
   if (vehicleType      !== undefined) updates.vehicleType      = vehicleType;
   if (vehiclePlate     !== undefined) updates.vehiclePlate     = vehiclePlate;
+  if (vehicleRegNo     !== undefined) updates.vehicleRegNo     = vehicleRegNo;
+  if (drivingLicense   !== undefined) updates.drivingLicense   = drivingLicense;
   if (bankName         !== undefined) updates.bankName         = bankName;
   if (bankAccount      !== undefined) updates.bankAccount      = bankAccount;
   if (bankAccountTitle !== undefined) updates.bankAccountTitle = bankAccountTitle;
@@ -199,6 +211,7 @@ router.patch("/profile", async (req, res) => {
     cnic: user.cnic, address: user.address, city: user.city,
     emergencyContact: user.emergencyContact,
     vehicleType: user.vehicleType, vehiclePlate: user.vehiclePlate,
+    vehicleRegNo: user.vehicleRegNo, drivingLicense: user.drivingLicense,
     bankName: user.bankName, bankAccount: user.bankAccount, bankAccountTitle: user.bankAccountTitle,
     createdAt: user.createdAt, lastLoginAt: user.lastLoginAt,
   });
@@ -331,7 +344,12 @@ router.post("/orders/:id/accept", async (req, res) => {
   const paramParsed = idParamSchema.safeParse(req.params);
   if (!paramParsed.success) { res.status(400).json({ error: "Invalid order ID" }); return; }
   const riderId   = req.riderId!;
+  const riderUser = req.riderUser!;
   const orderId   = paramParsed.data.id;
+
+  if (riderUser.isRestricted) {
+    res.status(403).json({ error: "Your account is restricted. You cannot accept new orders. Contact support for assistance." }); return;
+  }
 
   const s = await getPlatformSettings();
 
@@ -454,7 +472,7 @@ async function handleCancelPenalty(riderId: string): Promise<{ dailyCancels: num
 
     if (restrictEnabled) {
       await db.update(usersTable)
-        .set({ isActive: false, updatedAt: new Date() })
+        .set({ isRestricted: true, updatedAt: new Date() })
         .where(eq(usersTable.id, riderId));
       restricted = true;
     }
@@ -680,6 +698,10 @@ router.post("/rides/:id/accept", async (req, res) => {
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const rideId    = paramParsed.data.id;
+
+  if (riderUser.isRestricted) {
+    res.status(403).json({ error: "Your account is restricted. You cannot accept new rides. Contact support for assistance." }); return;
+  }
 
   // Check max simultaneous deliveries limit
   const s = await getPlatformSettings();
@@ -1477,7 +1499,7 @@ async function handleIgnorePenalty(riderId: string): Promise<{ dailyIgnores: num
 
     if (restrictEnabled) {
       await db.update(usersTable)
-        .set({ isActive: false, updatedAt: new Date() })
+        .set({ isRestricted: true, updatedAt: new Date() })
         .where(eq(usersTable.id, riderId));
       restricted = true;
     }

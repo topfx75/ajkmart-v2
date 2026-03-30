@@ -119,6 +119,7 @@ export default function Register() {
 
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
+  const [customCity, setCustomCity] = useState("");
   const [emergencyContact, setEmergencyContact] = useState("");
 
   const [cnic, setCnic] = useState("");
@@ -238,6 +239,7 @@ export default function Register() {
     if (!email || !email.includes("@")) { setError(T("enterValidEmail")); return false; }
     if (!address.trim()) { setError("Home address is required"); return false; }
     if (!city) { setError("Please select your city"); return false; }
+    if (city === "Other" && !customCity.trim()) { setError("Please enter your city name"); return false; }
     if (!emergencyContact.trim() || emergencyContact.replace(/\D/g, "").length < 10) {
       setError("Valid emergency contact number is required"); return false;
     }
@@ -322,7 +324,7 @@ export default function Register() {
           password,
           captchaToken,
           address: address.trim(),
-          city: city.trim(),
+          city: city === "Other" ? customCity.trim() : city.trim(),
           emergencyContact: emergencyContact.trim(),
           vehiclePlate: vehicleReg.trim(),
           vehiclePhoto: vehiclePhoto?.url || undefined,
@@ -459,6 +461,10 @@ export default function Register() {
                   <option value="">Select your city</option>
                   {AJK_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
+                {city === "Other" && (
+                  <input value={customCity} onChange={e => setCustomCity(e.target.value)}
+                    placeholder="Enter your city name" className={`${INPUT} mt-2`} />
+                )}
               </div>
               <div>
                 <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block flex items-center gap-1">

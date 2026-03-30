@@ -263,7 +263,6 @@ export default function Active() {
       qc.invalidateQueries({ queryKey: ["rider-history"] });
       qc.invalidateQueries({ queryKey: ["rider-earnings"] });
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
-      logRideEvent(vars.id, `order_${vars.status}`);
       if (vars.status === "delivered") {
         sessionStorage.removeItem("orderPickedUp");
         setProofPhoto(null);
@@ -326,7 +325,10 @@ export default function Active() {
     </div>
   );
 
-  const orderStep = orderPickedUp ? 1 : 0;
+  const orderStep = !order ? 0
+    : order.status === "delivered" ? 2
+    : (order.status === "picked_up" || orderPickedUp) ? 1
+    : 0;
   const rideStep  = ride ? RIDE_STEPS.indexOf(ride.status) : -1;
   const startedAt = order?.acceptedAt || order?.updatedAt || ride?.acceptedAt || ride?.updatedAt || null;
 
@@ -481,12 +483,12 @@ export default function Active() {
                   )}
 
                   <div className="grid grid-cols-2 gap-2">
-                    <NavButton label={T("goToStore")} address={order.vendorStoreName} color="orange" />
+                    <NavButton label={T("goToStore")} address={order.vendorAddress || order.vendorStoreName} color="orange" />
                     {order.vendorPhone && <CallButton phone={order.vendorPhone} label="Call Store" name={order.vendorStoreName} />}
                   </div>
 
                   <button
-                    onClick={() => setOrderPickedUp(true)}
+                    onClick={() => { setOrderPickedUp(true); updateOrderMut.mutate({ id: order.id, status: "picked_up" }); }}
                     onTouchStart={() => setPressedBtn("pickup")} onTouchEnd={() => setPressedBtn(null)}
                     className={`w-full bg-gray-900 text-white font-black rounded-2xl py-4 text-base flex items-center justify-center gap-2.5 shadow-lg transition-transform ${pressedBtn === "pickup" ? "scale-[0.97]" : ""}`}>
                     <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
