@@ -21,6 +21,7 @@ function mapOrder(o: typeof pharmacyOrdersTable.$inferSelect) {
     status: o.status,
     estimatedTime: o.estimatedTime,
     createdAt: o.createdAt.toISOString(),
+    updatedAt: o.updatedAt.toISOString(),
   };
 }
 
@@ -217,6 +218,40 @@ router.post("/", customerAuth, async (req, res) => {
   }).catch(() => {});
 
   res.status(201).json({ ...mapOrder(order!), deliveryFee, gstAmount });
+});
+
+router.patch("/:id/cancel", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const orderId = String(req.params["id"]);
+
+  const [order] = await db
+    .select()
+    .from(pharmacyOrdersTable)
+    .where(eq(pharmacyOrdersTable.id, orderId))
+    .limit(1);
+
+  if (!order) { res.status(404).json({ error: "Pharmacy order not found" }); return; }
+  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (order.status !== "pending") {
+    res.status(409).json({ error: "Only pending pharmacy orders can be cancelled" });
+    return;
+  }
+
+  const s = await getPlatformSettings();
+  const cancelWindowMin = parseFloat(String(s["order_cancel_window_min"] ?? "5"));
+  const minutesSincePlaced = (Date.now() - order.createdAt.getTime()) / 60000;
+  if (minutesSincePlaced > cancelWindowMin) {
+    res.status(409).json({ error: `Cancellation window of ${cancelWindowMin} minutes has passed` });
+    return;
+  }
+
+  const [cancelled] = await db
+    .update(pharmacyOrdersTable)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(eq(pharmacyOrdersTable.id, orderId))
+    .returning();
+
+  res.json({ ...mapOrder(cancelled!), refundAmount: 0 });
 });
 
 router.patch("/:id/status", riderAuth, async (req, res) => {

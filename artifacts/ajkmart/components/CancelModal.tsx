@@ -14,7 +14,7 @@ const C = Colors.light;
 
 export type CancelTarget = {
   id: string;
-  type: "order" | "ride";
+  type: "order" | "ride" | "pharmacy";
   status: string;
   total?: number;
   fare?: number;
@@ -52,6 +52,7 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
   const [error, setError] = useState("");
 
   const isRide = target.type === "ride";
+  const isPharmacy = target.type === "pharmacy";
   const reasons = isRide ? RIDE_CANCEL_REASONS : ORDER_CANCEL_REASONS;
   const riderAssigned = target.riderAssigned ?? false;
   const hasFee = isRide && riderAssigned && cancellationFee > 0;
@@ -65,6 +66,8 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
     try {
       const url = isRide
         ? `${apiBase}/rides/${target.id}/cancel`
+        : isPharmacy
+        ? `${apiBase}/pharmacy-orders/${target.id}/cancel`
         : `${apiBase}/orders/${target.id}/cancel`;
       const res = await fetch(url, {
         method: "PATCH",
@@ -104,11 +107,13 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
           </View>
 
           <Text style={cm.title}>
-            {isRide ? "Cancel Ride?" : "Cancel Order?"}
+            {isRide ? "Cancel Ride?" : isPharmacy ? "Cancel Pharmacy Order?" : "Cancel Order?"}
           </Text>
           <Text style={cm.sub}>
             {isRide
               ? `Ride #${target.id.slice(-8).toUpperCase()}`
+              : isPharmacy
+              ? `Pharmacy Order #${target.id.slice(-8).toUpperCase()}`
               : `Order #${target.id.slice(-8).toUpperCase()}`}
             {target.cancelMinsLeft != null && !isRide
               ? ` · ${target.cancelMinsLeft}m left`

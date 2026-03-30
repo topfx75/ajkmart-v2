@@ -25,9 +25,9 @@ import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigCont
 import { useToast } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import Accordion from "@/components/Accordion";
+import { API_BASE as API } from "@/utils/api";
 
-const C   = Colors.light;
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const C = Colors.light;
 
 function relativeTime(iso: string) {
   const d = Date.now() - new Date(iso).getTime();
@@ -457,11 +457,11 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                     if (exportCooldown > 0) return;
                     Alert.alert(
                       "Export Your Data",
-                      "A copy of your personal data will be emailed to your registered address within 24 hours. Continue?",
+                      "Your profile, orders, ride history, and wallet transactions will be downloaded as a JSON file. Continue?",
                       [
                         { text: "Cancel", style: "cancel" },
                         {
-                          text: "Yes, Export",
+                          text: "Yes, Download",
                           onPress: async () => {
                             setExportingData(true);
                             try {
@@ -473,7 +473,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                                 },
                               });
                               if (!res.ok) throw new Error("Request failed");
-                              showToast("Your data will be emailed within 24 hours.", "success");
+                              showToast("Your data export is ready.", "success");
                               setExportCooldown(60);
                               if (exportCooldownRef.current) clearInterval(exportCooldownRef.current);
                               exportCooldownRef.current = setInterval(() => {

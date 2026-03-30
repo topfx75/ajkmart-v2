@@ -88,12 +88,6 @@ router.post("/update", async (req, res) => {
     }
   }
 
-  /* ── Geofence mode (stub — requires polygon config) ── */
-  if (settings["security_geo_fence"] === "on") {
-    /* Strict geofence would reject lat/lon outside allowed boundary polygon.
-       Requires a configured boundary — aspirational without polygon data. */
-  }
-
   const action: string | null = req.body.action ?? null;
 
   await db.insert(liveLocationsTable).values({

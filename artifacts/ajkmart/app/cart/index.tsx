@@ -296,7 +296,8 @@ export default function CartScreen() {
       ...(promoCode ? { promoCode } : {}),
     } as any);
     if (finalPayMethod === "wallet") {
-      updateUser({ walletBalance: (user!.walletBalance ?? 0) - grandTotal });
+      const serverDeducted = parseFloat((order as any).total ?? grandTotal);
+      updateUser({ walletBalance: (user!.walletBalance ?? 0) - serverDeducted });
     }
 
     (async () => {
@@ -314,11 +315,6 @@ export default function CartScreen() {
         });
       } catch (locErr) {
         if (__DEV__) console.warn("[location] order placement update failed:", locErr);
-        Alert.alert(
-          "Location Update Failed",
-          "Your order was placed successfully, but we could not update your location for tracking. Please ensure location permissions are enabled.",
-          [{ text: "OK" }]
-        );
       }
     })();
 
@@ -502,12 +498,13 @@ export default function CartScreen() {
         },
         body: JSON.stringify({ reason: "payment_failed" }),
       });
+      if (res.status === 404) return;
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Could not cancel order");
+        if (__DEV__) console.warn("[cancelPendingOrder] failed:", data.error);
       }
     } catch (err: any) {
-      showToast(err.message || "Your order could not be cancelled — please contact support", "error");
+      if (__DEV__) console.warn("[cancelPendingOrder] network error:", err.message);
     }
   };
 

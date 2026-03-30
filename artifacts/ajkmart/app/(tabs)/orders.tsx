@@ -27,6 +27,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useGetOrders } from "@workspace/api-client-react";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
+import { API_BASE } from "@/utils/api";
 
 const C = Colors.light;
 
@@ -256,11 +257,21 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#ECFDF5" }]}>
           <Ionicons
-            name={ride.type === "bike" ? "bicycle-outline" : "car-outline"}
+            name={
+              ride.type === "bike" ? "bicycle-outline" :
+              ride.type === "rickshaw" ? "car-sport-outline" :
+              ride.type === "daba" ? "bus-outline" :
+              ride.type === "school_shift" ? "school-outline" :
+              "car-outline"
+            }
             size={13} color="#059669"
           />
           <Text style={[styles.chipText, { color: "#059669" }]}>
-            {ride.type === "bike" ? T("bikeRide") : T("carRide")}
+            {ride.type === "bike" ? T("bikeRide") :
+             ride.type === "rickshaw" ? "Rickshaw" :
+             ride.type === "daba" ? "Daba" :
+             ride.type === "school_shift" ? "School Shift" :
+             T("carRide")}
           </Text>
         </View>
         <Text style={styles.cardId}>#{ride.id.slice(-8).toUpperCase()}</Text>
@@ -381,16 +392,26 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
   );
 }
 
-function PharmacyCard({ order, reviews, onRate }: {
+function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCancel }: {
   order: any;
   reviews: boolean;
+  cancelWindowMin: number;
+  serverNow?: number;
   onRate: (o: any) => void;
+  onCancel: (o: any) => void;
 }) {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const [itemsExpanded, setItemsExpanded] = useState(false);
   const cfg = ORDER_STATUS[order.status] || ORDER_STATUS["pending"]!;
   const isDelivered = order.status === "delivered";
+
+  const nowMs = serverNow ?? Date.now();
+  const minutesSincePlaced = order.createdAt
+    ? (nowMs - new Date(order.createdAt).getTime()) / 60000
+    : 999;
+  const canCancel = order.status === "pending" && minutesSincePlaced <= cancelWindowMin;
+  const cancelMinsLeft = Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
 
   return (
     <Pressable style={styles.card} onPress={() => router.push({ pathname: "/order", params: { orderId: order.id, type: "pharmacy" } })}>
@@ -441,6 +462,13 @@ function PharmacyCard({ order, reviews, onRate }: {
           <Text style={styles.totalAmount}>Rs. {order.total?.toLocaleString()}</Text>
         </View>
       </View>
+
+      {canCancel && (
+        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)}>
+          <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
+          <Text style={styles.cancelBtnText}>{T("cancelOrder")} ({cancelMinsLeft}m left)</Text>
+        </Pressable>
+      )}
 
       {reviews && isDelivered && !order._reviewed && (
         <Pressable style={styles.rateBtn} onPress={() => onRate({ ...order, _type: "pharmacy" })}>
@@ -761,8 +789,6 @@ export default function OrdersScreen() {
     setReviewedIds(prev => new Set([...prev, orderId]));
   }, []);
 
-  const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
-
   const [hasActiveItems, setHasActiveItems] = useState(false);
   const pollInterval = hasActiveItems ? 10000 : 30000;
 
@@ -800,6 +826,22 @@ export default function OrdersScreen() {
     setCancelTarget({
       id: order.id,
       type: "order",
+      status: order.status,
+      total: order.total,
+      paymentMethod: order.paymentMethod,
+      cancelMinsLeft,
+    });
+  }, [orderRules.cancelWindowMin, serverNow]);
+
+  const handleCancelPharmacy = useCallback((order: any) => {
+    const nowMs = serverNow ?? Date.now();
+    const minutesSincePlaced = order.createdAt
+      ? (nowMs - new Date(order.createdAt).getTime()) / 60000
+      : 999;
+    const cancelMinsLeft = Math.max(0, Math.ceil(orderRules.cancelWindowMin - minutesSincePlaced));
+    setCancelTarget({
+      id: order.id,
+      type: "pharmacy",
       status: order.status,
       total: order.total,
       paymentMethod: order.paymentMethod,
@@ -1039,7 +1081,7 @@ export default function OrdersScreen() {
             <SectionHeader title={T("activeLabel")} count={anyActive} active />
             {activeOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} />)}
             {activeRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
-            {activePharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
+            {activePharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} serverNow={serverNow} onRate={handleRate} onCancel={handleCancelPharmacy} />)}
             {activeParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
           </>
         )}
@@ -1049,7 +1091,7 @@ export default function OrdersScreen() {
             <SectionHeader title={T("historyLabel")} count={anyPast} />
             {pastOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} />)}
             {pastRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
-            {pastPharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
+            {pastPharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} serverNow={serverNow} onRate={handleRate} onCancel={handleCancelPharmacy} />)}
             {pastParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
           </>
         )}
@@ -1113,7 +1155,7 @@ export default function OrdersScreen() {
         <ReviewModal
           target={reviewTarget}
           userId={user.id}
-          apiBase={`https://${process.env.EXPO_PUBLIC_DOMAIN}/api`}
+          apiBase={API_BASE}
           token={token}
           onClose={() => setReviewTarget(null)}
           onDone={handleReviewDone}
@@ -1135,6 +1177,9 @@ export default function OrdersScreen() {
                 : "Ride cancelled successfully.";
               showToast(msg, "success");
               fetchRides();
+            } else if (cancelTarget.type === "pharmacy") {
+              showToast("Pharmacy order cancelled successfully.", "success");
+              fetchPharmacy();
             } else {
               const refund = result?.refundAmount;
               const msg = refund > 0

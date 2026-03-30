@@ -24,6 +24,7 @@ function mapOrder(o: typeof ordersTable.$inferSelect, deliveryFee?: number, gstA
     riderId: o.riderId,
     estimatedTime: o.estimatedTime,
     createdAt: o.createdAt.toISOString(),
+    updatedAt: o.updatedAt.toISOString(),
   };
 }
 

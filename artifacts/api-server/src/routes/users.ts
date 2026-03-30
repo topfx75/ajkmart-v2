@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { usersTable, ordersTable, walletTransactionsTable, ridesTable } from "@workspace/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
@@ -34,7 +34,12 @@ router.get("/:id/debt", async (req, res) => {
     res.status(403).json({ error: "Access denied" });
     return;
   }
-  res.json({ debtBalance: 0 });
+  const [user] = await db.select({ cancellationDebt: usersTable.cancellationDebt }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json({ debtBalance: parseFloat(user.cancellationDebt ?? "0") });
 });
 
 router.post("/export-data", async (req, res) => {
@@ -44,7 +49,58 @@ router.post("/export-data", async (req, res) => {
     res.status(404).json({ error: "User not found" });
     return;
   }
-  res.json({ success: true, message: "Your data export has been queued. You will receive an email within 24 hours." });
+
+  const [orders, rides, walletHistory] = await Promise.all([
+    db.select().from(ordersTable).where(eq(ordersTable.userId, userId)).orderBy(desc(ordersTable.createdAt)),
+    db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(desc(ridesTable.createdAt)),
+    db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId)).orderBy(desc(walletTransactionsTable.createdAt)),
+  ]);
+
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    profile: {
+      id: user.id,
+      phone: user.phone,
+      name: user.name,
+      email: user.email,
+      city: user.city,
+      address: user.address,
+      cnic: user.cnic,
+      walletBalance: parseFloat(user.walletBalance ?? "0"),
+      createdAt: user.createdAt.toISOString(),
+    },
+    orders: orders.map(o => ({
+      id: o.id,
+      type: o.type,
+      status: o.status,
+      total: parseFloat(o.total),
+      paymentMethod: o.paymentMethod,
+      deliveryAddress: o.deliveryAddress,
+      items: o.items,
+      createdAt: o.createdAt.toISOString(),
+    })),
+    rides: rides.map(r => ({
+      id: r.id,
+      type: r.type,
+      status: r.status,
+      pickupAddress: r.pickupAddress,
+      dropoffAddress: r.dropoffAddress,
+      fare: parseFloat(r.fare),
+      paymentMethod: r.paymentMethod,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    walletHistory: walletHistory.map(t => ({
+      id: t.id,
+      type: t.type,
+      amount: parseFloat(t.amount),
+      description: t.description,
+      createdAt: t.createdAt.toISOString(),
+    })),
+  };
+
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Disposition", `attachment; filename="ajkmart-data-export-${userId.slice(-8)}.json"`);
+  res.json({ success: true, data: exportData });
 });
 
 router.put("/profile", async (req, res) => {

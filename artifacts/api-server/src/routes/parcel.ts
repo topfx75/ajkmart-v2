@@ -34,6 +34,7 @@ function mapBooking(b: typeof parcelBookingsTable.$inferSelect) {
     estimatedTime: b.estimatedTime,
     riderId: b.riderId,
     createdAt: b.createdAt.toISOString(),
+    updatedAt: b.updatedAt.toISOString(),
   };
 }
 

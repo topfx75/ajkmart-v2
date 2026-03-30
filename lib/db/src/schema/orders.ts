@@ -16,6 +16,8 @@ export const ordersTable = pgTable("orders", {
   vendorId: text("vendor_id"),
   estimatedTime: text("estimated_time"),
   proofPhotoUrl: text("proof_photo_url"),
+  txnRef: text("txn_ref"),
+  paymentStatus: text("payment_status").default("pending"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

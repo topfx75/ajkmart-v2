@@ -18,9 +18,9 @@ import Colors, { spacing, radii, shadows, typography } from "@/constants/colors"
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { API_BASE as API } from "@/utils/api";
 
 const C = Colors.light;
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
 
 type ForgotStep = "method" | "otp" | "newPassword" | "totp" | "done";
 type ResetMethod = "phone" | "email";
