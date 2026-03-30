@@ -472,6 +472,32 @@ export const useRejectDeposit = () => {
   });
 };
 
+export const useBulkApproveDeposits = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, refNo }: { ids: string[]; refNo?: string }) =>
+      fetcher("/deposit-requests/bulk-approve", { method: "POST", body: JSON.stringify({ ids, refNo }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-deposits"] });
+      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
+  });
+};
+
+export const useBulkRejectDeposits = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, reason }: { ids: string[]; reason: string }) =>
+      fetcher("/deposit-requests/bulk-reject", { method: "POST", body: JSON.stringify({ ids, reason }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-deposits"] });
+      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
+  });
+};
+
 // Withdrawal Requests
 export const useWithdrawalRequests = (status?: string) => {
   return useQuery({

@@ -2223,6 +2223,118 @@ router.patch("/deposit-requests/:id/reject", async (req, res) => {
   res.json({ success: true, txId, status: "rejected", reason: rejReason });
 });
 
+/* ── POST /admin/deposit-requests/bulk-approve — Bulk approve customer pending deposits (all-or-nothing atomic) ─── */
+router.post("/deposit-requests/bulk-approve", async (req, res) => {
+  const { ids, refNo } = req.body as { ids: string[]; refNo?: string };
+  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids array is required" }); return; }
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length > 50) { res.status(400).json({ error: "Maximum 50 deposits per bulk action" }); return; }
+
+  const preChecked: { tx: typeof walletTransactionsTable.$inferSelect; amt: number; approvedRef: string }[] = [];
+  for (const txId of uniqueIds) {
+    const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
+    if (!tx) { res.status(400).json({ error: `Deposit ${txId} not found` }); return; }
+    if (tx.type !== "deposit") { res.status(400).json({ error: `${txId} is not a deposit record` }); return; }
+    const ref = tx.reference ?? "pending";
+    const isPending = ref === "pending" || ref.startsWith("pending:");
+    if (!isPending) { res.status(409).json({ error: `Deposit ${txId} already processed (${ref})` }); return; }
+    const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, tx.userId)).limit(1);
+    if (!user) { res.status(400).json({ error: `User not found for deposit ${txId}` }); return; }
+    if (user.role !== "customer") { res.status(400).json({ error: `Deposit ${txId} belongs to a ${user.role}, not a customer. Bulk actions are for customer deposits only.` }); return; }
+    const amt = parseFloat(String(tx.amount));
+    if (!Number.isFinite(amt) || amt <= 0) { res.status(400).json({ error: `Invalid amount for deposit ${txId}` }); return; }
+    const txidSuffix = (tx.reference && tx.reference.includes("txid:")) ? `:${tx.reference.split("txid:").pop()}` : "";
+    const approvedRef = refNo ? `approved:${refNo.trim()}${txidSuffix}` : `approved:manual${txidSuffix}`;
+    preChecked.push({ tx, amt, approvedRef });
+  }
+
+  try {
+    await db.transaction(async (trx) => {
+      for (const { tx, amt, approvedRef } of preChecked) {
+        const [marked] = await trx.update(walletTransactionsTable)
+          .set({ reference: approvedRef })
+          .where(and(eq(walletTransactionsTable.id, tx.id), sql`(${walletTransactionsTable.reference} = 'pending' OR ${walletTransactionsTable.reference} LIKE 'pending:%')`))
+          .returning({ id: walletTransactionsTable.id });
+        if (!marked) throw new Error(`Deposit ${tx.id} was already processed (race condition)`);
+        const [credited] = await trx.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance + ${amt}`, updatedAt: new Date() })
+          .where(eq(usersTable.id, tx.userId))
+          .returning({ id: usersTable.id });
+        if (!credited) throw new Error(`User ${tx.userId} not found for deposit ${tx.id}`);
+      }
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(409).json({ error: msg });
+    return;
+  }
+
+  for (const { tx, amt } of preChecked) {
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: tx.userId,
+      title: "Deposit Credited ✅",
+      body: `Rs. ${amt.toFixed(0)} aapki wallet mein add kar diya gaya hai!${refNo ? ` Ref: ${refNo}` : ""}`,
+      type: "wallet", icon: "wallet-outline",
+    }).catch(e => console.error("bulk deposit approval notif failed:", e));
+  }
+
+  res.json({ success: true, approved: preChecked.length });
+});
+
+/* ── POST /admin/deposit-requests/bulk-reject — Bulk reject customer pending deposits (all-or-nothing atomic) ─── */
+router.post("/deposit-requests/bulk-reject", async (req, res) => {
+  const { ids, reason } = req.body as { ids: string[]; reason: string };
+  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids array is required" }); return; }
+  if (!reason?.trim()) { res.status(400).json({ error: "reason is required" }); return; }
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length > 50) { res.status(400).json({ error: "Maximum 50 deposits per bulk action" }); return; }
+
+  const rejReason = reason.trim();
+
+  const preChecked: { tx: typeof walletTransactionsTable.$inferSelect; rejRef: string }[] = [];
+  for (const txId of uniqueIds) {
+    const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
+    if (!tx) { res.status(400).json({ error: `Deposit ${txId} not found` }); return; }
+    if (tx.type !== "deposit") { res.status(400).json({ error: `${txId} is not a deposit record` }); return; }
+    const ref = tx.reference ?? "pending";
+    const isPending = ref === "pending" || ref.startsWith("pending:");
+    if (!isPending) { res.status(409).json({ error: `Deposit ${txId} already processed (${ref})` }); return; }
+    const [user] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, tx.userId)).limit(1);
+    if (!user) { res.status(400).json({ error: `User not found for deposit ${txId}` }); return; }
+    if (user.role !== "customer") { res.status(400).json({ error: `Deposit ${txId} belongs to a ${user.role}, not a customer. Bulk actions are for customer deposits only.` }); return; }
+    const txidSuffix = (tx.reference && tx.reference.includes("txid:")) ? `:${tx.reference.split("txid:").pop()}` : "";
+    preChecked.push({ tx, rejRef: `rejected:${rejReason}${txidSuffix}` });
+  }
+
+  try {
+    await db.transaction(async (trx) => {
+      for (const { tx, rejRef } of preChecked) {
+        const [marked] = await trx.update(walletTransactionsTable)
+          .set({ reference: rejRef })
+          .where(and(eq(walletTransactionsTable.id, tx.id), sql`(${walletTransactionsTable.reference} = 'pending' OR ${walletTransactionsTable.reference} LIKE 'pending:%')`))
+          .returning({ id: walletTransactionsTable.id });
+        if (!marked) throw new Error(`Deposit ${tx.id} was already processed (race condition)`);
+      }
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(409).json({ error: msg });
+    return;
+  }
+
+  for (const { tx } of preChecked) {
+    const amt = parseFloat(String(tx.amount));
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: tx.userId,
+      title: "Deposit Rejected ❌",
+      body: `Rs. ${amt.toFixed(0)} deposit request reject ho gayi. Reason: ${rejReason}.`,
+      type: "wallet", icon: "close-circle-outline",
+    }).catch(e => console.error("bulk deposit rejection notif failed:", e));
+  }
+
+  res.json({ success: true, rejected: preChecked.length });
+});
+
 /* ── GET /admin/all-notifications ─────────── */
 router.get("/all-notifications", async (req, res) => {
   const role = req.query["role"] as string | undefined;

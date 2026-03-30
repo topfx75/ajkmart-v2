@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   ArrowDownToLine, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock,
 } from "lucide-react";
-import { useDepositRequests, useApproveDeposit, useRejectDeposit } from "@/hooks/use-admin";
+import { useDepositRequests, useApproveDeposit, useRejectDeposit, useBulkApproveDeposits, useBulkRejectDeposits } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -177,16 +177,111 @@ function RejectModal({ d, onClose }: { d: any; onClose: () => void }) {
   );
 }
 
+function BulkApproveModal({ count, totalAmount, onConfirm, onClose, isPending }: {
+  count: number; totalAmount: number; onConfirm: (refNo?: string) => void; onClose: () => void; isPending: boolean;
+}) {
+  const [refNo, setRefNo] = useState("");
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-5">
+          <h2 className="text-lg font-extrabold text-white">✅ Bulk Approve Deposits</h2>
+          <p className="text-green-200 text-sm mt-0.5">{count} deposits ko ek saath approve karein</p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="bg-green-50 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Selected Deposits</span><span className="font-bold">{count}</span></div>
+            <div className="flex justify-between items-center pt-1 border-t border-green-200">
+              <span className="text-gray-600 font-semibold">Total to Credit</span>
+              <span className="text-xl font-extrabold text-green-600">{fc(totalAmount)}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Shared Reference Note (Optional)</label>
+            <input value={refNo} onChange={e => setRefNo(e.target.value)}
+              placeholder="e.g. Batch approval - March 2026"
+              className="w-full h-11 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-green-400"/>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
+              onClick={() => onConfirm(refNo.trim() || undefined)} disabled={isPending}>
+              {isPending ? T("processing") : `✅ Approve ${count} Deposits`}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkRejectModal({ count, totalAmount, onConfirm, onClose, isPending }: {
+  count: number; totalAmount: number; onConfirm: (reason: string) => void; onClose: () => void; isPending: boolean;
+}) {
+  const [reason, setReason] = useState("");
+  const { toast } = useToast();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-red-600 to-rose-600 p-5">
+          <h2 className="text-lg font-extrabold text-white">❌ Bulk Reject Deposits</h2>
+          <p className="text-red-200 text-sm mt-0.5">{count} deposits ko ek saath reject karein</p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="bg-red-50 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Selected Deposits</span><span className="font-bold">{count}</span></div>
+            <div className="flex justify-between items-center pt-1 border-t border-red-200">
+              <span className="text-gray-600 font-semibold">Total Amount (NOT credited)</span>
+              <span className="text-xl font-extrabold text-red-600">{fc(totalAmount)}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Rejection Reason *</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+              placeholder="e.g. Invalid transaction IDs · Duplicate requests · Amount mismatch"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-red-400 resize-none"/>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
+              onClick={() => {
+                if (!reason.trim()) { toast({ title: "Reason required", variant: "destructive" }); return; }
+                onConfirm(reason.trim());
+              }} disabled={isPending}>
+              {isPending ? T("processing") : `❌ Reject ${count} Deposits`}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DepositRequests() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expandedId, setExpandedId]     = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<any | null>(null);
   const [rejectTarget,  setRejectTarget]  = useState<any | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkApprove, setShowBulkApprove] = useState(false);
+  const [showBulkReject, setShowBulkReject] = useState(false);
 
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch } = useDepositRequests();
   const { toast } = useToast();
+  const bulkApprove = useBulkApproveDeposits();
+  const bulkReject = useBulkRejectDeposits();
 
   const deposits: any[] = data?.deposits || [];
 
@@ -196,6 +291,60 @@ export default function DepositRequests() {
   const approvedCount = deposits.filter(d => d.status === "approved").length;
   const rejectedCount = deposits.filter(d => d.status === "rejected").length;
 
+  const pendingInFiltered = useMemo(() => filtered.filter((d: any) => d.status === "pending" && d.user?.role === "customer"), [filtered]);
+  const allPendingSelected = pendingInFiltered.length > 0 && pendingInFiltered.every((d: any) => selectedIds.has(d.id));
+
+  const selectedDeposits = useMemo(() => deposits.filter(d => selectedIds.has(d.id) && d.status === "pending" && d.user?.role === "customer"), [deposits, selectedIds]);
+  const selectedTotal = useMemo(() => selectedDeposits.reduce((s, d) => s + Number(d.amount), 0), [selectedDeposits]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allPendingSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        pendingInFiltered.forEach((d: any) => next.delete(d.id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        pendingInFiltered.forEach((d: any) => next.add(d.id));
+        return next;
+      });
+    }
+  };
+
+  const handleBulkApprove = (refNo?: string) => {
+    const ids = Array.from(selectedIds).filter(id => deposits.find(d => d.id === id && d.status === "pending" && d.user?.role === "customer"));
+    bulkApprove.mutate({ ids, refNo }, {
+      onSuccess: (data: any) => {
+        toast({ title: `✅ ${data.approved} deposits approved` });
+        setSelectedIds(new Set());
+        setShowBulkApprove(false);
+      },
+      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleBulkReject = (reason: string) => {
+    const ids = Array.from(selectedIds).filter(id => deposits.find(d => d.id === id && d.status === "pending" && d.user?.role === "customer"));
+    bulkReject.mutate({ ids, reason }, {
+      onSuccess: (data: any) => {
+        toast({ title: `❌ ${data.rejected} deposits rejected` });
+        setSelectedIds(new Set());
+        setShowBulkReject(false);
+      },
+      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    });
+  };
+
   const STATUS_TABS: { id: StatusFilter; label: string; count: number; color: string }[] = [
     { id: "all",      label: "All",      count: deposits.length,  color: "text-gray-700"  },
     { id: "pending",  label: "Pending",  count: pendingCount,     color: "text-amber-600" },
@@ -204,7 +353,7 @@ export default function DepositRequests() {
   ];
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5 pb-28">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -245,6 +394,28 @@ export default function DepositRequests() {
         ))}
       </div>
 
+      {/* Select All header for pending deposits */}
+      {pendingInFiltered.length > 0 && (
+        <div className="flex items-center gap-3 px-1">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allPendingSelected}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20 cursor-pointer"
+            />
+            <span className="text-sm font-semibold text-gray-600">
+              Select All Pending Customer Deposits ({pendingInFiltered.length})
+            </span>
+          </label>
+          {selectedIds.size > 0 && (
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600 underline">
+              Clear selection
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Pending banner */}
       {pendingCount > 0 && statusFilter !== "approved" && statusFilter !== "rejected" && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
@@ -272,38 +443,55 @@ export default function DepositRequests() {
           {filtered.map((d: any) => {
             const parsed = parseDesc(d.description || "");
             const expanded = expandedId === d.id;
+            const isPending = d.status === "pending";
+            const isCustomer = d.user?.role === "customer";
+            const isBulkSelectable = isPending && isCustomer;
+            const isSelected = selectedIds.has(d.id);
             return (
-              <Card key={d.id} className="border-0 shadow-sm overflow-hidden">
+              <Card key={d.id} className={`border-0 shadow-sm overflow-hidden transition-all ${isSelected && isBulkSelectable ? "ring-2 ring-primary/40 bg-primary/5" : ""}`}>
                 <CardContent className="p-0">
-                  <button className="w-full text-left p-4" onClick={() => setExpandedId(expanded ? null : d.id)}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl ${d.status === "pending" ? "bg-amber-50" : d.status === "approved" ? "bg-green-50" : "bg-red-50"}`}>
-                          {methodIcon(d.paymentMethod || parsed.method)}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-bold text-gray-900 text-sm">{d.user?.name || "Unknown"}</p>
-                            {d.user?.role && (
-                              <Badge className={`text-[10px] font-bold ${roleColor(d.user.role)}`} variant="outline">
-                                {d.user.role === "customer" ? "Customer" : "Rider"}
-                              </Badge>
-                            )}
-                            <StatusBadge status={d.status}/>
+                  <div className="flex items-center">
+                    {isBulkSelectable && (
+                      <div className="pl-4 flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(d.id)}
+                          className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20 cursor-pointer"
+                          onClick={e => e.stopPropagation()}
+                        />
+                      </div>
+                    )}
+                    <button className={`w-full text-left p-4 ${isBulkSelectable ? "pl-3" : ""}`} onClick={() => setExpandedId(expanded ? null : d.id)}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl ${d.status === "pending" ? "bg-amber-50" : d.status === "approved" ? "bg-green-50" : "bg-red-50"}`}>
+                            {methodIcon(d.paymentMethod || parsed.method)}
                           </div>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {methodIcon(d.paymentMethod)} {parsed.method} · {d.user?.phone} · {fd(d.createdAt)}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-bold text-gray-900 text-sm">{d.user?.name || "Unknown"}</p>
+                              {d.user?.role && (
+                                <Badge className={`text-[10px] font-bold ${roleColor(d.user.role)}`} variant="outline">
+                                  {d.user.role === "customer" ? "Customer" : "Rider"}
+                                </Badge>
+                              )}
+                              <StatusBadge status={d.status}/>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {methodIcon(d.paymentMethod)} {parsed.method} · {d.user?.phone} · {fd(d.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <p className={`text-lg font-extrabold ${d.status === "approved" ? "text-green-600" : d.status === "rejected" ? "text-gray-400 line-through" : "text-blue-600"}`}>
+                            {fc(d.amount)}
                           </p>
+                          {expanded ? <ChevronUp className="w-4 h-4 text-gray-400"/> : <ChevronDown className="w-4 h-4 text-gray-400"/>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <p className={`text-lg font-extrabold ${d.status === "approved" ? "text-green-600" : d.status === "rejected" ? "text-gray-400 line-through" : "text-blue-600"}`}>
-                          {fc(d.amount)}
-                        </p>
-                        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400"/> : <ChevronDown className="w-4 h-4 text-gray-400"/>}
-                      </div>
-                    </div>
-                  </button>
+                    </button>
+                  </div>
 
                   {expanded && (
                     <div className="border-t border-gray-100 px-4 py-4 bg-gray-50 space-y-4">
@@ -369,8 +557,52 @@ export default function DepositRequests() {
         </div>
       )}
 
+      {/* Sticky Bulk Action Bar */}
+      {selectedDeposits.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="bg-primary/10 text-primary text-sm font-extrabold px-3 py-1.5 rounded-full">
+                {selectedDeposits.length} selected
+              </div>
+              <p className="text-sm text-gray-600 font-semibold hidden sm:block">
+                Total: <span className="text-blue-600 font-extrabold">{fc(selectedTotal)}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white font-bold gap-1.5"
+                onClick={() => setShowBulkApprove(true)}>
+                <CheckCircle className="w-4 h-4"/> Bulk Approve
+              </Button>
+              <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 font-bold gap-1.5"
+                onClick={() => setShowBulkReject(true)}>
+                <XCircle className="w-4 h-4"/> Bulk Reject
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {approveTarget && <ApproveModal d={approveTarget} onClose={() => setApproveTarget(null)}/>}
       {rejectTarget  && <RejectModal  d={rejectTarget}  onClose={() => setRejectTarget(null)}/>}
+      {showBulkApprove && (
+        <BulkApproveModal
+          count={selectedDeposits.length}
+          totalAmount={selectedTotal}
+          onConfirm={handleBulkApprove}
+          onClose={() => setShowBulkApprove(false)}
+          isPending={bulkApprove.isPending}
+        />
+      )}
+      {showBulkReject && (
+        <BulkRejectModal
+          count={selectedDeposits.length}
+          totalAmount={selectedTotal}
+          onConfirm={handleBulkReject}
+          onClose={() => setShowBulkReject(false)}
+          isPending={bulkReject.isPending}
+        />
+      )}
     </div>
   );
 }
