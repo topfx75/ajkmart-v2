@@ -5,6 +5,7 @@ import {
   Wallet, Shield, Plus, Pencil, Trash2, Save, X,
   ToggleRight, ToggleLeft, RefreshCw, CheckCircle2,
   AlertTriangle, WrenchIcon, Eye, EyeOff, ScrollText, CalendarDays, ChevronLeft, ChevronRight,
+  Zap, Activity,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ADMIN_SERVICE_LIST } from "@workspace/service-constants";
 
 /* ── Types ── */
 interface AdminAccount {
@@ -44,12 +46,8 @@ const ADMIN_ROLES = [
 const PERMISSIONS = ["users","orders","rides","pharmacy","parcel","products","transactions","settings","broadcast","flash-deals"];
 
 const SERVICE_MAP = [
-  { key: "mart",     label: "🛒 Mart",       setting: "feature_mart" },
-  { key: "food",     label: "🍔 Food",       setting: "feature_food" },
-  { key: "rides",    label: "🚗 Rides",      setting: "feature_rides" },
-  { key: "pharmacy", label: "💊 Pharmacy",   setting: "feature_pharmacy" },
-  { key: "parcel",   label: "📦 Parcel",     setting: "feature_parcel" },
-  { key: "wallet",   label: "💰 Wallet",     setting: "feature_wallet" },
+  ...ADMIN_SERVICE_LIST,
+  { key: "wallet", label: "Wallet", description: "Digital wallet for payments & transfers", icon: "💰", setting: "feature_wallet", color: "#1A56DB", colorLight: "#E5EDFF" },
 ];
 
 const EMPTY_ADMIN = { name: "", secret: "", role: "manager", permissions: PERMISSIONS.join(","), isActive: true };
@@ -327,21 +325,32 @@ export default function AppManagement() {
 
               {/* Feature status grid */}
               <Card className="rounded-2xl border-border/50">
-                <div className="p-5 border-b border-border/50">
-                  <h2 className="font-bold">Service Status</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">Live status of all app services</p>
+                <div className="p-5 border-b border-border/50 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center"><Activity className="w-5 h-5 text-emerald-600"/></div>
+                  <div>
+                    <h2 className="font-bold">Service Status</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">Live status of all app services</p>
+                  </div>
                 </div>
                 <CardContent className="p-5">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {SERVICE_MAP.map(svc => {
                       const featureVal = settings.find((s: any) => s.key === svc.setting)?.value || "on";
                       const isOn = featureVal === "on";
                       return (
-                        <div key={svc.key} className={`flex items-center gap-3 p-3 rounded-xl border ${isOn ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
-                          <span className="text-xl">{svc.label.split(" ")[0]}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">{svc.label.split(" ").slice(1).join(" ")}</p>
-                            <p className={`text-xs font-bold ${isOn ? "text-green-600" : "text-red-500"}`}>{isOn ? "● Online" : "○ Offline"}</p>
+                        <div key={svc.key} className={`relative overflow-hidden rounded-xl border p-4 transition-all ${isOn ? "bg-gradient-to-br from-green-50 to-emerald-50 border-green-200" : "bg-gradient-to-br from-red-50 to-rose-50 border-red-200"}`}>
+                          <div className="flex items-start gap-3">
+                            <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${isOn ? "bg-green-100" : "bg-red-100"}`}>
+                              {svc.icon}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold truncate">{svc.label}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{svc.description}</p>
+                              <div className="flex items-center gap-1.5 mt-2">
+                                <span className={`w-2 h-2 rounded-full ${isOn ? "bg-green-500 animate-pulse" : "bg-red-400"}`}/>
+                                <span className={`text-xs font-bold ${isOn ? "text-green-600" : "text-red-500"}`}>{isOn ? "Online" : "Offline"}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );
@@ -463,31 +472,58 @@ export default function AppManagement() {
 
           {/* Service Toggles */}
           <Card className="rounded-2xl border-border/50 shadow-sm">
-            <div className="p-5 border-b border-border/50 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center"><AppWindow className="w-5 h-5 text-blue-600"/></div>
-              <div>
-                <h2 className="font-bold">Live Service Control</h2>
-                <p className="text-xs text-muted-foreground">Toggle services on/off instantly — changes apply immediately</p>
+            <div className="p-5 border-b border-border/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center"><Zap className="w-5 h-5 text-blue-600"/></div>
+                <div>
+                  <h2 className="font-bold">Live Service Control</h2>
+                  <p className="text-xs text-muted-foreground">Toggle services on/off instantly — changes apply immediately</p>
+                </div>
               </div>
+              <Badge variant="outline" className="text-xs">
+                {SERVICE_MAP.filter(svc => (settings.find((s: any) => s.key === svc.setting)?.value || "on") === "on").length}/{SERVICE_MAP.length} Active
+              </Badge>
             </div>
             <CardContent className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {SERVICE_MAP.map(svc => {
                   const featureVal = settings.find((s: any) => s.key === svc.setting)?.value || "on";
                   const isOn = featureVal === "on";
                   return (
                     <div
                       key={svc.key}
-                      onClick={() => toggleFeature.mutate({ key: svc.setting, value: isOn ? "off" : "on" })}
-                      className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all select-none ${isOn ? "bg-green-50 border-green-200 hover:bg-green-100" : "bg-red-50 border-red-200 hover:bg-red-100"}`}
+                      className={`group relative overflow-hidden rounded-2xl border-2 transition-all duration-200 ${isOn ? "border-green-200 bg-white hover:border-green-300 hover:shadow-md" : "border-gray-200 bg-gray-50/50 hover:border-gray-300"}`}
                     >
-                      <span className="text-2xl">{svc.label.split(" ")[0]}</span>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold">{svc.label.split(" ").slice(1).join(" ")}</p>
-                        <p className={`text-xs font-bold ${isOn ? "text-green-600" : "text-red-500"}`}>{isOn ? "● Running" : "○ Stopped"}</p>
-                      </div>
-                      <div className={`w-12 h-6 rounded-full relative transition-colors flex-shrink-0 ${isOn ? "bg-green-500" : "bg-gray-300"}`}>
-                        <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${isOn ? "translate-x-6" : "translate-x-0.5"}`}/>
+                      <div className={`absolute inset-x-0 top-0 h-1 transition-colors ${isOn ? "bg-green-500" : "bg-gray-300"}`}/>
+                      <div className="p-5">
+                        <div className="flex items-start gap-4">
+                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 transition-all ${isOn ? "bg-gradient-to-br from-green-50 to-emerald-100 shadow-sm" : "bg-gray-100"}`}>
+                            {svc.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-bold text-sm">{svc.label}</p>
+                              <Badge className={`text-[10px] px-1.5 py-0 h-4 ${isOn ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-600 border-red-200"}`} variant="outline">
+                                {isOn ? "Live" : "Off"}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground leading-relaxed">{svc.description}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/50">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${isOn ? "bg-green-500 animate-pulse" : "bg-gray-400"}`}/>
+                            <span className={`text-xs font-semibold ${isOn ? "text-green-600" : "text-gray-500"}`}>
+                              {isOn ? "Running" : "Stopped"}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => toggleFeature.mutate({ key: svc.setting, value: isOn ? "off" : "on" })}
+                            className={`relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${isOn ? "bg-green-500 focus:ring-green-300" : "bg-gray-300 focus:ring-gray-300"}`}
+                          >
+                            <span className={`absolute w-5 h-5 bg-white rounded-full shadow-md top-0.5 transition-transform duration-200 ${isOn ? "translate-x-6" : "translate-x-0.5"}`}/>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

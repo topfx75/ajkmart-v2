@@ -4,16 +4,9 @@ import React from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { SERVICE_REGISTRY, type ServiceKey } from "@/constants/serviceRegistry";
 
-type ServiceKey = "mart" | "food" | "rides" | "pharmacy" | "parcel";
-
-const SERVICE_LABELS: Record<ServiceKey, string> = {
-  mart: "Grocery Mart",
-  food: "Food Delivery",
-  rides: "Rides",
-  pharmacy: "Pharmacy",
-  parcel: "Parcel Delivery",
-};
+export type { ServiceKey };
 
 export function useServiceEnabled(serviceKey: ServiceKey): boolean {
   const { config } = usePlatformConfig();
@@ -22,6 +15,7 @@ export function useServiceEnabled(serviceKey: ServiceKey): boolean {
 
 function ServiceUnavailableScreen({ serviceKey }: { serviceKey: ServiceKey }) {
   const insets = useSafeAreaInsets();
+  const serviceLabel = SERVICE_REGISTRY[serviceKey]?.label ?? serviceKey;
 
   return (
     <View style={[s.root, { paddingTop: (Platform.OS === "web" ? 67 : insets.top) + 20 }]}>
@@ -35,7 +29,7 @@ function ServiceUnavailableScreen({ serviceKey }: { serviceKey: ServiceKey }) {
         </View>
         <Text style={s.title}>Service Unavailable</Text>
         <Text style={s.desc}>
-          {SERVICE_LABELS[serviceKey]} is currently not available.{"\n"}Please check back later.
+          {serviceLabel} is currently not available.{"\n"}Please check back later.
         </Text>
         <Pressable onPress={() => router.replace("/")} style={s.homeBtn}>
           <Ionicons name="home-outline" size={18} color="#fff" />

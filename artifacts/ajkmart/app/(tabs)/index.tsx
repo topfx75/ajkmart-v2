@@ -23,6 +23,13 @@ import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { tDual } from "@workspace/i18n";
+import {
+  SERVICE_REGISTRY,
+  getActiveServices,
+  getActiveBanners,
+  getActiveQuickActions,
+  type ServiceDefinition,
+} from "@/constants/serviceRegistry";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
@@ -182,17 +189,19 @@ function Tap({
   );
 }
 
-function HeroCard({
-  onPress,
+function ServiceHero({
+  service,
   appName = "AJKMart",
 }: {
-  onPress: () => void;
+  service: ServiceDefinition;
   appName?: string;
 }) {
+  const hero = service.heroConfig;
+  const displayTitle = service.key === "mart" ? appName : hero.title;
   return (
-    <Tap onPress={onPress} style={styles.heroWrap} delay={80}>
+    <Tap onPress={() => router.push(service.route)} style={styles.heroWrap} delay={80}>
       <LinearGradient
-        colors={["#0052CC", C.primary, "#3385FF"]}
+        colors={hero.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.heroCard}
@@ -212,32 +221,28 @@ function HeroCard({
 
         <View style={styles.heroL}>
           <View style={styles.heroBadge}>
-            <Ionicons name="storefront" size={11} color="#fff" />
-            <Text style={styles.heroBadgeTxt}>Grocery Mart</Text>
+            <Ionicons name={hero.badgeIcon} size={11} color="#fff" />
+            <Text style={styles.heroBadgeTxt}>{hero.badgeLabel}</Text>
           </View>
-          <Text style={styles.heroTitle}>{appName}</Text>
-          <Text style={styles.heroSub}>
-            Fresh groceries & essentials{"\n"}delivered to your door
-          </Text>
+          <Text style={styles.heroTitle}>{displayTitle}</Text>
+          <Text style={styles.heroSub}>{hero.subtitle}</Text>
           <View style={styles.heroStats}>
-            <View style={styles.heroStat}>
-              <Ionicons name="cube-outline" size={11} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.heroStatTxt}>500+ items</Text>
-            </View>
-            <View style={styles.heroStat}>
-              <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.heroStatTxt}>20 min delivery</Text>
-            </View>
+            {hero.stats.map((st, i) => (
+              <View key={i} style={styles.heroStat}>
+                <Ionicons name={st.icon} size={11} color="rgba(255,255,255,0.85)" />
+                <Text style={styles.heroStatTxt}>{st.label}</Text>
+              </View>
+            ))}
           </View>
           <View style={styles.heroBtn}>
-            <Text style={styles.heroBtnTxt}>Shop Now</Text>
+            <Text style={styles.heroBtnTxt}>{hero.cta}</Text>
             <Ionicons name="arrow-forward" size={13} color={C.primary} />
           </View>
         </View>
 
         <View style={styles.heroR}>
           <View style={styles.heroRing}>
-            <Ionicons name="storefront" size={44} color="#fff" />
+            <Ionicons name={service.iconFocused} size={44} color="#fff" />
           </View>
         </View>
       </LinearGradient>
@@ -246,30 +251,41 @@ function HeroCard({
 }
 
 function SvcCard({
-  onPress,
+  service,
   delay,
-  g1,
-  g2,
-  ig1,
-  ig2,
-  icon,
-  title,
-  sub,
-  tag,
-  tagIcon,
-  textC,
-  tagC,
-  tagBg,
   fullWidth,
-}: any) {
+  T,
+}: {
+  service: ServiceDefinition;
+  delay: number;
+  fullWidth?: boolean;
+  T: (key: Parameters<typeof tDual>[0]) => string;
+}) {
+  const labelMap: Record<string, Parameters<typeof tDual>[0]> = {
+    food: "foodDelivery",
+    rides: "bikeCarRide",
+    pharmacy: "pharmacy",
+    parcel: "parcel",
+  };
+  const subMap: Record<string, Parameters<typeof tDual>[0]> = {
+    food: "restaurantsNearYou",
+    rides: "safeBooking",
+    pharmacy: "medicinesDelivered",
+    parcel: "parcelsAnywhere",
+  };
+
+  const title = labelMap[service.key] ? T(labelMap[service.key]) : service.label;
+  const sub = subMap[service.key] ? T(subMap[service.key]) : service.description;
+  const tag = service.key === "rides" ? T("instantLabel") : service.tag;
+
   return (
     <Tap
-      onPress={onPress}
+      onPress={() => router.push(service.route)}
       style={[styles.svcWrap, fullWidth ? { width: "100%" } : { width: HALF_W }]}
       delay={delay}
     >
       <LinearGradient
-        colors={[g1, g2]}
+        colors={service.cardGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.svcCard}
@@ -287,14 +303,72 @@ function SvcCard({
             },
           ]}
         />
-        <LinearGradient colors={[ig1, ig2]} style={styles.svcIcon}>
-          <Ionicons name={icon} size={24} color="#fff" />
+        <LinearGradient colors={service.iconGradient} style={styles.svcIcon}>
+          <Ionicons name={service.iconFocused} size={24} color="#fff" />
         </LinearGradient>
-        <Text style={[styles.svcTitle, { color: textC }]}>{title}</Text>
-        <Text style={[styles.svcSub, { color: textC, opacity: 0.7 }]}>{sub}</Text>
-        <View style={[styles.svcTag, { backgroundColor: tagBg }]}>
-          <Ionicons name={tagIcon} size={11} color={tagC} />
-          <Text style={[styles.svcTagTxt, { color: tagC }]}>{tag}</Text>
+        <Text style={[styles.svcTitle, { color: service.textColor }]}>{title}</Text>
+        <Text style={[styles.svcSub, { color: service.textColor, opacity: 0.7 }]}>{sub}</Text>
+        <View style={[styles.svcTag, { backgroundColor: service.tagBg }]}>
+          <Ionicons name={service.tagIcon} size={11} color={service.tagColor} />
+          <Text style={[styles.svcTagTxt, { color: service.tagColor }]}>{tag}</Text>
+        </View>
+      </LinearGradient>
+    </Tap>
+  );
+}
+
+function SingleServiceHero({
+  service,
+  appName,
+}: {
+  service: ServiceDefinition;
+  appName: string;
+}) {
+  const hero = service.heroConfig;
+  const displayTitle = service.key === "mart" ? appName : hero.title;
+  return (
+    <Tap onPress={() => router.push(service.route)} style={styles.singleHeroWrap} delay={80}>
+      <LinearGradient
+        colors={hero.gradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.singleHeroCard}
+      >
+        <View
+          style={[
+            styles.blob,
+            { width: 280, height: 280, top: -80, right: -60, opacity: 0.08 },
+          ]}
+        />
+        <View
+          style={[
+            styles.blob,
+            { width: 120, height: 120, bottom: 20, left: -30, opacity: 0.06 },
+          ]}
+        />
+
+        <View style={styles.singleHeroContent}>
+          <View style={styles.singleHeroIconWrap}>
+            <Ionicons name={service.iconFocused} size={64} color="#fff" />
+          </View>
+          <View style={styles.heroBadge}>
+            <Ionicons name={hero.badgeIcon} size={11} color="#fff" />
+            <Text style={styles.heroBadgeTxt}>{hero.badgeLabel}</Text>
+          </View>
+          <Text style={styles.singleHeroTitle}>{displayTitle}</Text>
+          <Text style={styles.singleHeroSub}>{hero.subtitle}</Text>
+          <View style={styles.singleHeroStats}>
+            {hero.stats.map((st, i) => (
+              <View key={i} style={styles.singleHeroStat}>
+                <Ionicons name={st.icon} size={14} color="rgba(255,255,255,0.85)" />
+                <Text style={styles.singleHeroStatTxt}>{st.label}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.singleHeroCta}>
+            <Text style={styles.singleHeroCtaTxt}>{hero.cta}</Text>
+            <Ionicons name="arrow-forward" size={16} color={C.primary} />
+          </View>
         </View>
       </LinearGradient>
     </Tap>
@@ -401,87 +475,12 @@ function Pill({
   );
 }
 
-const ALL_BANNERS = [
-  {
-    title: "Free Delivery",
-    desc: "Free delivery on your first order \u2014 try it today!",
-    tag: "New Users",
-    c1: C.primary,
-    c2: "#3385FF",
-    icon: "cart-outline" as const,
-    route: "/mart",
-    cta: "Shop Now",
-    service: "mart" as const,
-  },
-  {
-    title: "Bike Ride 10% Off",
-    desc: "Book a bike from just Rs. 45 \u2014 anywhere in AJK!",
-    tag: "Weekend Deal",
-    c1: C.success,
-    c2: "#00E6A0",
-    icon: "bicycle-outline" as const,
-    route: "/ride",
-    cta: "Book a Ride",
-    service: "rides" as const,
-  },
-  {
-    title: "Local Food Deal",
-    desc: "Place 2 food orders and get 20% off your next one!",
-    tag: "Food Deal",
-    c1: "#E68600",
-    c2: C.food,
-    icon: "restaurant-outline" as const,
-    route: "/food",
-    cta: "Order Now",
-    service: "food" as const,
-  },
-  {
-    title: "Flash Deals",
-    desc: "New deals daily \u2014 save 20% on fruits, veggies, milk & more!",
-    tag: "Flash Sale",
-    c1: "#4B47D6",
-    c2: C.info,
-    icon: "flash-outline" as const,
-    route: "/mart",
-    cta: "View Deals",
-    service: "mart" as const,
-  },
-  {
-    title: "Pharmacy",
-    desc: "Order medicines from home \u2014 delivery in 25-40 min!",
-    tag: "On-Demand",
-    c1: "#9B40D6",
-    c2: C.pharmacy,
-    icon: "medkit-outline" as const,
-    route: "/pharmacy",
-    cta: "Order Now",
-    service: "pharmacy" as const,
-  },
-  {
-    title: "Parcel Delivery",
-    desc: "Send parcels anywhere in AJK \u2014 starting from Rs. 150!",
-    tag: "Fast Delivery",
-    c1: "#E65500",
-    c2: C.parcel,
-    icon: "cube-outline" as const,
-    route: "/parcel",
-    cta: "Book Now",
-    service: "parcel" as const,
-  },
-];
-
 function BannerCarousel({
   features,
 }: {
-  features: {
-    mart: boolean;
-    food: boolean;
-    rides: boolean;
-    pharmacy: boolean;
-    parcel: boolean;
-  };
+  features: Record<string, boolean>;
 }) {
-  const banners = ALL_BANNERS.filter((b) => features[b.service]);
+  const banners = getActiveBanners(features);
   const scrollRef = useRef<ScrollView>(null);
   const [active, setActive] = useState(0);
   const BANNER_W = W - H_PAD * 2;
@@ -621,175 +620,8 @@ export default function HomeScreen() {
     }).start();
   }, []);
 
-  const allQuickActions = [
-    {
-      icon: "leaf-outline" as const,
-      label: "Fruits",
-      color: C.mart,
-      bg: C.martLight,
-      route: "/mart",
-      service: "mart" as const,
-    },
-    {
-      icon: "medkit-outline" as const,
-      label: "Pharmacy",
-      color: C.pharmacy,
-      bg: C.pharmacyLight,
-      route: "/pharmacy",
-      service: "pharmacy" as const,
-    },
-    {
-      icon: "pizza-outline" as const,
-      label: "Pizza",
-      color: C.food,
-      bg: C.foodLight,
-      route: "/food",
-      service: "food" as const,
-    },
-    {
-      icon: "bicycle-outline" as const,
-      label: "Bike",
-      color: C.info,
-      bg: C.infoSoft,
-      route: "/ride",
-      service: "rides" as const,
-    },
-    {
-      icon: "cube-outline" as const,
-      label: "Parcel",
-      color: C.parcel,
-      bg: C.parcelLight,
-      route: "/parcel",
-      service: "parcel" as const,
-    },
-    {
-      icon: "flash-outline" as const,
-      label: "Deals",
-      color: C.danger,
-      bg: C.dangerSoft,
-      route: "/mart",
-      service: "mart" as const,
-    },
-    {
-      icon: "car-outline" as const,
-      label: "Car",
-      color: C.success,
-      bg: C.successSoft,
-      route: "/ride",
-      service: "rides" as const,
-    },
-    {
-      icon: "time-outline" as const,
-      label: "Track",
-      color: C.primary,
-      bg: C.primarySoft,
-      route: "/(tabs)/orders",
-      service: null,
-    },
-  ];
-  const quickActions = allQuickActions.filter(
-    (q) => q.service === null || features[q.service]
-  );
-
-  const allServices: Array<{
-    key: string;
-    featureKey: "mart" | "food" | "rides" | "pharmacy" | "parcel";
-    type: "hero" | "card";
-    props: any;
-  }> = [
-    {
-      key: "mart",
-      featureKey: "mart",
-      type: "hero",
-      props: { onPress: () => router.push("/mart"), appName },
-    },
-    {
-      key: "food",
-      featureKey: "food",
-      type: "card",
-      props: {
-        onPress: () => router.push("/food"),
-        delay: 160,
-        g1: C.foodLight,
-        g2: "#FEE8CC",
-        ig1: C.food,
-        ig2: "#FFB340",
-        icon: "restaurant",
-        title: T("foodDelivery"),
-        sub: T("restaurantsNearYou"),
-        tag: "30 min",
-        tagIcon: "time-outline",
-        textC: "#7A5A00",
-        tagC: "#7A5A00",
-        tagBg: "#FFE6B3",
-      },
-    },
-    {
-      key: "rides",
-      featureKey: "rides",
-      type: "card",
-      props: {
-        onPress: () => router.push("/ride"),
-        delay: 240,
-        g1: C.successSoft,
-        g2: "#CCF5E7",
-        ig1: C.success,
-        ig2: "#33D4A7",
-        icon: "car",
-        title: T("bikeCarRide"),
-        sub: T("safeBooking"),
-        tag: T("instantLabel"),
-        tagIcon: "flash-outline",
-        textC: "#005C44",
-        tagC: "#005C44",
-        tagBg: "#99ECCC",
-      },
-    },
-    {
-      key: "pharmacy",
-      featureKey: "pharmacy",
-      type: "card",
-      props: {
-        onPress: () => router.push("/pharmacy"),
-        delay: 340,
-        g1: C.pharmacyLight,
-        g2: "#EDD6FF",
-        ig1: C.pharmacy,
-        ig2: "#C77DEB",
-        icon: "medkit",
-        title: T("pharmacy"),
-        sub: T("medicinesDelivered"),
-        tag: "25-40 min",
-        tagIcon: "medkit-outline",
-        textC: "#5A1D8C",
-        tagC: "#5A1D8C",
-        tagBg: "#DDB8FF",
-      },
-    },
-    {
-      key: "parcel",
-      featureKey: "parcel",
-      type: "card",
-      props: {
-        onPress: () => router.push("/parcel"),
-        delay: 420,
-        g1: C.parcelLight,
-        g2: "#FFD9CC",
-        ig1: C.parcel,
-        ig2: "#FF8F66",
-        icon: "cube",
-        title: T("parcel"),
-        sub: T("parcelsAnywhere"),
-        tag: "Rs. 150+",
-        tagIcon: "cube-outline",
-        textC: "#8C3300",
-        tagC: "#8C3300",
-        tagBg: "#FFBFA3",
-      },
-    },
-  ];
-
-  const activeServices = allServices.filter((s) => features[s.featureKey]);
+  const activeServices = getActiveServices(features);
+  const quickActions = getActiveQuickActions(features);
   const noServicesActive = activeServices.length === 0;
 
   return (
@@ -891,51 +723,78 @@ export default function HomeScreen() {
           <NoServicesState />
         ) : (
           <>
-            <View style={styles.grid}>
-              {(() => {
-                const cards = activeServices.filter((s) => s.type === "card");
-                const heroService = activeServices.find(
-                  (s) => s.type === "hero"
-                );
-                const elements: React.ReactNode[] = [];
-
-                if (heroService) {
-                  elements.push(
-                    <HeroCard key="hero" {...heroService.props} />
-                  );
-                }
-
-                for (let i = 0; i < cards.length; i += 2) {
-                  const pair = cards.slice(i, i + 2);
-                  if (pair.length === 2) {
-                    elements.push(
-                      <View key={`row-${i}`} style={styles.halfRow}>
-                        <SvcCard {...pair[0].props} />
-                        <SvcCard {...pair[1].props} />
-                      </View>
-                    );
-                  } else {
-                    elements.push(
-                      <SvcCard
-                        key={`single-${i}`}
-                        {...pair[0].props}
-                        fullWidth
-                      />
-                    );
-                  }
-                }
-
-                return elements;
-              })()}
-
-              {features.wallet && (
-                <WalletStrip
-                  balance={user?.walletBalance || 0}
-                  onPress={() => router.push("/(tabs)/wallet")}
+            {activeServices.length === 1 ? (
+              <View style={styles.grid}>
+                <SingleServiceHero
+                  service={activeServices[0]}
                   appName={appName}
                 />
-              )}
-            </View>
+                {features.wallet && (
+                  <WalletStrip
+                    balance={user?.walletBalance || 0}
+                    onPress={() => router.push("/(tabs)/wallet")}
+                    appName={appName}
+                  />
+                )}
+              </View>
+            ) : activeServices.length === 2 ? (
+              <View style={styles.grid}>
+                {activeServices.map((svc) => (
+                  <ServiceHero key={svc.key} service={svc} appName={appName} />
+                ))}
+                {features.wallet && (
+                  <WalletStrip
+                    balance={user?.walletBalance || 0}
+                    onPress={() => router.push("/(tabs)/wallet")}
+                    appName={appName}
+                  />
+                )}
+              </View>
+            ) : (
+              <View style={styles.grid}>
+                {(() => {
+                  const elements: React.ReactNode[] = [];
+                  const first = activeServices[0];
+                  const rest = activeServices.slice(1);
+
+                  elements.push(
+                    <ServiceHero key={first.key} service={first} appName={appName} />
+                  );
+
+                  for (let i = 0; i < rest.length; i += 2) {
+                    const pair = rest.slice(i, i + 2);
+                    if (pair.length === 2) {
+                      elements.push(
+                        <View key={`row-${i}`} style={styles.halfRow}>
+                          <SvcCard service={pair[0]} delay={160 + i * 40} T={T} />
+                          <SvcCard service={pair[1]} delay={200 + i * 40} T={T} />
+                        </View>
+                      );
+                    } else {
+                      elements.push(
+                        <SvcCard
+                          key={`single-${i}`}
+                          service={pair[0]}
+                          delay={160 + i * 40}
+                          fullWidth
+                          T={T}
+                        />
+                      );
+                    }
+                  }
+
+                  return elements;
+                })()}
+
+                {features.wallet && (
+                  <WalletStrip
+                    balance={user?.walletBalance || 0}
+                    onPress={() => router.push("/(tabs)/wallet")}
+                    appName={appName}
+                  />
+                )}
+              </View>
+            )}
 
             {quickActions.length > 0 && (
               <>
@@ -949,7 +808,7 @@ export default function HomeScreen() {
                 >
                   {quickActions.map((q, i) => (
                     <Pill
-                      key={q.label}
+                      key={`${q.label}-${i}`}
                       icon={q.icon}
                       label={q.label}
                       color={q.color}
@@ -1232,6 +1091,75 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.2)",
+  },
+
+  singleHeroWrap: { borderRadius: radii.xxl, overflow: "hidden" },
+  singleHeroCard: {
+    borderRadius: radii.xxl,
+    padding: spacing.xxl,
+    alignItems: "center",
+    minHeight: 320,
+    overflow: "hidden",
+    justifyContent: "center",
+  },
+  singleHeroContent: {
+    alignItems: "center",
+    gap: 10,
+  },
+  singleHeroIconWrap: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.2)",
+    marginBottom: 8,
+  },
+  singleHeroTitle: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 34,
+    color: "#fff",
+    textAlign: "center",
+  },
+  singleHeroSub: {
+    ...typography.body,
+    color: "rgba(255,255,255,0.85)",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  singleHeroStats: {
+    flexDirection: "row",
+    gap: 20,
+    marginTop: 4,
+  },
+  singleHeroStat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+  },
+  singleHeroStatTxt: {
+    ...typography.captionMedium,
+    color: "rgba(255,255,255,0.9)",
+  },
+  singleHeroCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#fff",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: radii.full,
+    marginTop: 8,
+  },
+  singleHeroCtaTxt: {
+    ...typography.button,
+    color: C.primary,
   },
 
   svcWrap: { borderRadius: radii.xl, overflow: "hidden", height: 178 },
