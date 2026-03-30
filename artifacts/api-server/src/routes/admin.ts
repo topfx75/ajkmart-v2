@@ -441,11 +441,33 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "rider_ignore_limit_daily",          value: "5",    label: "Max Ignores Per Day Before Penalty",                category: "rider" },
   { key: "rider_ignore_penalty_amount",       value: "30",   label: "Ignore Penalty Amount (Rs.)",                       category: "rider" },
   { key: "rider_ignore_restrict_enabled",     value: "off",  label: "Auto-Restrict Rider on Excessive Ignores",          category: "rider" },
-  /* ═══════════════════  Ride Payment Method Toggles  ═══════════════════ */
+  /* ═══════════════════  Ride Payment Method Toggles (legacy)  ═══════════════════ */
   { key: "ride_payment_cash",                 value: "on",   label: "Cash Payment for Rides",                            category: "rides" },
   { key: "ride_payment_wallet",               value: "on",   label: "Wallet Payment for Rides",                          category: "rides" },
   { key: "ride_payment_jazzcash",             value: "off",  label: "JazzCash Direct Payment for Rides",                 category: "rides" },
   { key: "ride_payment_easypaisa",            value: "off",  label: "EasyPaisa Direct Payment for Rides",                category: "rides" },
+  /* ═══════════════════  Per-Service Payment Availability  ═══════════════════ */
+  { key: "jazzcash_allowed_mart",             value: "on",   label: "JazzCash Available for Mart",                       category: "payment" },
+  { key: "jazzcash_allowed_food",             value: "on",   label: "JazzCash Available for Food",                       category: "payment" },
+  { key: "jazzcash_allowed_pharmacy",         value: "on",   label: "JazzCash Available for Pharmacy",                   category: "payment" },
+  { key: "jazzcash_allowed_parcel",           value: "on",   label: "JazzCash Available for Parcel",                     category: "payment" },
+  { key: "jazzcash_allowed_rides",            value: "on",   label: "JazzCash Available for Rides",                      category: "payment" },
+  { key: "easypaisa_allowed_mart",            value: "on",   label: "EasyPaisa Available for Mart",                      category: "payment" },
+  { key: "easypaisa_allowed_food",            value: "on",   label: "EasyPaisa Available for Food",                      category: "payment" },
+  { key: "easypaisa_allowed_pharmacy",        value: "on",   label: "EasyPaisa Available for Pharmacy",                  category: "payment" },
+  { key: "easypaisa_allowed_parcel",          value: "on",   label: "EasyPaisa Available for Parcel",                    category: "payment" },
+  { key: "easypaisa_allowed_rides",           value: "on",   label: "EasyPaisa Available for Rides",                     category: "payment" },
+  { key: "bank_allowed_mart",                 value: "on",   label: "Bank Transfer Available for Mart",                  category: "payment" },
+  { key: "bank_allowed_food",                 value: "on",   label: "Bank Transfer Available for Food",                  category: "payment" },
+  { key: "bank_allowed_pharmacy",             value: "on",   label: "Bank Transfer Available for Pharmacy",              category: "payment" },
+  { key: "bank_allowed_parcel",               value: "on",   label: "Bank Transfer Available for Parcel",                category: "payment" },
+  { key: "bank_allowed_rides",                value: "on",   label: "Bank Transfer Available for Rides",                 category: "payment" },
+  { key: "wallet_allowed_mart",               value: "on",   label: "Wallet Available for Mart",                         category: "payment" },
+  { key: "wallet_allowed_food",               value: "on",   label: "Wallet Available for Food",                         category: "payment" },
+  { key: "wallet_allowed_pharmacy",           value: "on",   label: "Wallet Available for Pharmacy",                     category: "payment" },
+  { key: "wallet_allowed_parcel",             value: "on",   label: "Wallet Available for Parcel",                       category: "payment" },
+  { key: "wallet_allowed_rides",              value: "on",   label: "Wallet Available for Rides",                        category: "payment" },
+  { key: "cod_allowed_rides",                 value: "on",   label: "COD Available for Rides",                           category: "payment" },
 ];
 
 export async function getPlatformSettings(): Promise<Record<string, string>> {

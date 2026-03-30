@@ -878,11 +878,15 @@ router.get("/:id/event-logs", async (req, res) => {
 ══════════════════════════════════════════════════════ */
 router.get("/payment-methods", async (_req, res) => {
   const s = await getPlatformSettings();
+  const rideAllowed = (newKey: string, legacyKey: string, legacyDefault: string): boolean => {
+    if (s[newKey] !== undefined) return s[newKey] === "on";
+    return (s[legacyKey] ?? legacyDefault) === "on";
+  };
   const methods: { key: string; label: string; enabled: boolean }[] = [
-    { key: "cash",      label: "Cash",      enabled: (s["ride_payment_cash"] ?? "on") === "on" && (s["rider_cash_allowed"] ?? "on") === "on" },
-    { key: "wallet",    label: "Wallet",     enabled: (s["ride_payment_wallet"] ?? "on") === "on" && (s["feature_wallet"] ?? "on") === "on" },
-    { key: "jazzcash",  label: "JazzCash",   enabled: (s["ride_payment_jazzcash"] ?? "off") === "on" && (s["jazzcash_enabled"] ?? "off") === "on" },
-    { key: "easypaisa", label: "EasyPaisa",  enabled: (s["ride_payment_easypaisa"] ?? "off") === "on" && (s["easypaisa_enabled"] ?? "off") === "on" },
+    { key: "cash",      label: "Cash",      enabled: rideAllowed("cod_allowed_rides", "ride_payment_cash", "on") && (s["cod_enabled"] ?? "on") === "on" && (s["rider_cash_allowed"] ?? "on") === "on" },
+    { key: "wallet",    label: "Wallet",     enabled: rideAllowed("wallet_allowed_rides", "ride_payment_wallet", "on") && (s["feature_wallet"] ?? "on") === "on" },
+    { key: "jazzcash",  label: "JazzCash",   enabled: rideAllowed("jazzcash_allowed_rides", "ride_payment_jazzcash", "off") && (s["jazzcash_enabled"] ?? "off") === "on" },
+    { key: "easypaisa", label: "EasyPaisa",  enabled: rideAllowed("easypaisa_allowed_rides", "ride_payment_easypaisa", "off") && (s["easypaisa_enabled"] ?? "off") === "on" },
   ];
   res.json({ methods: methods.filter(m => m.enabled) });
 });

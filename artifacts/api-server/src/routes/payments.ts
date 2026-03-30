@@ -83,8 +83,16 @@ async function confirmOrder(orderId: string): Promise<void> {
 //  Respects: cod_enabled, bank_enabled, jazzcash_enabled, easypaisa_enabled,
 //            feature_wallet, jazzcash_type (api/manual), easypaisa_type
 // ═══════════════════════════════════════════════════════════════════════════════
-router.get("/methods", async (_req, res) => {
+router.get("/methods", async (req, res) => {
   const s = await getPlatformSettings();
+  const serviceType = (req.query.serviceType as string | undefined)?.toLowerCase();
+  const validServices = ["mart", "food", "pharmacy", "parcel", "rides"];
+  const filterService = serviceType && validServices.includes(serviceType) ? serviceType : null;
+
+  const isAllowedForService = (prefix: string): boolean => {
+    if (!filterService) return true;
+    return (s[`${prefix}_allowed_${filterService}`] ?? "on") === "on";
+  };
 
   const codEnabled    = (s["cod_enabled"]       ?? "on")  === "on";
   const walletEnabled = (s["feature_wallet"]    ?? "on")  === "on";
@@ -95,7 +103,7 @@ router.get("/methods", async (_req, res) => {
   const methods: Array<Record<string, unknown>> = [];
 
   /* ── Cash on Delivery ── */
-  if (codEnabled) {
+  if (codEnabled && isAllowedForService("cod")) {
     methods.push({
       id:          "cash",
       label:       "Cash on Delivery",
@@ -110,7 +118,7 @@ router.get("/methods", async (_req, res) => {
   }
 
   /* ── AJK Wallet ── */
-  if (walletEnabled) {
+  if (walletEnabled && isAllowedForService("wallet")) {
     methods.push({
       id:          "wallet",
       label:       "AJK Wallet",
@@ -125,7 +133,7 @@ router.get("/methods", async (_req, res) => {
   }
 
   /* ── JazzCash ── */
-  if (jcEnabled) {
+  if (jcEnabled && isAllowedForService("jazzcash")) {
     const jcType = s["jazzcash_type"] ?? "manual";
     const entry: Record<string, unknown> = {
       id:           "jazzcash",
@@ -148,7 +156,7 @@ router.get("/methods", async (_req, res) => {
   }
 
   /* ── EasyPaisa ── */
-  if (epEnabled) {
+  if (epEnabled && isAllowedForService("easypaisa")) {
     const epType = s["easypaisa_type"] ?? "manual";
     const entry: Record<string, unknown> = {
       id:           "easypaisa",
@@ -171,7 +179,7 @@ router.get("/methods", async (_req, res) => {
   }
 
   /* ── Bank Transfer ── */
-  if (bankEnabled) {
+  if (bankEnabled && isAllowedForService("bank")) {
     methods.push({
       id:              "bank",
       label:           "Bank Transfer",

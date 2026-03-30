@@ -78,11 +78,15 @@ const TOGGLE_KEYS = new Set([
   "integration_push_notif","integration_sms","integration_analytics","integration_email","integration_sentry","integration_whatsapp",
   "integration_maps","analytics_debug_mode","maps_distance_matrix","maps_places_autocomplete","maps_geocoding",
   "jazzcash_enabled","jazzcash_proof_required",
+  "jazzcash_allowed_mart","jazzcash_allowed_food","jazzcash_allowed_pharmacy","jazzcash_allowed_parcel","jazzcash_allowed_rides",
   "easypaisa_enabled","easypaisa_proof_required",
+  "easypaisa_allowed_mart","easypaisa_allowed_food","easypaisa_allowed_pharmacy","easypaisa_allowed_parcel","easypaisa_allowed_rides",
   "bank_enabled","bank_proof_required",
-  "cod_enabled","cod_allowed_mart","cod_allowed_food","cod_allowed_pharmacy","cod_allowed_parcel","cod_fake_penalty",
+  "bank_allowed_mart","bank_allowed_food","bank_allowed_pharmacy","bank_allowed_parcel","bank_allowed_rides",
+  "cod_enabled","cod_allowed_mart","cod_allowed_food","cod_allowed_pharmacy","cod_allowed_parcel","cod_allowed_rides","cod_fake_penalty",
   "payment_auto_cancel","payment_receipt_required",
   "wallet_p2p_enabled","wallet_kyc_required",
+  "wallet_allowed_mart","wallet_allowed_food","wallet_allowed_pharmacy","wallet_allowed_parcel","wallet_allowed_rides",
   "wallet_cashback_on_orders","wallet_cashback_on_rides","wallet_cashback_on_pharmacy",
   "content_show_banner",
   "order_schedule_enabled",
@@ -575,6 +579,34 @@ function GatewayCard({
             </div>
           </div>
         )}
+
+        {/* Service availability */}
+        <div>
+          <SLabel>Kaun Si Services Mein Available Hai</SLabel>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {[
+              { key: `${prefix}_allowed_mart`,     label: "Mart / Grocery",  icon: "🛒", on: (localValues[`${prefix}_allowed_mart`]     ?? "on") === "on" },
+              { key: `${prefix}_allowed_food`,     label: "Food Delivery",   icon: "🍔", on: (localValues[`${prefix}_allowed_food`]     ?? "on") === "on" },
+              { key: `${prefix}_allowed_pharmacy`, label: "Pharmacy",        icon: "💊", on: (localValues[`${prefix}_allowed_pharmacy`] ?? "on") === "on" },
+              { key: `${prefix}_allowed_parcel`,   label: "Parcel Delivery", icon: "📦", on: (localValues[`${prefix}_allowed_parcel`]   ?? "on") === "on" },
+              { key: `${prefix}_allowed_rides`,    label: "Rides",           icon: "🚗", on: (localValues[`${prefix}_allowed_rides`]    ?? "on") === "on" },
+            ].map(s => (
+              <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
+                className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
+                  s.on
+                    ? "bg-green-50 border-green-400 shadow-sm"
+                    : "bg-muted/20 border-border/60 opacity-70 hover:opacity-100"
+                } ${dirtyKeys.has(s.key) ? "ring-2 ring-amber-300" : ""}`}
+              >
+                <div className="text-2xl mb-1">{s.icon}</div>
+                <p className="text-[11px] font-bold text-foreground leading-tight">{s.label}</p>
+                <p className={`text-[10px] font-bold mt-0.5 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>{s.on ? "✓ On" : "✗ Off"}</p>
+                <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${s.on ? "bg-green-500" : "bg-gray-300"}`} />
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1.5">{name} band karne ke liye service card tap karein</p>
+        </div>
       </div>
     </div>
   );
@@ -696,6 +728,34 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
           <p className="text-[11px] text-muted-foreground">Yeh message customer ko bank transfer select karne ke baad dikhega</p>
         </div>
 
+        {/* Service availability */}
+        <div>
+          <SLabel>Kaun Si Services Mein Available Hai</SLabel>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {[
+              { key: "bank_allowed_mart",     label: "Mart / Grocery",  icon: "🛒", on: (v("bank_allowed_mart")     || "on") === "on" },
+              { key: "bank_allowed_food",     label: "Food Delivery",   icon: "🍔", on: (v("bank_allowed_food")     || "on") === "on" },
+              { key: "bank_allowed_pharmacy", label: "Pharmacy",        icon: "💊", on: (v("bank_allowed_pharmacy") || "on") === "on" },
+              { key: "bank_allowed_parcel",   label: "Parcel Delivery", icon: "📦", on: (v("bank_allowed_parcel")   || "on") === "on" },
+              { key: "bank_allowed_rides",    label: "Rides",           icon: "🚗", on: (v("bank_allowed_rides")    || "on") === "on" },
+            ].map(s => (
+              <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
+                className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
+                  s.on
+                    ? "bg-green-50 border-green-400 shadow-sm"
+                    : "bg-muted/20 border-border/60 opacity-70 hover:opacity-100"
+                } ${dirtyKeys.has(s.key) ? "ring-2 ring-amber-300" : ""}`}
+              >
+                <div className="text-2xl mb-1">{s.icon}</div>
+                <p className="text-[11px] font-bold text-foreground leading-tight">{s.label}</p>
+                <p className={`text-[10px] font-bold mt-0.5 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>{s.on ? "✓ On" : "✗ Off"}</p>
+                <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${s.on ? "bg-green-500" : "bg-gray-300"}`} />
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1.5">Bank Transfer band karne ke liye service card tap karein</p>
+        </div>
+
         {/* Preview */}
         {(v("bank_account_title") || v("bank_account_number") || v("bank_iban")) && (
           <div className="rounded-xl border border-dashed border-blue-300 bg-blue-50/30 p-4">
@@ -729,6 +789,7 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
   const foodOn      = (localValues["cod_allowed_food"]    ?? "on") === "on";
   const pharmacyOn  = (localValues["cod_allowed_pharmacy"]?? "on") === "on";
   const parcelOn    = (localValues["cod_allowed_parcel"]  ?? "off") === "on";
+  const ridesOn     = (localValues["cod_allowed_rides"]   ?? "on") === "on";
   const v = (k: string) => localValues[k] ?? "";
   const d = (k: string) => dirtyKeys.has(k);
 
@@ -737,6 +798,7 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
     { key: "cod_allowed_food",     label: "Food Delivery",   icon: "🍔", on: foodOn     },
     { key: "cod_allowed_pharmacy", label: "Pharmacy",        icon: "💊", on: pharmacyOn },
     { key: "cod_allowed_parcel",   label: "Parcel Delivery", icon: "📦", on: parcelOn   },
+    { key: "cod_allowed_rides",    label: "Rides",           icon: "🚗", on: ridesOn    },
   ];
 
   return (
@@ -772,7 +834,7 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
             { label: "Max Order",   value: `Rs. ${v("cod_max_amount") || "5000"}`, icon: "📦" },
             { label: "COD Fee",     value: !v("cod_fee") || v("cod_fee") === "0" ? "Free" : `Rs. ${v("cod_fee")}`, icon: "🏷️" },
             { label: "Free Above",  value: `Rs. ${v("cod_free_above") || "2000"}`, icon: "🎁" },
-            { label: "Services",    value: `${[martOn,foodOn,pharmacyOn,parcelOn].filter(Boolean).length}/4 on`, icon: "✅" },
+            { label: "Services",    value: `${[martOn,foodOn,pharmacyOn,parcelOn,ridesOn].filter(Boolean).length}/5 on`, icon: "✅" },
           ].map(s => (
             <div key={s.label} className="bg-amber-50/50 rounded-xl p-3 text-center border border-amber-100">
               <div className="text-xl mb-1">{s.icon}</div>
@@ -785,7 +847,7 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
         {/* Service availability */}
         <div>
           <SLabel>COD Kaun Si Services Mein Available Hai</SLabel>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {services.map(s => (
               <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
                 className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
@@ -1035,6 +1097,34 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Service availability */}
+        <div>
+          <SLabel>Kaun Si Services Mein Available Hai</SLabel>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {[
+              { key: "wallet_allowed_mart",     label: "Mart / Grocery",  icon: "🛒", on: (v("wallet_allowed_mart")     || "on") === "on" },
+              { key: "wallet_allowed_food",     label: "Food Delivery",   icon: "🍔", on: (v("wallet_allowed_food")     || "on") === "on" },
+              { key: "wallet_allowed_pharmacy", label: "Pharmacy",        icon: "💊", on: (v("wallet_allowed_pharmacy") || "on") === "on" },
+              { key: "wallet_allowed_parcel",   label: "Parcel Delivery", icon: "📦", on: (v("wallet_allowed_parcel")   || "on") === "on" },
+              { key: "wallet_allowed_rides",    label: "Rides",           icon: "🚗", on: (v("wallet_allowed_rides")    || "on") === "on" },
+            ].map(s => (
+              <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
+                className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
+                  s.on
+                    ? "bg-green-50 border-green-400 shadow-sm"
+                    : "bg-muted/20 border-border/60 opacity-70 hover:opacity-100"
+                } ${dirtyKeys.has(s.key) ? "ring-2 ring-amber-300" : ""}`}
+              >
+                <div className="text-2xl mb-1">{s.icon}</div>
+                <p className="text-[11px] font-bold text-foreground leading-tight">{s.label}</p>
+                <p className={`text-[10px] font-bold mt-0.5 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>{s.on ? "✓ On" : "✗ Off"}</p>
+                <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${s.on ? "bg-green-500" : "bg-gray-300"}`} />
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1.5">Wallet payment band karne ke liye service card tap karein</p>
         </div>
 
         {/* Top-Up methods */}
