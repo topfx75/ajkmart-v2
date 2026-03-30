@@ -80,14 +80,18 @@ router.post("/topup", adminAuth, async (req, res) => {
         throw new Error(`Wallet balance limit is Rs. ${maxBalance}. Current: Rs. ${currentBalance}`);
       }
 
-      const newBalance = (currentBalance + topupAmt).toFixed(2);
-      await tx.update(usersTable).set({ walletBalance: newBalance }).where(eq(usersTable.id, userId));
+      const [updated] = await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${topupAmt.toFixed(2)}` })
+        .where(and(eq(usersTable.id, userId), sql`CAST(wallet_balance AS numeric) + ${topupAmt} <= ${maxBalance}`))
+        .returning({ walletBalance: usersTable.walletBalance });
+      if (!updated) throw new Error(`Wallet balance limit is Rs. ${maxBalance}. Top-up would exceed the limit.`);
+
       await tx.insert(walletTransactionsTable).values({
         id: generateId(), userId, type: "credit",
         amount: topupAmt.toFixed(2),
         description: method ? `Wallet top-up via ${method}` : "Wallet top-up",
       });
-      return parseFloat(newBalance);
+      return parseFloat(updated.walletBalance ?? "0");
     });
 
     const transactions = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId));
@@ -217,6 +221,8 @@ router.post("/send", customerAuth, async (req, res) => {
     res.status(400).json({ error: `Maximum single transfer is Rs. ${maxWithdrawal}` }); return;
   }
 
+  const maxBalance = parseFloat(s["wallet_max_balance"] ?? "50000");
+
   try {
     const result = await db.transaction(async (tx) => {
       const [sender] = await tx.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
@@ -246,11 +252,19 @@ router.post("/send", customerAuth, async (req, res) => {
       if (!receiver) throw new Error("Receiver not found. Phone number check karein.");
       if (receiver.id === senderUserId) throw new Error("Apne aap ko transfer nahi kar sakte");
 
-      const senderNewBal   = (senderBalance - sendAmt).toFixed(2);
-      const receiverNewBal = (parseFloat(receiver.walletBalance ?? "0") + sendAmt).toFixed(2);
+      const [deducted] = await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance - ${sendAmt.toFixed(2)}` })
+        .where(and(eq(usersTable.id, senderUserId), gte(usersTable.walletBalance, sendAmt.toFixed(2))))
+        .returning({ walletBalance: usersTable.walletBalance });
+      if (!deducted) throw new Error("Insufficient wallet balance");
 
-      await tx.update(usersTable).set({ walletBalance: senderNewBal }).where(eq(usersTable.id, senderUserId));
-      await tx.update(usersTable).set({ walletBalance: receiverNewBal }).where(eq(usersTable.id, receiver.id));
+      const [credited] = await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${sendAmt.toFixed(2)}` })
+        .where(and(eq(usersTable.id, receiver.id), sql`CAST(wallet_balance AS numeric) + ${sendAmt} <= ${maxBalance}`))
+        .returning({ walletBalance: usersTable.walletBalance });
+      if (!credited) {
+        throw new Error(`Receiver wallet limit (Rs. ${maxBalance}) exceed ho jayega. Transfer nahi ho sakta.`);
+      }
 
       const desc    = note ? `Transfer to ${receiverPhone} — ${note}` : `Transfer to ${receiverPhone}`;
       const recvDesc = note ? `Received from ${sender.phone} — ${note}` : `Received from ${sender.phone}`;
@@ -264,7 +278,7 @@ router.post("/send", customerAuth, async (req, res) => {
         amount: sendAmt.toFixed(2), description: recvDesc,
       });
 
-      return { newBalance: parseFloat(senderNewBal), receiverName: receiver.name || receiverPhone, amount: sendAmt };
+      return { newBalance: parseFloat(deducted.walletBalance ?? "0"), receiverName: receiver.name || receiverPhone, amount: sendAmt };
     });
 
     res.json({ success: true, ...result });
@@ -325,7 +339,7 @@ router.get("/pending-topups", customerAuth, async (req, res) => {
     .where(and(
       eq(walletTransactionsTable.userId, userId),
       eq(walletTransactionsTable.type, "deposit"),
-      eq(walletTransactionsTable.reference, "pending"),
+      sql`(${walletTransactionsTable.reference} = 'pending' OR ${walletTransactionsTable.reference} LIKE 'pending:%')`,
     ));
   res.json({ count: pending.length, total: pending.reduce((s, t) => s + parseFloat(t.amount), 0) });
 });

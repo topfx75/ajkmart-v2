@@ -48,7 +48,7 @@ type PayMethod = {
 type DepositStep = "method" | "details" | "amount" | "confirm" | "done";
 
 function TxItem({ tx }: { tx: any }) {
-  const isPending  = tx.type === "deposit" && (!tx.reference || tx.reference === "pending");
+  const isPending  = tx.type === "deposit" && (!tx.reference || tx.reference === "pending" || tx.reference.startsWith("pending:"));
   const isApproved = tx.type === "deposit" && tx.reference?.startsWith("approved:");
   const isRejected = tx.type === "deposit" && tx.reference?.startsWith("rejected:");
   const isCredit   = tx.type === "credit" || isApproved;
@@ -137,7 +137,7 @@ function DepositModal({ onClose, onSuccess, token }: { onClose: () => void; onSu
 
   const goToConfirm = () => {
     const amt = parseFloat(amount);
-    if (!amount || isNaN(amt) || amt < 100) { setErr("Minimum deposit is Rs. 100"); return; }
+    if (!amount || isNaN(amt) || amt <= 0) { setErr("Please enter a valid amount"); return; }
     if (!txId.trim()) { setErr("Transaction ID is required"); return; }
     setErr("");
     setStep("confirm");
@@ -722,7 +722,7 @@ export default function WalletScreen() {
             <Text style={ws.sheetLbl}>Amount (PKR)</Text>
             <View style={ws.amtWrap}>
               <Text style={ws.rupee}>Rs.</Text>
-              <TextInput style={ws.amtInput} value={sendAmount} onChangeText={setSendAmount} keyboardType="numeric" placeholder="0" placeholderTextColor={C.textMuted} />
+              <TextInput style={ws.amtInput} value={sendAmount} onChangeText={t => setSendAmount(t.replace(/[^0-9]/g, ""))} keyboardType="numeric" placeholder="0" placeholderTextColor={C.textMuted} />
             </View>
 
             <Text style={ws.sheetLbl}>Note (Optional)</Text>
@@ -807,7 +807,7 @@ export default function WalletScreen() {
             <Text style={ws.sheetLbl}>Amount (PKR)</Text>
             <View style={ws.amtWrap}>
               <Text style={ws.rupee}>Rs.</Text>
-              <TextInput style={ws.amtInput} value={p2pAmount} onChangeText={setP2pAmount} keyboardType="numeric" placeholder="0" placeholderTextColor={C.textMuted} />
+              <TextInput style={ws.amtInput} value={p2pAmount} onChangeText={t => setP2pAmount(t.replace(/[^0-9]/g, ""))} keyboardType="numeric" placeholder="0" placeholderTextColor={C.textMuted} />
             </View>
 
             <Text style={ws.sheetLbl}>Note (Optional)</Text>
