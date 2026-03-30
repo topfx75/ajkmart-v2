@@ -707,7 +707,7 @@ export default function HomeScreen() {
           </View>
 
           <Pressable
-            onPress={() => router.push("/mart")}
+            onPress={() => router.push("/search")}
             style={styles.searchBar}
           >
             <View style={styles.searchIcon}>

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
-import React, { useState, useRef } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -132,6 +132,13 @@ function MartScreenInner() {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState<string | undefined>(undefined);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const searchInputRef = useRef<TextInput>(null);
+  useEffect(() => {
+    if (focus === "search") {
+      setTimeout(() => searchInputRef.current?.focus(), 300);
+    }
+  }, [focus]);
 
   const { config: platformConfig } = usePlatformConfig();
   const appName = platformConfig.platform.appName;
@@ -172,6 +179,7 @@ function MartScreenInner() {
         <View style={styles.searchWrap}>
           <Ionicons name="search-outline" size={17} color={C.textMuted} />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             value={search}
             onChangeText={setSearch}

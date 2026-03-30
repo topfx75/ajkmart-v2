@@ -25,6 +25,13 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { getPaymentMethods, estimateParcel, createParcelBooking } from "@workspace/api-client-react";
 import type { CreateParcelBookingRequest } from "@workspace/api-client-react";
 
+interface ParcelBookingPayload extends CreateParcelBookingRequest {
+  pickupLat?: number;
+  pickupLng?: number;
+  dropLat?: number;
+  dropLng?: number;
+}
+
 const C = Colors.light;
 
 interface ParcelType {
@@ -91,10 +98,14 @@ function ParcelScreenInner() {
   const [senderName, setSenderName] = useState(user?.name || "");
   const [senderPhone, setSenderPhone] = useState(user?.phone || "");
   const [pickupAddress, setPickupAddress] = useState("");
+  const [pickupLat, setPickupLat] = useState<number | undefined>(undefined);
+  const [pickupLng, setPickupLng] = useState<number | undefined>(undefined);
 
   const [receiverName, setReceiverName] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
   const [dropAddress, setDropAddress] = useState("");
+  const [dropLat, setDropLat] = useState<number | undefined>(undefined);
+  const [dropLng, setDropLng] = useState<number | undefined>(undefined);
 
   const [parcelType, setParcelType] = useState<string>("");
   const [weight, setWeight] = useState("");
@@ -157,13 +168,16 @@ function ParcelScreenInner() {
     setLoading(true);
     try {
       const w = parseFloat(weight) || undefined;
-      const data = await createParcelBooking({
+      const payload: ParcelBookingPayload = {
         senderName, senderPhone, pickupAddress,
         receiverName, receiverPhone, dropAddress,
         parcelType: parcelType!, weight: w,
         description: description || undefined,
         paymentMethod: payMethod as "cash" | "wallet",
-      });
+        ...(pickupLat !== undefined && pickupLng !== undefined ? { pickupLat, pickupLng } : {}),
+        ...(dropLat !== undefined && dropLng !== undefined ? { dropLat, dropLng } : {}),
+      };
+      const data = await createParcelBooking(payload as CreateParcelBookingRequest);
       if (payMethod === "wallet" && user) {
         updateUser({ walletBalance: (user.walletBalance ?? 0) - data.fare });
       }
@@ -507,9 +521,16 @@ function ParcelScreenInner() {
                 style={ss.locOption}
                 onPress={async () => {
                   const loc = await resolveLocation(pred);
-                  const address = pred.description;
-                  if (showLocPicker === "pickup") setPickupAddress(address);
-                  else setDropAddress(address);
+                  const address = loc.address || pred.description;
+                  if (showLocPicker === "pickup") {
+                    setPickupAddress(address);
+                    setPickupLat(loc.lat);
+                    setPickupLng(loc.lng);
+                  } else {
+                    setDropAddress(address);
+                    setDropLat(loc.lat);
+                    setDropLng(loc.lng);
+                  }
                   setShowLocPicker(null);
                   setLocSearch("");
                 }}

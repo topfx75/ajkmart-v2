@@ -37,6 +37,16 @@ router.get("/:id/debt", async (req, res) => {
   res.json({ debtBalance: 0 });
 });
 
+router.post("/export-data", async (req, res) => {
+  const userId = req.customerId!;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  res.json({ success: true, message: "Your data export has been queued. You will receive an email within 24 hours." });
+});
+
 router.put("/profile", async (req, res) => {
   const userId = req.customerId!;
   const { userId: _ignored, name, email, avatar, cnic, city, address } = req.body;

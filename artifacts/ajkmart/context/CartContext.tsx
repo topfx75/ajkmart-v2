@@ -61,9 +61,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (cartItems.length === 0) return;
     setIsValidating(true);
     try {
+      const authToken = await AsyncStorage.getItem("@ajkmart_token");
       const res = await fetch(`${API_BASE}/orders/validate-cart`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({ items: cartItems }),
       });
       if (!res.ok) { setIsValidating(false); return; }

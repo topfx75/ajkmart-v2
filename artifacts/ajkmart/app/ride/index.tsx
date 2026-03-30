@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
@@ -24,9 +24,26 @@ function RideScreenInner() {
   const inMaintenance = config.appStatus === "maintenance";
   const { rideId: urlRideId } = useLocalSearchParams<{ rideId?: string }>();
 
-  const [booked, setBooked] = useState<any>(
-    urlRideId ? { id: urlRideId, type: "bike" } : null,
-  );
+  const [booked, setBooked] = useState<any>(null);
+
+  useEffect(() => {
+    if (!urlRideId || !token) return;
+    const apiBase = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+    fetch(`${apiBase}/rides/${urlRideId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => {
+        if (!r.ok) throw new Error("fetch failed");
+        return r.json();
+      })
+      .then(data => {
+        const ride = data.ride || data;
+        setBooked({ id: urlRideId, type: ride.type || "bike" });
+      })
+      .catch(() => {
+        setBooked({ id: urlRideId, type: "bike" });
+      });
+  }, [urlRideId, token]);
 
   if (inMaintenance) {
     return (

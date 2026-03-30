@@ -237,13 +237,25 @@ export default function OrderDetailScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: "#D1FAE5", alignItems: "center", justifyContent: "center" }}>
               <Ionicons
-                name={order.paymentMethod === "wallet" ? "wallet-outline" : "cash-outline"}
+                name={
+                  order.paymentMethod === "wallet"
+                    ? "wallet-outline"
+                    : order.paymentMethod === "jazzcash" || order.paymentMethod === "easypaisa"
+                    ? "phone-portrait-outline"
+                    : "cash-outline"
+                }
                 size={18}
                 color="#059669"
               />
             </View>
             <Text style={s.paymentText}>
-              {order.paymentMethod === "wallet" ? "Wallet" : "Cash on Delivery"}
+              {order.paymentMethod === "wallet"
+                ? "Wallet"
+                : order.paymentMethod === "jazzcash"
+                ? "JazzCash"
+                : order.paymentMethod === "easypaisa"
+                ? "EasyPaisa"
+                : "Cash on Delivery"}
             </Text>
           </View>
         </View>

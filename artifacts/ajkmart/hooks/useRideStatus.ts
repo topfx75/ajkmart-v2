@@ -94,7 +94,6 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
         if (sseFailCountRef.current >= 3) {
           startPolling();
         } else {
-          startPolling();
           setTimeout(() => {
             if (mountedRef.current) connectSse();
           }, SSE_RETRY_DELAY * sseFailCountRef.current);

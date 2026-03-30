@@ -391,7 +391,7 @@ function PharmacyCard({ order, reviews, onRate }: {
   const isDelivered = order.status === "delivered";
 
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onPress={() => router.push({ pathname: "/order", params: { orderId: order.id, type: "pharmacy" } })}>
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#F3E8FF" }]}>
           <Ionicons name="medical-outline" size={13} color="#7C3AED" />
@@ -453,7 +453,7 @@ function PharmacyCard({ order, reviews, onRate }: {
           <Text style={styles.reviewedText}>{T("reviewedThanks")}</Text>
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 

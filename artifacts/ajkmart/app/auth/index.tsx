@@ -239,8 +239,16 @@ export default function AuthScreen() {
       const redirectUri = Linking.createURL("auth/callback");
       const WebBrowser = await import("expo-web-browser");
 
+      const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+      const fbAppId = process.env.EXPO_PUBLIC_FB_APP_ID;
+
       if (provider === "google") {
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=GOOGLE_CLIENT_ID&response_type=id_token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=openid%20email%20profile&nonce=${Date.now()}`;
+        if (!googleClientId) {
+          setError("Social login is not configured. Please try another login method.");
+          setLoading(false);
+          return;
+        }
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(googleClientId)}&response_type=id_token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=openid%20email%20profile&nonce=${Date.now()}`;
         const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
         if (result.type === "success" && result.url) {
           const params = new URL(result.url).hash.slice(1).split("&").reduce<Record<string, string>>((a, p) => { const [k, v] = p.split("="); a[k!] = decodeURIComponent(v!); return a; }, {});
@@ -252,7 +260,12 @@ export default function AuthScreen() {
           }
         }
       } else {
-        const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=FB_APP_ID&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=public_profile,email`;
+        if (!fbAppId) {
+          setError("Social login is not configured. Please try another login method.");
+          setLoading(false);
+          return;
+        }
+        const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${encodeURIComponent(fbAppId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=public_profile,email`;
         const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
         if (result.type === "success" && result.url) {
           const params = new URL(result.url).hash.slice(1).split("&").reduce<Record<string, string>>((a, p) => { const [k, v] = p.split("="); a[k!] = decodeURIComponent(v!); return a; }, {});

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -281,6 +281,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
   const [twoFAError, setTwoFAError]       = useState("");
   const [showDisable2FA, setShowDisable2FA] = useState(false);
   const [disableCode, setDisableCode]      = useState("");
+  const [exportingData, setExportingData]  = useState(false);
 
   useEffect(() => {
     if (!visible || !userId) return;
@@ -437,10 +438,35 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
             </Accordion>
             <Accordion title="⚙️ Account Actions" icon="settings-outline" iconColor={C.textSecondary} iconBg={C.surfaceSecondary}>
               <View style={secCard.wrap}>
-                <Pressable onPress={() => showToast("Your data will be emailed within 24 hours.", "info")} style={[privRow.wrap, { borderBottomWidth: 0 }]}>
-                  <View style={[privRow.icon, { backgroundColor: C.surfaceSecondary }]}><Ionicons name="download-outline" size={17} color={C.textSecondary} /></View>
-                  <View style={{ flex: 1 }}><Text style={privRow.label}>Download My Data</Text><Text style={privRow.sub}>Export all your data</Text></View>
-                  <Ionicons name="chevron-forward" size={15} color={C.textMuted} />
+                <Pressable
+                  disabled={exportingData}
+                  onPress={async () => {
+                    setExportingData(true);
+                    try {
+                      const res = await fetch(`${API}/users/export-data`, {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        },
+                      });
+                      if (!res.ok) throw new Error("Request failed");
+                      showToast("Your data will be emailed within 24 hours.", "success");
+                    } catch {
+                      showToast("Could not request data export. Please try again.", "error");
+                    } finally {
+                      setExportingData(false);
+                    }
+                  }}
+                  style={[privRow.wrap, { borderBottomWidth: 0, opacity: exportingData ? 0.5 : 1 }]}
+                >
+                  <View style={[privRow.icon, { backgroundColor: C.surfaceSecondary }]}>
+                    {exportingData
+                      ? <ActivityIndicator size="small" color={C.textSecondary} />
+                      : <Ionicons name="download-outline" size={17} color={C.textSecondary} />}
+                  </View>
+                  <View style={{ flex: 1 }}><Text style={privRow.label}>Download My Data</Text><Text style={privRow.sub}>{exportingData ? "Requesting export…" : "Export all your data"}</Text></View>
+                  {!exportingData && <Ionicons name="chevron-forward" size={15} color={C.textMuted} />}
                 </Pressable>
               </View>
             </Accordion>
@@ -711,6 +737,8 @@ export default function ProfileScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_H  = Platform.OS === "web" ? 72 : 49;
 
+  const { section } = useLocalSearchParams<{ section?: string }>();
+
   const [showEdit,    setShowEdit]    = useState(false);
   const [showNotifs,  setShowNotifs]  = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -722,6 +750,12 @@ export default function ProfileScreen() {
   const [statsLoading,setStatsLoading]= useState(true);
   const [signingOut,        setSigningOut]        = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
+  useEffect(() => {
+    if (section === "addresses") {
+      setTimeout(() => setShowAddrs(true), 300);
+    }
+  }, [section]);
 
   const { language, setLanguage, loading: langLoading } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);

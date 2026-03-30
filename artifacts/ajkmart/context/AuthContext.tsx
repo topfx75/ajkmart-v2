@@ -268,11 +268,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json() as any;
       if (!data.token) return false;
 
-      const storedUser = await AsyncStorage.getItem(USER_KEY);
-      if (!storedUser) return false;
-      const parsedUser = JSON.parse(storedUser);
+      const meRes = await fetch(`${base}/api/users/profile`, {
+        headers: { Authorization: `Bearer ${data.token}` },
+      });
+      if (!meRes.ok) return false;
+      const meData = await meRes.json();
+      const freshUser: AppUser = meData.user || meData;
 
-      await login(parsedUser, data.token, data.refreshToken);
+      await login(freshUser, data.token, data.refreshToken);
       if (data.refreshToken) {
         await SecureStore.setItemAsync(BIOMETRIC_TOKEN, data.refreshToken);
       }

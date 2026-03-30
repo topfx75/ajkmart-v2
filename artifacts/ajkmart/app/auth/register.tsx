@@ -132,7 +132,7 @@ export default function RegisterScreen() {
         const regRes = await fetch(`${API}/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: formattedDashPhone, password: "TempPass123", name: "User" }),
+          body: JSON.stringify({ phone: formattedDashPhone }),
         });
         const regData = await regRes.json();
         if (!regRes.ok) {

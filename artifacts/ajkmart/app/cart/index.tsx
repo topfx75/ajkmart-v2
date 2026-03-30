@@ -89,7 +89,7 @@ function AddressPickerModal({
               );
             })}
           </ScrollView>
-          <Pressable onPress={() => { onClose(); router.push("/(tabs)/profile"); }} style={[styles.addrOpt, { borderColor: C.primary, borderStyle: "dashed", marginTop: 8 }]}>
+          <Pressable onPress={() => { onClose(); router.push({ pathname: "/(tabs)/profile", params: { section: "addresses" } }); }} style={[styles.addrOpt, { borderColor: C.primary, borderStyle: "dashed", marginTop: 8 }]}>
             <View style={[styles.addrOptIcon, { backgroundColor: "#DBEAFE" }]}>
               <Ionicons name="add-outline" size={20} color={C.primary} />
             </View>
@@ -214,7 +214,7 @@ export default function CartScreen() {
   const revalidatePromo = async (code: string) => {
     try {
       const orderType = cartType === "mixed" ? "mart" : cartType;
-      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
+      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${grandTotal}&type=${orderType}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
@@ -241,7 +241,7 @@ export default function CartScreen() {
     setPromoError(null);
     try {
       const orderType = cartType === "mixed" ? "mart" : cartType;
-      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
+      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${grandTotal}&type=${orderType}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
@@ -455,7 +455,7 @@ export default function CartScreen() {
 
   const cancelPendingOrder = async (orderId: string) => {
     try {
-      await fetch(`${API_BASE}/orders/${orderId}/cancel`, {
+      const res = await fetch(`${API_BASE}/orders/${orderId}/cancel`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -463,7 +463,13 @@ export default function CartScreen() {
         },
         body: JSON.stringify({ reason: "payment_failed" }),
       });
-    } catch {}
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Could not cancel order");
+      }
+    } catch (err: any) {
+      showToast(err.message || "Your order could not be cancelled — please contact support", "error");
+    }
   };
 
   const gwName = payMethod === "jazzcash" ? "JazzCash" : "EasyPaisa";
