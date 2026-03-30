@@ -14,7 +14,7 @@ const C = Colors.light;
 
 export type CancelTarget = {
   id: string;
-  type: "order" | "ride" | "pharmacy";
+  type: "order" | "ride" | "pharmacy" | "parcel";
   status: string;
   total?: number;
   fare?: number;
@@ -53,6 +53,7 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
 
   const isRide = target.type === "ride";
   const isPharmacy = target.type === "pharmacy";
+  const isParcel = target.type === "parcel";
   const reasons = isRide ? RIDE_CANCEL_REASONS : ORDER_CANCEL_REASONS;
   const riderAssigned = target.riderAssigned ?? false;
   const hasFee = isRide && riderAssigned && cancellationFee > 0;
@@ -68,6 +69,8 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
         ? `${apiBase}/rides/${target.id}/cancel`
         : isPharmacy
         ? `${apiBase}/pharmacy-orders/${target.id}/cancel`
+        : isParcel
+        ? `${apiBase}/parcel-bookings/${target.id}/cancel`
         : `${apiBase}/orders/${target.id}/cancel`;
       const res = await fetch(url, {
         method: "PATCH",
@@ -107,13 +110,15 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
           </View>
 
           <Text style={cm.title}>
-            {isRide ? "Cancel Ride?" : isPharmacy ? "Cancel Pharmacy Order?" : "Cancel Order?"}
+            {isRide ? "Cancel Ride?" : isPharmacy ? "Cancel Pharmacy Order?" : isParcel ? "Cancel Parcel Booking?" : "Cancel Order?"}
           </Text>
           <Text style={cm.sub}>
             {isRide
               ? `Ride #${target.id.slice(-8).toUpperCase()}`
               : isPharmacy
               ? `Pharmacy Order #${target.id.slice(-8).toUpperCase()}`
+              : isParcel
+              ? `Parcel #${target.id.slice(-8).toUpperCase()}`
               : `Order #${target.id.slice(-8).toUpperCase()}`}
             {target.cancelMinsLeft != null && !isRide
               ? ` · ${target.cancelMinsLeft}m left`
@@ -187,7 +192,7 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
           <View style={cm.btns}>
             <Pressable style={cm.keepBtn} onPress={safeClose}>
               <Text style={cm.keepText}>
-                {isRide ? "Keep Ride" : "Keep Order"}
+                {isRide ? "Keep Ride" : isParcel ? "Keep Booking" : "Keep Order"}
               </Text>
             </Pressable>
             <Pressable

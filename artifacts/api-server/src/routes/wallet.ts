@@ -477,13 +477,24 @@ router.post("/withdraw", customerAuth, async (req, res) => {
     note ? `Note: ${note}` : null,
   ].filter(Boolean).join(" · ");
 
-  await db.insert(walletTransactionsTable).values({
-    id: txId, userId, type: "withdrawal",
-    amount: amt.toFixed(2),
-    description: desc,
-    reference: "pending",
-    paymentMethod,
-  });
+  try {
+    await db.transaction(async (tx) => {
+      const [deducted] = await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance - ${amt.toFixed(2)}`, updatedAt: new Date() })
+        .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, amt.toFixed(2))))
+        .returning({ id: usersTable.id });
+      if (!deducted) throw new Error(`Insufficient wallet balance. Available: Rs. ${balance.toFixed(0)}`);
+      await tx.insert(walletTransactionsTable).values({
+        id: txId, userId, type: "withdrawal",
+        amount: amt.toFixed(2),
+        description: desc,
+        reference: "pending",
+        paymentMethod,
+      });
+    });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message }); return;
+  }
 
   await db.insert(notificationsTable).values({
     id: generateId(), userId,

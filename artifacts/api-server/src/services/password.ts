@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomInt, scryptSync, timingSafeEqual } from "crypto";
+import bcrypt from "bcryptjs";
 
 const SALT_LENGTH = 16;
 const KEY_LENGTH  = 64;
@@ -28,6 +29,25 @@ export function validatePasswordStrength(password: string): { ok: boolean; messa
     return { ok: false, message: "Password should contain at least one uppercase letter, number, or special character" };
   }
   return { ok: true, message: "ok" };
+}
+
+const BCRYPT_ROUNDS = 12;
+const BCRYPT_PREFIX = "$2b$";
+
+/** Hash a sub-admin secret with bcrypt (cost factor 12) */
+export function hashAdminSecret(secret: string): string {
+  return bcrypt.hashSync(secret, BCRYPT_ROUNDS);
+}
+
+/** Verify a sub-admin secret against a bcrypt or legacy scrypt hash */
+export function verifyAdminSecret(secret: string, stored: string): boolean {
+  if (stored.startsWith(BCRYPT_PREFIX)) {
+    return bcrypt.compareSync(secret, stored);
+  }
+  if (stored.includes(":")) {
+    return verifyPassword(secret, stored);
+  }
+  return secret === stored;
 }
 
 /** Cryptographically secure 6-digit OTP — never use Math.random() for auth codes */

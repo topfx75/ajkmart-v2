@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startDispatchEngine } from "./routes/rides.js";
+import { migrateAdminSecrets } from "./services/adminSecretMigration.js";
 
 const rawPort = process.env["PORT"];
 
@@ -24,4 +25,5 @@ app.listen({ port, reusePort: true }, (err) => {
 
   logger.info({ port }, "Server listening");
   startDispatchEngine();
+  migrateAdminSecrets().catch(e => logger.error({ err: e }, "Admin secret migration failed"));
 });

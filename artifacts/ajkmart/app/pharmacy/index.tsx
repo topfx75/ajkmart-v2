@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Dimensions,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -120,7 +122,48 @@ function PharmacyScreenInner() {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState(user?.phone || "");
   const [prescription, setPrescription] = useState("");
+  const [prescriptionPhotoUri, setPrescriptionPhotoUri] = useState<string | null>(null);
   const [payMethod, setPayMethod] = useState<"wallet" | "cash">("cash");
+
+  const [showPhotoSourceModal, setShowPhotoSourceModal] = useState(false);
+
+  const pickPrescriptionPhoto = () => {
+    setShowPhotoSourceModal(true);
+  };
+
+  const pickFromGallery = async () => {
+    setShowPhotoSourceModal(false);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { showToast("Photo library permission denied", "error"); return; }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.7,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      setPrescriptionPhotoUri(result.assets[0].uri);
+    } catch {
+      showToast("Could not pick image", "error");
+    }
+  };
+
+  const takePhoto = async () => {
+    setShowPhotoSourceModal(false);
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) { showToast("Camera permission denied", "error"); return; }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.7,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      setPrescriptionPhotoUri(result.assets[0].uri);
+    } catch {
+      showToast("Could not open camera", "error");
+    }
+  };
 
   const loadMeds = () => {
     if (!pharmacyEnabled) return;
@@ -211,9 +254,40 @@ function PharmacyScreenInner() {
     }
     setLoading(true);
     try {
+      // Upload prescription photo if selected, then submit order with returned URL
+      let prescriptionPhotoUrl: string | undefined;
+      if (prescriptionPhotoUri) {
+        try {
+          // Read the file as base64
+          const FileSystem = await import("expo-file-system");
+          const base64 = await FileSystem.readAsStringAsync(prescriptionPhotoUri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const mimeType = prescriptionPhotoUri.endsWith(".png") ? "image/png" : "image/jpeg";
+          const uploadRes = await fetch(`https://${process.env.EXPO_PUBLIC_DOMAIN}/api/uploads`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify({ file: `data:${mimeType};base64,${base64}`, mimeType }),
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            prescriptionPhotoUrl = uploadData.url as string;
+          } else {
+            showToast("Could not upload prescription photo — check connection and try again", "error");
+            setLoading(false);
+            return;
+          }
+        } catch {
+          showToast("Could not upload prescription photo", "error");
+          setLoading(false);
+          return;
+        }
+      }
+
       const data = await createPharmacyOrder({
         items: cartItems.map(m => ({ id: m.id, name: m.name, price: m.price, quantity: m.qty })),
         prescriptionNote: prescription || null,
+        prescriptionPhotoUri: prescriptionPhotoUrl || undefined,
         deliveryAddress: address,
         contactPhone: phone,
         paymentMethod: payMethod as "cash" | "wallet",
@@ -451,6 +525,23 @@ function PharmacyScreenInner() {
               multiline
               numberOfLines={3}
             />
+            <Pressable onPress={pickPrescriptionPhoto} style={s.photoPickerBtn}>
+              <Ionicons name="camera-outline" size={18} color="#7C3AED" />
+              <Text style={s.photoPickerTxt}>
+                {prescriptionPhotoUri ? "Change Prescription Photo" : "Attach Prescription Photo"}
+              </Text>
+            </Pressable>
+            {prescriptionPhotoUri && (
+              <View style={{ marginTop: 10, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#DDD6FE" }}>
+                <Image source={{ uri: prescriptionPhotoUri }} style={{ width: "100%", height: 140 }} resizeMode="cover" />
+                <Pressable
+                  onPress={() => setPrescriptionPhotoUri(null)}
+                  style={{ position: "absolute", top: 8, right: 8, backgroundColor: "rgba(0,0,0,0.5)", borderRadius: 12, padding: 4 }}
+                >
+                  <Ionicons name="close" size={16} color="#fff" />
+                </Pressable>
+              </View>
+            )}
           </View>
 
           <View style={s.section}>
@@ -496,6 +587,36 @@ function PharmacyScreenInner() {
             )}
           </Pressable>
         </ScrollView>
+      </Modal>
+
+      <Modal visible={showPhotoSourceModal} transparent animationType="fade" onRequestClose={() => setShowPhotoSourceModal(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setShowPhotoSourceModal(false)}>
+          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, marginBottom: 16, textAlign: "center" }}>
+              Attach Prescription
+            </Text>
+            <Pressable
+              onPress={takePhoto}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: "#F5F3FF", borderRadius: 14, marginBottom: 10 }}
+            >
+              <Ionicons name="camera-outline" size={22} color="#7C3AED" />
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#7C3AED" }}>Take Photo</Text>
+            </Pressable>
+            <Pressable
+              onPress={pickFromGallery}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: "#F5F3FF", borderRadius: 14, marginBottom: 10 }}
+            >
+              <Ionicons name="image-outline" size={22} color="#7C3AED" />
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#7C3AED" }}>Choose from Gallery</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setShowPhotoSourceModal(false)}
+              style={{ paddingVertical: 12, alignItems: "center" }}
+            >
+              <Text style={{ fontFamily: "Inter_500Medium", fontSize: 14, color: C.textSecondary }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -571,6 +692,8 @@ const s = StyleSheet.create({
 
   label: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginBottom: 6, marginTop: 12 },
   input: { borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontFamily: "Inter_400Regular", fontSize: 13, color: C.text, backgroundColor: C.surfaceSecondary },
+  photoPickerBtn: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1.5, borderColor: "#DDD6FE", backgroundColor: "#F5F3FF" },
+  photoPickerTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#7C3AED" },
 
   payRow: { gap: 10 },
   payOpt: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: C.border },

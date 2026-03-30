@@ -45,6 +45,7 @@ import {
   ADMIN_TOKEN_TTL_HRS,
 } from "../middleware/security.js";
 import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri } from "../services/totp.js";
+import { hashPassword, verifyPassword, hashAdminSecret, verifyAdminSecret } from "../services/password.js";
 
 /* ── Sensitive field stripper — never leak hashes or OTP codes to API responses ── */
 function stripUser(u: Record<string, any>) {
@@ -596,10 +597,10 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    /* ── Sub-admin via stored secret ── */
-    const [sub] = await db.select().from(adminAccountsTable)
-      .where(and(eq(adminAccountsTable.secret, adminSecretHeader), eq(adminAccountsTable.isActive, true)))
-      .limit(1);
+    /* ── Sub-admin via stored secret (bcrypt, legacy scrypt, or plaintext fallback) ── */
+    const activeSubs = await db.select().from(adminAccountsTable)
+      .where(eq(adminAccountsTable.isActive, true));
+    const sub = activeSubs.find(s => verifyAdminSecret(adminSecretHeader, s.secret));
 
     if (sub) {
       const tokenHrs = parseInt(settings["security_admin_token_hrs"] ?? "4", 10);
@@ -719,10 +720,10 @@ router.post("/auth", async (req, res) => {
     return;
   }
 
-  /* ── Attempt sub-admin login via stored secret ── */
-  const [sub] = await db.select().from(adminAccountsTable)
-    .where(and(eq(adminAccountsTable.secret, secret || ""), eq(adminAccountsTable.isActive, true)))
-    .limit(1);
+  /* ── Attempt sub-admin login via stored secret (bcrypt, legacy scrypt, or plaintext fallback) ── */
+  const activeSubs2 = await db.select().from(adminAccountsTable)
+    .where(eq(adminAccountsTable.isActive, true));
+  const sub = activeSubs2.find(s => verifyAdminSecret(secret || "", s.secret));
 
   if (sub) {
     resetAdminLoginAttempts(ip);
@@ -1564,7 +1565,7 @@ router.post("/admin-accounts", async (req, res) => {
     const [account] = await db.insert(adminAccountsTable).values({
       id:          generateId(),
       name:        body.name,
-      secret:      body.secret,
+      secret:      hashAdminSecret(body.secret),
       role:        body.role        || "manager",
       permissions: body.permissions || "",
       isActive:    body.isActive !== false,
@@ -1585,7 +1586,7 @@ router.patch("/admin-accounts/:id", async (req, res) => {
   if (body.isActive    !== undefined) updates.isActive    = body.isActive;
   if (body.secret      !== undefined) {
     if (body.secret === getAdminSecret()) { res.status(400).json({ error: "Cannot use the master secret" }); return; }
-    updates.secret = body.secret;
+    updates.secret = hashAdminSecret(body.secret);
   }
   const [account] = await db.update(adminAccountsTable).set(updates).where(eq(adminAccountsTable.id, req.params["id"]!)).returning();
   if (!account) { res.status(404).json({ error: "Admin account not found" }); return; }
@@ -2020,7 +2021,7 @@ router.post("/riders/:id/unrestrict", async (req, res) => {
 router.get("/withdrawal-requests", async (req, res) => {
   const statusFilter = req.query["status"] as string | undefined;
   const txns = await db.select().from(walletTransactionsTable)
-    .where(sql`description LIKE 'Withdrawal —%' AND type = 'debit'`)
+    .where(eq(walletTransactionsTable.type, "withdrawal"))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(300);
   const enriched = await Promise.all(txns.map(async t => {

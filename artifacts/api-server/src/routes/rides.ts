@@ -103,9 +103,16 @@ async function broadcastRide(rideId: string) {
       const dist = calcDistance(pickupLat, pickupLng, parseFloat(r.latitude), parseFloat(r.longitude));
       if (dist > radiusKm) continue;
 
-      const [user] = await db.select({ isActive: usersTable.isActive, isBanned: usersTable.isBanned, isRestricted: usersTable.isRestricted })
+      const [user] = await db.select({ isActive: usersTable.isActive, isBanned: usersTable.isBanned, isRestricted: usersTable.isRestricted, vehicleType: usersTable.vehicleType })
         .from(usersTable).where(eq(usersTable.id, r.userId)).limit(1);
       if (!user || !user.isActive || user.isBanned || user.isRestricted) continue;
+      // Strict vehicle-type matching: when a ride specifies a type, only notify riders
+      // who have that exact vehicleType registered. Riders without a vehicleType set
+      // are excluded to avoid dispatching to unqualified vehicles.
+      if (ride.type) {
+        const vt = (user.vehicleType ?? "").trim();
+        if (!vt || vt !== ride.type) continue;
+      }
 
       const etaMin = Math.max(1, Math.round((dist / avgSpeed) * 60));
       const fareStr = parseFloat(ride.fare ?? "0").toFixed(0);
@@ -396,13 +403,16 @@ router.post("/", customerAuth, async (req, res) => {
         const balance = parseFloat(user.walletBalance ?? "0");
         if (balance < fareToCharge) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${fareToCharge.toFixed(0)}`);
         await tx.update(usersTable).set({ walletBalance: (balance - fareToCharge).toFixed(2) }).where(eq(usersTable.id, userId));
+        // NOTE: ride.id is unknown at this point; we patch the reference after insertion
+        const rideId = generateId();
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId, type: "debit",
           amount: fareToCharge.toFixed(2),
           description: `${type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")} ride payment`,
+          reference: `ride:${rideId}`,
         });
         const [ride] = await tx.insert(ridesTable).values({
-          id: generateId(), userId, type, status: rideStatus,
+          id: rideId, userId, type, status: rideStatus,
           pickupAddress, dropAddress,
           pickupLat: String(pickupLat), pickupLng: String(pickupLng),
           dropLat: String(dropLat), dropLng: String(dropLng),
@@ -469,6 +479,23 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
   let actualCancelFee = 0;
   let cancelFeeAsDebt = false;
 
+  // Determine if a wallet debit was actually made for this ride.
+  // All wallet-paid rides (direct booking and bargain accept-bid) record
+  // a debit with reference "ride:<id>" — check that authoritatively.
+  let fareWasCharged = false;
+  if (ride.paymentMethod === "wallet") {
+    const rideRef = `ride:${ride.id}`;
+    const [debitTx] = await db.select({ id: walletTransactionsTable.id })
+      .from(walletTransactionsTable)
+      .where(and(
+        eq(walletTransactionsTable.userId, userId),
+        eq(walletTransactionsTable.type, "debit"),
+        eq(walletTransactionsTable.reference, rideRef),
+      ))
+      .limit(1);
+    fareWasCharged = !!debitTx;
+  }
+
   const cancelResult = await db.transaction(async (tx) => {
     const [upd] = await tx.update(ridesTable)
       .set({ status: "cancelled", updatedAt: new Date() })
@@ -517,7 +544,7 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
         .where(eq(usersTable.id, userId));
     }
 
-    if (ride.paymentMethod === "wallet" && ride.status !== "bargaining" && ride.bargainStatus !== "customer_offered") {
+    if (fareWasCharged) {
       const refundAmt = parseFloat(ride.fare);
       await tx.update(usersTable)
         .set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() })
@@ -531,7 +558,7 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
     return upd;
   });
 
-  if (ride.paymentMethod === "wallet" && ride.status !== "bargaining" && ride.bargainStatus !== "customer_offered") {
+  if (fareWasCharged) {
     const refundAmt = parseFloat(ride.fare);
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
@@ -607,6 +634,7 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId, type: "debit", amount: agreedFare.toFixed(2),
           description: `Ride payment (bargained) — #${rideId.slice(-6).toUpperCase()}`,
+          reference: `ride:${rideId}`,
         });
       }
 
@@ -788,6 +816,89 @@ router.get("/:id", async (req, res) => {
   }
 
   res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge });
+});
+
+router.get("/:id/track", async (req, res) => {
+  const authHeader  = req.headers["authorization"] as string | undefined;
+  const tokenHeader = req.headers["x-auth-token"]  as string | undefined;
+  const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
+  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
+  const payload = verifyUserJwt(raw);
+  if (!payload) { res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return; }
+  const callerId = payload.userId;
+
+  const rideId = String(req.params["id"]);
+  const [ride] = await db.select({
+    id: ridesTable.id, status: ridesTable.status, riderId: ridesTable.riderId,
+    userId: ridesTable.userId, pickupLat: ridesTable.pickupLat, pickupLng: ridesTable.pickupLng,
+    dropLat: ridesTable.dropLat, dropLng: ridesTable.dropLng,
+    pickupAddress: ridesTable.pickupAddress, dropAddress: ridesTable.dropAddress,
+  }).from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
+
+  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (ride.userId !== callerId && ride.riderId !== callerId) {
+    res.status(403).json({ error: "Access denied — not your ride" }); return;
+  }
+
+  let riderLat: number | null = null;
+  let riderLng: number | null = null;
+  let riderLocAge: number | null = null;
+  let etaMinutes: number | null = null;
+
+  // "Active trip" statuses: accepted (rider on way to pickup), arrived, in_transit (en route to drop)
+  const TRACKABLE = ["accepted", "arrived", "in_transit"];
+  if (ride.riderId && TRACKABLE.includes(ride.status)) {
+    const [loc] = await db.select()
+      .from(liveLocationsTable)
+      .where(eq(liveLocationsTable.userId, ride.riderId))
+      .limit(1);
+    if (loc) {
+      riderLat    = parseFloat(String(loc.latitude));
+      riderLng    = parseFloat(String(loc.longitude));
+      riderLocAge = Math.floor((Date.now() - new Date(loc.updatedAt).getTime()) / 1000);
+
+      // Compute ETA: distance from rider to next destination / average speed
+      const s = await getPlatformSettings();
+      const avgSpeedKmh = parseFloat(s["dispatch_avg_speed_kmh"] ?? "25");
+      const destinationLat = ride.status === "in_transit"
+        ? (ride.dropLat  ? parseFloat(ride.dropLat)  : null)
+        : (ride.pickupLat ? parseFloat(ride.pickupLat) : null);
+      const destinationLng = ride.status === "in_transit"
+        ? (ride.dropLng  ? parseFloat(ride.dropLng)  : null)
+        : (ride.pickupLng ? parseFloat(ride.pickupLng) : null);
+
+      if (destinationLat !== null && destinationLng !== null && avgSpeedKmh > 0) {
+        try {
+          const distKm = calcDistance(riderLat, riderLng, destinationLat, destinationLng);
+          etaMinutes = Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
+        } catch {
+          etaMinutes = null;
+        }
+      }
+    }
+  }
+
+  const dropLat  = ride.dropLat  ? parseFloat(ride.dropLat)  : null;
+  const dropLng  = ride.dropLng  ? parseFloat(ride.dropLng)  : null;
+  const pickLat  = ride.pickupLat ? parseFloat(ride.pickupLat) : null;
+  const pickLng  = ride.pickupLng ? parseFloat(ride.pickupLng) : null;
+
+  res.json({
+    id: ride.id,
+    status: ride.status,
+    riderId: ride.riderId,
+    pickupLat:     pickLat,
+    pickupLng:     pickLng,
+    dropLat:       dropLat,
+    dropLng:       dropLng,
+    pickupAddress: ride.pickupAddress,
+    dropAddress:   ride.dropAddress,
+    riderLat,
+    riderLng,
+    riderLocAge,
+    etaMinutes,
+    trackable: TRACKABLE.includes(ride.status),
+  });
 });
 
 router.post("/:id/event-log", riderAuth, loadRide(), requireRideOwner("riderId"), async (req, res) => {
@@ -978,6 +1089,9 @@ async function runDispatchCycle() {
       .where(sql`ride_id NOT IN (SELECT id FROM rides WHERE status IN ('searching', 'bargaining') AND rider_id IS NULL)`)
       .catch(() => {});
 
+    const DISPATCH_ROUND_INTERVAL_SEC = 45;
+    const MAX_DISPATCH_ROUNDS = 3;
+
     for (const ride of pendingRides) {
       try {
         const createdMs = new Date(ride.createdAt!).getTime();
@@ -999,6 +1113,34 @@ async function runDispatchCycle() {
 
           await cleanupNotifiedRiders(ride.id);
           continue;
+        }
+
+        // Dispatch in rounds: each round lasts DISPATCH_ROUND_INTERVAL_SEC seconds.
+        // After MAX_DISPATCH_ROUNDS rounds with no acceptance, mark no_riders and stop.
+        const currentRound = Math.floor(elapsedSec / DISPATCH_ROUND_INTERVAL_SEC);
+        const loopCount = ride.dispatchLoopCount ?? 0;
+
+        if (currentRound >= MAX_DISPATCH_ROUNDS && loopCount >= MAX_DISPATCH_ROUNDS) {
+          await db.update(ridesTable)
+            .set({ status: "no_riders", updatedAt: new Date() })
+            .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)));
+          await db.insert(notificationsTable).values({
+            id: generateId(), userId: ride.userId,
+            title: "No Riders Available",
+            body: "Koi rider available nahi mila. Dobara try karein ya fare badhayein.",
+            type: "ride", icon: "close-circle-outline",
+          }).catch(() => {});
+          await cleanupNotifiedRiders(ride.id);
+          continue;
+        }
+
+        if (currentRound > loopCount) {
+          // New round started — do NOT clear notified riders.
+          // broadcastRide already skips riders in rideNotifiedRidersTable,
+          // so new rounds naturally reach only newly-online/unnotified riders.
+          await db.update(ridesTable)
+            .set({ dispatchLoopCount: currentRound, updatedAt: new Date() })
+            .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)));
         }
 
         await broadcastRide(ride.id);

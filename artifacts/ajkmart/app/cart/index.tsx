@@ -413,79 +413,65 @@ export default function CartScreen() {
         throw new Error(data.error || "Could not initiate payment");
       }
 
-      const isSandbox = data.mode === "sandbox";
-      if (isSandbox) {
-        await new Promise(res => setTimeout(res, 2200));
-        setGwStep("done");
-        await new Promise(res => setTimeout(res, 800));
-        clearCart();
-        setOrderSuccess({
-          id: realOrderId.slice(-6).toUpperCase(),
-          time: (order as any).estimatedTime || "30-45 min",
-          payMethod,
-        });
-        setShowGwModal(false);
-      } else {
-        const txnRef = data.txnRef || data.transactionRef || realOrderId;
-        const POLL_INTERVAL = 4000;
-        const MAX_POLL_TIME = 120000;
-        const startTime = Date.now();
-        gwPollRef.current.active = true;
+      const txnRef = data.txnRef || data.transactionRef || realOrderId;
+      const POLL_INTERVAL = 4000;
+      const MAX_POLL_TIME = 120000;
+      const startTime = Date.now();
+      gwPollRef.current.active = true;
 
-        await new Promise<void>((resolve, reject) => {
-          const intervalId = setInterval(async () => {
-            if (!gwPollRef.current.active) {
+      await new Promise<void>((resolve, reject) => {
+        const intervalId = setInterval(async () => {
+          if (!gwPollRef.current.active) {
+            clearInterval(intervalId);
+            gwPollRef.current.intervalId = undefined;
+            resolve();
+            return;
+          }
+          if (Date.now() - startTime >= MAX_POLL_TIME) {
+            clearInterval(intervalId);
+            gwPollRef.current.active = false;
+            gwPollRef.current.intervalId = undefined;
+            await cancelPendingOrder(realOrderId);
+            reject(new Error("Payment timeout — no response in 2 minutes. Please check your account or contact support if charged."));
+            return;
+          }
+          try {
+            const statusRes = await fetch(`${API_BASE}/payments/status/${encodeURIComponent(txnRef)}`);
+            const statusData = await statusRes.json() as any;
+            if (statusData.status === "completed" || statusData.status === "success") {
               clearInterval(intervalId);
+              gwPollRef.current.active = false;
               gwPollRef.current.intervalId = undefined;
+              if (!mountedRef.current) { resolve(); return; }
+              setGwStep("done");
+              await new Promise(r => setTimeout(r, 600));
+              if (!mountedRef.current) { resolve(); return; }
+              clearCart();
+              setOrderSuccess({
+                id: realOrderId.slice(-6).toUpperCase(),
+                time: (order as any).estimatedTime || "30-45 min",
+                payMethod,
+              });
+              setShowGwModal(false);
               resolve();
-              return;
-            }
-            if (Date.now() - startTime >= MAX_POLL_TIME) {
+            } else if (statusData.status === "failed" || statusData.status === "expired") {
               clearInterval(intervalId);
               gwPollRef.current.active = false;
               gwPollRef.current.intervalId = undefined;
               await cancelPendingOrder(realOrderId);
-              reject(new Error("Payment timeout — no response in 2 minutes. Please check your account or contact support if charged."));
-              return;
+              reject(new Error(statusData.message || "Payment failed"));
             }
-            try {
-              const statusRes = await fetch(`${API_BASE}/payments/status/${encodeURIComponent(txnRef)}`);
-              const statusData = await statusRes.json() as any;
-              if (statusData.status === "completed" || statusData.status === "success") {
-                clearInterval(intervalId);
-                gwPollRef.current.active = false;
-                gwPollRef.current.intervalId = undefined;
-                if (!mountedRef.current) { resolve(); return; }
-                setGwStep("done");
-                await new Promise(r => setTimeout(r, 600));
-                if (!mountedRef.current) { resolve(); return; }
-                clearCart();
-                setOrderSuccess({
-                  id: realOrderId.slice(-6).toUpperCase(),
-                  time: (order as any).estimatedTime || "30-45 min",
-                  payMethod,
-                });
-                setShowGwModal(false);
-                resolve();
-              } else if (statusData.status === "failed" || statusData.status === "expired") {
-                clearInterval(intervalId);
-                gwPollRef.current.active = false;
-                gwPollRef.current.intervalId = undefined;
-                await cancelPendingOrder(realOrderId);
-                reject(new Error(statusData.message || "Payment failed"));
-              }
-            } catch (pollErr: any) {
-              if (pollErr.message && pollErr.message !== "Failed to fetch") {
-                clearInterval(intervalId);
-                gwPollRef.current.active = false;
-                gwPollRef.current.intervalId = undefined;
-                reject(pollErr);
-              }
+          } catch (pollErr: any) {
+            if (pollErr.message && pollErr.message !== "Failed to fetch") {
+              clearInterval(intervalId);
+              gwPollRef.current.active = false;
+              gwPollRef.current.intervalId = undefined;
+              reject(pollErr);
             }
-          }, POLL_INTERVAL);
-          gwPollRef.current.intervalId = intervalId;
-        });
-      }
+          }
+        }, POLL_INTERVAL);
+        gwPollRef.current.intervalId = intervalId;
+      });
     } catch (e: any) {
       showToast(e.message || "Payment failed. Please try again.", "error");
       setGwStep("input");
@@ -515,7 +501,6 @@ export default function CartScreen() {
 
   const gwName = payMethod === "jazzcash" ? "JazzCash" : "EasyPaisa";
   const gwLogo = payMethod === "jazzcash" ? "🔴" : "🟢";
-  const gwMode = availablePayMethods.find(m => m.id === payMethod)?.mode ?? "sandbox";
   const gwColor = payMethod === "jazzcash" ? "#DC2626" : "#16A34A";
 
   type NumPadBtn = { label: string; action: () => void; isOk?: boolean };
@@ -551,11 +536,6 @@ export default function CartScreen() {
             <Text style={{ fontSize: 36, marginBottom: 8 }}>{gwLogo}</Text>
             <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: C.text }}>Pay with {gwName}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-              <View style={{ backgroundColor: gwMode === "live" ? "#DCFCE7" : "#FEF9C3", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: gwMode === "live" ? "#15803D" : "#92400E" }}>
-                  {gwMode === "live" ? "🟢 LIVE" : "🟡 SANDBOX"}
-                </Text>
-              </View>
               <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: C.textSecondary }}>Rs. {grandTotal.toLocaleString()}</Text>
             </View>
           </View>
@@ -593,14 +573,6 @@ export default function CartScreen() {
                   </View>
                 ))}
               </View>
-              {gwMode === "sandbox" && (
-                <View style={{ backgroundColor: "#FEF9C3", borderRadius: 12, padding: 12, flexDirection: "row", gap: 8 }}>
-                  <Text style={{ fontSize: 13 }}>🧪</Text>
-                  <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#92400E", flex: 1 }}>
-                    Sandbox mode: enter any number — payment will be simulated
-                  </Text>
-                </View>
-              )}
               <Pressable onPress={() => { if (!gwPaying) setShowGwModal(false); }} style={{ marginTop: 12, paddingVertical: 12, alignItems: "center" }}>
                 <Text style={{ fontSize: 14, fontFamily: "Inter_500Medium", color: C.textSecondary }}>Cancel</Text>
               </Pressable>
@@ -612,9 +584,7 @@ export default function CartScreen() {
               <ActivityIndicator size="large" color={gwColor} />
               <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text, marginTop: 20 }}>Payment Processing...</Text>
               <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
-                {gwMode === "sandbox"
-                  ? "Simulating payment in sandbox mode..."
-                  : `A ${gwName} notification will be sent to ${gwMobile} — please approve`}
+                {`A ${gwName} notification will be sent to ${gwMobile} — please approve`}
               </Text>
             </View>
           )}
@@ -844,16 +814,6 @@ export default function CartScreen() {
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                     <Text style={[styles.payLabel, sel && { color: C.text }]}>{method.label}</Text>
-                    {isGateway && method.mode === "sandbox" && (
-                      <View style={{ backgroundColor: "#FEF9C3", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
-                        <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#92400E" }}>SANDBOX</Text>
-                      </View>
-                    )}
-                    {isGateway && method.mode === "live" && (
-                      <View style={{ backgroundColor: "#DCFCE7", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
-                        <Text style={{ fontSize: 9, fontFamily: "Inter_700Bold", color: "#15803D" }}>LIVE</Text>
-                      </View>
-                    )}
                   </View>
                   {method.id === "wallet" ? (
                     <Text style={[styles.paySub, user && user.walletBalance < grandTotal && { color: C.danger }]}>

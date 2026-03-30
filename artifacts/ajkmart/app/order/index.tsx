@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -19,6 +20,7 @@ import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
 import { API_BASE } from "@/utils/api";
+import { staticMapUrl } from "@/hooks/useMaps";
 
 const C = Colors.light;
 
@@ -38,6 +40,8 @@ const STEP_LABELS = ["Placed", "Confirmed", "Preparing", "On Way", "Delivered"];
 const PARCEL_STEPS = ["pending", "accepted", "in_transit", "completed"];
 const PARCEL_STEP_LABELS = ["Placed", "Accepted", "In Transit", "Delivered"];
 
+const LIVE_TRACKING_STATUSES = ["picked_up", "out_for_delivery", "in_transit"];
+
 export default function OrderDetailScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -50,14 +54,60 @@ export default function OrderDetailScreen() {
   const [serverNow, setServerNow] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
+  const [riderLat, setRiderLat] = useState<number | null>(null);
+  const [riderLng, setRiderLng] = useState<number | null>(null);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
 
   const mountedRef = useRef(true);
+  const isPharmacyType = type === "pharmacy";
+
+  // Poll rider live location for all active order types.
+  // - Parcel orders: GET /rides/:id/track (returns riderId live loc + ETA)
+  // - Pharmacy orders: GET /pharmacy-orders/:id/track (uses riderId from pharmacyOrdersTable)
+  // - Mart/food orders: GET /orders/:id/track (uses riderId from ordersTable)
+  // Re-runs when order.status changes (e.g. transitions into a trackable status).
+  useEffect(() => {
+    if (!orderId || !token || !order) return;
+    if (!LIVE_TRACKING_STATUSES.includes(order.status)) return;
+
+    let ivRef: ReturnType<typeof setInterval> | null = null;
+
+    const fetchTrack = async () => {
+      try {
+        const endpoint = isParcel
+          ? `${API_BASE}/rides/${orderId}/track`
+          : isPharmacyType
+          ? `${API_BASE}/pharmacy-orders/${orderId}/track`
+          : `${API_BASE}/orders/${orderId}/track`;
+
+        const res = await fetch(endpoint, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const d = await res.json();
+          if (mountedRef.current) {
+            setRiderLat(d.riderLat ?? null);
+            setRiderLng(d.riderLng ?? null);
+            setEtaMinutes(d.etaMinutes ?? null);
+          }
+        }
+      } catch {
+        // silent — tracking is best-effort
+      }
+    };
+
+    ivRef = setInterval(fetchTrack, 15000);
+    fetchTrack();
+    return () => { if (ivRef !== null) clearInterval(ivRef); };
+  }, [order?.status, orderId, token, isParcel, isPharmacyType]);
 
   useEffect(() => {
     mountedRef.current = true;
     if (!orderId) return;
     const endpoint = isParcel
       ? `${API_BASE}/parcel-bookings/${orderId}`
+      : isPharmacyType
+      ? `${API_BASE}/pharmacy-orders/${orderId}`
       : `${API_BASE}/orders/${orderId}`;
     let ivRef: ReturnType<typeof setInterval> | null = null;
     const fetchAndMaybeClear = async () => {
@@ -133,8 +183,10 @@ export default function OrderDetailScreen() {
   const minutesSincePlaced = order.createdAt
     ? (serverNow - new Date(order.createdAt).getTime()) / 60000
     : 999;
-  const canCancel = ["pending", "confirmed"].includes(order.status) &&
-    minutesSincePlaced <= (config.orderRules?.cancelWindowMin ?? 15);
+  const cancelWindowMin = config.orderRules?.cancelWindowMin ?? 15;
+  const canCancel = isParcelType
+    ? ["pending", "accepted"].includes(order.status)
+    : ["pending", "confirmed"].includes(order.status) && minutesSincePlaced <= cancelWindowMin;
 
   return (
     <View style={[s.root, { paddingTop: topPad }]}>
@@ -160,6 +212,65 @@ export default function OrderDetailScreen() {
             </View>
           )}
         </View>
+
+        {isActive && LIVE_TRACKING_STATUSES.includes(order.status) && (
+          <View style={[s.card, { backgroundColor: "#ECFDF5", borderColor: "#6EE7B7", padding: 0, overflow: "hidden" }]}>
+            {/* Static map showing rider position */}
+            {riderLat !== null && riderLng !== null ? (
+              <Image
+                source={{ uri: staticMapUrl(
+                  [
+                    { lat: riderLat, lng: riderLng, color: "blue" },
+                    ...(order.deliveryLat && order.deliveryLng
+                      ? [{ lat: Number(order.deliveryLat), lng: Number(order.deliveryLng), color: "red" }]
+                      : []),
+                  ],
+                  { width: 600, height: 180, zoom: 14 },
+                )}}
+                style={{ width: "100%", height: 160 }}
+                resizeMode="cover"
+              />
+            ) : null}
+            <View style={{ padding: 14 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: riderLat ? 10 : 0 }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: "#059669", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="navigate-outline" size={20} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#065F46" }}>
+                    {order.status === "in_transit" ? "In Transit" : "On the Way to You"}
+                  </Text>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#047857", marginTop: 2 }}>
+                    {etaMinutes !== null ? `ETA: ~${etaMinutes} min` : "Your delivery is heading your way"}
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: "#059669", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 11, color: "#fff" }}>LIVE</Text>
+                </View>
+              </View>
+              {order.deliveryAddress ? (
+                <Pressable
+                  onPress={() => {
+                    const encodedAddr = encodeURIComponent(order.deliveryAddress);
+                    const url = Platform.OS === "ios"
+                      ? `maps:?q=${encodedAddr}`
+                      : `geo:0,0?q=${encodedAddr}`;
+                    Linking.openURL(url).catch(() => {
+                      Linking.openURL(`https://maps.google.com/?q=${encodedAddr}`);
+                    });
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: "#A7F3D0" }}
+                >
+                  <Ionicons name="location-outline" size={16} color="#059669" />
+                  <Text style={{ flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: "#065F46" }} numberOfLines={1}>
+                    {order.deliveryAddress}
+                  </Text>
+                  <Ionicons name="open-outline" size={14} color="#059669" />
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        )}
 
         {isActive && stepIdx >= 0 && (
           <View style={s.stepperCard}>
@@ -304,19 +415,21 @@ export default function OrderDetailScreen() {
           <Pressable
             style={s.cancelOrderBtn}
             onPress={() => {
-              const cancelMinsLeft = Math.max(0, Math.ceil((config.orderRules?.cancelWindowMin ?? 15) - minutesSincePlaced));
+              const cancelMinsLeft = isParcelType
+                ? undefined
+                : Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
               setCancelTarget({
                 id: order.id,
-                type: "order",
+                type: isParcelType ? "parcel" : isPharmacy ? "pharmacy" : "order",
                 status: order.status,
-                total: order.total,
+                total: isParcelType ? parseFloat(order.fare ?? order.total ?? "0") : order.total,
                 paymentMethod: order.paymentMethod,
                 cancelMinsLeft,
               });
             }}
           >
             <Ionicons name="close-circle-outline" size={16} color="#DC2626" />
-            <Text style={s.cancelOrderBtnText}>Cancel Order</Text>
+            <Text style={s.cancelOrderBtnText}>{isParcelType ? "Cancel Booking" : "Cancel Order"}</Text>
           </Pressable>
         )}
 

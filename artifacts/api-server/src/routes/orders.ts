@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable } from "@workspace/db/schema";
+import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable } from "@workspace/db/schema";
 import { eq, and, gte, count, SQL, sql, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -151,6 +151,47 @@ router.get("/:id", customerAuth, async (req, res) => {
   /* Ensure customers can only view their own orders */
   if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
   res.json(mapOrder(order));
+});
+
+/* ── GET /orders/:id/track — Live rider location for active food/mart orders ── */
+router.get("/:id/track", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const [order] = await db
+    .select({ id: ordersTable.id, userId: ordersTable.userId, riderId: ordersTable.riderId, status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, String(req.params["id"])))
+    .limit(1);
+
+  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+
+  const TRACKABLE = ["picked_up", "out_for_delivery", "in_transit"];
+  let riderLat: number | null = null;
+  let riderLng: number | null = null;
+  let riderLocAge: number | null = null;
+
+  if (order.riderId && TRACKABLE.includes(order.status)) {
+    const [loc] = await db
+      .select()
+      .from(liveLocationsTable)
+      .where(eq(liveLocationsTable.userId, order.riderId))
+      .limit(1);
+    if (loc) {
+      riderLat     = parseFloat(String(loc.latitude));
+      riderLng     = parseFloat(String(loc.longitude));
+      riderLocAge  = Math.floor((Date.now() - new Date(loc.updatedAt).getTime()) / 1000);
+    }
+  }
+
+  res.json({
+    id: order.id,
+    status: order.status,
+    riderId: order.riderId,
+    riderLat,
+    riderLng,
+    riderLocAge,
+    trackable: TRACKABLE.includes(order.status),
+  });
 });
 
 /* ── POST /orders ─────────────────────────────────────────────────────────── */

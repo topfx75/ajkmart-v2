@@ -226,6 +226,92 @@ router.post("/", customerAuth, async (req, res) => {
   res.status(201).json({ ...mapBooking(booking!), gstAmount });
 });
 
+router.patch("/:id/cancel", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const bookingId = String(req.params["id"]);
+
+  const [booking] = await db
+    .select()
+    .from(parcelBookingsTable)
+    .where(eq(parcelBookingsTable.id, bookingId))
+    .limit(1);
+
+  if (!booking) { res.status(404).json({ error: "Parcel booking not found" }); return; }
+  if (booking.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!["pending", "accepted"].includes(booking.status)) {
+    res.status(409).json({ error: "Parcel cannot be cancelled at this stage" }); return;
+  }
+
+  const s = await getPlatformSettings();
+  const cancelWindowMin = parseFloat(String(s["order_cancel_window_min"] ?? "5"));
+  const minutesSincePlaced = (Date.now() - booking.createdAt.getTime()) / 60000;
+  if (booking.status === "pending" && minutesSincePlaced > cancelWindowMin) {
+    res.status(409).json({ error: `Cancellation window of ${cancelWindowMin} minutes has passed` }); return;
+  }
+
+  let refundAmount = 0;
+  let cancelledBooking: typeof parcelBookingsTable.$inferSelect | undefined;
+
+  const cancellableStatuses = ["pending", "accepted"] as const;
+
+  if (booking.paymentMethod === "wallet") {
+    const refund = parseFloat(booking.fare);
+    cancelledBooking = await db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(parcelBookingsTable)
+        .where(eq(parcelBookingsTable.id, bookingId))
+        .for("update")
+        .limit(1);
+      if (!locked || !cancellableStatuses.includes(locked.status as typeof cancellableStatuses[number])) {
+        throw Object.assign(new Error("Parcel cannot be cancelled at this stage"), { httpStatus: 409 });
+      }
+      const [updated] = await tx.update(parcelBookingsTable)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(and(
+          eq(parcelBookingsTable.id, bookingId),
+          sql`status IN ('pending','accepted')`,
+        ))
+        .returning();
+      if (!updated) throw Object.assign(new Error("Concurrent cancel — booking state changed"), { httpStatus: 409 });
+      await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${refund.toFixed(2)}`, updatedAt: new Date() })
+        .where(eq(usersTable.id, userId));
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId, type: "credit",
+        amount: refund.toFixed(2),
+        description: `Parcel booking refund — #${bookingId.slice(-6).toUpperCase()} cancelled`,
+        reference: `refund:${bookingId}`,
+      });
+      return updated;
+    }).catch((err: any) => {
+      if (err?.httpStatus) { res.status(err.httpStatus).json({ error: err.message }); }
+      else { res.status(500).json({ error: "Cancel failed" }); }
+      return null;
+    });
+    if (!cancelledBooking) return;
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId,
+      title: "Parcel Booking Refunded 💰",
+      body: `Rs. ${refund.toFixed(0)} wapas aapke wallet mein aa gaya hai.`,
+      type: "parcel", icon: "wallet-outline",
+    }).catch(() => {});
+    refundAmount = refund;
+    res.json({ ...mapBooking(cancelledBooking), refundAmount });
+    return;
+  }
+
+  const [cancelled] = await db
+    .update(parcelBookingsTable)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(and(
+      eq(parcelBookingsTable.id, bookingId),
+      sql`status IN ('pending','accepted')`,
+    ))
+    .returning();
+
+  if (!cancelled) { res.status(409).json({ error: "Parcel cannot be cancelled at this stage" }); return; }
+  res.json({ ...mapBooking(cancelled), refundAmount });
+});
+
 router.patch("/:id/status", riderAuth, async (req, res) => {
   const riderId = req.riderId!;
   const { status } = req.body;

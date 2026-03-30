@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { notificationsTable, pharmacyOrdersTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
+import { notificationsTable, pharmacyOrdersTable, usersTable, walletTransactionsTable, liveLocationsTable } from "@workspace/db/schema";
 import { eq, sql, and, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -9,11 +9,23 @@ import { customerAuth, riderAuth } from "../middleware/security.js";
 const router: IRouter = Router();
 
 function mapOrder(o: typeof pharmacyOrdersTable.$inferSelect) {
+  // Parse merged prescriptionNote: text note + optional "[photo: url]" line
+  let noteText = o.prescriptionNote ?? null;
+  let prescriptionPhotoUrl: string | null = null;
+  if (noteText) {
+    const photoMatch = noteText.match(/\[photo:\s*([^\]]+)\]/);
+    if (photoMatch) {
+      prescriptionPhotoUrl = photoMatch[1]!.trim();
+      noteText = noteText.replace(/\n?\[photo:\s*[^\]]+\]/, "").trim() || null;
+    }
+  }
   return {
     id: o.id,
     userId: o.userId,
+    riderId: o.riderId,
     items: o.items as object[],
-    prescriptionNote: o.prescriptionNote,
+    prescriptionNote: noteText,
+    prescriptionPhotoUrl,
     deliveryAddress: o.deliveryAddress,
     contactPhone: o.contactPhone,
     total: parseFloat(o.total),
@@ -50,9 +62,57 @@ router.get("/:id", customerAuth, async (req, res) => {
   res.json(mapOrder(order));
 });
 
+/* ── GET /pharmacy-orders/:id/track — Live rider location for active pharmacy orders ── */
+router.get("/:id/track", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const [order] = await db
+    .select({ id: pharmacyOrdersTable.id, userId: pharmacyOrdersTable.userId, riderId: pharmacyOrdersTable.riderId, status: pharmacyOrdersTable.status })
+    .from(pharmacyOrdersTable)
+    .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
+    .limit(1);
+
+  if (!order) { res.status(404).json({ error: "Pharmacy order not found" }); return; }
+  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+
+  const TRACKABLE = ["picked_up", "out_for_delivery", "in_transit"];
+  let riderLat: number | null = null;
+  let riderLng: number | null = null;
+  let riderLocAge: number | null = null;
+
+  if (order.riderId && TRACKABLE.includes(order.status)) {
+    const [loc] = await db
+      .select()
+      .from(liveLocationsTable)
+      .where(eq(liveLocationsTable.userId, order.riderId))
+      .limit(1);
+    if (loc) {
+      riderLat     = parseFloat(String(loc.latitude));
+      riderLng     = parseFloat(String(loc.longitude));
+      riderLocAge  = Math.floor((Date.now() - new Date(loc.updatedAt).getTime()) / 1000);
+    }
+  }
+
+  res.json({
+    id: order.id,
+    status: order.status,
+    riderId: order.riderId,
+    riderLat,
+    riderLng,
+    riderLocAge,
+    trackable: TRACKABLE.includes(order.status),
+  });
+});
+
 router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
-  const { items, prescriptionNote, deliveryAddress, contactPhone, paymentMethod } = req.body;
+  const { items, prescriptionNote, prescriptionPhotoUri, deliveryAddress, contactPhone, paymentMethod } = req.body;
+
+  // Merge text note + photo URL into a single prescriptionNote for storage
+  // Format: "text note\n[photo: /api/uploads/filename.jpg]"
+  const mergedPrescriptionNote = [
+    prescriptionNote?.trim() || null,
+    prescriptionPhotoUri?.trim() ? `[photo: ${prescriptionPhotoUri.trim()}]` : null,
+  ].filter(Boolean).join("\n") || null;
   if (!items || !deliveryAddress || !contactPhone || !paymentMethod) {
     res.status(400).json({ error: "Missing required fields" });
     return;
@@ -179,7 +239,7 @@ router.post("/", customerAuth, async (req, res) => {
 
         const [newOrder] = await tx.insert(pharmacyOrdersTable).values({
           id: generateId(), userId, items,
-          prescriptionNote: prescriptionNote || null,
+          prescriptionNote: mergedPrescriptionNote,
           deliveryAddress, contactPhone,
           total: total.toFixed(2), paymentMethod,
           status: "pending", estimatedTime,
@@ -204,7 +264,7 @@ router.post("/", customerAuth, async (req, res) => {
   // Cash / other payments
   const [order] = await db.insert(pharmacyOrdersTable).values({
     id: generateId(), userId, items,
-    prescriptionNote: prescriptionNote || null,
+    prescriptionNote: mergedPrescriptionNote,
     deliveryAddress, contactPhone,
     total: total.toFixed(2), paymentMethod,
     status: "pending", estimatedTime,
@@ -245,13 +305,59 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     return;
   }
 
+  let refundAmount = 0;
+  let cancelledOrder: typeof pharmacyOrdersTable.$inferSelect | undefined;
+
+  if (order.paymentMethod === "wallet") {
+    const refund = parseFloat(order.total);
+    cancelledOrder = await db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(pharmacyOrdersTable)
+        .where(eq(pharmacyOrdersTable.id, orderId))
+        .for("update")
+        .limit(1);
+      if (!locked || locked.status !== "pending") {
+        throw Object.assign(new Error("Order already processed or cancelled"), { httpStatus: 409 });
+      }
+      const [updated] = await tx.update(pharmacyOrdersTable)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(and(eq(pharmacyOrdersTable.id, orderId), eq(pharmacyOrdersTable.status, "pending")))
+        .returning();
+      if (!updated) throw Object.assign(new Error("Concurrent cancel — order state changed"), { httpStatus: 409 });
+      await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${refund.toFixed(2)}`, updatedAt: new Date() })
+        .where(eq(usersTable.id, userId));
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId, type: "credit",
+        amount: refund.toFixed(2),
+        description: `Pharmacy order refund — #${orderId.slice(-6).toUpperCase()} cancelled`,
+        reference: `refund:${orderId}`,
+      });
+      return updated;
+    }).catch((err: any) => {
+      if (err?.httpStatus) { res.status(err.httpStatus).json({ error: err.message }); }
+      else { res.status(500).json({ error: "Cancel failed" }); }
+      return null;
+    });
+    if (!cancelledOrder) return;
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId,
+      title: "Pharmacy Order Refunded 💰",
+      body: `Rs. ${refund.toFixed(0)} wapas aapke wallet mein aa gaya hai.`,
+      type: "pharmacy", icon: "wallet-outline",
+    }).catch(() => {});
+    refundAmount = refund;
+    res.json({ ...mapOrder(cancelledOrder), refundAmount });
+    return;
+  }
+
   const [cancelled] = await db
     .update(pharmacyOrdersTable)
     .set({ status: "cancelled", updatedAt: new Date() })
-    .where(eq(pharmacyOrdersTable.id, orderId))
+    .where(and(eq(pharmacyOrdersTable.id, orderId), eq(pharmacyOrdersTable.status, "pending")))
     .returning();
 
-  res.json({ ...mapOrder(cancelled!), refundAmount: 0 });
+  if (!cancelled) { res.status(409).json({ error: "Order already processed or cancelled" }); return; }
+  res.json({ ...mapOrder(cancelled), refundAmount });
 });
 
 router.patch("/:id/status", riderAuth, async (req, res) => {

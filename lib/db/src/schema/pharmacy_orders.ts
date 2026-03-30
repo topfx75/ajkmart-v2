@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const pharmacyOrdersTable = pgTable("pharmacy_orders", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
+  riderId: text("rider_id"),
   items: json("items").notNull(),
   prescriptionNote: text("prescription_note"),
   deliveryAddress: text("delivery_address").notNull(),
@@ -17,6 +18,7 @@ export const pharmacyOrdersTable = pgTable("pharmacy_orders", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
   index("pharmacy_orders_user_id_idx").on(t.userId),
+  index("pharmacy_orders_rider_id_idx").on(t.riderId),
   index("pharmacy_orders_status_idx").on(t.status),
   index("pharmacy_orders_created_at_idx").on(t.createdAt),
 ]);
