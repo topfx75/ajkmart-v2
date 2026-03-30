@@ -483,6 +483,9 @@ export default function WalletScreen() {
   const [sendAmount,  setSendAmount]  = useState("");
   const [sendNote,    setSendNote]    = useState("");
   const [sendLoading, setSendLoading] = useState(false);
+  const [sendStep,    setSendStep]    = useState<"input" | "confirm">("input");
+  const [sendPhoneError, setSendPhoneError] = useState("");
+  const [sendReceiverName, setSendReceiverName] = useState("");
 
   const [p2pSenderPhone, setP2pSenderPhone] = useState("");
   const [p2pAmount,      setP2pAmount]      = useState("");
@@ -549,11 +552,47 @@ export default function WalletScreen() {
     setShowSend(true);
   };
 
-  const handleSend = async () => {
-    if (!sendPhone.trim()) { showToast("Please enter receiver's phone number", "error"); return; }
+  const resetSendState = () => {
+    setSendPhone(""); setSendAmount(""); setSendNote("");
+    setSendStep("input"); setSendPhoneError(""); setSendReceiverName(""); setSendLoading(false);
+  };
+
+  const closeSendModal = () => {
+    setShowSend(false);
+    resetSendState();
+  };
+
+  const validateSendPhone = (phone: string): boolean => {
+    const cleaned = phone.trim().replace(/\s/g, "");
+    if (!cleaned) { setSendPhoneError("Phone number is required"); return false; }
+    if (!cleaned.startsWith("3")) { setSendPhoneError("Phone number must start with 3"); return false; }
+    if (cleaned.length !== 10) { setSendPhoneError("Phone number must be exactly 10 digits"); return false; }
+    if (!/^\d+$/.test(cleaned)) { setSendPhoneError("Phone number must contain only digits"); return false; }
+    setSendPhoneError("");
+    return true;
+  };
+
+  const handleSendContinue = async () => {
+    if (!validateSendPhone(sendPhone)) return;
     const num = parseFloat(sendAmount);
     if (!num || num < minTransfer) { showToast(`Minimum transfer amount is Rs. ${minTransfer.toLocaleString()}`, "error"); return; }
-    if (num > balance)             { showToast("Insufficient wallet balance", "error"); return; }
+    if (num > balance) { showToast("Insufficient wallet balance", "error"); return; }
+    setSendLoading(true);
+    try {
+      const res = await fetch(`${API}/wallet/resolve-phone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ phone: sendPhone.trim() }),
+      });
+      const data = await res.json();
+      setSendReceiverName(data.name || "");
+    } catch {}
+    setSendLoading(false);
+    setSendStep("confirm");
+  };
+
+  const handleSendConfirm = async () => {
+    const num = parseFloat(sendAmount);
     setSendLoading(true);
     try {
       const res = await fetch(`${API}/wallet/send`, {
@@ -565,8 +604,7 @@ export default function WalletScreen() {
       if (!res.ok) { showToast(data.error || "Transfer failed", "error"); setSendLoading(false); return; }
       updateUser({ walletBalance: data.newBalance });
       qc.invalidateQueries({ queryKey: ["getWallet"] });
-      setShowSend(false);
-      setSendPhone(""); setSendAmount(""); setSendNote("");
+      closeSendModal();
       showToast(`Rs. ${num.toLocaleString()} sent to ${data.receiverName || sendPhone}!`, "success");
     } catch { showToast("Network error. Please try again.", "error"); }
     setSendLoading(false);
@@ -698,51 +736,100 @@ export default function WalletScreen() {
         />
       )}
 
-      <Modal visible={showSend} transparent animationType="slide" onRequestClose={() => setShowSend(false)}>
-        <Pressable style={ws.overlay} onPress={() => setShowSend(false)}>
+      <Modal visible={showSend} transparent animationType="slide" onRequestClose={closeSendModal}>
+        <Pressable style={ws.overlay} onPress={closeSendModal}>
           <Pressable style={ws.sheet} onPress={e => e.stopPropagation()}>
             <View style={ws.handle} />
-            <Text style={ws.sheetTitle}>Send Money</Text>
 
-            <Text style={ws.sheetLbl}>Receiver's Phone Number</Text>
-            <View style={ws.inputWrap}>
-              <View style={ws.phonePrefix}>
-                <Text style={ws.phonePrefixTxt}>+92</Text>
-              </View>
-              <TextInput
-                value={sendPhone}
-                onChangeText={setSendPhone}
-                placeholder="3XX XXXXXXX"
-                placeholderTextColor={C.textMuted}
-                style={ws.sendInput}
-                keyboardType="phone-pad"
-              />
-            </View>
+            {sendStep === "input" ? (
+              <>
+                <Text style={ws.sheetTitle}>Send Money</Text>
 
-            <Text style={ws.sheetLbl}>Amount (PKR)</Text>
-            <View style={ws.amtWrap}>
-              <Text style={ws.rupee}>Rs.</Text>
-              <TextInput style={ws.amtInput} value={sendAmount} onChangeText={t => setSendAmount(t.replace(/[^0-9]/g, ""))} keyboardType="numeric" placeholder="0" placeholderTextColor={C.textMuted} />
-            </View>
+                <Text style={ws.sheetLbl}>Receiver's Phone Number</Text>
+                <View style={[ws.inputWrap, sendPhoneError ? { borderColor: "#EF4444" } : {}]}>
+                  <View style={ws.phonePrefix}>
+                    <Text style={ws.phonePrefixTxt}>+92</Text>
+                  </View>
+                  <TextInput
+                    value={sendPhone}
+                    onChangeText={(t) => { setSendPhone(t); if (sendPhoneError) setSendPhoneError(""); }}
+                    placeholder="3XX XXXXXXX"
+                    placeholderTextColor={C.textMuted}
+                    style={ws.sendInput}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                  />
+                </View>
+                {sendPhoneError ? <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#EF4444", marginTop: 2, marginBottom: 6 }}>{sendPhoneError}</Text> : null}
 
-            <Text style={ws.sheetLbl}>Note (Optional)</Text>
-            <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
-              <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} />
-            </View>
+                <Text style={ws.sheetLbl}>Amount (PKR)</Text>
+                <View style={ws.amtWrap}>
+                  <Text style={ws.rupee}>Rs.</Text>
+                  <TextInput style={ws.amtInput} value={sendAmount} onChangeText={t => setSendAmount(t.replace(/[^0-9]/g, ""))} keyboardType="numeric" placeholder="0" placeholderTextColor={C.textMuted} />
+                </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16, marginTop: 4 }}>
-              <Ionicons name="wallet-outline" size={14} color={C.primary} />
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {minTransfer.toLocaleString()}</Text>
-            </View>
+                <Text style={ws.sheetLbl}>Note (Optional)</Text>
+                <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
+                  <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} />
+                </View>
 
-            <Pressable onPress={handleSend} disabled={sendLoading || !sendPhone || !sendAmount} style={[ws.actionBtn, { backgroundColor: "#7C3AED" }, (!sendPhone || !sendAmount || sendLoading) && { opacity: 0.5 }]}>
-              {sendLoading ? <ActivityIndicator color="#fff" /> : (
-                <>
-                  <Ionicons name="send" size={17} color="#fff" />
-                  <Text style={ws.actionBtnTxt}>Send Rs. {parseFloat(sendAmount || "0").toLocaleString()}</Text>
-                </>
-              )}
-            </Pressable>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16, marginTop: 4 }}>
+                  <Ionicons name="wallet-outline" size={14} color={C.primary} />
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {minTransfer.toLocaleString()}</Text>
+                </View>
+
+                <Pressable onPress={handleSendContinue} disabled={!sendPhone || !sendAmount || sendLoading} style={[ws.actionBtn, { backgroundColor: "#7C3AED" }, (!sendPhone || !sendAmount || sendLoading) && { opacity: 0.5 }]}>
+                  {sendLoading ? <ActivityIndicator color="#fff" /> : (
+                    <>
+                      <Ionicons name="arrow-forward" size={17} color="#fff" />
+                      <Text style={ws.actionBtnTxt}>Continue</Text>
+                    </>
+                  )}
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+                  <Pressable onPress={() => setSendStep("input")} style={{ marginRight: 10, padding: 4 }}>
+                    <Ionicons name="arrow-back" size={20} color={C.text} />
+                  </Pressable>
+                  <Text style={[ws.sheetTitle, { marginBottom: 0 }]}>Confirm Transfer</Text>
+                </View>
+
+                <View style={{ backgroundColor: C.surface, borderRadius: 12, padding: 16, marginBottom: 16, gap: 12 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>To</Text>
+                    <View style={{ alignItems: "flex-end" }}>
+                      {sendReceiverName ? <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text }}>{sendReceiverName}</Text> : null}
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: sendReceiverName ? C.textMuted : C.text }}>+92 {sendPhone.trim()}</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Amount</Text>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: "#7C3AED" }}>Rs. {parseFloat(sendAmount || "0").toLocaleString()}</Text>
+                  </View>
+                  {sendNote ? (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Note</Text>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.text }}>{sendNote}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <Pressable onPress={() => setSendStep("input")} style={{ alignSelf: "center", marginBottom: 12 }}>
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.primary }}>Edit Details</Text>
+                </Pressable>
+
+                <Pressable onPress={handleSendConfirm} disabled={sendLoading} style={[ws.actionBtn, { backgroundColor: "#7C3AED" }, sendLoading && { opacity: 0.5 }]}>
+                  {sendLoading ? <ActivityIndicator color="#fff" /> : (
+                    <>
+                      <Ionicons name="send" size={17} color="#fff" />
+                      <Text style={ws.actionBtnTxt}>Send Rs. {parseFloat(sendAmount || "0").toLocaleString()}</Text>
+                    </>
+                  )}
+                </Pressable>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>

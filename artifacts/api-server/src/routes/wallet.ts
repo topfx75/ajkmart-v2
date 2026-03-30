@@ -187,6 +187,20 @@ router.get("/deposits", customerAuth, async (req, res) => {
   res.json({ deposits: mapped });
 });
 
+/* ── POST /wallet/resolve-phone ─────────────────────────────────────────── */
+router.post("/resolve-phone", customerAuth, async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) { res.status(400).json({ error: "phone is required" }); return; }
+  try {
+    const [user] = await db.select({ name: usersTable.name, phone: usersTable.phone })
+      .from(usersTable).where(eq(usersTable.phone, phone.trim())).limit(1);
+    if (!user) { res.json({ found: false, name: null }); return; }
+    res.json({ found: true, name: user.name || null });
+  } catch {
+    res.json({ found: false, name: null });
+  }
+});
+
 /* ── POST /wallet/send ───────────────────────────────────────────────────── */
 router.post("/send", customerAuth, async (req, res) => {
   const senderUserId = req.customerId!;
@@ -278,10 +292,18 @@ router.post("/send", customerAuth, async (req, res) => {
         amount: sendAmt.toFixed(2), description: recvDesc,
       });
 
-      return { newBalance: parseFloat(deducted.walletBalance ?? "0"), receiverName: receiver.name || receiverPhone, amount: sendAmt };
+      return { newBalance: parseFloat(deducted.walletBalance ?? "0"), receiverName: receiver.name || receiverPhone, receiverId: receiver.id, senderName: sender.name || sender.phone, amount: sendAmt };
     });
 
-    res.json({ success: true, ...result });
+    db.insert(notificationsTable).values({
+      id: generateId(), userId: result.receiverId,
+      title: "Money Received 💰",
+      body: `Rs. ${result.amount.toFixed(0)} received from ${result.senderName}`,
+      type: "wallet", icon: "wallet-outline",
+    }).catch(e => console.error("receiver send notif insert failed:", e));
+
+    const { receiverId: _rid, senderName: _sn, ...responseData } = result;
+    res.json({ success: true, ...responseData });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
