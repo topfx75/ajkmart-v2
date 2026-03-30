@@ -470,6 +470,7 @@ router.post("/", customerAuth, async (req, res) => {
 ══════════════════════════════════════════════════════ */
 router.patch("/:id/cancel", customerAuth, async (req, res) => {
   const userId = req.customerId!;
+  const cancelReason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 200) : null;
 
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, String(req.params["id"]))).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
@@ -574,10 +575,15 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     }).catch(() => {});
   }
 
+  if (cancelReason) {
+    req.log?.info({ rideId: ride.id, cancelReason }, "Ride cancelled with reason");
+  }
+
   res.json({
     ...formatRide(cancelResult!),
     cancellationFee: actualCancelFee,
     cancelFeeAsDebt,
+    cancelReason,
   });
 });
 

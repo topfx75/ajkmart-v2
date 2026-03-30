@@ -483,6 +483,7 @@ router.post("/", customerAuth, async (req, res) => {
 /* ── PATCH /orders/:id/cancel — customer cancel only ────────────────────── */
 router.patch("/:id/cancel", customerAuth, async (req, res) => {
   const userId = req.customerId!;
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 200) : null;
 
   const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
   if (!existingOrder) { res.status(404).json({ error: "Order not found" }); return; }
@@ -513,7 +514,20 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     .where(and(eq(ordersTable.id, String(req.params["id"])), eq(ordersTable.userId, userId)))
     .returning();
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  res.json(mapOrder(order));
+
+  const isWallet = existingOrder.paymentMethod === "wallet";
+  const refundAmount = isWallet ? parseFloat(String(existingOrder.total)) : 0;
+
+  if (reason) {
+    req.log?.info({ orderId: order.id, reason }, "Order cancelled with reason");
+  }
+
+  res.json({
+    ...mapOrder(order),
+    refundAmount,
+    refundMethod: isWallet ? "wallet" : null,
+    cancelReason: reason,
+  });
 });
 
 export default router;
