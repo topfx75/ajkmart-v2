@@ -116,7 +116,7 @@ export const api = {
 
   /* Orders */
   getOrders:     (status?: string) => apiFetch(`/vendor/orders${status ? `?status=${status}` : ""}`),
-  updateOrder:   (id: string, status: string) => apiFetch(`/vendor/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  updateOrder:   (id: string, status: string, reason?: string) => apiFetch(`/vendor/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status, ...(reason ? { reason } : {}) }) }),
 
   /* Products */
   getProducts:   (q?: string, category?: string) => {
@@ -134,8 +134,12 @@ export const api = {
   /* Promos */
   getPromos:     () => apiFetch("/vendor/promos"),
   createPromo:   (data: any) => apiFetch("/vendor/promos", { method: "POST", body: JSON.stringify(data) }),
+  updatePromo:   (id: string, data: any) => apiFetch(`/vendor/promos/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   togglePromo:   (id: string) => apiFetch(`/vendor/promos/${id}/toggle`, { method: "PATCH", body: "{}" }),
   deletePromo:   (id: string) => apiFetch(`/vendor/promos/${id}`, { method: "DELETE" }),
+
+  /* Reviews */
+  getReviews:    (vendorId: string) => apiFetch(`/reviews/vendor/${vendorId}`),
 
   /* Wallet */
   getWallet:      () => apiFetch("/vendor/wallet/transactions"),

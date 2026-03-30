@@ -10,6 +10,8 @@ import { fc, fd, CARD, CARD_HEADER, INPUT, SELECT, BTN_PRIMARY, BTN_SECONDARY, L
 
 const BANKS = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","Habib Bank","NBP","Faysal Bank","Allied Bank","Other"];
 
+function safeBalance(v: any): number { return v ? Number(v) : 0; }
+
 function WithdrawModal({ balance, minPayout, maxPayout, onClose, onSuccess, defaultBank, defaultAcNo, defaultAcName }: { balance: number; minPayout: number; maxPayout: number | null; onClose: () => void; onSuccess: () => void; defaultBank?: string; defaultAcNo?: string; defaultAcName?: string }) {
   const [amount, setAmount]   = useState("");
   const [bank, setBank]       = useState(defaultBank || "");
@@ -158,7 +160,7 @@ export default function Wallet() {
   const credits = transactions.filter(t => t.type === "credit" || t.type === "bonus").reduce((s, t) => s + Number(t.amount), 0);
   const debits  = transactions.filter(t => t.type === "debit").reduce((s, t) => s + Number(t.amount), 0);
 
-  const today = new Date(); today.setUTCHours(0,0,0,0);
+  const today = new Date(new Date().setHours(0,0,0,0));
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
   const todayEarned = transactions.filter(t => t.type === "credit" && new Date(t.createdAt) >= today).reduce((s, t) => s + Number(t.amount), 0);
   const weekEarned  = transactions.filter(t => t.type === "credit" && new Date(t.createdAt) >= weekAgo).reduce((s, t) => s + Number(t.amount), 0);
@@ -202,14 +204,14 @@ export default function Wallet() {
             <p className="text-xs text-orange-200 mt-2">{vendorKeepPct}% of each order goes to your wallet · {commissionPct}% platform commission</p>
             <div className="flex gap-3 mt-4">
               {withdrawalEnabled ? (
-                balance > 0 ? (
+                balance >= minPayout ? (
                   <button onClick={() => setShowWithdraw(true)}
                     className="flex-1 h-12 bg-white text-orange-500 font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 shadow-md">
                     💸 Withdraw
                   </button>
                 ) : (
-                  <div className="flex-1 h-12 bg-white/30 rounded-2xl flex items-center justify-center text-sm font-bold text-white/80 cursor-not-allowed">
-                    💸 No Balance
+                  <div className="flex-1 h-12 bg-white/30 rounded-2xl flex flex-col items-center justify-center text-sm font-bold text-white/80 cursor-not-allowed" title={`Minimum payout: ${fc(minPayout)}`}>
+                    <span>💸 Min. {fc(minPayout)} required</span>
                   </div>
                 )
               ) : (
@@ -232,7 +234,7 @@ export default function Wallet() {
           {[
             { label: "Today's Earnings",  value: fc(todayEarned), icon: "☀️", color: "bg-amber-50" },
             { label: "This Week",         value: fc(weekEarned),  icon: "📅", color: "bg-blue-50"  },
-            { label: "Total Credits",     value: fc(credits),     icon: "💰", color: "bg-green-50" },
+            { label: "Credits (last 50 txns)", value: fc(credits),  icon: "💰", color: "bg-green-50" },
           ].map(s => (
             <div key={s.label} className={`${s.color} rounded-2xl p-3 text-center`}>
               <p className="text-xl">{s.icon}</p>
@@ -347,5 +349,3 @@ export default function Wallet() {
     </div>
   );
 }
-
-function safeBalance(v: any): number { return v ? Number(v) : 0; }

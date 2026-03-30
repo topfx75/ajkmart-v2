@@ -60,6 +60,11 @@ export default function Login() {
       setError(T("accessDeniedVendor"));
       return false;
     }
+    const status = res.user?.status;
+    if (status === "banned" || status === "suspended") {
+      setError(T("accountSuspended") || "Your account has been suspended. Please contact support.");
+      return false;
+    }
     return true;
   };
 
@@ -244,8 +249,8 @@ export default function Login() {
                   <p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">{T("devOtp")}</p>
                   <p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{devOtp}</p>
                 </div>}
-                <input type="number" placeholder="• • • • • •" value={otp} onChange={e => setOtp(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                  className="w-full h-16 px-4 mb-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-3xl font-extrabold tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all" maxLength={6} autoFocus inputMode="numeric" />
+                <input type="text" inputMode="numeric" placeholder="• • • • • •" value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                  className="w-full h-16 px-4 mb-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-3xl font-extrabold tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all" maxLength={6} autoFocus />
               </>
             )}
 
@@ -266,8 +271,8 @@ export default function Login() {
                   <p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">{T("devOtp")}</p>
                   <p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{emailDevOtp}</p>
                 </div>}
-                <input type="number" placeholder="• • • • • •" value={emailOtp} onChange={e => setEmailOtp(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                  className="w-full h-16 px-4 mb-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-3xl font-extrabold tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all" maxLength={6} autoFocus inputMode="numeric" />
+                <input type="text" inputMode="numeric" placeholder="• • • • • •" value={emailOtp} onChange={e => setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                  className="w-full h-16 px-4 mb-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-center text-3xl font-extrabold tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all" maxLength={6} autoFocus />
               </>
             )}
 

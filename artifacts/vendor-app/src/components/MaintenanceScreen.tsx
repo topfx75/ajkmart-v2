@@ -11,7 +11,7 @@ export function MaintenanceScreen({ message, appName = "AJKMart" }: Props) {
   const T = (key: TranslationKey) => tDual(key, language);
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center z-[9999] p-6">
+    <div className="fixed inset-0 bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center z-[9999] p-6 pointer-events-auto">
       <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center">
         <div className="text-6xl mb-4">🔧</div>
         <h1 className="text-2xl font-extrabold text-gray-900 mb-2">{appName} {T("maintenanceTitle")}</h1>

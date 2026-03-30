@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, apiFetch } from "../lib/api";
+import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
@@ -37,7 +37,7 @@ export default function Analytics() {
 
   const { data: reviewsData, isLoading: reviewsLoading } = useQuery({
     queryKey: ["vendor-reviews", user?.id],
-    queryFn: () => apiFetch(`/reviews/vendor/${user!.id}`),
+    queryFn: () => api.getReviews(user!.id),
     enabled: !!user?.id && config.features.reviews,
     staleTime: 60000,
   });
@@ -60,11 +60,14 @@ export default function Analytics() {
     : 0;
 
   const statuses = [
-    { key: "pending",   label: "Pending",   badge: BADGE_ORANGE },
-    { key: "preparing", label: "Preparing", badge: BADGE_ORANGE },
-    { key: "ready",     label: "Ready",     badge: BADGE_GRAY   },
-    { key: "delivered", label: "Delivered", badge: BADGE_GREEN  },
-    { key: "cancelled", label: "Cancelled", badge: BADGE_RED    },
+    { key: "pending",            label: "Pending",       badge: BADGE_ORANGE },
+    { key: "confirmed",          label: "Confirmed",     badge: BADGE_ORANGE },
+    { key: "preparing",          label: "Preparing",     badge: BADGE_ORANGE },
+    { key: "ready",              label: "Ready",         badge: BADGE_GRAY   },
+    { key: "picked_up",          label: "Picked Up",     badge: BADGE_GRAY   },
+    { key: "out_for_delivery",   label: "Out Delivery",  badge: BADGE_GRAY   },
+    { key: "delivered",          label: "Delivered",     badge: BADGE_GREEN  },
+    { key: "cancelled",          label: "Cancelled",     badge: BADGE_RED    },
   ];
 
   return (

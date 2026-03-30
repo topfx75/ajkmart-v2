@@ -61,7 +61,7 @@ export default function Store() {
         : user.storeHours;
       if (parsed) setHours(parsed);
     }
-  }, [user?.id, user?.storeName, user?.storeHours]);
+  }, [user?.id, user?.storeName, user?.storeCategory, user?.storeDescription, user?.storeBanner, user?.storeAnnouncement, user?.storeDeliveryTime, user?.storeMinOrder, user?.storeHours]);
 
   const storeMut = useMutation({
     mutationFn: () => api.updateStore({ ...sf, storeMinOrder: Number(sf.storeMinOrder) }),
@@ -70,9 +70,17 @@ export default function Store() {
   });
 
   const hoursMut = useMutation({
-    mutationFn: () => api.updateStore({ storeHours: hours }),
-    onSuccess: () => { refreshUser(); showToast("✅ Hours saved!"); },
-    onError: (e: any) => showToast("❌ " + e.message),
+    mutationFn: () => {
+      for (const day of DAYS) {
+        const h = hours[day];
+        if (h && !h.closed && h.open >= h.close) {
+          throw new Error(`${day}: Closing time must be after opening time`);
+        }
+      }
+      return api.updateStore({ storeHours: hours });
+    },
+    onSuccess: () => { setHoursError(""); refreshUser(); showToast("✅ Hours saved!"); },
+    onError: (e: any) => { setHoursError(e.message); showToast("❌ " + e.message); },
   });
 
   const { data: promoData, isLoading: promoLoad } = useQuery({ queryKey: ["vendor-promos"], queryFn: () => api.getPromos(), enabled: tab === "promos" });
@@ -80,17 +88,38 @@ export default function Store() {
 
   const [pf, setPf] = useState({ code:"", description:"", discountPct:"", discountFlat:"", minOrderAmount:"", usageLimit:"", expiresAt:"", type:"pct" as "pct"|"flat" });
   const p = (k: string, v: any) => setPf(x => ({ ...x, [k]: v }));
+  const [editingPromo, setEditingPromo] = useState<any|null>(null);
+  const [hoursError, setHoursError] = useState("");
+
+  const discountValue = pf.type === "pct" ? Number(pf.discountPct) : Number(pf.discountFlat);
+  const promoDiscountValid = discountValue > 0;
 
   const createPromoMut = useMutation({
-    mutationFn: () => api.createPromo({
-      code: pf.code, description: pf.description,
+    mutationFn: () => {
+      if (!promoDiscountValid) throw new Error("Discount must be greater than 0%");
+      return api.createPromo({
+        code: pf.code, description: pf.description,
+        discountPct:    pf.type==="pct"  && pf.discountPct  ? Number(pf.discountPct)  : null,
+        discountFlat:   pf.type==="flat" && pf.discountFlat ? Number(pf.discountFlat) : null,
+        minOrderAmount: pf.minOrderAmount ? Number(pf.minOrderAmount) : 0,
+        usageLimit:     pf.usageLimit ? Number(pf.usageLimit) : null,
+        expiresAt:      pf.expiresAt || null,
+      });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-promos"] }); setPf({ code:"",description:"",discountPct:"",discountFlat:"",minOrderAmount:"",usageLimit:"",expiresAt:"",type:"pct" }); showToast("✅ Promo created!"); },
+    onError: (e: any) => showToast("❌ " + e.message),
+  });
+
+  const updatePromoMut = useMutation({
+    mutationFn: (id: string) => api.updatePromo(id, {
+      description: pf.description,
       discountPct:    pf.type==="pct"  && pf.discountPct  ? Number(pf.discountPct)  : null,
       discountFlat:   pf.type==="flat" && pf.discountFlat ? Number(pf.discountFlat) : null,
       minOrderAmount: pf.minOrderAmount ? Number(pf.minOrderAmount) : 0,
       usageLimit:     pf.usageLimit ? Number(pf.usageLimit) : null,
       expiresAt:      pf.expiresAt || null,
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-promos"] }); setPf({ code:"",description:"",discountPct:"",discountFlat:"",minOrderAmount:"",usageLimit:"",expiresAt:"",type:"pct" }); showToast("✅ Promo created!"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-promos"] }); setEditingPromo(null); setPf({ code:"",description:"",discountPct:"",discountFlat:"",minOrderAmount:"",usageLimit:"",expiresAt:"",type:"pct" }); showToast("✅ Promo updated!"); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
@@ -279,7 +308,12 @@ export default function Store() {
                 </AccordionItem>
               </Accordion>
             </div>
-            <div className="md:col-span-2 mt-4 md:mt-0">
+            <div className="md:col-span-2 mt-4 md:mt-0 space-y-2">
+              {hoursError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+                  <p className="text-sm text-red-600 font-medium">⚠️ {hoursError}</p>
+                </div>
+              )}
               <button onClick={() => hoursMut.mutate()} disabled={hoursMut.isPending} className={BTN_PRIMARY}>
                 {hoursMut.isPending ? "Saving..." : "💾 Save Hours"}
               </button>
@@ -334,7 +368,10 @@ export default function Store() {
                     <input value={pf.description} onChange={e => p("description",e.target.value)} placeholder="Get 20% off on all items" className={INPUT}/>
                   </div>
                 </div>
-                <button onClick={() => createPromoMut.mutate()} disabled={!pf.code || (!pf.discountPct && !pf.discountFlat) || createPromoMut.isPending} className={BTN_PRIMARY}>
+                {!promoDiscountValid && (pf.discountPct !== "" || pf.discountFlat !== "") && (
+                  <p className="text-xs text-red-500 font-medium">⚠️ Discount must be greater than 0</p>
+                )}
+                <button onClick={() => createPromoMut.mutate()} disabled={!pf.code || !promoDiscountValid || createPromoMut.isPending} className={BTN_PRIMARY}>
                   {createPromoMut.isPending ? "Creating..." : "🎟️ Create Promo Code"}
                 </button>
               </div>
@@ -368,12 +405,56 @@ export default function Store() {
                             </div>
                           </div>
                           <div className="flex gap-2 flex-shrink-0">
+                            <button onClick={() => {
+                              if (editingPromo?.id === pm.id) { setEditingPromo(null); return; }
+                              setEditingPromo(pm);
+                              setPf({
+                                code: pm.code, description: pm.description || "",
+                                discountPct: pm.discountPct ? String(pm.discountPct) : "",
+                                discountFlat: pm.discountFlat ? String(pm.discountFlat) : "",
+                                minOrderAmount: pm.minOrderAmount ? String(pm.minOrderAmount) : "",
+                                usageLimit: pm.usageLimit ? String(pm.usageLimit) : "",
+                                expiresAt: pm.expiresAt ? pm.expiresAt.split("T")[0] : "",
+                                type: pm.discountFlat > 0 ? "flat" : "pct",
+                              });
+                            }} className="h-9 px-3 text-xs font-bold rounded-xl android-press min-h-0 bg-blue-50 text-blue-600">
+                              {editingPromo?.id === pm.id ? "Cancel" : "✏️ Edit"}
+                            </button>
                             <button onClick={() => togglePromoMut.mutate(pm.id)} className={`h-9 px-3 text-xs font-bold rounded-xl android-press min-h-0 ${pm.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                               {pm.isActive ? "Active" : "Off"}
                             </button>
                             <button onClick={() => deletePromoMut.mutate(pm.id)} className="h-9 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">Del</button>
                           </div>
                         </div>
+                        {editingPromo?.id === pm.id && (
+                          <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className={LABEL}>{pf.type === "pct" ? "Discount %" : "Flat Amount"}</label>
+                                <input type="number" inputMode="numeric" value={pf.type==="pct" ? pf.discountPct : pf.discountFlat} onChange={e => p(pf.type==="pct" ? "discountPct" : "discountFlat", e.target.value)} className={INPUT}/>
+                              </div>
+                              <div>
+                                <label className={LABEL}>Min Order (Rs.)</label>
+                                <input type="number" inputMode="numeric" value={pf.minOrderAmount} onChange={e => p("minOrderAmount", e.target.value)} className={INPUT}/>
+                              </div>
+                              <div>
+                                <label className={LABEL}>Usage Limit</label>
+                                <input type="number" inputMode="numeric" value={pf.usageLimit} onChange={e => p("usageLimit", e.target.value)} className={INPUT}/>
+                              </div>
+                              <div>
+                                <label className={LABEL}>Expires On</label>
+                                <input type="date" value={pf.expiresAt} onChange={e => p("expiresAt", e.target.value)} className={INPUT}/>
+                              </div>
+                              <div className="col-span-2">
+                                <label className={LABEL}>Description</label>
+                                <input value={pf.description} onChange={e => p("description", e.target.value)} className={INPUT}/>
+                              </div>
+                            </div>
+                            <button onClick={() => updatePromoMut.mutate(pm.id)} disabled={updatePromoMut.isPending} className="w-full h-10 bg-orange-500 text-white font-bold rounded-xl text-sm android-press">
+                              {updatePromoMut.isPending ? "Saving..." : "✓ Save Changes"}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

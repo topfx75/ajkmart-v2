@@ -48,7 +48,7 @@ export default function Orders() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const orderRules = config.orderRules;
-  const vendorKeep = 1 - (config.platform.vendorCommissionPct / 100);
+  const vendorKeep = 1 - ((config.platform.vendorCommissionPct ?? 15) / 100);
   const dlvFeeMap: Record<string,number> = {
     mart: config.deliveryFee.mart,
     food: config.deliveryFee.food,
@@ -61,6 +61,7 @@ export default function Orders() {
   const [expanded, setExpanded] = useState<string|null>(null);
   const [toast, setToast]       = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
+  const [pendingOrderIds, setPendingOrderIds] = useState<Set<string>>(new Set());
 
   const apiStatus = tab === "new" ? "pending" : tab;
   const { data, isLoading, refetch } = useQuery({ queryKey: ["vendor-orders", tab], queryFn: () => api.getOrders(apiStatus), refetchInterval: 15000 });
@@ -70,15 +71,23 @@ export default function Orders() {
   const newCount = tab === "new" ? orders.length : (countQ.data?.orders?.length || 0);
 
   const updateMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => api.updateOrder(id, status),
-    onSuccess: (_, { status }) => {
+    mutationFn: ({ id, status }: { id: string; status: string }) => {
+      setPendingOrderIds(s => new Set(s).add(id));
+      return api.updateOrder(id, status);
+    },
+    onSuccess: (_, { id, status }) => {
+      setPendingOrderIds(s => { const n = new Set(s); n.delete(id); return n; });
       qc.invalidateQueries({ queryKey: ["vendor-orders"] });
       qc.invalidateQueries({ queryKey: ["vendor-stats"] });
       qc.invalidateQueries({ queryKey: ["vendor-orders-count"] });
+      qc.invalidateQueries({ queryKey: ["vendor-products-all"] });
       const msg: Record<string, string> = { confirmed: "✅ " + T("orderAccepted"), preparing: "🍳 " + T("preparingStarted"), ready: "📦 " + T("markedReady"), cancelled: "❌ " + T("orderCancelled") };
       showToast(msg[status] || "✅ " + T("done"));
     },
-    onError: (e: any) => showToast("❌ " + e.message),
+    onError: (e: any, { id }) => {
+      setPendingOrderIds(s => { const n = new Set(s); n.delete(id); return n; });
+      showToast("❌ " + e.message);
+    },
   });
 
   const RefreshBtn = (
@@ -88,9 +97,11 @@ export default function Orders() {
     </button>
   );
 
+  const subtitleTab = tab === "all" ? "total" : tab;
+
   return (
     <div className="bg-gray-50 md:bg-transparent">
-      <PageHeader title={T("orders")} subtitle={`${orders.length} ${tab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
+      <PageHeader title={T("orders")} subtitle={`${orders.length} ${subtitleTab} order${orders.length !== 1 ? "s" : ""}`} actions={RefreshBtn} />
 
       {/* ── Tabs ── */}
       <div className="bg-white border-b border-gray-200 flex sticky top-0 z-10 md:mx-0">
@@ -128,13 +139,15 @@ export default function Orders() {
 
               // Auto-cancel countdown
               const msSincePlaced  = o.createdAt ? now - new Date(o.createdAt).getTime() : 0;
-              const autoCancelMs   = orderRules.autoCancelMin * 60 * 1000;
+              const autoCancelMs   = (orderRules.autoCancelMin ?? 15) * 60 * 1000;
               const msLeft         = Math.max(0, autoCancelMs - msSincePlaced);
-              const minsLeft       = Math.ceil(msLeft / 60000);
-              const secsLeft       = Math.ceil((msLeft % 60000) / 1000);
+              const minsLeft       = Math.floor(msLeft / 60000);
+              const secsLeft       = Math.floor((msLeft % 60000) / 1000);
               const isPendingTimer = o.status === "pending" && msLeft > 0;
               const pct            = msLeft / autoCancelMs * 100;
               const timerRed       = minsLeft <= 2 && isPendingTimer;
+              const isOrderPending = pendingOrderIds.has(o.id);
+              const orderDeliveryFee = o.deliveryFee != null ? o.deliveryFee : (dlvFeeMap[o.type] ?? dlvFeeMap.mart);
 
               return (
                 <div key={o.id} className={`${CARD}${o.status === "pending" ? " border-l-4 border-orange-400" : ""}`}>
@@ -183,13 +196,13 @@ export default function Orders() {
                   {/* Quick Accept */}
                   {!isExp && o.status === "pending" && (
                     <div className="px-4 pb-3 flex gap-2">
-                      <button onClick={() => updateMut.mutate({ id: o.id, status: "confirmed" })} disabled={updateMut.isPending}
+                      <button onClick={() => updateMut.mutate({ id: o.id, status: "confirmed" })} disabled={isOrderPending}
                         className="flex-1 h-10 bg-green-500 text-white font-bold rounded-xl text-sm android-press disabled:opacity-60">✓ Accept</button>
                       <button onClick={() => {
                         if (!window.confirm("Are you sure you want to reject this order? / Kya aap yeh order reject karna chahtay hain?")) return;
                         updateMut.mutate({ id: o.id, status: "cancelled" });
-                      }} disabled={updateMut.isPending}
-                        className="h-10 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ Reject</button>
+                      }} disabled={isOrderPending}
+                        className="h-10 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press disabled:opacity-60">✕ Reject</button>
                     </div>
                   )}
 
@@ -211,11 +224,11 @@ export default function Orders() {
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-500">🚚 {T("deliveryFee")}</span>
-                            <span className="font-semibold text-sky-600">{fc(dlvFeeMap[o.type] ?? dlvFeeMap.mart)}</span>
+                            <span className="font-semibold text-sky-600">{fc(orderDeliveryFee)}</span>
                           </div>
                           <div className="flex justify-between text-[11px] text-gray-400 -mt-1">
                             <span>{T("chargedToCustomer")} · Rider keeps {config.finance.riderEarningPct}%</span>
-                            <span>+{fc((dlvFeeMap[o.type] ?? dlvFeeMap.mart) * config.finance.riderEarningPct / 100)} rider</span>
+                            <span>+{fc(orderDeliveryFee * config.finance.riderEarningPct / 100)} rider</span>
                           </div>
                         </div>
                       )}
@@ -223,6 +236,14 @@ export default function Orders() {
                         <div className="px-4 py-3 flex items-start gap-2 border-t border-gray-50">
                           <span className="text-base mt-0.5">📍</span>
                           <p className="text-sm text-gray-600 leading-relaxed">{o.deliveryAddress}</p>
+                        </div>
+                      )}
+                      {(o.status === "picked_up" || o.status === "out_for_delivery") && (
+                        <div className={`px-4 py-3 flex items-center gap-2 border-t border-gray-50 ${o.status === "out_for_delivery" ? "bg-teal-50" : "bg-cyan-50"}`}>
+                          <span className="text-base">🏍️</span>
+                          <p className="text-sm font-bold text-gray-700">
+                            {o.status === "picked_up" ? "Rider has picked up your order" : "Order is out for delivery"}
+                          </p>
                         </div>
                       )}
                       {o.riderName && (
@@ -243,7 +264,7 @@ export default function Orders() {
                       </div>
                       {next && !["picked_up", "out_for_delivery"].includes(o.status) && (
                         <div className="px-4 pb-4 pt-2 flex gap-2">
-                          <button onClick={() => updateMut.mutate({ id: o.id, status: next.next })} disabled={updateMut.isPending}
+                          <button onClick={() => updateMut.mutate({ id: o.id, status: next.next })} disabled={isOrderPending}
                             className={`flex-1 h-11 ${next.bg} font-bold rounded-xl text-sm android-press disabled:opacity-60`}>
                             {T(next.labelKey)}
                           </button>
@@ -251,8 +272,8 @@ export default function Orders() {
                             <button onClick={() => {
                               if (!window.confirm("Are you sure you want to reject this order? / Kya aap yeh order reject karna chahtay hain?")) return;
                               updateMut.mutate({ id: o.id, status: "cancelled" });
-                            }} disabled={updateMut.isPending}
-                              className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press">✕ {T("rejectOrder")}</button>
+                            }} disabled={isOrderPending}
+                              className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press disabled:opacity-60">✕ {T("rejectOrder")}</button>
                           )}
                         </div>
                       )}

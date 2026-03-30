@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useLanguage } from "../lib/useLanguage";
@@ -39,6 +39,8 @@ export default function Notifications() {
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     const mainScroll = getMainScroll();
     const scrollTop = mainScroll ? mainScroll.scrollTop : 0;
+    pullY.current = 0;
+    pulling.current = false;
     if (scrollTop === 0) {
       startY.current = e.touches[0].clientY;
       pulling.current = true;
@@ -77,8 +79,16 @@ export default function Notifications() {
     onError: () => { refetch(); },
   });
 
+  const [pendingNotifIds, setPendingNotifIds] = useState<Set<string>>(new Set());
+
   const markOneMut = useMutation({
-    mutationFn: (id: string) => api.markNotificationRead(id),
+    mutationFn: (id: string) => {
+      setPendingNotifIds(s => new Set(s).add(id));
+      return api.markNotificationRead(id);
+    },
+    onSettled: (_d, _e, id) => {
+      setPendingNotifIds(s => { const n = new Set(s); n.delete(id); return n; });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["vendor-notifications"] });
       qc.invalidateQueries({ queryKey: ["vendor-notifs-count"] });
@@ -132,7 +142,7 @@ export default function Notifications() {
                 <button
                   key={n.id}
                   className={`w-full px-4 py-4 flex gap-3 transition-colors text-left android-press min-h-0 ${!n.isRead ? "bg-orange-50/40 hover:bg-orange-50/80" : "hover:bg-gray-50"}`}
-                  onClick={() => { if (!n.isRead && !markOneMut.isPending) markOneMut.mutate(n.id); }}
+                  onClick={() => { if (!n.isRead && !pendingNotifIds.has(n.id)) markOneMut.mutate(n.id); }}
                 >
                   <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl ${!n.isRead ? "bg-orange-100" : "bg-gray-100"}`}>
                     {typeIcon(n.type)}

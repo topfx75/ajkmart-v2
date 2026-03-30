@@ -68,7 +68,7 @@ export default function Profile() {
     setBankName(user.bankName || "");
     setBankAccount(user.bankAccount || "");
     setBankAccountTitle(user.bankAccountTitle || "");
-  }, [user?.id]);
+  }, [user?.id, user?.name, user?.email, user?.cnic, user?.city, user?.address, user?.businessType, user?.bankName, user?.bankAccount, user?.bankAccountTitle]);
 
   const startEdit = (section: EditSection) => {
     if (section === "personal") {
@@ -173,7 +173,7 @@ export default function Profile() {
                   {user?.storeCategory && (
                     <span className="text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-bold capitalize">{user.storeCategory}</span>
                   )}
-                  {(user?.isVerified || user?.status === "active" || completionPct === 100) && (
+                  {user?.isVerified === true && (
                     <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-bold">✓ Verified</span>
                   )}
                   {user?.city && (
@@ -380,12 +380,13 @@ export default function Profile() {
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-orange-50 transition-colors relative">
                     <span className="text-lg">{item.icon}</span>
                     <span className="text-sm font-semibold text-gray-700">{item.label}</span>
+                    <span className="flex-1"/>
                     {(item as any).badge > 0 && (
-                      <span className="ml-auto bg-red-500 text-white text-[10px] font-extrabold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      <span className="bg-red-500 text-white text-[10px] font-extrabold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                         {(item as any).badge}
                       </span>
                     )}
-                    <span className="ml-auto text-gray-300 text-sm">→</span>
+                    <span className="text-gray-300 text-sm">→</span>
                   </Link>
                 ))}
               </div>

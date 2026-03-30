@@ -8,7 +8,7 @@ import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL } from "../lib/ui";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart" };
-const EMPTY_ROW = { name:"", price:"", description:"", image:"", category:"", unit:"", stock:"" };
+const EMPTY_ROW = { name:"", price:"", description:"", image:"", category:"", unit:"", stock:"", type:"mart" };
 const CATS  = ["food","grocery","bakery","pharmacy","electronics","clothing","mart","general"];
 const TYPES = ["mart","food","pharmacy","parcel"];
 
@@ -65,7 +65,7 @@ export default function Products() {
 
   const updateMut = useMutation({
     mutationFn: () => api.updateProduct(editProd.id, { ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : null, stock: form.stock !== "" ? Number(form.stock) : null }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); setEditProd(null); setShowAdd(false); showToast("✅ Updated!"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setEditProd(null); setShowAdd(false); showToast("✅ Updated!"); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
@@ -85,12 +85,31 @@ export default function Products() {
   const [showPaste, setShowPaste] = useState(false);
   const [bulkCat, setBulkCat]   = useState("");
 
+  function parseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') { inQuotes = false; }
+        else { cur += ch; }
+      } else {
+        if (ch === '"') { inQuotes = true; }
+        else if (ch === ',') { result.push(cur); cur = ""; }
+        else { cur += ch; }
+      }
+    }
+    result.push(cur);
+    return result;
+  }
+
   const parsePaste = () => {
     const lines = pasteText.trim().split("\n").filter(Boolean);
     const parsed = lines.map(line => {
-      const cols = line.split("\t");
-      const commaCols = line.split(",");
-      const parts = cols.length > 1 ? cols : commaCols;
+      const tabCols = line.split("\t");
+      const parts = tabCols.length > 1 ? tabCols : parseCSVLine(line);
       return {
         name:        (parts[0] || "").trim(),
         price:       (parts[1] || "").trim(),
@@ -99,6 +118,7 @@ export default function Products() {
         category:    (parts[4] || bulkCat || "").trim(),
         unit:        (parts[5] || "").trim(),
         stock:       (parts[6] || "").trim(),
+        type:        (parts[7] || "mart").trim() || "mart",
       };
     }).filter(r => r.name && r.price);
     if (parsed.length > 0) { setBulkRows(r => [...r, ...parsed]); setShowPaste(false); setPasteText(""); showToast(`✅ Parsed ${parsed.length} rows`); }
@@ -107,7 +127,7 @@ export default function Products() {
 
   const bulkMut = useMutation({
     mutationFn: () => {
-      const valid = bulkRows.filter(r => r.name.trim() && r.price);
+      const valid = bulkRows.filter(r => r.name.trim() && r.price && !Number.isNaN(Number(r.price)));
       if (totalProductCount + valid.length > maxItems) {
         throw new Error(`Product limit reached. You can add at most ${maxItems - totalProductCount} more product(s).`);
       }
@@ -119,6 +139,7 @@ export default function Products() {
         category:    r.category.trim() || bulkCat || "general",
         unit:        r.unit.trim() || null,
         stock:       r.stock ? Number(r.stock) : null,
+        type:        r.type || "mart",
       })));
     },
     onSuccess: (res) => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setView("list"); setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}]); setBulkCat(""); showToast(`✅ ${res.inserted} products added!`); },
@@ -266,8 +287,8 @@ export default function Products() {
         {/* ── Desktop Table View ── */}
         <div className={`${CARD} hidden md:block`}>
           <div className="grid gap-1 px-3 py-2.5 bg-gray-50 border-b border-gray-100"
-            style={{ gridTemplateColumns: "2fr 1fr 2fr 1.5fr 1fr 0.7fr 0.7fr auto" }}>
-            {["Name *","Price *","Short Description","Image URL","Category","Unit","Stock",""].map((h,i) => (
+            style={{ gridTemplateColumns: "2fr 1fr 2fr 1.5fr 1fr 0.7fr 0.7fr 0.7fr auto" }}>
+            {["Name *","Price *","Short Description","Image URL","Category","Unit","Stock","Type",""].map((h,i) => (
               <p key={i} className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest">{h}</p>
             ))}
           </div>
@@ -275,7 +296,7 @@ export default function Products() {
             const hasErr = !!(bulkRows[i]!.name && !bulkRows[i]!.price) || false;
             return (
               <div key={i} className={`grid gap-1 px-2 py-1.5 border-b border-gray-50 last:border-0 ${hasErr ? "bg-red-50/30" : ""}`}
-                style={{ gridTemplateColumns: "2fr 1fr 2fr 1.5fr 1fr 0.7fr 0.7fr auto" }}>
+                style={{ gridTemplateColumns: "2fr 1fr 2fr 1.5fr 1fr 0.7fr 0.7fr 0.7fr auto" }}>
                 <input className={`${B_INPUT} ${!row.name && row.price ? "border-red-300 bg-red-50" : ""}`}
                   value={row.name} onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,name:e.target.value} : x))} placeholder="Product name *"/>
                 <input className={`${B_INPUT} ${row.name && !row.price ? "border-red-300 bg-red-50" : ""}`}
@@ -293,6 +314,10 @@ export default function Products() {
                   onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,unit:e.target.value} : x))} placeholder="kg/pcs"/>
                 <input className={B_INPUT} type="number" inputMode="numeric" value={row.stock}
                   onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,stock:e.target.value} : x))} placeholder="qty"/>
+                <select className={`${B_INPUT} appearance-none`} value={row.type || "mart"}
+                  onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,type:e.target.value} : x))}>
+                  {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
                 <button onClick={() => setBulkRows(r => r.filter((_,j) => j!==i))}
                   className="w-8 h-9 text-red-400 hover:text-red-600 font-bold flex items-center justify-center text-base min-h-0">✕</button>
               </div>
@@ -349,6 +374,13 @@ export default function Products() {
                   <p className="text-[10px] font-bold text-gray-400 mb-1">IMAGE URL</p>
                   <input className={`${B_INPUT} h-10`} type="url" value={row.image}
                     onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,image:e.target.value} : x))} placeholder="https://..."/>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 mb-1">TYPE</p>
+                  <select className={`${B_INPUT} h-10 appearance-none`} value={row.type || "mart"}
+                    onChange={e => setBulkRows(r => r.map((x,j) => j===i ? {...x,type:e.target.value} : x))}>
+                    {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
               </div>
             </div>

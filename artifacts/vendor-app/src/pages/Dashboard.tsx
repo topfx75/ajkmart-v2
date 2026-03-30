@@ -5,18 +5,35 @@ import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual } from "@workspace/i18n";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, STAT_VAL, STAT_LBL } from "../lib/ui";
 
 function VendorNoticeBanner({ message }: { message: string }) {
-  const [dismissed, setDismissed] = useState(false);
+  const key = `vendor_notice_dismissed_${message.split("").reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)}`;
+  const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(key) === "1");
   if (dismissed) return null;
+  const dismiss = () => { sessionStorage.setItem(key, "1"); setDismissed(true); };
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 flex items-start gap-3 mb-2">
       <span className="text-blue-500 text-base flex-shrink-0 mt-0.5">📌</span>
       <p className="text-sm text-blue-700 font-medium leading-snug flex-1">{message}</p>
-      <button onClick={() => setDismissed(true)} className="text-blue-400 hover:text-blue-600 text-lg leading-none flex-shrink-0">×</button>
+      <button onClick={dismiss} className="text-blue-400 hover:text-blue-600 text-lg leading-none flex-shrink-0">×</button>
+    </div>
+  );
+}
+
+function LiveTrackingNotice({ liveTracking }: { liveTracking: boolean }) {
+  const [dismissed, setDismissed] = useState(() => sessionStorage.getItem("live_tracking_notice_dismissed") === "1");
+  if (liveTracking || dismissed) return null;
+  return (
+    <div className="fixed bottom-24 left-4 right-4 z-40 bg-amber-50 border border-amber-300 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg md:max-w-sm md:left-auto md:right-6">
+      <span className="text-lg">📍</span>
+      <div className="flex-1">
+        <p className="text-xs font-bold text-amber-800">Live Tracking Disabled</p>
+        <p className="text-xs text-amber-600">Admin ne live tracking band ki hai</p>
+      </div>
+      <button onClick={() => { sessionStorage.setItem("live_tracking_notice_dismissed", "1"); setDismissed(true); }} className="text-amber-500 hover:text-amber-700 text-lg leading-none flex-shrink-0">×</button>
     </div>
   );
 }
@@ -29,6 +46,9 @@ export default function Dashboard() {
   const qc = useQueryClient();
   const [toast, setToast] = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
+  const [pendingOrderIds, setPendingOrderIds] = useState<Set<string>>(new Set());
+  const [cancelDialog, setCancelDialog] = useState<{ orderId: string } | null>(null);
+  const cancelReasonRef = useRef("");
 
   const { data: stats, isLoading } = useQuery({ queryKey: ["vendor-stats"], queryFn: () => api.getStats(), refetchInterval: 30000 });
   const { data: ordersData } = useQuery({ queryKey: ["vendor-orders", "all"], queryFn: () => api.getOrders(), refetchInterval: 20000 });
@@ -39,16 +59,21 @@ export default function Dashboard() {
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
-  const acceptMut = useMutation({
-    mutationFn: (id: string) => api.updateOrder(id, "confirmed"),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-orders"] }); qc.invalidateQueries({ queryKey: ["vendor-stats"] }); showToast("✅ Order confirmed!"); },
-    onError: (e: any) => showToast("❌ " + e.message),
-  });
-
-  const cancelMut = useMutation({
-    mutationFn: (id: string) => api.updateOrder(id, "cancelled"),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-orders"] }); qc.invalidateQueries({ queryKey: ["vendor-stats"] }); showToast("❌ Order cancelled"); },
-    onError: (e: any) => showToast("❌ " + e.message),
+  const orderActionMut = useMutation({
+    mutationFn: ({ orderId, status, reason }: { orderId: string; status: string; reason?: string }) => {
+      setPendingOrderIds(s => new Set(s).add(orderId));
+      return api.updateOrder(orderId, status, reason);
+    },
+    onSuccess: (_, { orderId, status }) => {
+      setPendingOrderIds(s => { const n = new Set(s); n.delete(orderId); return n; });
+      qc.invalidateQueries({ queryKey: ["vendor-orders"] });
+      qc.invalidateQueries({ queryKey: ["vendor-stats"] });
+      showToast(status === "confirmed" ? "✅ Order confirmed!" : "❌ Order cancelled");
+    },
+    onError: (e: any, { orderId }) => {
+      setPendingOrderIds(s => { const n = new Set(s); n.delete(orderId); return n; });
+      showToast("❌ " + e.message);
+    },
   });
 
   const allOrders = ordersData?.orders || [];
@@ -181,7 +206,9 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="divide-y divide-gray-50">
-                  {pendingOrders.map((o: any) => (
+                  {pendingOrders.map((o: any) => {
+                    const isOrderPending = pendingOrderIds.has(o.id);
+                    return (
                     <div key={o.id} className="px-4 py-3 flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-xl flex-shrink-0">
                         {o.type === "food" ? "🍔" : "🛒"}
@@ -191,16 +218,14 @@ export default function Dashboard() {
                         <p className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()} · {fc(o.total)}</p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
-                        <button onClick={() => acceptMut.mutate(o.id)} disabled={acceptMut.isPending}
-                          className="h-9 px-4 bg-green-500 text-white text-xs font-bold rounded-xl android-press min-h-0">✓ Accept</button>
-                        <button onClick={() => {
-                          if (!window.confirm("Are you sure you want to cancel this order? / Kya aap yeh order cancel karna chahtay hain?")) return;
-                          cancelMut.mutate(o.id);
-                        }} disabled={cancelMut.isPending}
-                          className="h-9 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">✕</button>
+                        <button onClick={() => orderActionMut.mutate({ orderId: o.id, status: "confirmed" })} disabled={isOrderPending}
+                          className="h-9 px-4 bg-green-500 text-white text-xs font-bold rounded-xl android-press min-h-0 disabled:opacity-60">✓ Accept</button>
+                        <button onClick={() => { cancelReasonRef.current = ""; setCancelDialog({ orderId: o.id }); }} disabled={isOrderPending}
+                          className="h-9 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0 disabled:opacity-60">✕</button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -287,13 +312,34 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Live Tracking disabled notice */}
-      {!config.features.liveTracking && (
-        <div className="fixed bottom-24 left-4 right-4 z-40 bg-amber-50 border border-amber-300 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg md:max-w-sm md:left-auto md:right-6">
-          <span className="text-lg">📍</span>
-          <div>
-            <p className="text-xs font-bold text-amber-800">Live Tracking Disabled</p>
-            <p className="text-xs text-amber-600">Admin ne live tracking band ki hai</p>
+      {/* Live Tracking disabled notice — dismissable once per session */}
+      <LiveTrackingNotice liveTracking={config.features.liveTracking} />
+
+      {/* Cancel order dialog with reason */}
+      {cancelDialog && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setCancelDialog(null)}>
+          <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-extrabold text-gray-800 mb-1">Cancel Order</h3>
+            <p className="text-sm text-gray-500 mb-4">Yeh order cancel karna chahte hain? / Cancel this order?</p>
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1.5">Cancellation Reason (Optional)</label>
+            <textarea
+              rows={3}
+              defaultValue={cancelReasonRef.current}
+              onChange={e => { cancelReasonRef.current = e.target.value; }}
+              placeholder="e.g. Item not available, store closing..."
+              className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400 resize-none mb-4"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setCancelDialog(null)} className="flex-1 h-11 border-2 border-gray-200 text-gray-600 font-bold rounded-xl text-sm">← Back</button>
+              <button
+                onClick={() => {
+                  orderActionMut.mutate({ orderId: cancelDialog.orderId, status: "cancelled", reason: cancelReasonRef.current || undefined });
+                  setCancelDialog(null);
+                }}
+                className="flex-1 h-11 bg-red-500 text-white font-bold rounded-xl text-sm">
+                ✕ Confirm Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
