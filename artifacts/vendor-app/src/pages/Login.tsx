@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
@@ -33,6 +33,7 @@ export default function Login() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp]     = useState("");
   const [devOtp, setDevOtp] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const [email, setEmail]     = useState("");
   const [emailOtp, setEmailOtp] = useState("");
@@ -44,8 +45,17 @@ export default function Login() {
 
   const clearError = () => setError("");
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const id = setTimeout(() => setResendCooldown(c => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [resendCooldown]);
+
+  const startCooldown = () => setResendCooldown(30);
+
   const checkVendorRole = (res: any): boolean => {
-    const roles = (res.user?.roles || res.user?.role || "").split(",").map((r: string) => r.trim());
+    const raw = res.user?.roles ?? res.user?.role ?? "";
+    const roles = Array.isArray(raw) ? raw : String(raw).split(",").map((r: string) => r.trim());
     if (!roles.includes("vendor")) {
       setError(T("accessDeniedVendor"));
       return false;
@@ -66,8 +76,9 @@ export default function Login() {
     setLoading(true); clearError();
     try {
       const res = await api.sendOtp(phone);
-      setDevOtp(res.otp || "");
+      setDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
       setStep("otp");
+      startCooldown();
     } catch(e: any) { setError(e.message); }
     setLoading(false);
   };
@@ -84,8 +95,9 @@ export default function Login() {
     setLoading(true); clearError();
     try {
       const res = await api.sendEmailOtp(email);
-      setEmailDevOtp(res.otp || "");
+      setEmailDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
       setStep("otp");
+      startCooldown();
     } catch(e: any) { setError(e.message); }
     setLoading(false);
   };
@@ -289,9 +301,11 @@ export default function Login() {
             </button>
 
             {step === "otp" && (
-              <button onClick={method === "phone" ? sendPhoneOtp : sendEmailOtp}
-                className="w-full mt-3 text-sm text-gray-400 hover:text-orange-500 font-medium py-2 transition-colors">
-                {T("resendOtp")}
+              <button
+                onClick={() => { if (resendCooldown > 0) return; (method === "phone" ? sendPhoneOtp : sendEmailOtp)(); }}
+                disabled={resendCooldown > 0}
+                className="w-full mt-3 text-sm text-gray-400 hover:text-orange-500 font-medium py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                {resendCooldown > 0 ? `${T("resendOtp")} (${resendCooldown}s)` : T("resendOtp")}
               </button>
             )}
 

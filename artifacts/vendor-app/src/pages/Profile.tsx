@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
@@ -56,6 +56,19 @@ export default function Profile() {
   const [bankAccountTitle, setBankAccountTitle] = useState(user?.bankAccountTitle || "");
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3500); };
+
+  useEffect(() => {
+    if (!user) return;
+    setName(user.name || "");
+    setEmail(user.email || "");
+    setCnic(user.cnic || "");
+    setCity(user.city || "");
+    setAddress(user.address || "");
+    setBusinessType(user.businessType || "");
+    setBankName(user.bankName || "");
+    setBankAccount(user.bankAccount || "");
+    setBankAccountTitle(user.bankAccountTitle || "");
+  }, [user?.id]);
 
   const startEdit = (section: EditSection) => {
     if (section === "personal") {
@@ -160,7 +173,9 @@ export default function Profile() {
                   {user?.storeCategory && (
                     <span className="text-xs bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full font-bold capitalize">{user.storeCategory}</span>
                   )}
-                  <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-bold">✓ Verified</span>
+                  {(user?.isVerified || user?.status === "active" || completionPct === 100) && (
+                    <span className="text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full font-bold">✓ Verified</span>
+                  )}
                   {user?.city && (
                     <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-bold">📍 {user.city}</span>
                   )}

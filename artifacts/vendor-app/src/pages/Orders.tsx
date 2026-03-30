@@ -62,11 +62,12 @@ export default function Orders() {
   const [toast, setToast]       = useState("");
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
 
-  const { data, isLoading, refetch } = useQuery({ queryKey: ["vendor-orders", tab], queryFn: () => api.getOrders(tab), refetchInterval: 15000 });
+  const apiStatus = tab === "new" ? "pending" : tab;
+  const { data, isLoading, refetch } = useQuery({ queryKey: ["vendor-orders", tab], queryFn: () => api.getOrders(apiStatus), refetchInterval: 15000 });
   const orders = data?.orders || [];
 
-  const countQ = useQuery({ queryKey: ["vendor-orders-count"], queryFn: () => api.getOrders("new"), refetchInterval: 15000 });
-  const newCount = countQ.data?.orders?.length || 0;
+  const countQ = useQuery({ queryKey: ["vendor-orders-count"], queryFn: () => api.getOrders("pending"), refetchInterval: 15000, enabled: tab !== "new" });
+  const newCount = tab === "new" ? orders.length : (countQ.data?.orders?.length || 0);
 
   const updateMut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => api.updateOrder(id, status),
@@ -168,7 +169,7 @@ export default function Orders() {
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_BADGE[o.status] || "bg-gray-100 text-gray-600"}`}>
                           {o.status.replace(/_/g," ").toUpperCase()}
                         </span>
-                        <span className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()}</span>
+                        <span className="text-xs text-gray-400 font-mono">#{(o.id || "").slice(-6).toUpperCase()}</span>
                       </div>
                       <p className="text-xs text-gray-400 mt-1">{fd(o.createdAt)} · {items.length} items</p>
                     </div>

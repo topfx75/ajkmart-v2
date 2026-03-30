@@ -124,11 +124,11 @@ export default function Analytics() {
                 <div className="h-40 flex items-center justify-center text-gray-400 text-sm">No data yet</div>
               ) : (
                 <>
-                  <div className="flex items-end gap-0.5 h-40 px-1">
-                    {dailyData.slice(-30).map((d: any, i: number) => {
+                  <div className="flex items-end gap-0.5 h-40 px-1 overflow-x-auto">
+                    {dailyData.slice(-days).map((d: any, i: number) => {
                       const pct = ((d.revenue || 0) / maxRev) * 100;
                       return (
-                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5 group relative">
+                        <div key={i} className="flex-shrink-0 flex flex-col items-center justify-end gap-0.5 group relative" style={{ minWidth: `${Math.max(4, Math.floor(100 / days))}%`, width: `${Math.max(4, Math.floor(100 / days))}%` }}>
                           <div className="absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
                             {fc(d.revenue || 0)}<br/>{d.date}
                           </div>
@@ -163,11 +163,11 @@ export default function Analytics() {
                 <div className="h-40 flex items-center justify-center text-gray-400 text-sm">No data yet</div>
               ) : (
                 <>
-                  <div className="flex items-end gap-0.5 h-40 px-1">
-                    {dailyData.slice(-30).map((d: any, i: number) => {
+                  <div className="flex items-end gap-0.5 h-40 px-1 overflow-x-auto">
+                    {dailyData.slice(-days).map((d: any, i: number) => {
                       const pct = ((d.orders || 0) / maxOrd) * 100;
                       return (
-                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5 group relative">
+                        <div key={i} className="flex-shrink-0 flex flex-col items-center justify-end gap-0.5 group relative" style={{ minWidth: `${Math.max(4, Math.floor(100 / days))}%`, width: `${Math.max(4, Math.floor(100 / days))}%` }}>
                           <div className="absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
                             {d.orders || 0} orders<br/>{d.date}
                           </div>

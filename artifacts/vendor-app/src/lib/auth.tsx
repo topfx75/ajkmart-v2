@@ -17,6 +17,7 @@ export interface AuthUser {
   stats: { todayOrders: number; todayRevenue: number; totalOrders: number; totalRevenue: number };
   cnic?: string; city?: string; address?: string; businessType?: string;
   bankName?: string; bankAccount?: string; bankAccountTitle?: string;
+  isVerified?: boolean; status?: string;
 }
 
 interface AuthCtx {
@@ -73,7 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const refreshUser = async () => { const u = await api.getMe(); setUser(u); };
+  const refreshUser = async () => {
+    try {
+      const u = await api.getMe();
+      setUser(u);
+    } catch (e) {
+      console.error("refreshUser failed:", e);
+    }
+  };
 
   return <Ctx.Provider value={{ user, token, loading, login, logout, refreshUser }}>{children}</Ctx.Provider>;
 }

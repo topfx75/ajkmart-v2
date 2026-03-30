@@ -10,11 +10,11 @@ import { fc, fd, CARD, CARD_HEADER, INPUT, SELECT, BTN_PRIMARY, BTN_SECONDARY, L
 
 const BANKS = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","Habib Bank","NBP","Faysal Bank","Allied Bank","Other"];
 
-function WithdrawModal({ balance, minPayout, maxPayout, onClose, onSuccess }: { balance: number; minPayout: number; maxPayout: number; onClose: () => void; onSuccess: () => void }) {
+function WithdrawModal({ balance, minPayout, maxPayout, onClose, onSuccess, defaultBank, defaultAcNo, defaultAcName }: { balance: number; minPayout: number; maxPayout: number | null; onClose: () => void; onSuccess: () => void; defaultBank?: string; defaultAcNo?: string; defaultAcName?: string }) {
   const [amount, setAmount]   = useState("");
-  const [bank, setBank]       = useState("");
-  const [acNo, setAcNo]       = useState("");
-  const [acName, setAcName]   = useState("");
+  const [bank, setBank]       = useState(defaultBank || "");
+  const [acNo, setAcNo]       = useState(defaultAcNo || "");
+  const [acName, setAcName]   = useState(defaultAcName || "");
   const [note, setNote]       = useState("");
   const [step, setStep]       = useState<"form"|"confirm"|"done">("form");
   const [err, setErr]         = useState("");
@@ -29,7 +29,7 @@ function WithdrawModal({ balance, minPayout, maxPayout, onClose, onSuccess }: { 
     const amt = Number(amount);
     if (!amount || isNaN(amt) || amt <= 0)  { setErr("Raqam darj karein / Valid amount required"); return; }
     if (amt < minPayout)                     { setErr(`Kam az kam ${fc(minPayout)} hona chahiye / Minimum withdrawal is ${fc(minPayout)}`); return; }
-    if (amt > maxPayout)                     { setErr(`Zyada se zyada ${fc(maxPayout)} / Maximum single withdrawal is ${fc(maxPayout)}`); return; }
+    if (maxPayout != null && amt > maxPayout) { setErr(`Zyada se zyada ${fc(maxPayout)} / Maximum single withdrawal is ${fc(maxPayout)}`); return; }
     if (amt > balance)                       { setErr(`Dastiyab balance: ${fc(balance)} / Max available: ${fc(balance)}`); return; }
     if (!bank)                               { setErr("Bank / wallet chunein / Select your bank or wallet"); return; }
     if (!acNo.trim())                        { setErr("Account / phone number darj karein / Account number required"); return; }
@@ -137,7 +137,7 @@ export default function Wallet() {
   const vendorKeepPct  = Math.round(100 - fin.vendorCommissionPct);
   const commissionPct  = fin.vendorCommissionPct;
   const minPayout      = vc?.minPayout ?? fin.minVendorPayout;
-  const maxPayout      = vc?.maxPayout ?? 50000;
+  const maxPayout      = vc?.maxPayout ?? null;
   const settleDays     = vc?.settleDays ?? fin.vendorSettleDays;
   const withdrawalEnabled = vc?.withdrawalEnabled !== false;
   const qc = useQueryClient();
@@ -158,7 +158,7 @@ export default function Wallet() {
   const credits = transactions.filter(t => t.type === "credit" || t.type === "bonus").reduce((s, t) => s + Number(t.amount), 0);
   const debits  = transactions.filter(t => t.type === "debit").reduce((s, t) => s + Number(t.amount), 0);
 
-  const today = new Date(); today.setHours(0,0,0,0);
+  const today = new Date(); today.setUTCHours(0,0,0,0);
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
   const todayEarned = transactions.filter(t => t.type === "credit" && new Date(t.createdAt) >= today).reduce((s, t) => s + Number(t.amount), 0);
   const weekEarned  = transactions.filter(t => t.type === "credit" && new Date(t.createdAt) >= weekAgo).reduce((s, t) => s + Number(t.amount), 0);
@@ -258,7 +258,7 @@ export default function Wallet() {
           <span className="text-2xl flex-shrink-0">📅</span>
           <div>
             <p className="text-sm font-bold text-amber-800">Settlement Cycle</p>
-            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Earnings are settled every <strong>{settleDays} days</strong> after order completion. Min. withdrawal is <strong>{fc(minPayout)}</strong> · Max. <strong>{fc(maxPayout)}</strong> per request.</p>
+            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Earnings are settled every <strong>{settleDays} days</strong> after order completion. Min. withdrawal is <strong>{fc(minPayout)}</strong>{maxPayout != null ? <> · Max. <strong>{fc(maxPayout)}</strong> per request</> : " · No maximum limit set by admin"}.</p>
           </div>
         </div>
         {/* ── Withdrawal Info ── */}
@@ -266,7 +266,7 @@ export default function Wallet() {
           <span className="text-2xl flex-shrink-0">🔒</span>
           <div>
             <p className="text-sm font-bold text-blue-800">Secure Withdrawals</p>
-            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">All withdrawal requests are reviewed by admin. Funds transferred within 24–48 hours. Range: {fc(minPayout)} – {fc(maxPayout)} per request.</p>
+            <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">All withdrawal requests are reviewed by admin. Funds transferred within 24–48 hours. Min: {fc(minPayout)}{maxPayout != null ? ` – Max: ${fc(maxPayout)} per request` : " · No maximum limit configured"}.</p>
           </div>
         </div>
 
@@ -326,6 +326,9 @@ export default function Wallet() {
           balance={balance}
           minPayout={minPayout}
           maxPayout={maxPayout}
+          defaultBank={user?.bankName}
+          defaultAcNo={user?.bankAccount}
+          defaultAcName={user?.bankAccountTitle}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["vendor-wallet"] });

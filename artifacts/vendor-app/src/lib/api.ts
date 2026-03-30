@@ -145,6 +145,7 @@ export const api = {
   /* Notifications */
   getNotifications:  () => apiFetch("/vendor/notifications"),
   markAllRead:       () => apiFetch("/vendor/notifications/read-all", { method: "PATCH", body: "{}" }),
+  markNotificationRead: (id: string) => apiFetch(`/vendor/notifications/${id}/read`, { method: "PATCH", body: "{}" }),
 
   /* Settings */
   getSettings:    () => apiFetch("/settings"),

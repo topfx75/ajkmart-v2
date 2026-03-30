@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useLanguage } from "../lib/useLanguage";
@@ -29,27 +29,43 @@ export default function Notifications() {
   const notifs: any[] = data?.notifications || [];
   const unread: number = data?.unread || 0;
 
-  const [pullY, setPullY] = useState(0);
-  const [pulling, setPulling] = useState(false);
+  const pullY = useRef(0);
+  const pulling = useRef(false);
   const startY = useRef(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const pullIndicatorRef = useRef<HTMLDivElement>(null);
+
+  const getMainScroll = () => document.getElementById("main-scroll");
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
-    if (scrollRef.current && scrollRef.current.scrollTop === 0) {
+    const mainScroll = getMainScroll();
+    const scrollTop = mainScroll ? mainScroll.scrollTop : 0;
+    if (scrollTop === 0) {
       startY.current = e.touches[0].clientY;
-      setPulling(true);
+      pulling.current = true;
     }
   }, []);
+
   const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!pulling) return;
+    if (!pulling.current) return;
     const diff = Math.max(0, Math.min(80, e.touches[0].clientY - startY.current));
-    setPullY(diff);
-  }, [pulling]);
+    pullY.current = diff;
+    if (pullIndicatorRef.current) {
+      pullIndicatorRef.current.style.opacity = String(diff / 60);
+      pullIndicatorRef.current.style.display = diff > 0 ? "flex" : "none";
+      if (diff > 50) pullIndicatorRef.current.classList.add("animate-spin");
+      else pullIndicatorRef.current.classList.remove("animate-spin");
+    }
+  }, []);
+
   const onTouchEnd = useCallback(() => {
-    if (pullY > 50) refetch();
-    setPullY(0);
-    setPulling(false);
-  }, [pullY, refetch]);
+    if (pullY.current > 50) refetch();
+    pullY.current = 0;
+    pulling.current = false;
+    if (pullIndicatorRef.current) {
+      pullIndicatorRef.current.style.opacity = "0";
+      pullIndicatorRef.current.style.display = "none";
+    }
+  }, [refetch]);
 
   const markAllMut = useMutation({
     mutationFn: () => api.markAllRead(),
@@ -59,6 +75,14 @@ export default function Notifications() {
       qc.invalidateQueries({ queryKey: ["vendor-me"] });
     },
     onError: () => { refetch(); },
+  });
+
+  const markOneMut = useMutation({
+    mutationFn: (id: string) => api.markNotificationRead(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vendor-notifications"] });
+      qc.invalidateQueries({ queryKey: ["vendor-notifs-count"] });
+    },
   });
 
   return (
@@ -82,13 +106,11 @@ export default function Notifications() {
         }
       />
 
-      <div ref={scrollRef} className="px-4 py-4 md:px-0 md:py-4"
+      <div className="px-4 py-4 md:px-0 md:py-4"
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-        {pullY > 0 && (
-          <div className="flex justify-center py-2 transition-opacity" style={{ opacity: pullY / 60 }}>
-            <div className={`w-6 h-6 border-2 border-orange-400 border-t-transparent rounded-full ${pullY > 50 ? "animate-spin" : ""}`} />
-          </div>
-        )}
+        <div ref={pullIndicatorRef} className="hidden justify-center py-2 mb-2" style={{ opacity: 0 }}>
+          <div className="w-6 h-6 border-2 border-orange-400 border-t-transparent rounded-full" />
+        </div>
         {isLoading ? (
           <div className="space-y-3">
             {[1,2,3,4,5].map(i => <div key={i} className="h-20 skeleton rounded-2xl"/>)}
@@ -107,7 +129,11 @@ export default function Notifications() {
             </div>
             <div className="divide-y divide-gray-50">
               {notifs.map((n: any) => (
-                <div key={n.id} className={`px-4 py-4 flex gap-3 transition-colors ${!n.isRead ? "bg-orange-50/40" : ""}`}>
+                <button
+                  key={n.id}
+                  className={`w-full px-4 py-4 flex gap-3 transition-colors text-left android-press min-h-0 ${!n.isRead ? "bg-orange-50/40 hover:bg-orange-50/80" : "hover:bg-gray-50"}`}
+                  onClick={() => { if (!n.isRead && !markOneMut.isPending) markOneMut.mutate(n.id); }}
+                >
                   <div className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl ${!n.isRead ? "bg-orange-100" : "bg-gray-100"}`}>
                     {typeIcon(n.type)}
                   </div>
@@ -119,7 +145,7 @@ export default function Notifications() {
                     <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{n.body}</p>
                     <p className="text-[10px] text-gray-400 mt-1.5 font-medium">{fd(n.createdAt)}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>

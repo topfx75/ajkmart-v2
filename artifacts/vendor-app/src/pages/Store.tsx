@@ -70,7 +70,7 @@ export default function Store() {
   });
 
   const hoursMut = useMutation({
-    mutationFn: () => api.updateStore({ storeHours: JSON.stringify(hours) }),
+    mutationFn: () => api.updateStore({ storeHours: hours }),
     onSuccess: () => { refreshUser(); showToast("✅ Hours saved!"); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
@@ -195,12 +195,12 @@ export default function Store() {
                   <AccordionTrigger className="px-4 py-3.5 bg-gray-50 hover:no-underline rounded-t-2xl">
                     <div>
                       <span className="font-bold text-gray-800 text-sm block text-left">Weekday Hours</span>
-                      <span className="text-xs text-gray-400">Mon – Thu open/close times</span>
+                      <span className="text-xs text-gray-400">Mon – Fri open/close times</span>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pt-0 pb-0">
                     <div className="divide-y divide-gray-50">
-                      {DAYS.slice(0,4).map(day => {
+                      {DAYS.slice(0,5).map(day => {
                         const h = hours[day] || { open:"09:00", close:"22:00", closed:false };
                         return (
                           <div key={day} className="px-4 py-3">
@@ -238,11 +238,14 @@ export default function Store() {
               <Accordion type="single" collapsible defaultValue="weekend">
                 <AccordionItem value="weekend" className="border-0">
                   <AccordionTrigger className="px-4 py-3.5 bg-gray-50 hover:no-underline rounded-t-2xl">
-                    <span className="font-bold text-gray-800 text-sm">Weekend Hours</span>
+                    <div>
+                      <span className="font-bold text-gray-800 text-sm block text-left">Weekend Hours</span>
+                      <span className="text-xs text-gray-400">Sat – Sun open/close times</span>
+                    </div>
                   </AccordionTrigger>
                   <AccordionContent className="pt-0 pb-0">
                     <div className="divide-y divide-gray-50">
-                      {DAYS.slice(4).map(day => {
+                      {DAYS.slice(5).map(day => {
                         const h = hours[day] || { open:"09:00", close:"22:00", closed:false };
                         return (
                           <div key={day} className="px-4 py-3">

@@ -483,6 +483,13 @@ router.patch("/notifications/read-all", async (req, res) => {
   res.json({ success: true });
 });
 
+/* ── PATCH /vendor/notifications/:id/read ── */
+router.patch("/notifications/:id/read", async (req, res) => {
+  const vendorId = req.vendorId!;
+  await db.update(notificationsTable).set({ isRead: true }).where(and(eq(notificationsTable.id, req.params.id), eq(notificationsTable.userId, vendorId)));
+  res.json({ success: true });
+});
+
 /* ── GET /vendor/analytics ── ── */
 router.get("/analytics", async (req, res) => {
   const vendorId = req.vendorId!;

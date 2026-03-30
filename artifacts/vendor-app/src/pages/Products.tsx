@@ -43,7 +43,6 @@ export default function Products() {
   const { data: allData } = useQuery({
     queryKey: ["vendor-products-all"],
     queryFn: () => api.getProducts(),
-    refetchInterval: 60000,
   });
   const totalProductCount = allData?.products?.length ?? products.length;
 
@@ -56,8 +55,11 @@ export default function Products() {
   const lowStock = products.filter(p => p.stock !== null && p.stock !== undefined && p.stock < 10 && p.stock >= 0);
 
   const createMut = useMutation({
-    mutationFn: () => api.createProduct({ ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock ? Number(form.stock) : undefined }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); setShowAdd(false); setForm({ ...EMPTY }); showToast("✅ Product added!"); },
+    mutationFn: () => {
+      if (totalProductCount >= maxItems) throw new Error(`Product limit of ${maxItems} reached. Delete existing products to add new ones.`);
+      return api.createProduct({ ...form, price: Number(form.price), originalPrice: form.originalPrice ? Number(form.originalPrice) : undefined, stock: form.stock !== "" ? Number(form.stock) : undefined });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setShowAdd(false); setForm({ ...EMPTY }); showToast("✅ Product added!"); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
@@ -69,13 +71,13 @@ export default function Products() {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteProduct(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); showToast("🗑️ Deleted"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); showToast("🗑️ Deleted"); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
   const toggleMut = useMutation({
     mutationFn: ({ id, inStock }: { id: string; inStock: boolean }) => api.updateProduct(id, { inStock }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["vendor-products"] }),
+    onSuccess: (_, { inStock }) => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); showToast(inStock ? "✅ Marked In Stock" : "📦 Marked Out of Stock"); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
@@ -106,6 +108,9 @@ export default function Products() {
   const bulkMut = useMutation({
     mutationFn: () => {
       const valid = bulkRows.filter(r => r.name.trim() && r.price);
+      if (totalProductCount + valid.length > maxItems) {
+        throw new Error(`Product limit reached. You can add at most ${maxItems - totalProductCount} more product(s).`);
+      }
       return api.bulkAddProducts(valid.map(r => ({
         name:        r.name.trim(),
         price:       Number(r.price),
@@ -116,7 +121,7 @@ export default function Products() {
         stock:       r.stock ? Number(r.stock) : null,
       })));
     },
-    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); setView("list"); setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}]); setBulkCat(""); showToast(`✅ ${res.inserted} products added!`); },
+    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ["vendor-products"] }); qc.invalidateQueries({ queryKey: ["vendor-products-all"] }); setView("list"); setBulkRows([{...EMPTY_ROW},{...EMPTY_ROW},{...EMPTY_ROW}]); setBulkCat(""); showToast(`✅ ${res.inserted} products added!`); },
     onError: (e: any) => showToast("❌ " + e.message),
   });
 
@@ -393,7 +398,7 @@ export default function Products() {
         subtitle={`${totalProductCount}/${maxItems} items used`}
         actions={
           <div className="flex gap-2">
-            <button onClick={() => setView("bulk")} className="h-9 px-3.5 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white text-xs font-bold rounded-xl android-press min-h-0">Bulk Add</button>
+            <button onClick={() => setView("bulk")} disabled={totalProductCount >= maxItems} className={`h-9 px-3.5 text-xs font-bold rounded-xl android-press min-h-0 ${totalProductCount >= maxItems ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-white/20 md:bg-gray-100 md:text-gray-700 text-white"}`}>Bulk Add</button>
             <button onClick={() => setShowAdd(true)} disabled={totalProductCount >= maxItems} className={`h-9 px-3.5 text-sm font-bold rounded-xl android-press min-h-0 ${totalProductCount >= maxItems ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-white text-orange-500 md:bg-orange-500 md:text-white"}`}>+ Add</button>
           </div>
         }
