@@ -136,7 +136,10 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
     try {
       const d = await acceptRideBidApi(rideId, { bidId });
       setRide(d as typeof ride);
-    } catch {}
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || "Could not accept bid. Please try again.";
+      showToast(msg, "error");
+    }
     setAcceptBidId(null);
   };
 
@@ -149,7 +152,10 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
       setRide(d as typeof ride);
       setUpdateOfferInput("");
       setShowUpdateOffer(false);
-    } catch {}
+    } catch (e: any) {
+      const msg = e?.response?.data?.error || e?.message || "Could not update offer. Please try again.";
+      showToast(msg, "error");
+    }
     setUpdateOfferLoading(false);
   };
 
@@ -193,11 +199,14 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
 
   const { showToast } = useToast();
 
+  const [cancelResult, setCancelResult] = useState<{ cancellationFee?: number; cancelReason?: string } | null>(null);
+
   const cancelRideHandler = async () => {
     setCancelling(true);
     setShowCancelModal(false);
     try {
-      await cancelRideApi(rideId, {});
+      const result = await cancelRideApi(rideId, {}) as any;
+      setCancelResult({ cancellationFee: result?.cancellationFee, cancelReason: result?.cancelReason });
       setRide((r: any) => r ? { ...r, status: "cancelled" } : r);
     } catch {
       showToast("Could not cancel. Please try again.", "error");
@@ -408,14 +417,15 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
             No Drivers Available
           </Text>
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.5)", textAlign: "center", lineHeight: 22, marginBottom: 12 }}>
-            {dispatchInfo?.attemptCount > 0
-              ? `We contacted ${dispatchInfo.attemptCount} driver(s) but none accepted.`
+            {dispatchInfo?.notifiedRiders > 0
+              ? `We notified ${dispatchInfo.notifiedRiders} driver(s) but none accepted.`
               : "No drivers are available right now. Try again shortly."}
           </Text>
-          {dispatchInfo?.dispatchLoopCount != null && (
+          {dispatchInfo && (
             <View style={{ backgroundColor: "rgba(255,255,255,0.06)", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-                Round {dispatchInfo.dispatchLoopCount}/{dispatchInfo.maxLoops}
+                {dispatchInfo.notifiedRiders} riders notified · {dispatchInfo.elapsedSec}s elapsed
+                {dispatchInfo.dispatchLoopCount != null ? ` · Round ${dispatchInfo.dispatchLoopCount}/${dispatchInfo.maxLoops}` : ""}
               </Text>
             </View>
           )}
@@ -429,9 +439,13 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
             }
           </Pressable>
           <Pressable
-            onPress={() => { cancelRideHandler(); }}
+            onPress={() => setShowCancelModal(true)}
+            disabled={cancelling}
             style={{ borderWidth: 1.5, borderColor: "rgba(239,68,68,0.4)", borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32, alignItems: "center", width: "100%", marginBottom: 12 }}>
-            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#EF4444" }}>Cancel Ride</Text>
+            {cancelling
+              ? <ActivityIndicator color="#EF4444" size="small" />
+              : <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#EF4444" }}>Cancel Ride</Text>
+            }
           </Pressable>
           <Pressable
             onPress={onReset}
@@ -439,6 +453,32 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
             <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "rgba(255,255,255,0.5)" }}>Go Back</Text>
           </Pressable>
         </View>
+
+        <Modal visible={showCancelModal} transparent animationType="fade" onRequestClose={() => setShowCancelModal(false)}>
+          <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 24 }} onPress={() => setShowCancelModal(false)}>
+            <Pressable style={{ backgroundColor: "#fff", borderRadius: 24, padding: 28, width: "100%", maxWidth: 380, gap: 20 }} onPress={() => {}}>
+              <View style={{ alignItems: "center", gap: 12 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="close-circle" size={34} color="#DC2626" />
+                </View>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: "#111827" }}>Cancel Ride?</Text>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 21 }}>
+                  No driver assigned yet — no cancellation fee will apply.
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <Pressable onPress={() => setShowCancelModal(false)} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#F3F4F6" }}>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#374151" }}>Go Back</Text>
+                </Pressable>
+                <Pressable onPress={cancelRideHandler} disabled={cancelling} style={{ flex: 1, alignItems: "center", padding: 15, borderRadius: 14, backgroundColor: "#DC2626" }}>
+                  {cancelling
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Cancel</Text>}
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     );
   }
@@ -527,6 +567,8 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
 
   if (status === "cancelled") {
     const wasWallet = ride?.paymentMethod === "wallet";
+    const appliedFee = cancelResult?.cancellationFee ?? 0;
+    const cancelReason = cancelResult?.cancelReason;
     return (
       <View style={{ flex: 1, backgroundColor: C.background }}>
         <View style={{ paddingTop: topPad + 24, paddingBottom: 36, alignItems: "center", paddingHorizontal: 24, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: C.border }}>
@@ -537,6 +579,19 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, marginTop: 6 }}>Your ride has been cancelled</Text>
         </View>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
+          {appliedFee > 0 && (
+            <View style={{ backgroundColor: "#FEF2F2", borderRadius: 16, padding: 16, gap: 8, borderWidth: 1, borderColor: "#FEE2E2" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="cash-outline" size={16} color="#DC2626" />
+                </View>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#991B1B" }}>Cancellation Fee Applied</Text>
+              </View>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#374151", lineHeight: 19 }}>
+                Rs. {appliedFee} cancellation fee has been charged.
+              </Text>
+            </View>
+          )}
           {wasWallet && (
             <View style={{ backgroundColor: "#F0FDF4", borderRadius: 16, padding: 16, gap: 8, borderWidth: 1, borderColor: "#D1FAE5" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -546,8 +601,14 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#065F46" }}>Refund Initiated</Text>
               </View>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#374151", lineHeight: 19 }}>
-                Rs. {ride?.fare} will be refunded to your wallet.{cancellationFee > 0 ? ` A Rs. ${cancellationFee} fee may apply if a rider was assigned.` : ""}
+                Rs. {ride?.fare} will be refunded to your wallet.
               </Text>
+            </View>
+          )}
+          {cancelReason && (
+            <View style={{ backgroundColor: "#fff", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: C.border }}>
+              <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: C.textMuted, marginBottom: 4 }}>Reason</Text>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.text }}>{cancelReason}</Text>
             </View>
           )}
           <View style={{ backgroundColor: "#fff", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: C.border, alignItems: "center" }}>
@@ -706,7 +767,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
     in_transit: { color: "#059669",  icon: "navigate", title: "On Your Way",          sub: "Trip in progress"     },
   };
   const hdrCfg  = statusCfgs[status] ?? statusCfgs["accepted"]!;
-  const canCancel = status === "accepted";
+  const canCancel = ["accepted", "arrived", "in_transit"].includes(status);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
@@ -1154,8 +1215,16 @@ function RideScreenInner() {
           });
         } catch {}
       })();
-    } catch { showToast("Network error. Please try again.", "error"); }
-    finally { setBooking(false); }
+    } catch (err: any) {
+      const errData = err?.response?.data || err?.data;
+      if (errData?.activeRideId) {
+        setBooked({ id: errData.activeRideId, type: rideType, status: errData.activeRideStatus });
+        showToast("You have an active ride. Resuming tracking.", "info");
+      } else {
+        const msg = errData?.error || "Network error. Please try again.";
+        showToast(msg, "error");
+      }
+    } finally { setBooking(false); }
   };
 
   const fetchHistory = async () => {

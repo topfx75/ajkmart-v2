@@ -649,6 +649,24 @@ router.get("/", customerAuth, async (req, res) => {
 });
 
 /* ══════════════════════════════════════════════════════
+   GET /rides/payment-methods — Active ride payment methods
+══════════════════════════════════════════════════════ */
+router.get("/payment-methods", async (_req, res) => {
+  const s = await getPlatformSettings();
+  const rideAllowed = (newKey: string, legacyKey: string, legacyDefault: string): boolean => {
+    if (s[newKey] !== undefined) return s[newKey] === "on";
+    return (s[legacyKey] ?? legacyDefault) === "on";
+  };
+  const methods: { key: string; label: string; enabled: boolean }[] = [
+    { key: "cash",      label: "Cash",      enabled: rideAllowed("cod_allowed_rides", "ride_payment_cash", "on") && (s["cod_enabled"] ?? "on") === "on" && (s["rider_cash_allowed"] ?? "on") === "on" },
+    { key: "wallet",    label: "Wallet",     enabled: rideAllowed("wallet_allowed_rides", "ride_payment_wallet", "on") && (s["feature_wallet"] ?? "on") === "on" },
+    { key: "jazzcash",  label: "JazzCash",   enabled: rideAllowed("jazzcash_allowed_rides", "ride_payment_jazzcash", "off") && (s["jazzcash_enabled"] ?? "off") === "on" },
+    { key: "easypaisa", label: "EasyPaisa",  enabled: rideAllowed("easypaisa_allowed_rides", "ride_payment_easypaisa", "off") && (s["easypaisa_enabled"] ?? "off") === "on" },
+  ];
+  res.json({ methods: methods.filter(m => m.enabled) });
+});
+
+/* ══════════════════════════════════════════════════════
    GET /rides/:id — Single ride details + pending bids (InDrive)
    Requires valid JWT. Caller must be the customer OR the assigned rider.
 ══════════════════════════════════════════════════════ */
@@ -786,23 +804,6 @@ router.get("/:id/event-logs", async (req, res) => {
   res.json({ logs: formatted, total: formatted.length });
 });
 
-/* ══════════════════════════════════════════════════════
-   GET /rides/payment-methods — Active ride payment methods
-══════════════════════════════════════════════════════ */
-router.get("/payment-methods", async (_req, res) => {
-  const s = await getPlatformSettings();
-  const rideAllowed = (newKey: string, legacyKey: string, legacyDefault: string): boolean => {
-    if (s[newKey] !== undefined) return s[newKey] === "on";
-    return (s[legacyKey] ?? legacyDefault) === "on";
-  };
-  const methods: { key: string; label: string; enabled: boolean }[] = [
-    { key: "cash",      label: "Cash",      enabled: rideAllowed("cod_allowed_rides", "ride_payment_cash", "on") && (s["cod_enabled"] ?? "on") === "on" && (s["rider_cash_allowed"] ?? "on") === "on" },
-    { key: "wallet",    label: "Wallet",     enabled: rideAllowed("wallet_allowed_rides", "ride_payment_wallet", "on") && (s["feature_wallet"] ?? "on") === "on" },
-    { key: "jazzcash",  label: "JazzCash",   enabled: rideAllowed("jazzcash_allowed_rides", "ride_payment_jazzcash", "off") && (s["jazzcash_enabled"] ?? "off") === "on" },
-    { key: "easypaisa", label: "EasyPaisa",  enabled: rideAllowed("easypaisa_allowed_rides", "ride_payment_easypaisa", "off") && (s["easypaisa_enabled"] ?? "off") === "on" },
-  ];
-  res.json({ methods: methods.filter(m => m.enabled) });
-});
 
 /* ══════════════════════════════════════════════════════
    POST /rides/:id/rate — Customer rates rider after ride
@@ -893,12 +894,17 @@ router.get("/:id/dispatch-status", customerAuth, async (req, res) => {
   const elapsedSec = Math.round((Date.now() - createdMs) / 1000);
   const remainingSec = Math.max(0, totalTimeoutSec - elapsedSec);
 
+  const maxLoops = parseInt(s["dispatch_max_loops"] ?? "3", 10);
+
   res.json({
     status: ride.status,
     notifiedRiders: notifiedCount,
     elapsedSec,
     remainingSec,
     totalTimeoutSec,
+    attemptCount: notifiedCount,
+    dispatchLoopCount: ride.dispatchLoopCount ?? 0,
+    maxLoops,
   });
 });
 
