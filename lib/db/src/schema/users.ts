@@ -77,6 +77,7 @@ export const usersTable = pgTable("users", {
   cancelCount:     integer("cancel_count").notNull().default(0),
   ignoreCount:     integer("ignore_count").notNull().default(0),
   isRestricted:    boolean("is_restricted").notNull().default(false),
+  cancellationDebt: decimal("cancellation_debt", { precision: 10, scale: 2 }).notNull().default("0"),
   /* ── Token version — incremented on logout/ban/role change to invalidate access JWTs ── */
   tokenVersion:    integer("token_version").notNull().default(0),
   lastLoginAt:       timestamp("last_login_at"),

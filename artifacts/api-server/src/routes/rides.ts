@@ -1,22 +1,74 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { liveLocationsTable, notificationsTable, rideBidsTable, rideServiceTypesTable, ridesTable, rideRatingsTable, riderPenaltiesTable, usersTable, walletTransactionsTable, popularLocationsTable, rideEventLogsTable } from "@workspace/db/schema";
-import { and, asc, desc, eq, ne, sql, or, isNull, gte, count } from "drizzle-orm";
+import {
+  liveLocationsTable, notificationsTable, rideBidsTable,
+  rideServiceTypesTable, ridesTable, rideRatingsTable,
+  usersTable, walletTransactionsTable,
+  popularLocationsTable, rideEventLogsTable, rideNotifiedRidersTable,
+} from "@workspace/db/schema";
+import { and, asc, eq, ne, sql, or, isNull, gte, count } from "drizzle-orm";
+import { z } from "zod";
 import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings } from "./admin.js";
 import { customerAuth, riderAuth, verifyUserJwt } from "../middleware/security.js";
+import { loadRide, requireRideState, requireRideOwner } from "../middleware/ride-guards.js";
 
 const router: IRouter = Router();
 
-/* ── InDrive-style broadcast dispatch ──
-   Instead of assigning to one rider at a time, we broadcast notifications to ALL
-   nearby riders. Every rider within admin radius sees the ride in their requests
-   feed. First to accept wins (atomic WHERE riderId IS NULL in the accept handler).
-   The dispatch engine now only handles:
-   1. Broadcasting notifications to nearby riders on new rides
-   2. Expiring rides that nobody accepts within the total timeout window
-   3. Re-broadcasting periodically so new online riders also see the notification */
-const notifiedRiders = new Map<string, Set<string>>();
+const coordinateSchema = z.number().min(-180).max(180);
+const latitudeSchema = z.number().min(-90).max(90);
+
+function toNumber(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = Number(v);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+const bookRideSchema = z.object({
+  type: z.string().min(1),
+  pickupAddress: z.string().min(1),
+  dropAddress: z.string().min(1),
+  pickupLat: z.preprocess(toNumber, latitudeSchema),
+  pickupLng: z.preprocess(toNumber, coordinateSchema),
+  dropLat: z.preprocess(toNumber, latitudeSchema),
+  dropLng: z.preprocess(toNumber, coordinateSchema),
+  paymentMethod: z.string().min(1),
+  offeredFare: z.preprocess((v) => (v != null && v !== "" ? Number(v) : undefined), z.number().positive().optional()),
+  bargainNote: z.string().max(500).optional(),
+});
+
+const cancelRideSchema = z.object({
+  reason: z.string().max(200).optional(),
+});
+
+const acceptBidSchema = z.object({
+  bidId: z.string().min(1),
+});
+
+const customerCounterSchema = z.object({
+  offeredFare: z.preprocess(toNumber, z.number().positive()),
+  note: z.string().max(500).optional(),
+});
+
+const rateRideSchema = z.object({
+  stars: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional(),
+});
+
+const estimateSchema = z.object({
+  pickupLat: z.preprocess(toNumber, latitudeSchema),
+  pickupLng: z.preprocess(toNumber, coordinateSchema),
+  dropLat: z.preprocess(toNumber, latitudeSchema),
+  dropLng: z.preprocess(toNumber, coordinateSchema),
+  type: z.string().min(1).optional(),
+});
+
+const eventLogSchema = z.object({
+  event: z.string().min(1),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  notes: z.string().max(1000).optional(),
+});
 
 async function broadcastRide(rideId: string) {
   try {
@@ -41,10 +93,13 @@ async function broadcastRide(rideId: string) {
         gte(liveLocationsTable.updatedAt, new Date(Date.now() - 5 * 60 * 1000)),
       ));
 
-    const already = notifiedRiders.get(rideId) ?? new Set();
+    const alreadyNotified = await db.select({ riderId: rideNotifiedRidersTable.riderId })
+      .from(rideNotifiedRidersTable)
+      .where(eq(rideNotifiedRidersTable.rideId, rideId));
+    const alreadySet = new Set(alreadyNotified.map(r => r.riderId));
 
     for (const r of onlineRiders) {
-      if (already.has(r.userId)) continue;
+      if (alreadySet.has(r.userId)) continue;
       const dist = calcDistance(pickupLat, pickupLng, parseFloat(r.latitude), parseFloat(r.longitude));
       if (dist > radiusKm) continue;
 
@@ -63,10 +118,12 @@ async function broadcastRide(rideId: string) {
         type: "ride", icon: "car-outline", link: `/ride/${rideId}`,
       }).catch(() => {});
 
-      already.add(r.userId);
+      await db.insert(rideNotifiedRidersTable).values({
+        id: generateId(),
+        rideId,
+        riderId: r.userId,
+      }).catch(() => {});
     }
-
-    notifiedRiders.set(rideId, already);
 
     await db.update(ridesTable).set({
       dispatchedAt: ride.dispatchedAt ?? new Date(),
@@ -78,12 +135,16 @@ async function broadcastRide(rideId: string) {
   }
 }
 
-function cleanupNotifiedRiders(rideId: string) {
-  notifiedRiders.delete(rideId);
+async function cleanupNotifiedRiders(rideId: string) {
+  await db.delete(rideNotifiedRidersTable)
+    .where(eq(rideNotifiedRidersTable.rideId, rideId))
+    .catch(() => {});
 }
 
-/* ── Haversine distance (km) ── */
 function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  if (!isFinite(lat1) || !isFinite(lng1) || !isFinite(lat2) || !isFinite(lng2)) {
+    throw new Error("Invalid coordinates: all values must be finite numbers");
+  }
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -92,9 +153,15 @@ function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): n
 }
 
 async function calcFare(distance: number, type: string): Promise<{ baseFare: number; gstAmount: number; total: number }> {
+  if (!isFinite(distance) || distance < 0) {
+    throw new Error("Invalid distance: must be a non-negative number");
+  }
+  if (!type || typeof type !== "string") {
+    throw new Error("Invalid service type: must be a non-empty string");
+  }
+
   const s = await getPlatformSettings();
 
-  /* ── Platform settings take priority: ride_{type}_base_fare / _per_km / _min_fare ── */
   let baseRate: number, perKm: number, minFare: number;
   const psBase = s[`ride_${type}_base_fare`];
   const psKm   = s[`ride_${type}_per_km`];
@@ -105,15 +172,17 @@ async function calcFare(distance: number, type: string): Promise<{ baseFare: num
     perKm    = parseFloat(psKm);
     minFare  = parseFloat(psMin);
   } else {
-    /* Fallback: DB-driven service type table */
     const [svc] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, type)).limit(1);
-    if (svc) {
-      baseRate = parseFloat(svc.baseFare  ?? "15");
-      perKm    = parseFloat(svc.perKm     ?? "8");
-      minFare  = parseFloat(svc.minFare   ?? "50");
-    } else {
-      baseRate = 25; perKm = 12; minFare = 80;
+    if (!svc) {
+      throw new Error(`Unknown ride service type: '${type}'`);
     }
+    baseRate = parseFloat(svc.baseFare  ?? "15");
+    perKm    = parseFloat(svc.perKm     ?? "8");
+    minFare  = parseFloat(svc.minFare   ?? "50");
+  }
+
+  if (!isFinite(baseRate) || !isFinite(perKm) || !isFinite(minFare)) {
+    throw new Error("Fare configuration is invalid for this service type");
   }
 
   const surgeEnabled    = (s["ride_surge_enabled"] ?? "off") === "on";
@@ -140,9 +209,6 @@ function formatRide(r: any) {
   };
 }
 
-/* ══════════════════════════════════════════════════════
-   GET /rides/services — Publicly visible enabled service types
-══════════════════════════════════════════════════════ */
 router.get("/services", async (_req, res) => {
   await ensureDefaultRideServices();
   const services = await db.select().from(rideServiceTypesTable)
@@ -167,9 +233,6 @@ router.get("/services", async (_req, res) => {
   });
 });
 
-/* ══════════════════════════════════════════════════════
-   GET /rides/stops — Public popular locations (admin-managed)
-══════════════════════════════════════════════════════ */
 router.get("/stops", async (_req, res) => {
   try { await ensureDefaultLocations(); } catch {}
   const locs = await db.select().from(popularLocationsTable)
@@ -184,57 +247,51 @@ router.get("/stops", async (_req, res) => {
   });
 });
 
-/* ══════════════════════════════════════════════════════
-   POST /rides/estimate — Fare estimate (server-side, incl. GST)
-══════════════════════════════════════════════════════ */
 router.post("/estimate", async (req, res) => {
-  const { pickupLat, pickupLng, dropLat, dropLng, type } = req.body;
-  if (!pickupLat || !pickupLng || !dropLat || !dropLng) {
-    res.status(400).json({ error: "pickupLat, pickupLng, dropLat, dropLng required" }); return;
+  const parsed = estimateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
+    res.status(422).json({ error: msg }); return;
   }
-  const distance = calcDistance(Number(pickupLat), Number(pickupLng), Number(dropLat), Number(dropLng));
-  const { baseFare, gstAmount, total } = await calcFare(distance, type || "bike");
-  const s = await getPlatformSettings();
-  const duration = `${Math.round(distance * 3 + 5)} min`;
-  const bargainEnabled = (s["ride_bargaining_enabled"] ?? "on") === "on";
-  const bargainMinPct  = parseFloat(s["ride_bargaining_min_pct"] ?? "70");
-  const minOffer       = Math.ceil(total * (bargainMinPct / 100));
-  res.json({
-    distance:    Math.round(distance * 10) / 10,
-    baseFare,
-    gstAmount,
-    fare:        total,
-    duration,
-    type:        type || "bike",
-    bargainEnabled,
-    minOffer,
-  });
+  const { pickupLat, pickupLng, dropLat, dropLng, type } = parsed.data;
+  try {
+    const serviceType = type || "bike";
+    const distance = calcDistance(pickupLat, pickupLng, dropLat, dropLng);
+    const { baseFare, gstAmount, total } = await calcFare(distance, serviceType);
+    const s = await getPlatformSettings();
+    const duration = `${Math.round(distance * 3 + 5)} min`;
+    const bargainEnabled = (s["ride_bargaining_enabled"] ?? "on") === "on";
+    const bargainMinPct  = parseFloat(s["ride_bargaining_min_pct"] ?? "70");
+    const minOffer       = Math.ceil(total * (bargainMinPct / 100));
+    res.json({
+      distance:    Math.round(distance * 10) / 10,
+      baseFare,
+      gstAmount,
+      fare:        total,
+      duration,
+      type:        serviceType,
+      bargainEnabled,
+      minOffer,
+    });
+  } catch (e: any) {
+    res.status(422).json({ error: e.message });
+  }
 });
 
-/* ══════════════════════════════════════════════════════
-   POST /rides — Book a ride (standard or bargaining)
-══════════════════════════════════════════════════════ */
 router.post("/", customerAuth, async (req, res) => {
+  const parsed = bookRideSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
+    res.status(422).json({ error: msg }); return;
+  }
+
   const userId = req.customerId!;
   const {
     type, pickupAddress, dropAddress,
     pickupLat, pickupLng, dropLat, dropLng,
-    paymentMethod,
-    offeredFare,   /* bargaining: customer's custom price offer */
-    bargainNote,   /* bargaining: optional note */
-  } = req.body;
+    paymentMethod, offeredFare, bargainNote,
+  } = parsed.data;
 
-  if (!type || !paymentMethod) {
-    res.status(400).json({ error: "type and paymentMethod are required" }); return;
-  }
-  if (!pickupAddress || !dropAddress) {
-    res.status(400).json({ error: "pickupAddress and dropAddress are required" }); return;
-  }
-  if (!pickupLat || !pickupLng || !dropLat || !dropLng) {
-    res.status(400).json({ error: "Exact coordinates required. Please select pickup/drop from the location list." }); return;
-  }
-
-  /* ── Prevent duplicate active rides ── */
   const existingActive = await db.select({ id: ridesTable.id, status: ridesTable.status })
     .from(ridesTable)
     .where(and(eq(ridesTable.userId, userId), sql`status IN ('searching', 'bargaining', 'accepted', 'arrived', 'in_transit')`))
@@ -244,6 +301,19 @@ router.post("/", customerAuth, async (req, res) => {
       error: "Aapki ek ride pehle se active hai. Naye ride ke liye pehle wali complete ya cancel karein.",
       activeRideId: existingActive[0]!.id,
       activeRideStatus: existingActive[0]!.status,
+    });
+    return;
+  }
+
+  const [debtUser] = await db.select({ cancellationDebt: usersTable.cancellationDebt })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  const debtAmount = parseFloat(debtUser?.cancellationDebt ?? "0");
+  if (debtAmount > 0) {
+    res.status(402).json({
+      error: `You have an outstanding cancellation fee debt of Rs. ${debtAmount.toFixed(0)}. Please clear your debt before booking a new ride.`,
+      debtAmount,
     });
     return;
   }
@@ -261,34 +331,33 @@ router.post("/", customerAuth, async (req, res) => {
   const ridesEnabled = (s["feature_rides"] ?? "on") === "on";
   if (!ridesEnabled) { res.status(503).json({ error: "Ride booking is currently disabled" }); return; }
 
-  const distance = calcDistance(Number(pickupLat), Number(pickupLng), Number(dropLat), Number(dropLng));
-  const { baseFare, gstAmount, total: platformFare } = await calcFare(distance, type);
+  let distance: number;
+  let baseFare: number, gstAmount: number, platformFare: number;
+  try {
+    distance = calcDistance(pickupLat, pickupLng, dropLat, dropLng);
+    const fareResult = await calcFare(distance, type);
+    baseFare = fareResult.baseFare;
+    gstAmount = fareResult.gstAmount;
+    platformFare = fareResult.total;
+  } catch (e: any) {
+    res.status(422).json({ error: e.message }); return;
+  }
 
-  /* ── Bargaining logic ── */
   const bargainEnabled  = (s["ride_bargaining_enabled"] ?? "on") === "on";
   const bargainMinPct   = parseFloat(s["ride_bargaining_min_pct"] ?? "70");
-  const bargainMaxRound = parseInt(s["ride_bargaining_max_rounds"] ?? "3", 10);
 
   let isBargaining = false;
   let validatedOffer = 0;
 
-  if (offeredFare !== undefined && offeredFare !== null && bargainEnabled) {
-    validatedOffer = parseFloat(String(offeredFare));
-    if (isNaN(validatedOffer) || validatedOffer <= 0) {
-      res.status(400).json({ error: "Invalid offered fare" }); return;
-    }
+  if (offeredFare !== undefined && bargainEnabled) {
+    validatedOffer = offeredFare;
     const minOffer = Math.ceil(platformFare * (bargainMinPct / 100));
     if (validatedOffer < minOffer) {
       res.status(400).json({ error: `Minimum offer allowed is Rs. ${minOffer} (${bargainMinPct}% of platform fare)` }); return;
     }
-    if (validatedOffer >= platformFare) {
-      isBargaining = false;  /* offered >= platform price → just use platform price */
-    } else {
-      isBargaining = true;
-    }
+    isBargaining = validatedOffer < platformFare;
   }
 
-  /* ── Online payment limits ── */
   const minOnline = parseFloat(s["payment_min_online"] ?? "50");
   const maxOnline = parseFloat(s["payment_max_online"] ?? "100000");
   const effectiveFare = isBargaining ? validatedOffer : platformFare;
@@ -312,9 +381,8 @@ router.post("/", customerAuth, async (req, res) => {
 
   const rideStatus = isBargaining ? "bargaining" : "searching";
   const fareToCharge = isBargaining ? validatedOffer : platformFare;
-  const fareToStore  = platformFare.toFixed(2);  /* always store platform fare; bargaining tracks offered separately */
+  const fareToStore  = platformFare.toFixed(2);
 
-  /* ── Wallet: deduct immediately only for non-bargaining (platform price accepted) ── */
   try {
     let rideRecord: any;
 
@@ -344,7 +412,6 @@ router.post("/", customerAuth, async (req, res) => {
         return ride!;
       });
     } else {
-      /* Cash payment OR bargaining ride (wallet deducted on agreement) */
       const [ride] = await db.insert(ridesTable).values({
         id: generateId(), userId, type, status: rideStatus,
         pickupAddress, dropAddress,
@@ -360,7 +427,6 @@ router.post("/", customerAuth, async (req, res) => {
       rideRecord = ride!;
     }
 
-    /* Notification */
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
       title: isBargaining ? `Ride Offer Sent 💬` : `${type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")} Ride Booked`,
@@ -385,26 +451,21 @@ router.post("/", customerAuth, async (req, res) => {
   }
 });
 
-/* ══════════════════════════════════════════════════════
-   PATCH /rides/:id/cancel — Customer cancels a ride
-══════════════════════════════════════════════════════ */
-router.patch("/:id/cancel", customerAuth, async (req, res) => {
+router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargaining", "accepted", "arrived", "in_transit"]), requireRideOwner("userId"), async (req, res) => {
   const userId = req.customerId!;
-  const cancelReason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 200) : null;
-
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, String(req.params["id"]))).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
-  if (!["searching", "bargaining", "accepted", "arrived", "in_transit"].includes(ride.status)) {
-    res.status(400).json({ error: "Ride cannot be cancelled at this stage" }); return;
+  const ride = req.ride!;
+  const cancelParsed = cancelRideSchema.safeParse(req.body ?? {});
+  if (!cancelParsed.success) {
+    const msg = cancelParsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
+    res.status(422).json({ error: msg }); return;
   }
+  const cancelReason = cancelParsed.data.reason ?? null;
 
-  cleanupNotifiedRiders(String(req.params["id"]));
+  await cleanupNotifiedRiders(String(req.params["id"]));
   const s = await getPlatformSettings();
   const cancelFee = parseFloat(s["ride_cancellation_fee"] ?? "30");
   const riderAssigned = ["accepted", "arrived", "in_transit"].includes(ride.status);
 
-  /* All-or-nothing transaction: cancel ride + bid rejection + cancellation fee + refund */
   let actualCancelFee = 0;
   let cancelFeeAsDebt = false;
 
@@ -449,10 +510,11 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       }
     }
 
-    if (cancelFeeAsDebt && upd) {
-      await tx.update(ridesTable)
-        .set({ bargainNote: `Cancellation debt: Rs.${cancelFee}` })
-        .where(eq(ridesTable.id, upd.id));
+    if (cancelFeeAsDebt) {
+      const remainingDebt = cancelFee - actualCancelFee;
+      await tx.update(usersTable)
+        .set({ cancellationDebt: sql`cancellation_debt + ${remainingDebt}`, updatedAt: new Date() })
+        .where(eq(usersTable.id, userId));
     }
 
     if (ride.paymentMethod === "wallet" && ride.status !== "bargaining" && ride.bargainStatus !== "customer_offered") {
@@ -507,33 +569,35 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   });
 });
 
-/* ══════════════════════════════════════════════════════
-   PATCH /rides/:id/accept-bid — Customer accepts a specific rider's bid
-   Body: { userId, bidId }
-══════════════════════════════════════════════════════ */
 router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
+  const parsed = acceptBidSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "bidId required" }); return;
+  }
+
   const userId = req.customerId!;
-  const { bidId } = req.body;
-  if (!bidId) { res.status(400).json({ error: "bidId required" }); return; }
-
+  const { bidId } = parsed.data;
   const rideId = String(req.params["id"]);
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
-  if (ride.status !== "bargaining") { res.status(400).json({ error: "Ride is not in bargaining state" }); return; }
 
-  /* Fetch the bid being accepted */
-  const [bid] = await db.select().from(rideBidsTable)
-    .where(and(eq(rideBidsTable.id, bidId), eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.status, "pending")))
-    .limit(1);
-  if (!bid) { res.status(404).json({ error: "Bid not found or no longer pending" }); return; }
-
-  const agreedFare = parseFloat(bid.fare);
-
-  /* ── Single transaction: wallet deduction + ride update + bid acceptance ── */
   let updated: any;
   try {
     updated = await db.transaction(async (tx) => {
+      const [ride] = await tx.select().from(ridesTable)
+        .where(eq(ridesTable.id, rideId))
+        .for("update")
+        .limit(1);
+
+      if (!ride) throw new Error("Ride not found");
+      if (ride.userId !== userId) throw new Error("Not your ride");
+      if (ride.status !== "bargaining") throw new Error("Ride is not in bargaining state");
+
+      const [bid] = await tx.select().from(rideBidsTable)
+        .where(and(eq(rideBidsTable.id, bidId), eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.status, "pending")))
+        .limit(1);
+      if (!bid) throw new Error("Bid not found or no longer pending");
+
+      const agreedFare = parseFloat(bid.fare);
+
       if (ride.paymentMethod === "wallet") {
         const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
         if (!user) throw new Error("User not found");
@@ -574,14 +638,20 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
         .set({ status: "rejected", updatedAt: new Date() })
         .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.status, "pending"), ne(rideBidsTable.id, bidId)));
 
-      return rideUpdate;
+      return { rideUpdate, bid };
     });
   } catch (e: any) {
-    res.status(400).json({ error: e.message });
+    const status = e.message.includes("not found") ? 404
+      : e.message.includes("Not your") ? 403
+      : e.message.includes("not in bargaining") ? 400
+      : 400;
+    res.status(status).json({ error: e.message });
     return;
   }
 
-  /* Notify winning rider */
+  const { rideUpdate, bid } = updated;
+  const agreedFare = parseFloat(bid.fare);
+
   await db.insert(notificationsTable).values({
     id: generateId(), userId: bid.riderId,
     title: "Aapka Bid Accept Ho Gaya! 🎉",
@@ -589,44 +659,36 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
     type: "ride", icon: "checkmark-circle-outline",
   }).catch(() => {});
 
-  res.json({ ...formatRide(updated!), agreedFare });
+  res.json({ ...formatRide(rideUpdate!), agreedFare });
 });
 
-/* ══════════════════════════════════════════════════════
-   PATCH /rides/:id/customer-counter — Customer updates their offered fare
-   Body: { userId, offeredFare, note? }
-   Works anytime during bargaining; rejects all pending bids → riders re-bid
-══════════════════════════════════════════════════════ */
-router.patch("/:id/customer-counter", customerAuth, async (req, res) => {
-  const userId = req.customerId!;
-  const { offeredFare: newOffer, note } = req.body;
-  if (!newOffer) { res.status(400).json({ error: "offeredFare required" }); return; }
+router.patch("/:id/customer-counter", customerAuth, requireRideState(["bargaining"]), requireRideOwner("userId"), async (req, res) => {
+  const parsed = customerCounterSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
+    res.status(422).json({ error: msg }); return;
+  }
 
-  const rideId = String(req.params["id"]);
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
-  if (ride.status !== "bargaining") { res.status(400).json({ error: "Ride is not in bargaining state" }); return; }
+  const ride = req.ride!;
+  const rideId = ride.id;
+  const { offeredFare: newOffer, note } = parsed.data;
 
   const s = await getPlatformSettings();
   const bargainMinPct = parseFloat(s["ride_bargaining_min_pct"] ?? "70");
   const platformFare  = parseFloat(ride.fare);
-  const parsedOffer   = parseFloat(String(newOffer));
   const minOffer      = Math.ceil(platformFare * (bargainMinPct / 100));
-  if (parsedOffer < minOffer) {
+  if (newOffer < minOffer) {
     res.status(400).json({ error: `Minimum offer is Rs. ${minOffer}` }); return;
   }
 
-  /* Reject all pending bids so riders see fresh offer */
   await db.update(rideBidsTable)
     .set({ status: "rejected", updatedAt: new Date() })
     .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.status, "pending")));
 
   const currentRounds = ride.bargainRounds ?? 0;
-  /* Include userId in WHERE — closes TOCTOU between ownership check and update */
   const [updated] = await db.update(ridesTable)
     .set({
-      offeredFare:   parsedOffer.toFixed(2),
+      offeredFare:   newOffer.toFixed(2),
       counterFare:   null,
       bargainStatus: "customer_offered",
       bargainRounds: currentRounds + 1,
@@ -643,9 +705,6 @@ router.patch("/:id/customer-counter", customerAuth, async (req, res) => {
   res.json(formatRide(updated!));
 });
 
-/* ══════════════════════════════════════════════════════
-   GET /rides — List rides for user
-══════════════════════════════════════════════════════ */
 router.get("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const rides = await db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(ridesTable.createdAt);
@@ -655,9 +714,6 @@ router.get("/", customerAuth, async (req, res) => {
   });
 });
 
-/* ══════════════════════════════════════════════════════
-   GET /rides/payment-methods — Active ride payment methods
-══════════════════════════════════════════════════════ */
 router.get("/payment-methods", async (_req, res) => {
   const s = await getPlatformSettings();
   const rideAllowed = (newKey: string, legacyKey: string, legacyDefault: string): boolean => {
@@ -673,12 +729,7 @@ router.get("/payment-methods", async (_req, res) => {
   res.json({ methods: methods.filter(m => m.enabled) });
 });
 
-/* ══════════════════════════════════════════════════════
-   GET /rides/:id — Single ride details + pending bids (InDrive)
-   Requires valid JWT. Caller must be the customer OR the assigned rider.
-══════════════════════════════════════════════════════ */
 router.get("/:id", async (req, res) => {
-  /* Flexible auth — accepts customer or rider JWT */
   const authHeader  = req.headers["authorization"] as string | undefined;
   const tokenHeader = req.headers["x-auth-token"]  as string | undefined;
   const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
@@ -691,14 +742,12 @@ router.get("/:id", async (req, res) => {
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
 
-  /* Ownership check: requester must be the customer or the assigned rider */
   const isCustomer = ride.userId  === callerId;
   const isRider    = ride.riderId === callerId;
   if (!isCustomer && !isRider) {
     res.status(403).json({ error: "Access denied — not your ride" }); return;
   }
 
-  /* Enrich with rider info if riderId set but riderName not stored */
   let riderName = ride.riderName;
   let riderPhone = ride.riderPhone;
   if (ride.riderId && !riderName) {
@@ -708,7 +757,6 @@ router.get("/:id", async (req, res) => {
     riderPhone = riderUser?.phone || null;
   }
 
-  /* Include pending bids for bargaining rides */
   const bids = ride.status === "bargaining"
     ? await db.select().from(rideBidsTable)
         .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.status, "pending")))
@@ -722,7 +770,6 @@ router.get("/:id", async (req, res) => {
     updatedAt: b.updatedAt instanceof Date ? b.updatedAt.toISOString() : b.updatedAt,
   }));
 
-  /* ── Rider live location (only when ride is active) ── */
   let riderLat: number | null = null;
   let riderLng: number | null = null;
   let riderLocAge: number | null = null;
@@ -743,30 +790,17 @@ router.get("/:id", async (req, res) => {
   res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge });
 });
 
-/* ════════════════════════════════════════════════════════
-   POST /rides/:id/event-log
-   Rider calls this on every status change (accepted →
-   arrived → in_transit → completed / cancelled).
-   Saves rider GPS + event type with the ride reference.
-   Professional journey audit trail — used by admin.
-════════════════════════════════════════════════════════ */
-router.post("/:id/event-log", riderAuth, async (req, res) => {
-  const rideId  = String(req.params["id"]);
-  const riderId = req.riderId!;
-  const { event, lat, lng, notes } = req.body;
-
-  if (!event) {
-    res.status(400).json({ error: "event is required" });
+router.post("/:id/event-log", riderAuth, loadRide(), requireRideOwner("riderId"), async (req, res) => {
+  const parsed = eventLogSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message || "event is required" });
     return;
   }
 
-  /* Verify ride exists AND this rider is the assigned rider */
-  const [ride] = await db.select({ id: ridesTable.id, riderId: ridesTable.riderId })
-    .from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (!ride.riderId || ride.riderId !== riderId) {
-    res.status(403).json({ error: "You are not the assigned rider for this ride" }); return;
-  }
+  const ride = req.ride!;
+  const rideId = ride.id;
+  const riderId = req.riderId!;
+  const { event, lat, lng, notes } = parsed.data;
 
   const id = generateId();
   await db.insert(rideEventLogsTable).values({
@@ -783,11 +817,7 @@ router.post("/:id/event-log", riderAuth, async (req, res) => {
   res.json({ success: true, id });
 });
 
-/* ════════════════════════════════════════════════════════
-   GET /rides/:id/event-logs   — Admin only (journey audit trail)
-════════════════════════════════════════════════════════ */
 router.get("/:id/event-logs", async (req, res) => {
-  /* Admin-secret guard — prevents public scraping of rider GPS journey history */
   const adminSecret = process.env.ADMIN_SECRET;
   const provided    = req.headers["x-admin-secret"] as string | undefined;
   if (!adminSecret || !provided || provided !== adminSecret) {
@@ -811,23 +841,17 @@ router.get("/:id/event-logs", async (req, res) => {
   res.json({ logs: formatted, total: formatted.length });
 });
 
-
-/* ══════════════════════════════════════════════════════
-   POST /rides/:id/rate — Customer rates rider after ride
-══════════════════════════════════════════════════════ */
-router.post("/:id/rate", customerAuth, async (req, res) => {
-  const userId = req.customerId!;
-  const rideId = String(req.params["id"]);
-  const { stars, comment } = req.body;
-
-  if (!stars || stars < 1 || stars > 5) {
-    res.status(400).json({ error: "stars must be between 1 and 5" }); return;
+router.post("/:id/rate", customerAuth, requireRideState(["completed"]), requireRideOwner("userId"), async (req, res) => {
+  const parsed = rateRideSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.issues[0]?.message || "stars must be between 1 and 5" }); return;
   }
 
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
-  if (ride.status !== "completed") { res.status(400).json({ error: "Can only rate completed rides" }); return; }
+  const ride = req.ride!;
+  const userId = req.customerId!;
+  const rideId = ride.id;
+  const { stars, comment } = parsed.data;
+
   if (!ride.riderId) { res.status(400).json({ error: "No rider assigned" }); return; }
 
   const existing = await db.select({ id: rideRatingsTable.id }).from(rideRatingsTable).where(eq(rideRatingsTable.rideId, rideId)).limit(1);
@@ -838,7 +862,7 @@ router.post("/:id/rate", customerAuth, async (req, res) => {
     rideId,
     customerId: userId,
     riderId: ride.riderId,
-    stars: parseInt(String(stars), 10),
+    stars,
     comment: comment || null,
   }).returning();
 
@@ -852,16 +876,9 @@ router.post("/:id/rate", customerAuth, async (req, res) => {
   res.json({ success: true, rating });
 });
 
-/* ══════════════════════════════════════════════════════
-   GET /rides/:id/status — Customer polls dispatch status
-══════════════════════════════════════════════════════ */
-router.get("/:id/status", customerAuth, async (req, res) => {
-  const userId = req.customerId!;
-  const rideId = String(req.params["id"]);
-
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
+router.get("/:id/status", customerAuth, loadRide(), requireRideOwner("userId"), async (req, res) => {
+  const ride = req.ride!;
+  const rideId = ride.id;
 
   const attempts = (ride.dispatchAttempts as string[] | null) || [];
   const hasRating = await db.select({ id: rideRatingsTable.id }).from(rideRatingsTable).where(eq(rideRatingsTable.rideId, rideId)).limit(1);
@@ -882,21 +899,18 @@ router.get("/:id/status", customerAuth, async (req, res) => {
   });
 });
 
-/* ══════════════════════════════════════════════════════
-   GET /rides/:id/dispatch-status — Broadcast dispatch progress
-══════════════════════════════════════════════════════ */
-router.get("/:id/dispatch-status", customerAuth, async (req, res) => {
-  const userId = req.customerId!;
-  const rideId = String(req.params["id"]);
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
+router.get("/:id/dispatch-status", customerAuth, loadRide(), requireRideOwner("userId"), async (req, res) => {
+  const ride = req.ride!;
+  const rideId = ride.id;
 
   const s = await getPlatformSettings();
   const totalTimeoutSec = parseInt(s["dispatch_broadcast_timeout_sec"] ?? s["dispatch_request_timeout_sec"] ?? "120", 10);
 
-  const notified = notifiedRiders.get(rideId);
-  const notifiedCount = notified ? notified.size : 0;
+  const [notifiedRow] = await db.select({ c: count() })
+    .from(rideNotifiedRidersTable)
+    .where(eq(rideNotifiedRidersTable.rideId, rideId));
+  const notifiedCount = notifiedRow?.c ?? 0;
+
   const createdMs = new Date(ride.createdAt!).getTime();
   const elapsedSec = Math.round((Date.now() - createdMs) / 1000);
   const remainingSec = Math.max(0, totalTimeoutSec - elapsedSec);
@@ -915,19 +929,11 @@ router.get("/:id/dispatch-status", customerAuth, async (req, res) => {
   });
 });
 
-/* ══════════════════════════════════════════════════════
-   POST /rides/:id/retry — Customer retries dispatch after no_riders/expired
-══════════════════════════════════════════════════════ */
-router.post("/:id/retry", customerAuth, async (req, res) => {
-  const userId = req.customerId!;
-  const rideId = String(req.params["id"]);
+router.post("/:id/retry", customerAuth, requireRideState(["no_riders", "expired"]), requireRideOwner("userId"), async (req, res) => {
+  const ride = req.ride!;
+  const rideId = ride.id;
 
-  const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
-  if (ride.userId !== userId) { res.status(403).json({ error: "Not your ride" }); return; }
-  if (ride.status !== "no_riders" && ride.status !== "expired") { res.status(400).json({ error: "Ride is not in no_riders/expired state" }); return; }
-
-  cleanupNotifiedRiders(rideId);
+  await cleanupNotifiedRiders(rideId);
 
   await db.update(ridesTable).set({
     status: "searching",
@@ -945,18 +951,7 @@ router.post("/:id/retry", customerAuth, async (req, res) => {
   res.json({ success: true, message: "Dispatch restarted" });
 });
 
-/* ══════════════════════════════════════════════════════
-   Dispatch Engine — runs every 10 seconds
-   Finds rides in "searching" status and dispatches to
-   nearest available online rider within configured radius.
-   Handles timeouts and re-dispatch loops.
-══════════════════════════════════════════════════════ */
 let dispatchCycleRunning = false;
-/* ── InDrive-style broadcast dispatch cycle ──
-   Runs every 10s. For each open ride:
-   1. Broadcast notification to ALL nearby riders who haven't been notified yet
-   2. If total time exceeds broadcast_total_timeout_sec (default 120s = 2min) with no acceptance → expire ride
-   3. Re-broadcasts to catch newly-online riders each cycle */
 async function runDispatchCycle() {
   if (dispatchCycleRunning) return;
   dispatchCycleRunning = true;
@@ -973,40 +968,43 @@ async function runDispatchCycle() {
       .limit(50);
 
     if (pendingRides.length === 0) {
-      for (const rideId of notifiedRiders.keys()) {
-        cleanupNotifiedRiders(rideId);
-      }
+      await db.delete(rideNotifiedRidersTable)
+        .where(sql`ride_id NOT IN (SELECT id FROM rides WHERE status IN ('searching', 'bargaining') AND rider_id IS NULL)`)
+        .catch(() => {});
       return;
     }
 
-    const pendingIds = new Set(pendingRides.map(r => r.id));
-    for (const rideId of notifiedRiders.keys()) {
-      if (!pendingIds.has(rideId)) cleanupNotifiedRiders(rideId);
-    }
+    await db.delete(rideNotifiedRidersTable)
+      .where(sql`ride_id NOT IN (SELECT id FROM rides WHERE status IN ('searching', 'bargaining') AND rider_id IS NULL)`)
+      .catch(() => {});
 
     for (const ride of pendingRides) {
-      const createdMs = new Date(ride.createdAt!).getTime();
-      const elapsedSec = (Date.now() - createdMs) / 1000;
+      try {
+        const createdMs = new Date(ride.createdAt!).getTime();
+        const elapsedSec = (Date.now() - createdMs) / 1000;
 
-      if (elapsedSec > totalTimeoutSec) {
-        await db.update(ridesTable)
-          .set({ status: "expired", updatedAt: new Date() })
-          .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)));
+        if (elapsedSec > totalTimeoutSec) {
+          await db.update(ridesTable)
+            .set({ status: "expired", updatedAt: new Date() })
+            .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)));
 
-        await db.insert(notificationsTable).values({
-          id: generateId(),
-          userId: ride.userId,
-          title: "No Rider Found",
-          body: "Koi rider available nahi mila. Please dubara try karein ya fare adjust karein.",
-          type: "ride",
-          icon: "close-circle-outline",
-        }).catch(() => {});
+          await db.insert(notificationsTable).values({
+            id: generateId(),
+            userId: ride.userId,
+            title: "No Rider Found",
+            body: "Koi rider available nahi mila. Please dubara try karein ya fare adjust karein.",
+            type: "ride",
+            icon: "close-circle-outline",
+          }).catch(() => {});
 
-        cleanupNotifiedRiders(ride.id);
-        continue;
+          await cleanupNotifiedRiders(ride.id);
+          continue;
+        }
+
+        await broadcastRide(ride.id);
+      } catch (rideErr) {
+        console.error(`[dispatch-engine] Error processing ride ${ride.id}:`, rideErr);
       }
-
-      await broadcastRide(ride.id);
     }
   } catch (err) {
     console.error("[dispatch-engine] cycle error:", err);

@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { usersTable, ordersTable, rideBidsTable, ridesTable, riderPenaltiesTable, walletTransactionsTable, notificationsTable, liveLocationsTable, reviewsTable } from "@workspace/db/schema";
-import { eq, desc, and, or, sql, count, sum, avg, gte, isNull } from "drizzle-orm";
+import { eq, desc, and, or, sql, count, sum, avg, gte, isNull, type InferSelectModel } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { verifyUserJwt, getCachedSettings, detectGPSSpoof, addSecurityEvent, getClientIp } from "../middleware/security.js";
@@ -989,37 +989,66 @@ router.post("/rides/:id/counter", async (req, res) => {
     res.status(400).json({ error: `Counter offer must be higher than customer's offer (Rs. ${offeredAmt.toFixed(0)})` }); return;
   }
 
-  /* Upsert: update existing pending bid OR insert new one */
-  const [existingBid] = await db.select({ id: rideBidsTable.id })
-    .from(rideBidsTable)
-    .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.riderId, riderId), eq(rideBidsTable.status, "pending")))
-    .limit(1);
+  const MAX_BIDS_PER_RIDER_PER_RIDE = 3;
 
-  let bid;
-  if (existingBid) {
-    /* Update existing bid — include riderId in WHERE to close TOCTOU */
-    const [b] = await db.update(rideBidsTable)
-      .set({ fare: parsedCounter.toFixed(2), note: note ?? null, updatedAt: new Date() })
-      .where(and(eq(rideBidsTable.id, existingBid.id), eq(rideBidsTable.riderId, riderId)))
-      .returning();
-    bid = b;
-  } else {
-    /* Insert fresh bid */
-    const [b] = await db.insert(rideBidsTable).values({
-      id:         generateId(),
-      rideId,
-      riderId,
-      riderName:  riderUser.name || "Rider",
-      riderPhone: riderUser.phone ?? null,
-      fare:       parsedCounter.toFixed(2),
-      note:       note ?? null,
-      status:     "pending",
-    }).returning();
-    bid = b;
+  let bid: InferSelectModel<typeof rideBidsTable> | undefined;
+  let isFirstBid = false;
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [lockedRide] = await tx.select({ id: ridesTable.id, status: ridesTable.status })
+        .from(ridesTable)
+        .where(eq(ridesTable.id, rideId))
+        .for("update");
+
+      if (!lockedRide || !["searching", "bargaining"].includes(lockedRide.status)) {
+        throw Object.assign(new Error("Ride is no longer accepting bids"), { statusCode: 409 });
+      }
+
+      const [bidCountRow] = await tx.select({ c: count() })
+        .from(rideBidsTable)
+        .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.riderId, riderId)));
+      const totalBids = bidCountRow?.c ?? 0;
+
+      const [existingBid] = await tx.select({ id: rideBidsTable.id })
+        .from(rideBidsTable)
+        .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.riderId, riderId), eq(rideBidsTable.status, "pending")))
+        .limit(1);
+
+      if (!existingBid && totalBids >= MAX_BIDS_PER_RIDER_PER_RIDE) {
+        throw Object.assign(new Error(`Maximum ${MAX_BIDS_PER_RIDER_PER_RIDE} bids per ride allowed. You have already submitted ${totalBids} bids on this ride.`), { statusCode: 429 });
+      }
+
+      if (existingBid) {
+        const [updated] = await tx.update(rideBidsTable)
+          .set({ fare: parsedCounter.toFixed(2), note: note ?? null, updatedAt: new Date() })
+          .where(and(eq(rideBidsTable.id, existingBid.id), eq(rideBidsTable.riderId, riderId)))
+          .returning();
+        isFirstBid = false;
+        return updated;
+      } else {
+        const [inserted] = await tx.insert(rideBidsTable).values({
+          id:         generateId(),
+          rideId,
+          riderId,
+          riderName:  riderUser.name || "Rider",
+          riderPhone: riderUser.phone ?? null,
+          fare:       parsedCounter.toFixed(2),
+          note:       note ?? null,
+          status:     "pending",
+        }).returning();
+        isFirstBid = true;
+        return inserted;
+      }
+    });
+    bid = result;
+  } catch (e: unknown) {
+    const err = e as { statusCode?: number; message?: string };
+    const status = err.statusCode ?? 400;
+    res.status(status).json({ error: err.message ?? "Bid failed" });
+    return;
   }
 
-  /* Notify customer that a new bid has come in (only on first bid from this rider) */
-  if (!existingBid) {
+  if (isFirstBid) {
     await db.insert(notificationsTable).values({
       id: generateId(), userId: ride.userId,
       title: "Naya Bid Aaya! 💬",

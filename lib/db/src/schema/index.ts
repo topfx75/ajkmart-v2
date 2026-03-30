@@ -25,3 +25,4 @@ export * from "./auth_audit_log";
 export * from "./magic_link_tokens";
 export * from "./rider_penalties";
 export * from "./ride_ratings";
+export * from "./ride_notified_riders";
