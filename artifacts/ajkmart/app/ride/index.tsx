@@ -674,7 +674,7 @@ function RideTracker({ rideId, initialType, userId, token, cancellationFee, onRe
               {[
                 { lbl: "Vehicle",  val: rideType === "bike" ? "Bike" : rideType === "car" ? "Car" : rideType === "rickshaw" ? "Rickshaw" : rideType },
                 { lbl: "Distance", val: `${ride?.distance} km` },
-                { lbl: "Payment",  val: ride?.paymentMethod === "wallet" ? "Wallet" : "Cash" },
+                { lbl: "Payment",  val: ride?.paymentMethod === "wallet" ? "Wallet" : ride?.paymentMethod === "jazzcash" ? "JazzCash" : ride?.paymentMethod === "easypaisa" ? "EasyPaisa" : "Cash" },
                 { lbl: "Driver",   val: ride?.riderName || "AJK Driver" },
               ].map(r => (
                 <View key={r.lbl} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -940,7 +940,7 @@ function RideScreenInner() {
   const [pickupObj,  setPickupObj] = useState<{ lat: number; lng: number; address: string } | null>(null);
   const [dropObj,    setDropObj]   = useState<{ lat: number; lng: number; address: string } | null>(null);
   const [rideType,   setRideType]  = useState("bike");
-  const [payMethod,  setPayMethod] = useState<"cash" | "wallet">("cash");
+  const [payMethod,  setPayMethod] = useState("cash");
 
   type ServiceType = { key: string; name: string; nameUrdu?: string; icon: string; color?: string; baseFare: number; perKm: number; minFare: number; maxPassengers: number; description?: string; allowBargaining?: boolean };
   const DEFAULT_SERVICES: ServiceType[] = [
@@ -1007,12 +1007,12 @@ function RideScreenInner() {
         const filtered = legacyData.methods.filter((m: any) => rideKeys.has(m.id));
         if (filtered.length > 0) {
           setPayMethods(filtered);
-          setPayMethod(filtered[0]!.id as "cash" | "wallet");
+          setPayMethod(filtered[0]!.id);
         }
       } else if (rideData?.methods?.length) {
-        const mapped = rideData.methods.map((m: any) => ({ id: m.key, name: m.label }));
+        const mapped = rideData.methods.map((m: any) => ({ id: m.key, label: m.label }));
         setPayMethods(mapped);
-        setPayMethod(mapped[0]!.id as "cash" | "wallet");
+        setPayMethod(mapped[0]!.id);
       }
     }).catch(() => {});
   }, []);
@@ -1112,7 +1112,7 @@ function RideScreenInner() {
         routeId: selectedRoute.id,
         studentName: schoolStudent.trim(),
         studentClass: schoolClass.trim(),
-        paymentMethod: payMethod as "cash" | "wallet",
+        paymentMethod: payMethod,
       });
       setShowSchoolModal(false);
       setSelectedRoute(null); setSchoolStudent(""); setSchoolClass("");
@@ -1560,28 +1560,35 @@ function RideScreenInner() {
         <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.text, marginBottom: 10 }}>Payment</Text>
         <View style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}>
           {payMethods.map(pm => {
-            const pmId = pm.id as "cash" | "wallet";
+            const pmId = pm.id;
             const active = payMethod === pmId;
+            const isCash = pmId === "cash";
             const isWallet = pmId === "wallet";
-            const isCash   = pmId === "cash";
+            const isJazzcash = pmId === "jazzcash";
+            const isEasypaisa = pmId === "easypaisa";
             const insufficient = isWallet && estimate && (user?.walletBalance ?? 0) < estimate.fare;
+            const pmLabel = pm.label || pm.name || pmId;
+            const pmIcon: string = isCash ? "cash-outline" : isWallet ? "wallet-outline" : isJazzcash ? "phone-portrait-outline" : isEasypaisa ? "phone-portrait-outline" : "card-outline";
+            const pmColor = isCash ? C.success : isWallet ? C.primary : isJazzcash ? "#E53E3E" : isEasypaisa ? "#38A169" : C.primary;
+            const pmBg = isCash ? "#D1FAE5" : isWallet ? "#DBEAFE" : isJazzcash ? "#FEE2E2" : isEasypaisa ? "#D1FAE5" : "#DBEAFE";
+            const pmSubtext = isCash ? "Pay on arrival" : isWallet ? `Rs. ${(user?.walletBalance ?? 0).toLocaleString()}` : `Pay via ${pmLabel}`;
             return (
               <Pressable key={pmId} onPress={() => setPayMethod(pmId)} style={{
                 flex: 1, alignItems: "center", padding: 16, borderRadius: 16,
-                borderWidth: 1.5, borderColor: active ? (isWallet ? C.primary : C.success) : C.border,
-                backgroundColor: active ? (isWallet ? `${C.primary}08` : `${C.success}08`) : "#fff",
+                borderWidth: 1.5, borderColor: active ? pmColor : C.border,
+                backgroundColor: active ? `${pmColor}08` : "#fff",
                 gap: 6,
               }}>
-                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: active ? (isWallet ? "#DBEAFE" : "#D1FAE5") : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name={isCash ? "cash-outline" : "wallet-outline"} size={22} color={active ? (isWallet ? C.primary : C.success) : C.textSecondary} />
+                <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: active ? pmBg : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name={pmIcon as any} size={22} color={active ? pmColor : C.textSecondary} />
                 </View>
                 <Text style={{ fontFamily: active ? "Inter_700Bold" : "Inter_600SemiBold", fontSize: 13, color: active ? C.text : C.textSecondary }}>
-                  {isCash ? "Cash" : "Wallet"}
+                  {pmLabel}
                 </Text>
                 <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: insufficient ? C.danger : C.textMuted }}>
-                  {isCash ? "Pay on arrival" : `Rs. ${(user?.walletBalance ?? 0).toLocaleString()}`}
+                  {pmSubtext}
                 </Text>
-                {active && <View style={{ position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: isWallet ? C.primary : C.success, alignItems: "center", justifyContent: "center" }}><Ionicons name="checkmark" size={12} color="#fff" /></View>}
+                {active && <View style={{ position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: 10, backgroundColor: pmColor, alignItems: "center", justifyContent: "center" }}><Ionicons name="checkmark" size={12} color="#fff" /></View>}
               </Pressable>
             );
           })}
