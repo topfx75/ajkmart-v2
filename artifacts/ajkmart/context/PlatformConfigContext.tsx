@@ -240,8 +240,10 @@ const DEFAULT: PlatformConfig = {
   },
 };
 
-function isMethodEnabled(val: boolean | Record<string, boolean>, role = "customer"): boolean {
+function isMethodEnabled(val: boolean | Record<string, boolean> | undefined | null, role = "customer"): boolean {
+  if (val === undefined || val === null) return false;
   if (typeof val === "boolean") return val;
+  if (typeof val !== "object") return false;
   return val[role] ?? false;
 }
 
@@ -277,7 +279,14 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
     }
     fetchingRef.current = true;
     try {
-      const res = await fetch(`https://${API_DOMAIN}/api/platform-config`, { cache: "no-store" });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
+      let res: Response;
+      try {
+        res = await fetch(`https://${API_DOMAIN}/api/platform-config`, { cache: "no-store", signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (!res.ok) throw new Error("config fetch failed");
       const raw = await res.json();
       const parsed: PlatformConfig = {
@@ -390,10 +399,10 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           maxOrdersDay:             raw.customer?.maxOrdersDay             ?? DEFAULT.customer.maxOrdersDay,
           signupBonus:              raw.customer?.signupBonus              ?? DEFAULT.customer.signupBonus,
           p2pEnabled:               raw.customer?.p2pEnabled               ?? DEFAULT.customer.p2pEnabled,
-          walletCashbackPct:        raw.payment?.walletCashbackPct         ?? DEFAULT.customer.walletCashbackPct,
-          walletCashbackOrders:     raw.payment?.walletCashbackOrders      ?? DEFAULT.customer.walletCashbackOrders,
-          walletCashbackRides:      raw.payment?.walletCashbackRides       ?? DEFAULT.customer.walletCashbackRides,
-          walletCashbackPharm:      raw.payment?.walletCashbackPharm       ?? DEFAULT.customer.walletCashbackPharm,
+          walletCashbackPct:        raw.customer?.walletCashbackPct        ?? DEFAULT.customer.walletCashbackPct,
+          walletCashbackOrders:     raw.customer?.walletCashbackOrders     ?? DEFAULT.customer.walletCashbackOrders,
+          walletCashbackRides:      raw.customer?.walletCashbackRides      ?? DEFAULT.customer.walletCashbackRides,
+          walletCashbackPharm:      raw.customer?.walletCashbackPharm      ?? DEFAULT.customer.walletCashbackPharm,
         },
         integrations: {
           pushNotif:             raw.integrations?.pushNotif             ?? DEFAULT.integrations.pushNotif,

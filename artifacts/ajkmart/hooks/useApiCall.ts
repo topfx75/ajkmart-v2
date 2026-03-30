@@ -35,12 +35,14 @@ export function useApiCall<T>(
   const [retrying, setRetrying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const lastArgsRef = useRef<any[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const { showToast } = useToast();
 
   const showErr = options?.showErrorToast !== false;
   const maxRetries = options?.maxRetries ?? MAX_RETRIES;
 
   const extractError = (e: any): string => {
+    if (e instanceof Error) return e.message || "Something went wrong. Please try again.";
     return (
       e?.response?.data?.error ||
       e?.data?.error ||
@@ -51,6 +53,12 @@ export function useApiCall<T>(
 
   const callWithRetry = useCallback(
     async (args: any[], isRetry = false): Promise<T | null> => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       if (!isRetry) {
         setLoading(true);
         setError(null);
@@ -58,6 +66,8 @@ export function useApiCall<T>(
       }
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (controller.signal.aborted) return null;
+
         if (attempt > 0) {
           setRetrying(true);
           setRetryCount(attempt);
@@ -72,6 +82,7 @@ export function useApiCall<T>(
 
         try {
           const result = await apiFn(...args);
+          if (controller.signal.aborted) return null;
           setData(result);
           setLoading(false);
           setRetrying(false);
@@ -80,6 +91,7 @@ export function useApiCall<T>(
           options?.onSuccess?.(result);
           return result;
         } catch (e: any) {
+          if (controller.signal.aborted) return null;
           const msg = extractError(e);
           if (attempt === maxRetries) {
             setError(msg);
@@ -107,10 +119,14 @@ export function useApiCall<T>(
   );
 
   const retry = useCallback(async () => {
-    return callWithRetry(lastArgsRef.current, false);
+    return callWithRetry(lastArgsRef.current, true);
   }, [callWithRetry]);
 
   const reset = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     setData(null);
     setLoading(false);
     setError(null);

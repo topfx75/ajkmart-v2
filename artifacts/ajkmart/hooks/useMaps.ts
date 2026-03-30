@@ -32,14 +32,20 @@ export function useMapsAutocomplete(query: string, debounceMs = 300) {
   const [predictions, setPredictions] = useState<MapPrediction[]>([]);
   const [loading,     setLoading]     = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
 
     if (!query.trim()) {
       setLoading(false);
-      /* Show all AJK fallback locations when empty */
-      fetch(`${API}/autocomplete?input=`)
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      fetch(`${API}/autocomplete?input=`, { signal: ctrl.signal })
         .then(r => r.json())
         .then(d => setPredictions(d.predictions ?? []))
         .catch(() => setPredictions([]));
@@ -48,34 +54,49 @@ export function useMapsAutocomplete(query: string, debounceMs = 300) {
 
     setLoading(true);
     timer.current = setTimeout(async () => {
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
       try {
-        const r = await fetch(`${API}/autocomplete?input=${encodeURIComponent(query)}`);
+        const r = await fetch(`${API}/autocomplete?input=${encodeURIComponent(query)}`, { signal: ctrl.signal });
         const d = await r.json();
         setPredictions(d.predictions ?? []);
-      } catch {
-        setPredictions([]);
+      } catch (e: any) {
+        if (e?.name !== "AbortError") {
+          setPredictions([]);
+        }
       } finally {
         setLoading(false);
       }
     }, debounceMs);
 
-    return () => { if (timer.current) clearTimeout(timer.current); };
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+    };
   }, [query]);
 
   return { predictions, loading };
 }
 
 /* ─── Resolve a prediction's lat/lng (from inline coords or API geocode) ─── */
-export async function resolveLocation(prediction: MapPrediction): Promise<{ lat: number; lng: number; address: string }> {
+export async function resolveLocation(
+  prediction: MapPrediction,
+  showError?: (msg: string) => void,
+): Promise<{ lat: number; lng: number; address: string } | null> {
   if (prediction.lat !== undefined && prediction.lng !== undefined) {
     return { lat: prediction.lat, lng: prediction.lng, address: prediction.description };
   }
   try {
     const r = await fetch(`${API}/geocode?place_id=${encodeURIComponent(prediction.placeId)}`);
+    if (!r.ok) throw new Error("geocode failed");
     const d: GeocodeResult = await r.json();
     return { lat: d.lat, lng: d.lng, address: d.formattedAddress };
   } catch {
-    throw new Error(`Could not resolve location for: ${prediction.description}`);
+    showError?.("Could not resolve location. Please try selecting a different address.");
+    return null;
   }
 }
 

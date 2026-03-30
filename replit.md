@@ -75,6 +75,82 @@ The project is structured as a pnpm monorepo using TypeScript. The frontend leve
 - **crypto.scryptSync:** For password hashing.
 - **react-native-qrcode-svg:** For generating real QR codes in the wallet Receive Money modal.
 
+### Customer App — 33-Issue Deep Trace Fix (Task #10)
+
+All changes are client-side only (`artifacts/ajkmart/`):
+
+**AuthContext (`context/AuthContext.tsx`)**
+- Proactive token refresh uses `refreshTimerRef` and re-schedules after each successful refresh (sliding window — prevents single-run expiry).
+- Biometric save now resets loading state in `finally` block (no stuck spinner).
+
+**LanguageContext (`context/LanguageContext.tsx`)**
+- Was a stub returning only `"en"`. Now fully implemented: reads from AsyncStorage, supports all 5 modes (en, ur, roman, dual-en, dual-ur), syncs to server after login. Applies `I18nManager.forceRTL` for Urdu modes.
+
+**CartContext (`context/CartContext.tsx`)**
+- Now uses `useAuth()` internally (no prop drilling of `authToken`).
+- `authTokenRef` pattern retained — always reads latest token without re-running effects, with AsyncStorage fallback for pre-hydration edge cases.
+- Cart type conflict (mart vs food) banner added; UI warns user when mixing service types.
+
+**PlatformConfigContext (`context/PlatformConfigContext.tsx`)**
+- Polling interval previously ignored admin-configured value; now correctly uses `platform_config_poll_interval_sec` setting.
+- Added cleanup on unmount to prevent memory leaks from orphaned interval.
+
+**useApiCall (`hooks/useApiCall.ts`)**
+- Has retry logic with `retryCount` / `retrying` state exposed to callers.
+- `retry()` callback allows manual re-execution after failure.
+
+**useRideStatus (`hooks/useRideStatus.ts`)**
+- Replaced native `EventSource` (which cannot send custom headers) with a `fetch`-based streaming reader using `ReadableStream` and `AbortController`. Auth token is now sent via `Authorization: Bearer` header — no longer exposed in the URL query string.
+- `closeSse()` now aborts the `AbortController` — cleans up the in-flight fetch stream on reconnect/unmount.
+- `closeSse()` called before `connectSse()` in `reconnect()` — prevents duplicate streams.
+- Memory leak fixed: `mountedRef` checked before every `setRide`/`setConnectionType` call inside the stream reader loop.
+- Falls back to polling after 3 consecutive SSE failures.
+
+**useMaps (`hooks/useMaps.ts`)**
+- `resolveLocation()` now accepts optional `showError` callback and returns `null` on failure (instead of throwing) — prevents unhandled promise rejections.
+- Null-island coordinates (0,0) are rejected and treated as geocode failures.
+
+**RideBookingForm (`components/ride/RideBookingForm.tsx`)**
+- `selectPickup` / `selectDrop`: switched from try/catch throw to null-return pattern from `resolveLocation`, with inline `showToast` error callback.
+- `showToast` added to `useCallback` dependency arrays.
+- Fare estimate type now validated against allowed values before API call.
+- `debouncedEstimate` timer properly cleared on unmount via `useRef`.
+
+**ride/index.tsx (`app/ride/index.tsx`)**
+- On failed ride-load by URL param, now correctly sets `setRideLoadError(true)` (was incorrectly resetting booked state to `unknown`).
+- Error state UI shown to user instead of silent failure.
+- "Try Again" button now increments `retryNonce` state which is in the fetch `useEffect` deps — actually re-fetches the ride instead of just clearing the error flag.
+
+**order/index.tsx (`app/order/index.tsx`)**
+- Cancellation window now uses the server `Date` response header (`serverNow` state) instead of `Date.now()` — closes client clock-manipulation loophole.
+
+**orders.tsx (`app/(tabs)/orders.tsx`)**
+- `readyForPickup` status label was missing — added translated label in all 3 language sections of `@workspace/i18n`.
+- Server-side timestamps used for order time display (no more client clock drift).
+- `authHeaders` type fixed (was `any`, now properly typed).
+
+**wallet.tsx (`app/(tabs)/wallet.tsx`)**
+- Deposit min/max limits now read from `PlatformConfigContext` (not hardcoded).
+- Transaction icon selected by `tx.type` field (not tx.amount sign — avoids wrong icon on refunds).
+- Duplicate submission guard added via `isSubmittingRef` — prevents double-tap deposit.
+
+**profile.tsx (`app/(tabs)/profile.tsx`)**
+- Data export button now shows `Alert.alert` confirmation dialog before calling API.
+- Cooldown timer (60 seconds) prevents re-export spam; button disabled and shows countdown.
+- Cooldown interval cleared on unmount via `exportCooldownRef`.
+
+**mart/index.tsx (`app/mart/index.tsx`)**
+- Flash deals discount % now uses `Number(p.originalPrice)` safety cast to avoid NaN on string values.
+- `addedTimerRef` uses `useRef` (not a plain variable) so timer is properly cleared on unmount — no stale-closure memory leak.
+- `allProducts` now includes flash deal items in all views (previously excluded them from the main grid).
+- Cart type banner shown when user tries to add mart item with active food cart (and vice versa).
+
+**food/index.tsx (`app/food/index.tsx`)**
+- Same `useRef` animation timer fix as mart.
+- Cart type banner shown when user tries to add food item with active mart cart.
+
+---
+
 ### Customer App Full-Stack Overhaul (Task #5)
 1. **Pre-login Language Selector:** English/Urdu/Mixed toggle on auth screen. Language persists in AsyncStorage before login, syncs to server after login. RTL support for Urdu via `I18nManager.forceRTL`. LanguageProvider wraps AuthProvider in `_layout.tsx`.
 2. **Robust Session Management:** `custom-fetch` retries network errors and 5xx with exponential backoff (up to 3 retries). Proactive token refresh 60s before JWT expiry via `scheduleProactiveRefresh` in AuthContext. Only forced logout on genuine 401 after refresh token failure.

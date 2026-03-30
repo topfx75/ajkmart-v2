@@ -47,6 +47,7 @@ export default function OrderDetailScreen() {
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
   const [order, setOrder] = useState<any>(null);
+  const [serverNow, setServerNow] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
 
@@ -64,6 +65,10 @@ export default function OrderDetailScreen() {
         const res = await fetch(endpoint, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
+        const serverDate = res.headers.get("Date");
+        if (serverDate && mountedRef.current) {
+          setServerNow(new Date(serverDate).getTime());
+        }
         const data = await res.json();
         const fetched = data.order || data.booking || data;
         if (mountedRef.current) {
@@ -124,7 +129,7 @@ export default function OrderDetailScreen() {
   const isFood = order.type === "food";
 
   const minutesSincePlaced = order.createdAt
-    ? (Date.now() - new Date(order.createdAt).getTime()) / 60000
+    ? (serverNow - new Date(order.createdAt).getTime()) / 60000
     : 999;
   const canCancel = ["pending", "confirmed"].includes(order.status) &&
     minutesSincePlaced <= (config.orderRules?.cancelWindowMin ?? 15);

@@ -51,15 +51,19 @@ function AddToCartButton({ onPress, added }: { onPress: () => void; added: boole
 function FlashCard({ product }: { product: any }) {
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
+  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origPrice = Number(product.originalPrice) || 0;
   const discount = origPrice > 0
     ? Math.round(((origPrice - product.price) / origPrice) * 100)
     : 0;
 
+  useEffect(() => () => { if (addedTimerRef.current) clearTimeout(addedTimerRef.current); }, []);
+
   const handleAdd = () => {
     addItem({ productId: product.id, name: product.name, price: product.price, quantity: 1, image: product.image, type: "mart" });
     setAdded(true);
-    setTimeout(() => setAdded(false), 1500);
+    if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
+    addedTimerRef.current = setTimeout(() => { setAdded(false); addedTimerRef.current = null; }, 1500);
   };
 
   return (
@@ -94,15 +98,19 @@ function FlashCard({ product }: { product: any }) {
 function ProductCard({ product }: { product: any }) {
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
+  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origPrice = Number(product.originalPrice) || 0;
   const discount = origPrice > 0
     ? Math.round(((origPrice - product.price) / origPrice) * 100)
     : 0;
 
+  useEffect(() => () => { if (addedTimerRef.current) clearTimeout(addedTimerRef.current); }, []);
+
   const handleAdd = () => {
     addItem({ productId: product.id, name: product.name, price: product.price, quantity: 1, image: product.image, type: "mart" });
     setAdded(true);
-    setTimeout(() => setAdded(false), 1500);
+    if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
+    addedTimerRef.current = setTimeout(() => { setAdded(false); addedTimerRef.current = null; }, 1500);
   };
 
   return (
@@ -136,7 +144,8 @@ function ProductCard({ product }: { product: any }) {
 
 function MartScreenInner() {
   const insets = useSafeAreaInsets();
-  const { itemCount } = useCart();
+  const { itemCount, cartType } = useCart();
+  const showCartBanner = itemCount > 0 && cartType === "food";
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState<string | undefined>(undefined);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -157,7 +166,7 @@ function MartScreenInner() {
   const categories = catData?.categories || [];
   const products   = data?.products   || [];
   const flashDeals = products.filter(p => Number(p.originalPrice) > p.price);
-  const allProducts = search || selectedCat ? products : products.filter(p => !(Number(p.originalPrice) > p.price));
+  const allProducts = products;
 
   return (
     <View style={styles.container}>
@@ -201,6 +210,19 @@ function MartScreenInner() {
           )}
         </View>
       </LinearGradient>
+
+      {showCartBanner && (
+        <View style={{ backgroundColor: "#FEF3C7", flexDirection: "row", alignItems: "center", padding: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: "#FDE68A" }}>
+          <Ionicons name="warning-outline" size={18} color="#D97706" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#92400E" }}>Food cart active</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#92400E" }}>Adding Mart items will clear your food cart</Text>
+          </View>
+          <Pressable onPress={() => router.push("/cart")} style={{ backgroundColor: "#D97706", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" }}>View Cart</Text>
+          </Pressable>
+        </View>
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingTop: 14 }} contentContainerStyle={styles.catRow}>

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import { getRide as getRideApi } from "@workspace/api-client-react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type RideStatusHookResult = {
   ride: any;
@@ -15,12 +17,20 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
   const [ride, setRide] = useState<any>(null);
   const [connectionType, setConnectionType] =
     useState<"sse" | "polling" | "connecting">("connecting");
-  const sseRef = useRef<EventSource | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const sseFailCountRef = useRef(0);
 
   const apiBase = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
 
   const startPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -50,73 +60,87 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
   }, []);
 
   const closeSse = useCallback(() => {
-    if (sseRef.current) {
-      sseRef.current.close();
-      sseRef.current = null;
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
     }
   }, []);
 
-  const connectSse = useCallback(() => {
-    if (typeof EventSource === "undefined") {
-      startPolling();
-      return;
-    }
-
+  const connectSse = useCallback(async () => {
     closeSse();
+    clearRetryTimer();
     setConnectionType("connecting");
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const es = new EventSource(`${apiBase}/rides/${rideId}/stream`);
-      sseRef.current = es;
+      const token = await AsyncStorage.getItem("@ajkmart_token");
+      const sseUrl = `${apiBase}/rides/${rideId}/stream`;
 
-      es.onopen = () => {
-        if (!mountedRef.current) return;
-        sseFailCountRef.current = 0;
-        stopPolling();
-        setConnectionType("sse");
-      };
-
-      es.onmessage = (event) => {
-        if (!mountedRef.current) return;
-        try {
-          const data = JSON.parse(event.data);
-          setRide(data);
-          if (data?.status === "completed" || data?.status === "cancelled") {
-            closeSse();
-            stopPolling();
-          }
-        } catch {}
-      };
-
-      es.addEventListener("ride-update", (event: any) => {
-        if (!mountedRef.current) return;
-        try {
-          const data = JSON.parse(event.data);
-          setRide(data);
-          if (data?.status === "completed" || data?.status === "cancelled") {
-            closeSse();
-            stopPolling();
-          }
-        } catch {}
+      const response = await fetch(sseUrl, {
+        headers: {
+          Accept: "text/event-stream",
+          "Cache-Control": "no-cache",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        signal: controller.signal,
       });
 
-      es.onerror = () => {
-        if (!mountedRef.current) return;
-        closeSse();
-        sseFailCountRef.current += 1;
+      if (!response.ok || !response.body) {
+        throw new Error("SSE connection failed");
+      }
 
-        if (sseFailCountRef.current >= 3) {
-          startPolling();
-        } else {
-          setTimeout(() => {
-            if (mountedRef.current) connectSse();
-          }, SSE_RETRY_DELAY * sseFailCountRef.current);
+      if (!mountedRef.current) return;
+      sseFailCountRef.current = 0;
+      stopPolling();
+      setConnectionType("sse");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      let streamDone = false;
+      while (mountedRef.current) {
+        const { done, value } = await reader.read();
+        if (done) { streamDone = true; break; }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          try {
+            const data = JSON.parse(line.slice(5).trim());
+            if (!mountedRef.current) return;
+            setRide(data);
+            if (data?.status === "completed" || data?.status === "cancelled") {
+              return;
+            }
+          } catch {}
         }
-      };
-    } catch {
-      startPolling();
+      }
+
+      if (streamDone && mountedRef.current) {
+        retryTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) connectSse();
+        }, SSE_RETRY_DELAY);
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      if (!mountedRef.current) return;
+
+      sseFailCountRef.current += 1;
+      if (sseFailCountRef.current >= 3) {
+        startPolling();
+      } else {
+        retryTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) connectSse();
+        }, SSE_RETRY_DELAY * sseFailCountRef.current);
+      }
     }
-  }, [rideId, apiBase, closeSse, startPolling, stopPolling]);
+  }, [rideId, apiBase, closeSse, clearRetryTimer, startPolling, stopPolling]);
 
   const reconnect = useCallback(() => {
     sseFailCountRef.current = 0;
@@ -129,10 +153,18 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
     mountedRef.current = true;
     connectSse();
 
+    const appStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && mountedRef.current) {
+        reconnect();
+      }
+    });
+
     return () => {
       mountedRef.current = false;
+      clearRetryTimer();
       closeSse();
       stopPolling();
+      appStateSub.remove();
     };
   }, [rideId]);
 

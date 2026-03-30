@@ -55,12 +55,25 @@ function TxItem({ tx }: { tx: any }) {
   const date = new Date(tx.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" });
   const time = new Date(tx.createdAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" });
 
-  let iconName: string = isCredit
-    ? (tx.description?.includes("top-up") ? "add-circle" : tx.description?.includes("Received") ? "arrow-down" : "arrow-down")
-    : (tx.description?.includes("ride") ? "car" : tx.description?.includes("Order") ? "bag" : tx.description?.includes("pharmacy") ? "medkit" : tx.description?.includes("arcel") ? "cube" : "arrow-up");
-
+  let iconName: string;
   if (tx.type === "deposit") {
     iconName = isPending ? "time-outline" : isApproved ? "checkmark-circle" : "close-circle";
+  } else if (tx.type === "credit" || tx.type === "refund" || tx.type === "cashback" || tx.type === "referral" || tx.type === "bonus") {
+    iconName = "arrow-down";
+  } else if (tx.type === "ride") {
+    iconName = "car";
+  } else if (tx.type === "order" || tx.type === "mart" || tx.type === "food") {
+    iconName = "bag";
+  } else if (tx.type === "pharmacy") {
+    iconName = "medkit";
+  } else if (tx.type === "parcel") {
+    iconName = "cube";
+  } else if (tx.type === "transfer" || tx.type === "debit") {
+    iconName = "arrow-up";
+  } else if (tx.type === "withdrawal") {
+    iconName = "arrow-up";
+  } else {
+    iconName = isCredit ? "arrow-down" : "arrow-up";
   }
 
   const amtColor = isPending ? C.textMuted : isRejected ? C.danger : isCredit ? C.success : C.danger;
@@ -94,7 +107,7 @@ function MethodIcon({ id, size = 24 }: { id: string; size?: number }) {
   return <Ionicons name={name as any} size={size} color={color} />;
 }
 
-function DepositModal({ onClose, onSuccess, onFrozen, token }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null }) {
+function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null; minTopup: number; maxTopup: number }) {
   const [step, setStep]               = useState<DepositStep>("method");
   const [methods, setMethods]         = useState<PayMethod[]>([]);
   const [loadingMethods, setLoadingMethods] = useState(true);
@@ -105,6 +118,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token }: { onClose: () => 
   const [senderAcNo, setSenderAcNo]   = useState("");
   const [note, setNote]               = useState("");
   const [submitting, setSubmitting]   = useState(false);
+  const [submittedTxIds, setSubmittedTxIds] = useState<Set<string>>(new Set());
   const [err, setErr]                 = useState("");
   const { showToast } = useToast();
 
@@ -138,8 +152,8 @@ function DepositModal({ onClose, onSuccess, onFrozen, token }: { onClose: () => 
   const goToConfirm = () => {
     const amt = parseFloat(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setErr("Please enter a valid amount"); return; }
-    if (amt < 100) { setErr("Minimum deposit amount is Rs. 100"); return; }
-    if (amt > 50000) { setErr("Maximum deposit amount is Rs. 50,000"); return; }
+    if (amt < minTopup) { setErr(`Minimum deposit amount is Rs. ${minTopup.toLocaleString()}`); return; }
+    if (amt > maxTopup) { setErr(`Maximum deposit amount is Rs. ${maxTopup.toLocaleString()}`); return; }
     if (!txId.trim()) { setErr("Transaction ID is required"); return; }
     setErr("");
     setStep("confirm");
@@ -147,6 +161,11 @@ function DepositModal({ onClose, onSuccess, onFrozen, token }: { onClose: () => 
 
   const handleSubmit = async () => {
     if (submitting) return;
+    const normalizedTxId = txId.trim();
+    if (submittedTxIds.has(normalizedTxId)) {
+      setErr("This transaction ID has already been submitted. Please check your wallet history.");
+      return;
+    }
     setSubmitting(true);
     setErr("");
     try {
@@ -159,7 +178,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token }: { onClose: () => 
         body: JSON.stringify({
           amount: parseFloat(amount),
           paymentMethod: selectedMethod!.id,
-          transactionId: txId.trim(),
+          transactionId: normalizedTxId,
           accountNumber: senderAcNo.trim() || undefined,
           note: note.trim() || undefined,
         }),
@@ -170,6 +189,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token }: { onClose: () => 
         setErr(data.error === "wallet_frozen" ? data.message : (data.error || "Request failed"));
         setSubmitting(false); return;
       }
+      setSubmittedTxIds(prev => new Set(prev).add(normalizedTxId));
       setStep("done");
       onSuccess();
     } catch {
@@ -559,7 +579,10 @@ export default function WalletScreen() {
   const handleP2PTopup = async () => {
     if (!p2pSenderPhone.trim()) { showToast("Please enter sender's phone number", "error"); return; }
     const amt = parseFloat(p2pAmount);
-    if (!amt || amt < 100) { showToast("Minimum top-up amount is Rs. 100", "error"); return; }
+    const minTopup = platformConfig.customer.minTopup;
+    const maxTopup = platformConfig.customer.maxTopup;
+    if (!amt || amt < minTopup) { showToast(`Minimum top-up amount is Rs. ${minTopup.toLocaleString()}`, "error"); return; }
+    if (amt > maxTopup) { showToast(`Maximum top-up amount is Rs. ${maxTopup.toLocaleString()}`, "error"); return; }
     setP2pLoading(true);
     try {
       const res = await fetch(`${API}/wallet/p2p-topup`, {
@@ -783,6 +806,8 @@ export default function WalletScreen() {
           onClose={() => setShowDeposit(false)}
           onSuccess={handleDepositSuccess}
           onFrozen={() => setWalletFrozen(true)}
+          minTopup={platformConfig.customer.minTopup}
+          maxTopup={platformConfig.customer.maxTopup}
         />
       )}
 

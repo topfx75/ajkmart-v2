@@ -172,6 +172,7 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
   const [subscribing, setSubscribing] = useState(false);
   const [debtBalance, setDebtBalance] = useState(0);
   const [debtDismissed, setDebtDismissed] = useState(false);
+  const [estimateForType, setEstimateForType] = useState<string | null>(null);
 
   const { predictions: pickupPreds, loading: pickupLoading } =
     useMapsAutocomplete(pickupFocus ? pickup : "");
@@ -277,73 +278,77 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
       return;
     }
     let cancelled = false;
-    setEstimating(true);
-    estimateFare({
-      pickupLat: pickupObj.lat,
-      pickupLng: pickupObj.lng,
-      dropLat: dropObj.lat,
-      dropLng: dropObj.lng,
-      type: rideType,
-    } as EstimateFareRequest)
-      .then(
-        (
-          data: Record<string, unknown> & {
-            fare: number;
-            distance: number;
-            duration: string;
+    const timer = setTimeout(() => {
+      setEstimating(true);
+      estimateFare({
+        pickupLat: pickupObj.lat,
+        pickupLng: pickupObj.lng,
+        dropLat: dropObj.lat,
+        dropLng: dropObj.lng,
+        type: rideType,
+      } as EstimateFareRequest)
+        .then(
+          (
+            data: Record<string, unknown> & {
+              fare: number;
+              distance: number;
+              duration: string;
+              type?: string;
+            },
+          ) => {
+            if (cancelled || !data) return;
+            setEstimateForType(data.type ?? rideType);
+            setEstimate({
+              fare: data.fare,
+              dist: data.distance,
+              dur: data.duration,
+              baseFare: (data.baseFare as number | undefined) ?? data.fare,
+              gstAmount: (data.gstAmount as number | undefined) ?? 0,
+              bargainEnabled:
+                (data.bargainEnabled as boolean | undefined) ?? false,
+              minOffer: (data.minOffer as number | undefined) ?? data.fare,
+            });
           },
-        ) => {
-          if (cancelled || !data) return;
-          setEstimate({
-            fare: data.fare,
-            dist: data.distance,
-            dur: data.duration,
-            baseFare: (data.baseFare as number | undefined) ?? data.fare,
-            gstAmount: (data.gstAmount as number | undefined) ?? 0,
-            bargainEnabled:
-              (data.bargainEnabled as boolean | undefined) ?? false,
-            minOffer: (data.minOffer as number | undefined) ?? data.fare,
-          });
-        },
-      )
-      .catch(() => {
-        if (!cancelled) {
-          setEstimate(null);
-          showToast("Could not estimate fare. Please try again.", "error");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setEstimating(false);
-      });
+        )
+        .catch(() => {
+          if (!cancelled) {
+            setEstimate(null);
+            setEstimateForType(null);
+            showToast("Could not estimate fare. Please try again.", "error");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setEstimating(false);
+        });
+    }, 300);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [pickupObj?.lat, pickupObj?.lng, dropObj?.lat, dropObj?.lng, rideType]);
 
   const selectPickup = useCallback(async (pred: MapPrediction) => {
     setPickup(pred.mainText);
     setPickupFocus(false);
-    try {
-      const loc = await resolveLocation(pred);
-      setPickupObj({ ...loc, address: pred.description });
-      setPickup(pred.description);
-    } catch {
-      showToast("Could not resolve pickup location. Please try again.", "error");
+    const loc = await resolveLocation(pred, (msg) => showToast(msg, "error"));
+    if (!loc) {
       setPickup("");
+      return;
     }
+    setPickupObj({ ...loc, address: pred.description });
+    setPickup(pred.description);
   }, [showToast]);
 
   const selectDrop = useCallback(async (pred: MapPrediction) => {
     setDrop(pred.mainText);
     setDropFocus(false);
-    try {
-      const loc = await resolveLocation(pred);
-      setDropObj({ ...loc, address: pred.description });
-      setDrop(pred.description);
-    } catch {
-      showToast("Could not resolve drop location. Please try again.", "error");
+    const loc = await resolveLocation(pred, (msg) => showToast(msg, "error"));
+    if (!loc) {
       setDrop("");
+      return;
     }
+    setDropObj({ ...loc, address: pred.description });
+    setDrop(pred.description);
   }, [showToast]);
 
   const handleChip = (spot: PopularSpot) => {
@@ -421,6 +426,10 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
     }
     if (!estimate) {
       showToast("Fare estimate is being calculated. Please wait.", "error");
+      return;
+    }
+    if (estimateForType && estimateForType !== rideType) {
+      showToast("Fare estimate is outdated. Please wait for it to refresh.", "error");
       return;
     }
 

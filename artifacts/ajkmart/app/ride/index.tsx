@@ -25,9 +25,12 @@ function RideScreenInner() {
   const { rideId: urlRideId } = useLocalSearchParams<{ rideId?: string }>();
 
   const [booked, setBooked] = useState<any>(null);
+  const [rideLoadError, setRideLoadError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     if (!urlRideId || !token) return;
+    setRideLoadError(false);
     const apiBase = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
     fetch(`${apiBase}/rides/${urlRideId}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -41,9 +44,9 @@ function RideScreenInner() {
         setBooked({ id: urlRideId, type: ride.type || "bike" });
       })
       .catch(() => {
-        setBooked({ id: urlRideId, type: "unknown" });
+        setRideLoadError(true);
       });
-  }, [urlRideId, token]);
+  }, [urlRideId, token, retryNonce]);
 
   if (inMaintenance) {
     return (
@@ -192,6 +195,86 @@ function RideScreenInner() {
                 color: "#EF4444",
               }}
             >
+              Back to Home
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (rideLoadError) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: C.background,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 32,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: "#fff",
+            borderRadius: 24,
+            padding: 32,
+            alignItems: "center",
+            width: "100%",
+            borderWidth: 1,
+            borderColor: "#FEE2E2",
+          }}
+        >
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" style={{ marginBottom: 16 }} />
+          <Text
+            style={{
+              fontFamily: "Inter_700Bold",
+              fontSize: 18,
+              color: "#EF4444",
+              marginBottom: 8,
+              textAlign: "center",
+            }}
+          >
+            Could Not Load Ride
+          </Text>
+          <Text
+            style={{
+              fontFamily: "Inter_400Regular",
+              fontSize: 14,
+              color: C.textMuted,
+              textAlign: "center",
+              lineHeight: 20,
+              marginBottom: 20,
+            }}
+          >
+            There was a problem loading your ride details. Please try again.
+          </Text>
+          <Pressable
+            style={{
+              width: "100%",
+              alignItems: "center",
+              backgroundColor: C.primary,
+              borderRadius: 14,
+              paddingVertical: 14,
+              marginBottom: 10,
+            }}
+            onPress={() => { setRetryNonce(n => n + 1); }}
+          >
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>
+              Try Again
+            </Text>
+          </Pressable>
+          <Pressable
+            style={{
+              width: "100%",
+              alignItems: "center",
+              backgroundColor: "#FEF2F2",
+              borderRadius: 14,
+              paddingVertical: 14,
+            }}
+            onPress={() => router.back()}
+          >
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#EF4444" }}>
               Back to Home
             </Text>
           </Pressable>

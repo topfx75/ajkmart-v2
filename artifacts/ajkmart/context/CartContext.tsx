@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { Alert } from "react-native";
 import { useAuth } from "@/context/AuthContext";
 
@@ -34,6 +34,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const authTokenRef = useRef<string | null | undefined>(token);
+
+  useEffect(() => {
+    authTokenRef.current = token;
+  }, [token]);
 
   useEffect(() => {
     AsyncStorage.getItem("@ajkmart_cart").then(stored => {
@@ -52,7 +57,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (hasLoaded && items.length > 0) {
       validateCartItems(items);
     }
-  }, [hasLoaded]);
+  }, [hasLoaded, token]);
 
   const save = (newItems: CartItem[]) => {
     setItems(newItems);
@@ -63,15 +68,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (cartItems.length === 0) return;
     setIsValidating(true);
     try {
+      const storedToken = authTokenRef.current ?? await AsyncStorage.getItem("@ajkmart_token");
       const res = await fetch(`${API_BASE}/orders/validate-cart`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
         },
         body: JSON.stringify({ items: cartItems }),
       });
-      if (!res.ok) { setIsValidating(false); return; }
+      if (!res.ok) {
+        setIsValidating(false);
+        Alert.alert("Cart Validation Failed", "Could not verify your cart items. Please check your connection and try again.");
+        return;
+      }
       const data = await res.json();
       if (!data.valid) {
         if (Array.isArray(data.items)) save(data.items);
@@ -83,7 +93,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           Alert.alert("Prices Updated", `Some prices have changed:\n${changes}`);
         }
       }
-    } catch { /* network error — skip validation silently */ }
+    } catch {
+      Alert.alert("Cart Validation Error", "Could not validate your cart items. Please check your connection.");
+    }
     setIsValidating(false);
   };
 

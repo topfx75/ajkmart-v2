@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Modal,
   Platform,
@@ -319,16 +320,16 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
       if (v) {
         const LocalAuth = await import("expo-local-authentication");
         const hasHardware = await LocalAuth.hasHardwareAsync();
-        if (!hasHardware) { showToast("Device does not support biometrics", "error"); setSaving(null); return; }
+        if (!hasHardware) { showToast("Device does not support biometrics", "error"); return; }
         const isEnrolled = await LocalAuth.isEnrolledAsync();
-        if (!isEnrolled) { showToast("No biometrics enrolled on device", "error"); setSaving(null); return; }
+        if (!isEnrolled) { showToast("No biometrics enrolled on device", "error"); return; }
         const result = await LocalAuth.authenticateAsync({ promptMessage: "Enable Biometric Login", cancelLabel: "Cancel" });
-        if (!result.success) { setSaving(null); return; }
+        if (!result.success) { return; }
       }
       await setBiometricEnabled(v);
       showToast(v ? "Biometric login enabled" : "Biometric login disabled", "success");
     } catch { showToast("Biometric setup failed", "error"); }
-    setSaving(null);
+    finally { setSaving(null); }
   };
 
   const handle2FAToggle = async () => {
@@ -452,32 +453,44 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
               <View style={secCard.wrap}>
                 <Pressable
                   disabled={exportingData || exportCooldown > 0}
-                  onPress={async () => {
+                  onPress={() => {
                     if (exportCooldown > 0) return;
-                    setExportingData(true);
-                    try {
-                      const res = await fetch(`${API}/users/export-data`, {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    Alert.alert(
+                      "Export Your Data",
+                      "A copy of your personal data will be emailed to your registered address within 24 hours. Continue?",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Yes, Export",
+                          onPress: async () => {
+                            setExportingData(true);
+                            try {
+                              const res = await fetch(`${API}/users/export-data`, {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                },
+                              });
+                              if (!res.ok) throw new Error("Request failed");
+                              showToast("Your data will be emailed within 24 hours.", "success");
+                              setExportCooldown(60);
+                              if (exportCooldownRef.current) clearInterval(exportCooldownRef.current);
+                              exportCooldownRef.current = setInterval(() => {
+                                setExportCooldown(c => {
+                                  if (c <= 1) { clearInterval(exportCooldownRef.current!); return 0; }
+                                  return c - 1;
+                                });
+                              }, 1000);
+                            } catch {
+                              showToast("Could not request data export. Please try again.", "error");
+                            } finally {
+                              setExportingData(false);
+                            }
+                          },
                         },
-                      });
-                      if (!res.ok) throw new Error("Request failed");
-                      showToast("Your data will be emailed within 24 hours.", "success");
-                      setExportCooldown(60);
-                      if (exportCooldownRef.current) clearInterval(exportCooldownRef.current);
-                      exportCooldownRef.current = setInterval(() => {
-                        setExportCooldown(c => {
-                          if (c <= 1) { clearInterval(exportCooldownRef.current!); return 0; }
-                          return c - 1;
-                        });
-                      }, 1000);
-                    } catch {
-                      showToast("Could not request data export. Please try again.", "error");
-                    } finally {
-                      setExportingData(false);
-                    }
+                      ]
+                    );
                   }}
                   style={[privRow.wrap, { borderBottomWidth: 0, opacity: (exportingData || exportCooldown > 0) ? 0.5 : 1 }]}
                 >

@@ -4,6 +4,7 @@ import * as Location from "expo-location";
 import React, { useState, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -215,7 +216,7 @@ export default function CartScreen() {
       .finally(() => setAddrLoading(false));
   }, [user?.id]);
 
-  const cartFingerprint = items.map(i => `${i.productId}:${i.quantity}:${i.price}`).join("|");
+  const cartFingerprint = items.map(i => `${i.productId}:${i.quantity}:${i.price}`).join("|") + "|" + cartType;
   useEffect(() => {
     if (promoApplied && promoCode) {
       revalidatePromo(promoCode);
@@ -225,7 +226,7 @@ export default function CartScreen() {
   const revalidatePromo = async (code: string) => {
     try {
       const orderType = (cartType === "mixed" || cartType === "pharmacy" || cartType === "none") ? "mart" : cartType;
-      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${grandTotal}&type=${orderType}`, {
+      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
@@ -252,7 +253,7 @@ export default function CartScreen() {
     setPromoError(null);
     try {
       const orderType = (cartType === "mixed" || cartType === "pharmacy" || cartType === "none") ? "mart" : cartType;
-      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${grandTotal}&type=${orderType}`, {
+      const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       const data = await res.json();
@@ -313,7 +314,11 @@ export default function CartScreen() {
         });
       } catch (locErr) {
         if (__DEV__) console.warn("[location] order placement update failed:", locErr);
-        showToast("Order placed, but location update failed", "info");
+        Alert.alert(
+          "Location Update Failed",
+          "Your order was placed successfully, but we could not update your location for tracking. Please ensure location permissions are enabled.",
+          [{ text: "OK" }]
+        );
       }
     })();
 

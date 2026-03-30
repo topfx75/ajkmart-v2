@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -27,6 +27,9 @@ function FoodCard({ item }: { item: any }) {
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
   const scale = useRef(new Animated.Value(1)).current;
+  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (addedTimerRef.current) clearTimeout(addedTimerRef.current); }, []);
 
   const handleAdd = () => {
     addItem({ productId: item.id, name: item.name, price: item.price, quantity: 1, image: item.image, type: "food" });
@@ -35,7 +38,8 @@ function FoodCard({ item }: { item: any }) {
       Animated.timing(scale, { toValue: 0.9, duration: 80, useNativeDriver: true }),
       Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }),
     ]).start();
-    setTimeout(() => setAdded(false), 1500);
+    if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
+    addedTimerRef.current = setTimeout(() => { setAdded(false); addedTimerRef.current = null; }, 1500);
   };
 
   return (
@@ -80,7 +84,8 @@ function FoodCard({ item }: { item: any }) {
 
 function FoodScreenInner() {
   const insets = useSafeAreaInsets();
-  const { itemCount } = useCart();
+  const { itemCount, cartType } = useCart();
+  const showCartBanner = itemCount > 0 && cartType === "mart";
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState<string | undefined>(undefined);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -131,6 +136,19 @@ function FoodScreenInner() {
           )}
         </View>
       </LinearGradient>
+
+      {showCartBanner && (
+        <View style={{ backgroundColor: "#E0E7FF", flexDirection: "row", alignItems: "center", padding: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: "#C7D2FE" }}>
+          <Ionicons name="warning-outline" size={18} color="#4F46E5" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#3730A3" }}>Mart cart active</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#3730A3" }}>Adding Food items will clear your mart cart</Text>
+          </View>
+          <Pressable onPress={() => router.push("/cart")} style={{ backgroundColor: "#4F46E5", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" }}>View Cart</Text>
+          </Pressable>
+        </View>
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.catContent}>

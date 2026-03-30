@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   setAuthTokenGetter,
   setOnUnauthorized,
@@ -57,6 +57,24 @@ const BIOMETRIC_TOKEN   = "@ajkmart_biometric_token";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function decodeJwtExp(tok: string): number | null {
+  try {
+    const parts = tok.split(".");
+    if (parts.length !== 3) return null;
+    const b64 = parts[1]!.replace(/-/g, "+").replace(/_/g, "/");
+    let jsonStr: string;
+    if (typeof atob === "function") {
+      jsonStr = atob(b64);
+    } else {
+      jsonStr = Buffer.from(b64, "base64").toString("binary");
+    }
+    const payload = JSON.parse(jsonStr);
+    return typeof payload.exp === "number" ? payload.exp : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -77,42 +95,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const scheduleProactiveRefresh = (tok: string) => {
     clearRefreshTimer();
-    try {
-      const parts = tok.split(".");
-      if (parts.length === 3) {
-        const b64 = parts[1]!.replace(/-/g, "+").replace(/_/g, "/");
-        const bin = typeof atob === "function" ? atob(b64) : Buffer.from(b64, "base64").toString("binary");
-        const payload = JSON.parse(bin);
-        if (payload.exp) {
-          const expiresAt = payload.exp * 1000;
-          const refreshIn = Math.max((expiresAt - Date.now()) - 60_000, 10_000);
-          refreshTimerRef.current = setTimeout(async () => {
-            try {
-              const refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
-              if (!refreshToken) return;
-              const base = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`;
-              const res = await fetch(`${base}/api/auth/refresh`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ refreshToken }),
-              });
-              if (!res.ok) return;
-              const data = await res.json() as { token?: string; refreshToken?: string };
-              if (data.token) {
-                setToken(data.token);
-                await AsyncStorage.setItem(TOKEN_KEY, data.token);
-                if (data.refreshToken) {
-                  await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-                  setRefreshTokenGetter(() => data.refreshToken!);
-                }
-                setAuthTokenGetter(() => data.token!);
-                scheduleProactiveRefresh(data.token!);
-              }
-            } catch {}
-          }, refreshIn);
+    const exp = decodeJwtExp(tok);
+    if (!exp) return;
+    const expiresAt = exp * 1000;
+    const refreshIn = Math.max((expiresAt - Date.now()) - 60_000, 10_000);
+    refreshTimerRef.current = setTimeout(async () => {
+      try {
+        const refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+        if (!refreshToken) {
+          doLogout();
+          return;
         }
+        const base = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`;
+        const res = await fetch(`${base}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!res.ok) {
+          doLogout();
+          return;
+        }
+        const data = await res.json() as { token?: string; refreshToken?: string };
+        if (!data.token) {
+          doLogout();
+          return;
+        }
+        const meRes = await fetch(`${base}/api/users/profile`, {
+          headers: { Authorization: `Bearer ${data.token}` },
+        });
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          const freshUser: AppUser = meData.user || meData;
+          setUser(freshUser);
+          await AsyncStorage.setItem(USER_KEY, JSON.stringify(freshUser));
+        }
+        setToken(data.token);
+        await AsyncStorage.setItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) {
+          await AsyncStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+          setRefreshTokenGetter(() => data.refreshToken!);
+        }
+        setAuthTokenGetter(() => data.token!);
+        scheduleProactiveRefresh(data.token!);
+      } catch {
+        doLogout();
       }
-    } catch {}
+    }, refreshIn);
   };
 
   const doLogout = async () => {
@@ -133,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOnUnauthorized(null);
   };
 
-  const registerAuth = (tok: string, refreshTok: string | null) => {
+  const registerAuth = useCallback((tok: string, refreshTok: string | null) => {
     setAuthTokenGetter(() => tok);
     setRefreshTokenGetter(refreshTok ? () => refreshTok : null);
 
@@ -158,7 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     scheduleProactiveRefresh(tok);
-  };
+  }, []);
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -180,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     };
     loadAuth();
-  }, []);
+  }, [registerAuth]);
 
   const login = async (userData: AppUser, userToken: string, refreshToken?: string) => {
     const pairs: [string, string][] = [

@@ -34,7 +34,7 @@ const ORDER_STATUS: Record<string, { color: string; bg: string; icon: string; la
   pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",            labelKey: "pending" },
   confirmed:        { color: "#2563EB", bg: "#DBEAFE", icon: "checkmark-circle-outline", labelKey: "confirmed" },
   preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",            labelKey: "preparing" },
-  ready:            { color: "#6366F1", bg: "#E0E7FF", icon: "bag-check-outline",       labelKey: "confirmed" },
+  ready:            { color: "#6366F1", bg: "#E0E7FF", icon: "bag-check-outline",       labelKey: "readyForPickup" },
   picked_up:        { color: "#0891B2", bg: "#CFFAFE", icon: "cube-outline",            labelKey: "onTheWay" },
   out_for_delivery: { color: "#059669", bg: "#D1FAE5", icon: "bicycle-outline",          labelKey: "onTheWay" },
   delivered:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   labelKey: "delivered" },
@@ -71,13 +71,14 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
-function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, ratingWindowHours, onRate, onCancel, onReorder }: {
+function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, ratingWindowHours, serverNow, onRate, onCancel, onReorder }: {
   order: any;
   liveTracking: boolean;
   reviews: boolean;
   cancelWindowMin: number;
   refundDays: number;
   ratingWindowHours: number;
+  serverNow?: number;
   onRate: (o: any) => void;
   onCancel: (o: any) => void;
   onReorder?: (o: any) => void;
@@ -91,8 +92,9 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
   const isCancelled = order.status === "cancelled";
   const isActive = !["delivered", "cancelled"].includes(order.status);
 
+  const nowMs = serverNow ?? Date.now();
   const minutesSincePlaced = order.createdAt
-    ? (Date.now() - new Date(order.createdAt).getTime()) / 60000
+    ? (nowMs - new Date(order.createdAt).getTime()) / 60000
     : 999;
   const canCancel = ["pending", "confirmed"].includes(order.status) && minutesSincePlaced <= cancelWindowMin;
   const cancelMinsLeft = Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
@@ -777,12 +779,22 @@ export default function OrdersScreen() {
 
   const [parcelData, setParcelData] = useState<any>(null);
   const [parcelLoading, setParcelLoading] = useState(false);
+  const [serverNow, setServerNow] = useState<number>(Date.now());
 
-  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+  const fetchServerTime = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/platform-config`, { method: "HEAD" });
+      const serverDate = res.headers.get("Date");
+      if (serverDate) setServerNow(new Date(serverDate).getTime());
+    } catch {}
+  }, []);
+
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
   const handleCancel = useCallback((order: any) => {
+    const nowMs = serverNow ?? Date.now();
     const minutesSincePlaced = order.createdAt
-      ? (Date.now() - new Date(order.createdAt).getTime()) / 60000
+      ? (nowMs - new Date(order.createdAt).getTime()) / 60000
       : 999;
     const cancelMinsLeft = Math.max(0, Math.ceil(orderRules.cancelWindowMin - minutesSincePlaced));
     setCancelTarget({
@@ -793,13 +805,15 @@ export default function OrdersScreen() {
       paymentMethod: order.paymentMethod,
       cancelMinsLeft,
     });
-  }, [orderRules.cancelWindowMin]);
+  }, [orderRules.cancelWindowMin, serverNow]);
 
   const fetchRides = useCallback(async () => {
     if (!user?.id || !ridesActive) return;
     setRidesLoading(true);
     try {
       const res = await fetch(`${API_BASE}/rides`, { headers: authHeaders });
+      const serverDate = res.headers.get("Date");
+      if (serverDate) setServerNow(new Date(serverDate).getTime());
       const d = await res.json();
       setRidesData(d);
     } catch {}
@@ -811,6 +825,8 @@ export default function OrdersScreen() {
     setPharmLoading(true);
     try {
       const res = await fetch(`${API_BASE}/pharmacy-orders`, { headers: authHeaders });
+      const serverDate = res.headers.get("Date");
+      if (serverDate) setServerNow(new Date(serverDate).getTime());
       const d = await res.json();
       setPharmData(d);
     } catch {}
@@ -822,6 +838,8 @@ export default function OrdersScreen() {
     setParcelLoading(true);
     try {
       const res = await fetch(`${API_BASE}/parcel-bookings`, { headers: authHeaders });
+      const serverDate = res.headers.get("Date");
+      if (serverDate) setServerNow(new Date(serverDate).getTime());
       const d = await res.json();
       setParcelData(d);
     } catch {}
@@ -841,6 +859,7 @@ export default function OrdersScreen() {
   }, []);
 
   React.useEffect(() => {
+    fetchServerTime();
     if (user?.id) {
       fetchRides();
       fetchPharmacy();
@@ -860,9 +879,9 @@ export default function OrdersScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchOrders(), fetchRides(), fetchPharmacy(), fetchParcel()]);
+    await Promise.all([fetchServerTime(), refetchOrders(), fetchRides(), fetchPharmacy(), fetchParcel()]);
     setRefreshing(false);
-  }, [refetchOrders, fetchRides, fetchPharmacy, fetchParcel]);
+  }, [fetchServerTime, refetchOrders, fetchRides, fetchPharmacy, fetchParcel]);
 
   const rawOrders = [...(ordersData?.orders || [])].reverse();
   const allOrders = rawOrders.filter(o =>
@@ -1018,7 +1037,7 @@ export default function OrdersScreen() {
         {anyActive > 0 && (
           <>
             <SectionHeader title={T("activeLabel")} count={anyActive} active />
-            {activeOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} />)}
+            {activeOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} />)}
             {activeRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
             {activePharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
             {activeParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
@@ -1028,7 +1047,7 @@ export default function OrdersScreen() {
         {anyPast > 0 && (
           <>
             <SectionHeader title={T("historyLabel")} count={anyPast} />
-            {pastOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} />)}
+            {pastOrders.map(o => <OrderCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} />)}
             {pastRides.map(r => <RideCard key={r.id} ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} />)}
             {pastPharm.map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} onRate={handleRate} />)}
             {pastParcel.map(b => <ParcelCard key={b.id} booking={b} />)}
