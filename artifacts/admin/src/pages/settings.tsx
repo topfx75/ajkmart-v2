@@ -1062,10 +1062,19 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
         {/* P2P limit */}
         {p2pEnabled && (
           <div>
-            <SLabel>P2P Transfer Limit</SLabel>
-            <Field label="P2P Daily Send Limit (Rs.)" value={v("wallet_p2p_daily_limit")} onChange={v2 => handleChange("wallet_p2p_daily_limit", v2)} placeholder="10000" isDirty={d("wallet_p2p_daily_limit")} type="number" hint="Customer roz kitna transfer kar sakta hai" />
+            <SLabel>P2P Transfer Settings</SLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="P2P Daily Send Limit (Rs.)" value={v("wallet_p2p_daily_limit")} onChange={v2 => handleChange("wallet_p2p_daily_limit", v2)} placeholder="10000" isDirty={d("wallet_p2p_daily_limit")} type="number" hint="Customer roz kitna transfer kar sakta hai" />
+              <Field label="P2P Fee (%)" value={v("wallet_p2p_fee_pct")} onChange={v2 => handleChange("wallet_p2p_fee_pct", v2)} placeholder="0" isDirty={d("wallet_p2p_fee_pct")} type="number" suffix="%" hint="Har P2P transfer par platform fee (0 = no fee)" />
+            </div>
           </div>
         )}
+
+        {/* Deposit Auto-Approve */}
+        <div>
+          <SLabel>Deposit Auto-Approval</SLabel>
+          <Field label="Auto-Approve Threshold (Rs.)" value={v("wallet_deposit_auto_approve")} onChange={v2 => handleChange("wallet_deposit_auto_approve", v2)} placeholder="0" isDirty={d("wallet_deposit_auto_approve")} type="number" hint="Is amount tak ke deposits auto-approve honge (0 = sab manual review)" suffix="Rs." />
+        </div>
 
         {/* Rewards & Bonuses */}
         <div>

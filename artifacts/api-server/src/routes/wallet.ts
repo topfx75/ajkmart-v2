@@ -137,6 +137,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
   const minTopup      = parseFloat(s["wallet_min_topup"]   ?? "100");
   const maxTopup      = parseFloat(s["wallet_max_topup"]   ?? "25000");
+  const autoApproveThreshold = Math.max(0, parseFloat(s["wallet_deposit_auto_approve"] ?? "0"));
 
   if (!walletEnabled) { res.status(503).json({ error: "Wallet service is currently disabled" }); return; }
   if (amt < minTopup) { res.status(400).json({ error: `Minimum deposit is Rs. ${minTopup}` }); return; }
@@ -150,22 +151,59 @@ router.post("/deposit", customerAuth, async (req, res) => {
     note ? `Note: ${note}` : null,
   ].filter(Boolean).join(" · ");
 
-  await db.insert(walletTransactionsTable).values({
-    id: txId, userId, type: "deposit",
-    amount: amt.toFixed(2),
-    description: desc,
-    reference: `pending:txid:${normalizedTxId}`,
-    paymentMethod,
-  });
+  const shouldAutoApprove = autoApproveThreshold > 0 && amt <= autoApproveThreshold;
 
-  await db.insert(notificationsTable).values({
-    id: generateId(), userId,
-    title: "Deposit Request Submitted ✅",
-    body: `Rs. ${amt.toFixed(0)} deposit request mein hai. Admin 1-2 hours mein verify karke wallet credit karega.`,
-    type: "wallet", icon: "wallet-outline",
-  }).catch(e => console.error("customer deposit notif insert failed:", e));
+  if (shouldAutoApprove) {
+    const maxBalance = parseFloat(s["wallet_max_balance"] ?? "50000");
 
-  res.json({ success: true, txId, status: "pending", amount: amt });
+    try {
+      await db.transaction(async (tx) => {
+        const [credited] = await tx.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance + ${amt.toFixed(2)}` })
+          .where(and(eq(usersTable.id, userId), sql`CAST(wallet_balance AS numeric) + ${amt} <= ${maxBalance}`))
+          .returning({ walletBalance: usersTable.walletBalance });
+        if (!credited) {
+          throw new Error(`Wallet limit (Rs. ${maxBalance}) exceed ho jayega. Deposit nahi ho sakta.`);
+        }
+
+        await tx.insert(walletTransactionsTable).values({
+          id: txId, userId, type: "deposit",
+          amount: amt.toFixed(2),
+          description: desc,
+          reference: `approved:auto:txid:${normalizedTxId}`,
+          paymentMethod,
+        });
+      });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message }); return;
+    }
+
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId,
+      title: "Wallet Credited! ✅",
+      body: `Rs. ${amt.toFixed(0)} aapki wallet mein add ho gaye hain.`,
+      type: "wallet", icon: "wallet-outline",
+    }).catch(e => console.error("customer deposit notif insert failed:", e));
+
+    res.json({ success: true, txId, status: "approved:auto", amount: amt });
+  } else {
+    await db.insert(walletTransactionsTable).values({
+      id: txId, userId, type: "deposit",
+      amount: amt.toFixed(2),
+      description: desc,
+      reference: `pending:txid:${normalizedTxId}`,
+      paymentMethod,
+    });
+
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId,
+      title: "Deposit Request Submitted ✅",
+      body: `Rs. ${amt.toFixed(0)} deposit request mein hai. Admin 1-2 hours mein verify karke wallet credit karega.`,
+      type: "wallet", icon: "wallet-outline",
+    }).catch(e => console.error("customer deposit notif insert failed:", e));
+
+    res.json({ success: true, txId, status: "pending", amount: amt });
+  }
 });
 
 /* ── GET /wallet/deposits — Customer deposit history ────────────────────── */
@@ -221,6 +259,7 @@ router.post("/send", customerAuth, async (req, res) => {
   const maxWithdrawal  = parseFloat(s["wallet_max_withdrawal"]   ?? "10000");
   const dailyLimit     = parseFloat(s["wallet_daily_limit"]      ?? "20000");
   const p2pDailyLimit  = parseFloat(s["wallet_p2p_daily_limit"]  ?? "10000");
+  const p2pFeePct      = Math.max(0, Math.min(50, parseFloat(s["wallet_p2p_fee_pct"] ?? "0")));
 
   if (!p2pEnabled) {
     res.status(403).json({ error: "P2P money transfers are currently disabled by admin." }); return;
@@ -242,8 +281,11 @@ router.post("/send", customerAuth, async (req, res) => {
       const [sender] = await tx.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
       if (!sender) throw new Error("Sender not found");
 
+      const feeAmt = p2pFeePct > 0 ? Math.round(sendAmt * p2pFeePct) / 100 : 0;
+      const totalDebit = sendAmt + feeAmt;
+
       const senderBalance = parseFloat(sender.walletBalance ?? "0");
-      if (senderBalance < sendAmt) throw new Error("Insufficient wallet balance");
+      if (senderBalance < totalDebit) throw new Error(feeAmt > 0 ? `Insufficient balance. Amount Rs. ${sendAmt} + Fee Rs. ${feeAmt.toFixed(2)} = Rs. ${totalDebit.toFixed(2)}` : "Insufficient wallet balance");
 
       const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
       const [todayDebits] = await tx
@@ -255,10 +297,10 @@ router.post("/send", customerAuth, async (req, res) => {
           gte(walletTransactionsTable.createdAt, todayStart),
         ));
       const todayTotal = parseFloat(String(todayDebits?.total ?? "0")) || 0;
-      if (todayTotal + sendAmt > dailyLimit) {
+      if (todayTotal + totalDebit > dailyLimit) {
         throw new Error(`Daily wallet limit is Rs. ${dailyLimit}. Aaj aap ne Rs. ${todayTotal.toFixed(0)} kharch kiye hain.`);
       }
-      if (todayTotal + sendAmt > p2pDailyLimit) {
+      if (todayTotal + totalDebit > p2pDailyLimit) {
         throw new Error(`Daily P2P transfer limit is Rs. ${p2pDailyLimit}. Aaj Rs. ${todayTotal.toFixed(0)} transfer ho chuke hain.`);
       }
 
@@ -267,8 +309,8 @@ router.post("/send", customerAuth, async (req, res) => {
       if (receiver.id === senderUserId) throw new Error("Apne aap ko transfer nahi kar sakte");
 
       const [deducted] = await tx.update(usersTable)
-        .set({ walletBalance: sql`wallet_balance - ${sendAmt.toFixed(2)}` })
-        .where(and(eq(usersTable.id, senderUserId), gte(usersTable.walletBalance, sendAmt.toFixed(2))))
+        .set({ walletBalance: sql`wallet_balance - ${totalDebit.toFixed(2)}` })
+        .where(and(eq(usersTable.id, senderUserId), gte(usersTable.walletBalance, totalDebit.toFixed(2))))
         .returning({ walletBalance: usersTable.walletBalance });
       if (!deducted) throw new Error("Insufficient wallet balance");
 
@@ -292,7 +334,14 @@ router.post("/send", customerAuth, async (req, res) => {
         amount: sendAmt.toFixed(2), description: recvDesc,
       });
 
-      return { newBalance: parseFloat(deducted.walletBalance ?? "0"), receiverName: receiver.name || receiverPhone, receiverId: receiver.id, senderName: sender.name || sender.phone, amount: sendAmt };
+      if (feeAmt > 0) {
+        await tx.insert(walletTransactionsTable).values({
+          id: generateId(), userId: senderUserId, type: "debit",
+          amount: feeAmt.toFixed(2), description: `P2P Transfer Fee (${p2pFeePct}%)`,
+        });
+      }
+
+      return { newBalance: parseFloat(deducted.walletBalance ?? "0"), receiverName: receiver.name || receiverPhone, receiverId: receiver.id, senderName: sender.name || sender.phone, amount: sendAmt, fee: feeAmt };
     });
 
     db.insert(notificationsTable).values({
