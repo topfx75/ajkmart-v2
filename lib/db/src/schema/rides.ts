@@ -1,6 +1,4 @@
-import { decimal, index, uniqueIndex, integer, pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { check } from "drizzle-orm/pg-core";
+import { decimal, index, integer, pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -48,34 +46,3 @@ export const insertRideSchema = createInsertSchema(ridesTable).omit({ createdAt:
 export type InsertRide = z.infer<typeof insertRideSchema>;
 export type Ride = typeof ridesTable.$inferSelect;
 
-export const rideRatingsTable = pgTable("ride_ratings", {
-  id: text("id").primaryKey(),
-  rideId: text("ride_id").notNull(),
-  customerId: text("customer_id").notNull(),
-  riderId: text("rider_id").notNull(),
-  stars: integer("stars").notNull(),
-  comment: text("comment"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (t) => [
-  uniqueIndex("ride_ratings_ride_id_uniq").on(t.rideId),
-  index("ride_ratings_rider_id_idx").on(t.riderId),
-  index("ride_ratings_customer_id_idx").on(t.customerId),
-  check("ride_ratings_stars_range", sql`${t.stars} BETWEEN 1 AND 5`),
-]);
-
-export const insertRideRatingSchema = createInsertSchema(rideRatingsTable).omit({ createdAt: true });
-export type InsertRideRating = z.infer<typeof insertRideRatingSchema>;
-export type RideRating = typeof rideRatingsTable.$inferSelect;
-
-export const riderPenaltiesTable = pgTable("rider_penalties", {
-  id: text("id").primaryKey(),
-  riderId: text("rider_id").notNull(),
-  type: text("type").notNull(),
-  amount: decimal("amount", { precision: 10, scale: 2 }).notNull().default("0"),
-  reason: text("reason").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (t) => [
-  index("rider_penalties_rider_id_idx").on(t.riderId),
-  index("rider_penalties_type_idx").on(t.type),
-  index("rider_penalties_created_at_idx").on(t.createdAt),
-]);
