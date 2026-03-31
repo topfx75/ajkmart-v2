@@ -343,7 +343,9 @@ export default function Home() {
     let lastSentTime = 0;
     let lastLat: number | null = null;
     let lastLng: number | null = null;
-    const MIN_INTERVAL_MS = 15_000;
+    /* Idle-mode interval: 4 minutes. Active-mode (hasActiveTask) is handled
+       in Active.tsx with 8-second intervals. This effect only runs when idle. */
+    const IDLE_INTERVAL_MS = 4 * 60 * 1000;
     const MIN_DISTANCE_METERS = 25;
 
     function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -370,10 +372,10 @@ export default function Home() {
         /* Distance throttling: skip if rider hasn't moved enough */
         if (lastLat !== null && lastLng !== null) {
           const dist = haversineMeters(lastLat, lastLng, latitude, longitude);
-          if (dist < MIN_DISTANCE_METERS && now - lastSentTime < MIN_INTERVAL_MS * 4) return;
+          if (dist < MIN_DISTANCE_METERS && now - lastSentTime < IDLE_INTERVAL_MS * 4) return;
         }
 
-        if (now - lastSentTime < MIN_INTERVAL_MS) return;
+        if (now - lastSentTime < IDLE_INTERVAL_MS) return;
         lastSentTime = now;
         lastLat = latitude;
         lastLng = longitude;

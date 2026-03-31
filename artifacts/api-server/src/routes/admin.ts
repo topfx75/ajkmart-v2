@@ -3934,6 +3934,162 @@ router.get("/dispatch-monitor", async (_req, res) => {
   });
 });
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   GET /admin/fleet-analytics?from=YYYY-MM-DD&to=YYYY-MM-DD
+   Returns:
+   - heatmap: array of { lat, lng, weight } from location_logs in date range
+   - avgResponseTime: average minutes between ride/order creation and acceptance
+   - peakZones: top location clusters by ping density
+   - riderDistances: total estimated distance per rider (haversine over log trail)
+══════════════════════════════════════════════════════════════════════════════ */
+router.get("/fleet-analytics", async (req, res) => {
+  const fromParam = req.query["from"] as string | undefined;
+  const toParam   = req.query["to"]   as string | undefined;
+
+  const now = new Date();
+  const defaultFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const from = (fromParam && /^\d{4}-\d{2}-\d{2}$/.test(fromParam))
+    ? new Date(`${fromParam}T00:00:00.000Z`)
+    : defaultFrom;
+  const to   = (toParam   && /^\d{4}-\d{2}-\d{2}$/.test(toParam))
+    ? new Date(`${toParam}T23:59:59.999Z`)
+    : now;
+
+  /* Heatmap data: all rider pings in the date range */
+  const heatPoints = await db
+    .select({
+      latitude:  locationLogsTable.latitude,
+      longitude: locationLogsTable.longitude,
+    })
+    .from(locationLogsTable)
+    .where(and(
+      eq(locationLogsTable.role, "rider"),
+      gte(locationLogsTable.createdAt, from),
+      lte(locationLogsTable.createdAt, to),
+    ))
+    .limit(10000);
+
+  const heatmap = heatPoints.map(p => ({
+    lat: parseFloat(String(p.latitude)),
+    lng: parseFloat(String(p.longitude)),
+    weight: 1,
+  }));
+
+  /* Average response time: time from request creation to first acceptance, across rides AND orders */
+  const [ridesResponseRow] = await db.select({
+    avgMs: sql<number>`AVG(EXTRACT(EPOCH FROM (accepted_at - created_at)) * 1000)`,
+  }).from(ridesTable).where(and(
+    sql`accepted_at IS NOT NULL`,
+    gte(ridesTable.createdAt, from),
+    lte(ridesTable.createdAt, to),
+  ));
+
+  /* Orders: estimate acceptance time as time between created_at and updated_at
+     when riderId is assigned. This is an approximation since orders lack an acceptedAt column. */
+  const [ordersResponseRow] = await db.select({
+    avgMs: sql<number>`AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000)`,
+  }).from(ordersTable).where(and(
+    sql`rider_id IS NOT NULL`,
+    gte(ordersTable.createdAt, from),
+    lte(ordersTable.createdAt, to),
+    /* Filter outliers: ignore if acceptance took >60 min (likely a stale update) */
+    sql`EXTRACT(EPOCH FROM (updated_at - created_at)) < 3600`,
+  ));
+
+  /* Weighted average: prefer rides (more precise) but blend in orders when available */
+  const ridesAvgMs = ridesResponseRow?.avgMs ? Number(ridesResponseRow.avgMs) : null;
+  const ordersAvgMs = ordersResponseRow?.avgMs ? Number(ordersResponseRow.avgMs) : null;
+  const blendedMs = ridesAvgMs != null && ordersAvgMs != null
+    ? (ridesAvgMs + ordersAvgMs) / 2
+    : ridesAvgMs ?? ordersAvgMs;
+  const avgResponseTimeMin = blendedMs != null
+    ? Math.round(blendedMs / 60000 * 10) / 10
+    : null;
+
+  /* Per-rider distance estimation from location logs */
+  const riderLogs = await db
+    .select({
+      userId:    locationLogsTable.userId,
+      latitude:  locationLogsTable.latitude,
+      longitude: locationLogsTable.longitude,
+      createdAt: locationLogsTable.createdAt,
+    })
+    .from(locationLogsTable)
+    .where(and(
+      eq(locationLogsTable.role, "rider"),
+      gte(locationLogsTable.createdAt, from),
+      lte(locationLogsTable.createdAt, to),
+    ))
+    .orderBy(asc(locationLogsTable.userId), asc(locationLogsTable.createdAt))
+    .limit(50000);
+
+  const riderDistanceMap = new Map<string, number>();
+  let prevByRider = new Map<string, { lat: number; lng: number }>();
+
+  for (const log of riderLogs) {
+    const lat = parseFloat(String(log.latitude));
+    const lng = parseFloat(String(log.longitude));
+    const prev = prevByRider.get(log.userId);
+    if (prev) {
+      const R = 6371;
+      const dLat = (lat - prev.lat) * Math.PI / 180;
+      const dLng = (lng - prev.lng) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+      const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      riderDistanceMap.set(log.userId, (riderDistanceMap.get(log.userId) ?? 0) + distKm);
+    }
+    prevByRider.set(log.userId, { lat, lng });
+  }
+
+  /* Enrich rider distances with rider names */
+  const riderIds = [...riderDistanceMap.keys()];
+  const riderNames = riderIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name })
+        .from(usersTable)
+        .where(sql`${usersTable.id} = ANY(ARRAY[${sql.join(riderIds.map(id => sql`${id}`), sql`, `)}])`)
+    : [];
+  const nameMap = new Map(riderNames.map(r => [r.id, r.name ?? "Unknown"]));
+
+  const riderDistances = [...riderDistanceMap.entries()]
+    .map(([userId, distKm]) => ({
+      userId,
+      name: nameMap.get(userId) ?? "Unknown",
+      distanceKm: Math.round(distKm * 10) / 10,
+    }))
+    .sort((a, b) => b.distanceKm - a.distanceKm)
+    .slice(0, 20);
+
+  /* Peak zones: bin pings into ~500 m grid cells, return top clusters */
+  const GRID_DEG = 0.005; /* ~500 m resolution */
+  const cellCounts = new Map<string, { lat: number; lng: number; count: number }>();
+  for (const p of heatmap) {
+    const cellLat = Math.round(p.lat / GRID_DEG) * GRID_DEG;
+    const cellLng = Math.round(p.lng / GRID_DEG) * GRID_DEG;
+    const key = `${cellLat.toFixed(4)},${cellLng.toFixed(4)}`;
+    const existing = cellCounts.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      cellCounts.set(key, { lat: cellLat, lng: cellLng, count: 1 });
+    }
+  }
+  const peakZones = [...cellCounts.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+    .map(z => ({ lat: z.lat, lng: z.lng, pings: z.count }));
+
+  res.json({
+    heatmap,
+    avgResponseTimeMin,
+    riderDistances,
+    peakZones,
+    totalPings: heatmap.length,
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  });
+});
+
 /* ── GET /admin/riders/:userId/route?date=YYYY-MM-DD — fleet history for admin ── */
 router.get("/riders/:userId/route", async (req, res) => {
   const { userId } = req.params;

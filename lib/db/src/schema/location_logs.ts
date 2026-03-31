@@ -18,6 +18,10 @@ export const locationLogsTable = pgTable("location_logs", {
   index("location_logs_user_ts_idx").on(t.userId, t.createdAt),
   index("location_logs_user_idx").on(t.userId),
   index("location_logs_role_idx").on(t.role),
+  /* Composite index for fleet-analytics query: role + time range */
+  index("location_logs_role_ts_idx").on(t.role, t.createdAt),
+  /* Spatial pre-filter for proximity/heatmap queries */
+  index("location_logs_lat_lng_idx").on(t.latitude, t.longitude),
 ]);
 
 export const insertLocationLogSchema = createInsertSchema(locationLogsTable);

@@ -223,6 +223,62 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       }
     }
 
+    /* Allow riders to join their personal room rider:{userId} to receive admin chat */
+    const userToken = getTokenFromHandshake(headers, auth);
+    if (userToken) {
+      const userPayload = verifyUserJwt(userToken);
+      if (userPayload?.userId) {
+        socket.join(`rider:${userPayload.userId}`);
+      }
+    }
+
+    /* SOS relay: rider sends rider:sos event, server broadcasts to admin-fleet */
+    socket.on("rider:sos", (payload: { latitude?: number; longitude?: number; rideId?: string | null }) => {
+      if (!userToken) return;
+      const sosPay = verifyUserJwt(userToken);
+      if (!sosPay?.userId) return;
+      /* Only riders (role === "rider") may emit SOS */
+      if (sosPay.role !== "rider") return;
+      if (typeof payload?.latitude !== "number" || typeof payload?.longitude !== "number") return;
+      /* Rebroadcast to admin-fleet with enriched payload */
+      _io!.to("admin-fleet").emit("rider:sos", {
+        userId: sosPay.userId,
+        name: "Rider",
+        phone: null,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        rideId: payload.rideId ?? null,
+        sentAt: new Date().toISOString(),
+      });
+    });
+
+    /* Admin chat relay: admin sends message to specific rider */
+    socket.on("admin:chat", (payload: { riderId: string; message: string }) => {
+      if (!payload?.riderId || typeof payload.message !== "string") return;
+      /* Only allow admins to send chat messages */
+      if (!isAuthorizedForAdminFleet(headers, query, auth)) return;
+      _io!.to(`rider:${payload.riderId}`).emit("admin:chat", {
+        message: payload.message,
+        sentAt: new Date().toISOString(),
+        from: "admin",
+      });
+    });
+
+    /* Rider reply chat relay: rider sends message back to admin */
+    socket.on("rider:chat", (payload: { message: string }) => {
+      if (!userToken) return;
+      const riderPay = verifyUserJwt(userToken);
+      if (!riderPay?.userId || riderPay.role !== "rider") return;
+      if (typeof payload?.message !== "string" || !payload.message.trim()) return;
+      /* Broadcast the rider's reply to all admin-fleet clients */
+      _io!.to("admin-fleet").emit("rider:chat", {
+        userId: riderPay.userId,
+        message: payload.message.trim(),
+        sentAt: new Date().toISOString(),
+        from: "rider",
+      });
+    });
+
     /* Join event: client can request additional rooms after connect */
     socket.on("join", (room: string) => {
       if (typeof room !== "string") return;
@@ -348,3 +404,26 @@ export function emitCustomerLocation(payload: {
   if (!_io) return;
   _io.to("admin-fleet").emit("customer:location", payload);
 }
+
+export function emitRiderSOS(payload: {
+  userId: string;
+  name: string;
+  phone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  rideId?: string | null;
+  sentAt: string;
+}) {
+  if (!_io) return;
+  _io.to("admin-fleet").emit("rider:sos", payload);
+}
+
+export function emitAdminChatReply(riderId: string, payload: {
+  message: string;
+  sentAt: string;
+  from: "admin";
+}) {
+  if (!_io) return;
+  _io.to(`rider:${riderId}`).emit("admin:chat", payload);
+}
+

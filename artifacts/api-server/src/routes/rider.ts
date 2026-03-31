@@ -1830,4 +1830,93 @@ router.get("/penalty-history", async (req, res) => {
   });
 });
 
+/* ── POST /rider/sos — Rider SOS alert ── */
+router.post("/sos", async (req, res) => {
+  const riderId   = req.riderId!;
+  const riderUser = req.riderUser!;
+  const { latitude, longitude, rideId } = req.body;
+
+  /* lat/lng are optional — SOS can be sent without coordinates (admin calls rider by phone) */
+  const parsedLat = latitude != null ? parseFloat(String(latitude)) : null;
+  const parsedLng = longitude != null ? parseFloat(String(longitude)) : null;
+
+  /* Reject null-island (0,0) coordinates server-side too */
+  const validCoords = parsedLat != null && parsedLng != null &&
+    isFinite(parsedLat) && isFinite(parsedLng) &&
+    !(Math.abs(parsedLat) < 0.001 && Math.abs(parsedLng) < 0.001);
+
+  const { emitRiderSOS } = await import("../lib/socketio.js");
+  emitRiderSOS({
+    userId:    riderId,
+    name:      riderUser.name ?? "Rider",
+    phone:     riderUser.phone ?? null,
+    latitude:  validCoords ? parsedLat! : null,
+    longitude: validCoords ? parsedLng! : null,
+    rideId:    rideId ?? null,
+    sentAt:    new Date().toISOString(),
+  });
+
+  res.json({ success: true, sentAt: new Date().toISOString() });
+});
+
+/* ── GET /rider/osrm-route — Fetch turn-by-turn directions from OSRM ── */
+router.get("/osrm-route", async (req, res) => {
+  const { fromLat, fromLng, toLat, toLng } = req.query;
+  if (!fromLat || !fromLng || !toLat || !toLng) {
+    res.status(400).json({ error: "fromLat, fromLng, toLat, toLng required" }); return;
+  }
+
+  const coords = `${fromLng},${fromLat};${toLng},${toLat}`;
+  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=true&annotations=false`;
+
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 8000);
+    const resp = await fetch(osrmUrl, { signal: ctrl.signal });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      res.status(502).json({ error: "Routing service unavailable" }); return;
+    }
+
+    const data = await resp.json() as {
+      code: string;
+      routes?: Array<{
+        geometry: { coordinates: [number, number][] };
+        legs: Array<{ steps: Array<{ maneuver: { instruction?: string; type: string; modifier?: string; location?: [number, number] }; name: string; distance: number; duration: number }> }>;
+        distance: number;
+        duration: number;
+      }>;
+    };
+
+    if (data.code !== "Ok" || !data.routes?.length) {
+      res.status(404).json({ error: "No route found" }); return;
+    }
+
+    const route = data.routes[0]!;
+    const steps = route.legs.flatMap(leg => leg.steps.map(step => ({
+      instruction: step.maneuver.instruction ?? `${step.maneuver.type}${step.maneuver.modifier ? ` ${step.maneuver.modifier}` : ""}`,
+      streetName:  step.name || "",
+      distanceM:   Math.round(step.distance),
+      durationSec: Math.round(step.duration),
+      /* Maneuver location so client can auto-advance steps as rider position updates */
+      maneuverLat: step.maneuver.location?.[1] ?? null,
+      maneuverLng: step.maneuver.location?.[0] ?? null,
+    })));
+
+    res.json({
+      distanceM: Math.round(route.distance),
+      durationSec: Math.round(route.duration),
+      geometry: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })),
+      steps,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Routing request failed";
+    if (msg.includes("aborted") || msg.includes("abort")) {
+      res.status(504).json({ error: "Routing service timed out" }); return;
+    }
+    res.status(502).json({ error: "Could not fetch route" }); return;
+  }
+});
+
 export default router;

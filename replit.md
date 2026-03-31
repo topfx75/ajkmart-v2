@@ -75,6 +75,32 @@ The project is structured as a pnpm monorepo using TypeScript. The frontend leve
 - **crypto.scryptSync:** For password hashing.
 - **react-native-qrcode-svg:** For generating real QR codes in the wallet Receive Money modal.
 
+### Live Fleet Tracking — Complete System (Task #3)
+
+**API Server:**
+- `rider.ts`: Added `POST /rider/sos` — broadcasts SOS alert (with GPS coordinates, rideId, rider info) to admin-fleet via Socket.io. Added `GET /rider/osrm-route` — proxy endpoint that fetches turn-by-turn directions from the free public OSRM router (router.project-osrm.org), returns `{distanceM, durationSec, geometry, steps}`.
+- `admin.ts`: Added `GET /admin/fleet-analytics?from=&to=` — returns heatmap ping data (up to 10K points), average ride response time, per-rider haversine distance totals, and active rider count for the date range.
+- `socketio.ts`: Added `rider:sos` event relay (rider→admin-fleet broadcast), `admin:chat` event relay (admin→rider:{userId} personal room), auto-join personal room for JWT-authenticated riders on connect. Added `emitRiderSOS()` and `emitAdminChatReply()` exports.
+
+**Admin Map (`live-riders-map.tsx`) — Complete Rewrite:**
+- Correct color logic: Green=Online/idle, **Red=Busy/On Trip** (was incorrectly Orange), Grey=Offline
+- Vehicle-type service icons: 🏍️ Bike/motorcycle, 🚗 Car, 🛺 Rickshaw, 🚐 Van, 🚛 Truck, 🔧 Service provider, 👤 Customer
+- SOS banner: real-time red alert bar at top when any rider sends SOS. Shows rider name/phone/coordinates/time, Reply/Dismiss buttons.
+- SOS chat modal: admin can type reply → emitted via `admin:chat` socket to `rider:{userId}` room. Chat history displayed per rider.
+- SOS markers: 🆘 Leaflet markers at SOS coordinates on the map.
+- Analytics tab: fleet heatmap (Leaflet Circle overlays per ping), top-rider distance bar chart (Recharts), stat cards for total pings, avg response time, active rider count. Configurable date range.
+- Socket.io live connection now attempts join on connect, handles pruning of >500 rider overrides.
+
+**Rider Web App (`Active.tsx`):**
+- `SosButton` updated to capture current GPS position (via `navigator.geolocation.getCurrentPosition` with fallback to `riderPos` from `watchPosition`) before POSTing to `/rider/sos` with lat/lng.
+- `TurnByTurnPanel` component: collapsible accordion that calls `/rider/osrm-route` and renders numbered step-by-step directions with distance. Shown for: pickup (ride accepted), drop-off (ride arrived/in_transit), store (order pickup phase), customer (order delivery phase).
+
+**Mobile Rider App (`RiderLocationContext.tsx`) — previously completed:**
+- Dual-mode tracking: 4min idle / 8sec active order intervals
+- AsyncStorage persistence of `isOnline` for auto-resume on reboot
+- `hasActiveTask` polling every 15s via `/rider/active`
+- Sends `action: "on_trip"` during active delivery
+
 ### Admin Panel UI/UX & Bug Fix (Task #4)
 
 All changes are in `artifacts/admin/src/`:

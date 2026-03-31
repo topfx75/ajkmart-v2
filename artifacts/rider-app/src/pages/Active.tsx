@@ -3,7 +3,7 @@ import {
   AlertTriangle, Camera, MapPin, Phone, Package, ShoppingCart,
   UtensilsCrossed, Bike, Car, User, CheckCircle, X, RefreshCw,
   MapPinned, ArrowDown, Shield, Navigation, Clock, Zap,
-  ChevronRight, Eye, Truck, WifiOff,
+  ChevronRight, Eye, Truck, WifiOff, MessageSquare,
 } from "lucide-react";
 import { api, apiFetch } from "../lib/api";
 import { logRideEvent } from "../lib/rideUtils";
@@ -12,6 +12,7 @@ import { usePlatformConfig } from "../lib/useConfig";
 import { useAuth } from "../lib/auth";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { io } from "socket.io-client";
 
 function SkeletonBlock({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded-xl ${className || ""}`} />;
@@ -138,7 +139,7 @@ function NavButton({ label, lat, lng, address, color = "blue" }: {
   );
 }
 
-function SosButton({ rideId }: { rideId: string }) {
+function SosButton({ rideId, riderPos }: { rideId?: string | null; riderPos?: { lat: number; lng: number } | null }) {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   return (
@@ -147,17 +148,223 @@ function SosButton({ rideId }: { rideId: string }) {
         if (sent || loading) return;
         setLoading(true);
         try {
-          await apiFetch("/sos", { method: "POST", body: JSON.stringify({ rideId }), headers: { "Content-Type": "application/json" } });
+          /* Get current GPS pos; fall back to riderPos from watch */
+          let lat = riderPos?.lat;
+          let lng = riderPos?.lng;
+          if (!lat || !lng) {
+            try {
+              const pos = await new Promise<GeolocationPosition>((res, rej) => {
+                navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000, maximumAge: 10000 });
+              });
+              lat = pos.coords.latitude;
+              lng = pos.coords.longitude;
+            } catch { /* use riderPos as-is */ }
+          }
+          /* Reject null-island coordinates (0,0) — unknown position is better than false emergency coords */
+          if (!lat || !lng || (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001)) {
+            /* Still fire SOS even without coordinates — admin can call rider by phone */
+            await apiFetch("/rider/sos", {
+              method: "POST",
+              body: JSON.stringify({ rideId: rideId ?? null }),
+              headers: { "Content-Type": "application/json" },
+            });
+          } else {
+            await apiFetch("/rider/sos", {
+              method: "POST",
+              body: JSON.stringify({ rideId: rideId ?? null, latitude: lat, longitude: lng }),
+              headers: { "Content-Type": "application/json" },
+            });
+          }
           setSent(true);
-        } catch {}
+        } catch { /* silently accept failure to not block UI */ }
         setLoading(false);
       }}
       disabled={sent || loading}
       className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all ${sent ? "bg-gray-200 text-gray-500 cursor-default" : "bg-red-600 text-white hover:bg-red-700 active:scale-[0.98]"}`}
     >
       <AlertTriangle size={15} />
-      {loading ? "Sending..." : sent ? "SOS Sent" : "SOS — Emergency"}
+      {loading ? "Sending..." : sent ? "SOS Sent ✓" : "SOS — Emergency"}
     </button>
+  );
+}
+
+type OsrmStep = {
+  instruction: string;
+  streetName: string;
+  distanceM: number;
+  durationSec: number;
+  maneuverLat: number | null;
+  maneuverLng: number | null;
+};
+type OsrmRoute = { distanceM: number; durationSec: number; steps: OsrmStep[]; geometry?: Array<{ lat: number; lng: number }> };
+
+/* Off-route threshold: reroute if rider is >150 m from nearest geometry point */
+const REROUTE_THRESHOLD_M = 150;
+/* Step advance threshold: advance to next step if within 30 m of its maneuver point */
+const STEP_ADVANCE_M = 30;
+
+function TurnByTurnPanel({ fromLat, fromLng, toLat, toLng, label, riderLat, riderLng }: {
+  fromLat: number; fromLng: number; toLat: number; toLng: number; label: string;
+  riderLat?: number | null; riderLng?: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [route, setRoute] = useState<OsrmRoute | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const stepListRef = useRef<HTMLDivElement | null>(null);
+  const rerouteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchRoute = async (lat?: number, lng?: number) => {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    const startLat = lat ?? fromLat;
+    const startLng = lng ?? fromLng;
+    try {
+      const data = await apiFetch(
+        `/rider/osrm-route?fromLat=${startLat}&fromLng=${startLng}&toLat=${toLat}&toLng=${toLng}`
+      ) as OsrmRoute & { error?: string };
+      if (data.error) { setError(data.error); setLoading(false); return; }
+      setRoute(data);
+      setCurrentStep(0);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not fetch route");
+    }
+    setLoading(false);
+  };
+
+  /* Real-time step progression: advance current step as rider position updates */
+  useEffect(() => {
+    if (!route || riderLat == null || riderLng == null) return;
+
+    /* Auto-advance steps when rider is close to the next step's maneuver point */
+    const steps = route.steps;
+    let newStep = currentStep;
+    for (let i = currentStep; i < steps.length - 1; i++) {
+      const step = steps[i + 1]!;
+      if (step.maneuverLat != null && step.maneuverLng != null) {
+        const distM = haversineDistance(riderLat, riderLng, step.maneuverLat, step.maneuverLng) * 1000;
+        if (distM <= STEP_ADVANCE_M) {
+          newStep = i + 1;
+        }
+      }
+    }
+    if (newStep !== currentStep) {
+      setCurrentStep(newStep);
+      /* Scroll active step into view */
+      const el = stepListRef.current?.querySelector(`[data-step="${newStep}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    /* Off-route detection: measure distance from nearest geometry point */
+    if (route.geometry && route.geometry.length > 0) {
+      let minDistM = Infinity;
+      for (const pt of route.geometry) {
+        const d = haversineDistance(riderLat, riderLng, pt.lat, pt.lng) * 1000;
+        if (d < minDistM) minDistM = d;
+      }
+      if (minDistM > REROUTE_THRESHOLD_M) {
+        /* Debounce: only reroute if off-route for 5+ seconds continuously */
+        if (!rerouteTimerRef.current) {
+          rerouteTimerRef.current = setTimeout(() => {
+            rerouteTimerRef.current = null;
+            fetchRoute(riderLat, riderLng);
+          }, 5000);
+        }
+      } else {
+        if (rerouteTimerRef.current) {
+          clearTimeout(rerouteTimerRef.current);
+          rerouteTimerRef.current = null;
+        }
+      }
+    }
+  }, [riderLat, riderLng, route, currentStep]);
+
+  /* Cleanup reroute timer on unmount */
+  useEffect(() => () => {
+    if (rerouteTimerRef.current) clearTimeout(rerouteTimerRef.current);
+  }, []);
+
+  const distKm = route ? (route.distanceM < 1000 ? `${route.distanceM}m` : `${(route.distanceM / 1000).toFixed(1)} km`) : "";
+  const etaMin = route ? Math.max(1, Math.round(route.durationSec / 60)) : 0;
+  const currentInstruction = route?.steps[currentStep]?.instruction ?? null;
+
+  return (
+    <div className="border border-indigo-200 rounded-2xl overflow-hidden">
+      <button
+        onClick={() => {
+          if (!open && !route) fetchRoute();
+          setOpen(o => !o);
+        }}
+        className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-indigo-50 to-blue-50 text-left"
+      >
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-indigo-200">
+          <Navigation size={14} className="text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-black text-gray-900">Turn-by-Turn to {label}</p>
+          {route && currentInstruction && (
+            <p className="text-xs text-indigo-600 font-semibold truncate">{currentInstruction}</p>
+          )}
+          {route && !currentInstruction && <p className="text-xs text-indigo-500 font-semibold">{distKm} · ~{etaMin} min</p>}
+          {!route && <p className="text-xs text-gray-400">Tap for directions</p>}
+        </div>
+        <span className="text-indigo-400 text-xs font-bold">{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-3">
+          {loading && (
+            <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
+              <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+              Fetching route…
+            </div>
+          )}
+          {error && (
+            <div className="py-3 text-sm text-red-500 flex items-center gap-2">
+              <AlertTriangle size={13} /> {error}
+              <button onClick={() => fetchRoute()} className="underline text-indigo-500 ml-1">Retry</button>
+            </div>
+          )}
+          {route && !loading && (
+            <>
+              <div className="flex items-center justify-between pt-2 pb-1">
+                <span className="text-xs text-gray-400">{distKm} · ~{etaMin} min · Step {currentStep + 1}/{route.steps.length}</span>
+                <button
+                  onClick={() => fetchRoute(riderLat ?? undefined, riderLng ?? undefined)}
+                  className="text-xs text-indigo-500 font-semibold flex items-center gap-1 hover:underline"
+                >
+                  <RefreshCw size={10} /> Reroute
+                </button>
+              </div>
+              <div ref={stepListRef} className="space-y-1.5 max-h-56 overflow-y-auto">
+                {route.steps.map((step, i) => {
+                  const isActive = i === currentStep;
+                  const isPast = i < currentStep;
+                  return (
+                    <div
+                      key={i}
+                      data-step={i}
+                      className={`flex items-start gap-2 text-sm py-1.5 border-b border-gray-100 last:border-0 rounded-lg transition-colors ${isActive ? "bg-indigo-50 px-2 -mx-2" : ""} ${isPast ? "opacity-40" : ""}`}
+                    >
+                      <div className={`w-6 h-6 flex-shrink-0 rounded-full font-bold text-[10px] flex items-center justify-center mt-0.5 ${isActive ? "bg-indigo-500 text-white" : "bg-indigo-100 text-indigo-600"}`}>{i + 1}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold leading-tight ${isActive ? "text-indigo-700" : "text-gray-800"}`}>{step.instruction}</p>
+                        {step.streetName && <p className="text-xs text-gray-400 mt-0.5">{step.streetName}</p>}
+                      </div>
+                      <span className="text-xs text-gray-400 flex-shrink-0 mt-0.5">
+                        {step.distanceM < 1000 ? `${step.distanceM}m` : `${(step.distanceM / 1000).toFixed(1)}km`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -247,6 +454,10 @@ export default function Active() {
   const [pressedBtn, setPressedBtn]                = useState<string | null>(null);
   const [isOffline, setIsOffline]                  = useState(!navigator.onLine);
   const [riderPos, setRiderPos]                    = useState<{ lat: number; lng: number } | null>(null);
+  const [adminMessages, setAdminMessages]          = useState<Array<{ text: string; ts: string }>>([]);
+  const [showAdminChat, setShowAdminChat]          = useState(false);
+  const [chatReply, setChatReply]                  = useState("");
+  const socketRef                                  = useRef<ReturnType<typeof io> | null>(null);
 
   /* isMountedRef prevents state updates (setRiderPos, setGpsWarning, etc.) from firing
      after the Active component unmounts — e.g. when a rider navigates away while the
@@ -256,6 +467,28 @@ export default function Active() {
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
+  }, []);
+
+  /* Socket.io: connect to receive admin:chat messages and send rider:chat replies */
+  useEffect(() => {
+    const token = sessionStorage.getItem("ajkmart_rider_token") ?? localStorage.getItem("ajkmart_rider_token") ?? "";
+    if (!token) return;
+    const socket = io(window.location.origin, {
+      path: "/api/socket.io",
+      auth: { token },
+      extraHeaders: { Authorization: `Bearer ${token}` },
+      transports: ["polling", "websocket"],
+    });
+    socketRef.current = socket;
+    socket.on("admin:chat", (msg: { message: string; sentAt: string; from: "admin" }) => {
+      if (!isMountedRef.current) return;
+      setAdminMessages(prev => [...prev, { text: msg.message, ts: msg.sentAt }]);
+      setShowAdminChat(true);
+    });
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
   }, []);
 
   type QueuedUpdate = { kind: "location" | "status"; run: () => Promise<unknown> };
@@ -639,6 +872,72 @@ export default function Active() {
         </div>
       )}
 
+      {/* Admin chat banner — shown when admin has sent a message */}
+      {adminMessages.length > 0 && (
+        <div className="mx-4 mt-3 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-3.5 flex items-start gap-3 shadow-lg shadow-blue-200 animate-[slideDown_0.3s_ease-out]">
+          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+            <MessageSquare size={16} className="text-white"/>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-extrabold text-white">Message from Admin</p>
+            <p className="text-[11px] text-blue-100 mt-0.5 leading-relaxed truncate">{adminMessages[adminMessages.length - 1]!.text}</p>
+          </div>
+          <button onClick={() => setShowAdminChat(true)} className="text-xs font-bold bg-white text-blue-600 px-2.5 py-1 rounded-lg flex-shrink-0">
+            View
+          </button>
+          <button onClick={() => setAdminMessages([])} className="text-xs text-white/60 hover:text-white flex-shrink-0">
+            <X size={14}/>
+          </button>
+        </div>
+      )}
+
+      {/* Admin chat modal */}
+      {showAdminChat && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAdminChat(false)}>
+          <div className="bg-white w-full max-w-md rounded-t-3xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-black text-gray-900 flex items-center gap-2"><MessageSquare size={16} className="text-blue-600"/> Admin Chat</p>
+                <p className="text-xs text-gray-400">Admin can see your messages</p>
+              </div>
+              <button onClick={() => setShowAdminChat(false)}><X size={18} className="text-gray-400"/></button>
+            </div>
+            <div className="bg-gray-50 rounded-2xl p-3 min-h-[80px] max-h-44 overflow-y-auto space-y-2 mb-3">
+              {adminMessages.map((m, i) => (
+                <div key={i} className="flex justify-start">
+                  <div className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-xl max-w-[80%]">{m.text}</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={chatReply}
+                onChange={e => setChatReply(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && chatReply.trim() && socketRef.current) {
+                    socketRef.current.emit("rider:chat", { message: chatReply.trim() });
+                    setChatReply("");
+                  }
+                }}
+                placeholder="Reply to admin..."
+                className="flex-1 text-sm border rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <button
+                onClick={() => {
+                  if (!chatReply.trim() || !socketRef.current) return;
+                  socketRef.current.emit("rider:chat", { message: chatReply.trim() });
+                  setChatReply("");
+                }}
+                className="bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="px-4 py-4 space-y-4">
 
         {order && (
@@ -755,6 +1054,15 @@ export default function Active() {
                     {order.vendorPhone && <CallButton phone={order.vendorPhone} label="Call Store" name={order.vendorStoreName} />}
                   </div>
 
+                  {riderPos && order.vendorLat != null && order.vendorLng != null && (
+                    <TurnByTurnPanel
+                      fromLat={riderPos.lat} fromLng={riderPos.lng}
+                      toLat={order.vendorLat} toLng={order.vendorLng}
+                      label="Store"
+                      riderLat={riderPos.lat} riderLng={riderPos.lng}
+                    />
+                  )}
+
                   <button
                     onClick={() => { updateOrderMut.mutate({ id: order.id, status: "picked_up" }); }}
                     onTouchStart={() => setPressedBtn("pickup")} onTouchEnd={() => setPressedBtn(null)}
@@ -813,6 +1121,15 @@ export default function Active() {
                     <NavButton label={T("navigateLabel")} address={order.deliveryAddress} color="blue" />
                     <CallButton name={order.customerName} phone={order.customerPhone} />
                   </div>
+
+                  {riderPos && order.deliveryLat != null && order.deliveryLng != null && (
+                    <TurnByTurnPanel
+                      fromLat={riderPos.lat} fromLng={riderPos.lng}
+                      toLat={order.deliveryLat} toLng={order.deliveryLng}
+                      label="Customer"
+                      riderLat={riderPos.lat} riderLng={riderPos.lng}
+                    />
+                  )}
 
                   <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4">
                     <p className="text-xs font-extrabold text-blue-700 mb-3 flex items-center gap-2">
@@ -991,7 +1308,24 @@ export default function Active() {
                 )}
                 <CallButton name={ride.customerName} phone={ride.customerPhone} />
               </div>
-              <SosButton rideId={ride.id} />
+              {/* Turn-by-turn OSRM navigation */}
+              {riderPos && ride.status === "accepted" && ride.pickupLat != null && ride.pickupLng != null && (
+                <TurnByTurnPanel
+                  fromLat={riderPos.lat} fromLng={riderPos.lng}
+                  toLat={ride.pickupLat} toLng={ride.pickupLng}
+                  label="Pickup"
+                  riderLat={riderPos.lat} riderLng={riderPos.lng}
+                />
+              )}
+              {riderPos && (ride.status === "arrived" || ride.status === "in_transit") && ride.dropLat != null && ride.dropLng != null && (
+                <TurnByTurnPanel
+                  fromLat={riderPos.lat} fromLng={riderPos.lng}
+                  toLat={ride.dropLat} toLng={ride.dropLng}
+                  label="Drop-off"
+                  riderLat={riderPos.lat} riderLng={riderPos.lng}
+                />
+              )}
+              <SosButton rideId={ride.id} riderPos={riderPos} />
 
               <div className="flex gap-2 pt-1">
                 {ride.status === "accepted" && (

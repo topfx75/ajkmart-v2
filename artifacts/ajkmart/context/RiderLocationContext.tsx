@@ -6,6 +6,8 @@
  * • Starts when rider calls goOnline(), stops when they call goOffline().
  * • Applies a distance throttle (default 25 m) before sending to the server.
  * • Battery level included when available via expo-battery (optional).
+ * • Dual-mode: slow ping (3–5 min) when idle, fast ping (5–10 sec) when active order/ride.
+ * • Persists isOnline to AsyncStorage for auto-resume after device reboot.
  */
 
 import React, {
@@ -19,12 +21,19 @@ import React, {
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import * as Battery from "expo-battery";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, AppStateStatus, Platform } from "react-native";
 import { useAuth } from "./AuthContext";
 
 const BACKGROUND_LOCATION_TASK = "RIDER_BACKGROUND_LOCATION";
 const MIN_DISTANCE_METERS = 25;
-const MAX_INTERVAL_SEC = 20;
+
+/* Dual-mode intervals */
+const IDLE_INTERVAL_SEC = 4 * 60;    /* 4 minutes when idle/online */
+const ACTIVE_INTERVAL_SEC = 8;       /* 8 seconds when on active order/ride */
+
+/* AsyncStorage key for persisting online state */
+const STORAGE_KEY_IS_ONLINE = "rider_is_online";
 
 /* ── Bug 5 fix: Use a Set of handlers instead of a single mutable global ── */
 const backgroundLocationHandlers = new Set<(loc: Location.LocationObject) => void>();
@@ -57,6 +66,7 @@ export type GoOnlineResult = "ok" | "permission_denied" | "tracking_failed";
 
 interface RiderLocationContextType {
   isOnline: boolean;
+  hasActiveTask: boolean;
   goOnline: () => Promise<GoOnlineResult>;
   goOffline: () => Promise<void>;
   toggleOnline: () => Promise<GoOnlineResult>;
@@ -71,6 +81,7 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
   const isRider = user?.role === "rider";
 
   const [isOnline, setIsOnline] = useState(false);
+  const [hasActiveTask, setHasActiveTask] = useState(false);
   const [lastPosition, setLastPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState<"granted" | "denied" | "undetermined">("undetermined");
 
@@ -81,7 +92,63 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
   const isOnlineRef = useRef(false);
   isOnlineRef.current = isOnline;
 
+  const hasActiveTaskRef = useRef(false);
+  hasActiveTaskRef.current = hasActiveTask;
+
   const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+
+  /* ── Poll for active orders/rides to determine dual-mode ── */
+  useEffect(() => {
+    if (!isOnline || !user?.id) {
+      setHasActiveTask(false);
+      return;
+    }
+    const checkActive = async () => {
+      const tok = tokenRef.current;
+      if (!tok) return;
+      try {
+        const r = await fetch(`${API_BASE}/rider/active`, {
+          headers: { Authorization: `Bearer ${tok}` },
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        const active = !!(data?.order || data?.ride);
+        setHasActiveTask(active);
+      } catch {}
+    };
+    checkActive();
+    const interval = setInterval(checkActive, 15_000);
+    return () => clearInterval(interval);
+  }, [isOnline, user?.id, API_BASE]);
+
+  /* ── Dual-mode: update background location task interval when active task changes ── */
+  useEffect(() => {
+    if (!isOnline || Platform.OS === "web") return;
+    const updateInterval = async () => {
+      try {
+        const running = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        if (!running) return;
+        /* Restart with new interval */
+        await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+        const intervalSec = hasActiveTask ? ACTIVE_INTERVAL_SEC : IDLE_INTERVAL_SEC;
+        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: MIN_DISTANCE_METERS,
+          timeInterval: intervalSec * 1000,
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: "AJKMart Rider",
+            notificationBody: hasActiveTask
+              ? "Active delivery — tracking location every 8 seconds."
+              : "You are online and tracking your location.",
+            notificationColor: "#1A56DB",
+          },
+          pausesUpdatesAutomatically: false,
+        });
+      } catch {}
+    };
+    updateInterval();
+  }, [hasActiveTask, isOnline]);
 
   const sendLocation = useCallback(async (loc: Location.LocationObject) => {
     const tok = tokenRef.current;
@@ -92,10 +159,12 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
 
     /* Distance throttle */
     const prev = prevPositionRef.current;
+    const intervalSec = hasActiveTaskRef.current ? ACTIVE_INTERVAL_SEC : IDLE_INTERVAL_SEC;
+    const maxInterval = intervalSec * 2; /* allow 2x interval max */
     if (prev) {
       const dist = haversineMeters(prev.lat, prev.lng, latitude, longitude);
       const elapsed = (now - prev.ts) / 1000;
-      if (dist < MIN_DISTANCE_METERS && elapsed < MAX_INTERVAL_SEC) return;
+      if (dist < MIN_DISTANCE_METERS && elapsed < maxInterval) return;
     }
 
     prevPositionRef.current = { lat: latitude, lng: longitude, ts: now };
@@ -107,6 +176,8 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
         const level = await Battery.getBatteryLevelAsync();
         if (level >= 0) batteryLevel = Math.round(level * 100);
       } catch { /* battery unavailable on this platform */ }
+
+      const action = hasActiveTaskRef.current ? "on_trip" : null;
 
       await fetch(`${API_BASE}/rider/location`, {
         method: "PATCH",
@@ -121,6 +192,7 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
           speed: speed ?? undefined,
           heading: heading ?? undefined,
           batteryLevel,
+          action,
         }),
       });
     } catch {}
@@ -152,15 +224,16 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
     return true;
   }, []);
 
-  /* ── Bug 1 fix: startTracking now throws on failure so goOnline can handle it ── */
+  /* ── startTracking: starts background task at current dual-mode interval ── */
   const startTracking = useCallback(async () => {
     if (Platform.OS === "web") return;
     const running = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     if (!running) {
+      const intervalSec = hasActiveTaskRef.current ? ACTIVE_INTERVAL_SEC : IDLE_INTERVAL_SEC;
       await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
         accuracy: Location.Accuracy.Balanced,
         distanceInterval: MIN_DISTANCE_METERS,
-        timeInterval: MAX_INTERVAL_SEC * 1000,
+        timeInterval: intervalSec * 1000,
         showsBackgroundLocationIndicator: true,
         foregroundService: {
           notificationTitle: "AJKMart Rider",
@@ -187,11 +260,12 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
 
   const startForegroundWatch = useCallback(async () => {
     if (watchIdRef.current) return;
+    const intervalSec = hasActiveTaskRef.current ? ACTIVE_INTERVAL_SEC : IDLE_INTERVAL_SEC;
     watchIdRef.current = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.Balanced,
         distanceInterval: MIN_DISTANCE_METERS,
-        timeInterval: MAX_INTERVAL_SEC * 1000,
+        timeInterval: intervalSec * 1000,
       },
       (loc) => sendLocation(loc),
     );
@@ -203,6 +277,16 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
       watchIdRef.current = null;
     }
   }, []);
+
+  /* Restart foreground watch on ALL platforms when active task state changes (dual-mode).
+     On native this only runs when the app is in the foreground (AppState active). */
+  useEffect(() => {
+    if (!isOnline) return;
+    /* On native: only restart if app is currently in the foreground */
+    if (Platform.OS !== "web" && AppState.currentState !== "active") return;
+    stopForegroundWatch();
+    startForegroundWatch().catch(() => {});
+  }, [hasActiveTask, isOnline]);
 
   /* ── Bug 2 fix: AppState listener to start/stop foreground watch on native ── */
   useEffect(() => {
@@ -223,6 +307,38 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
     };
   }, [startForegroundWatch, stopForegroundWatch]);
 
+  /* ── Auto-resume on boot: read persisted isOnline from AsyncStorage ── */
+  useEffect(() => {
+    if (!isRider) return;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(STORAGE_KEY_IS_ONLINE);
+        if (stored === "true") {
+          /* Background task may have been killed; attempt to restart */
+          const ok = await checkPermissions();
+          if (ok) {
+            setIsOnline(true);
+            prevPositionRef.current = null;
+            if (Platform.OS !== "web") {
+              try {
+                await startTracking();
+                if (AppState.currentState === "active") {
+                  await startForegroundWatch();
+                }
+              } catch {}
+            } else {
+              await startForegroundWatch();
+            }
+          } else {
+            /* Permission gone after reboot — clear stored state */
+            await AsyncStorage.removeItem(STORAGE_KEY_IS_ONLINE);
+          }
+        }
+      } catch {}
+    })();
+  /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [isRider]);
+
   /* ── Bug 1 & 7 fix: goOnline now returns a status result ── */
   const goOnline = useCallback(async (): Promise<GoOnlineResult> => {
     if (!isRider) return "permission_denied";
@@ -230,6 +346,8 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
     if (!ok) return "permission_denied";
     setIsOnline(true);
     prevPositionRef.current = null;
+    /* Persist online state for auto-resume after reboot */
+    try { await AsyncStorage.setItem(STORAGE_KEY_IS_ONLINE, "true"); } catch {}
     if (Platform.OS === "web") {
       await startForegroundWatch();
     } else {
@@ -238,11 +356,8 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
         /* Also start foreground watch immediately since app is in foreground now */
         await startForegroundWatch();
       } catch (err) {
-        /* Bug 1 fix: startTracking failed — revert to offline and report error.
-           Note: we do NOT set locationPermission to "denied" here since this is
-           an operational GPS/system failure (not a permission denial — permissions
-           were already confirmed above). We only revert isOnline. */
         setIsOnline(false);
+        try { await AsyncStorage.removeItem(STORAGE_KEY_IS_ONLINE); } catch {}
         return "tracking_failed";
       }
     }
@@ -251,8 +366,11 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
 
   const goOffline = useCallback(async () => {
     setIsOnline(false);
+    setHasActiveTask(false);
     prevPositionRef.current = null;
     stopForegroundWatch();
+    /* Clear persisted online state */
+    try { await AsyncStorage.removeItem(STORAGE_KEY_IS_ONLINE); } catch {}
     if (Platform.OS !== "web") {
       await stopTracking();
     }
@@ -276,7 +394,7 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
 
   return (
     <RiderLocationContext.Provider
-      value={{ isOnline, goOnline, goOffline, toggleOnline, lastPosition, locationPermission }}
+      value={{ isOnline, hasActiveTask, goOnline, goOffline, toggleOnline, lastPosition, locationPermission }}
     >
       {children}
     </RiderLocationContext.Provider>

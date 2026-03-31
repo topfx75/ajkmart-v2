@@ -12,6 +12,10 @@ export const liveLocationsTable = pgTable("live_locations", {
 }, (t) => [
   /* Supports "find all online riders" lookup */
   index("live_locations_role_idx").on(t.role),
+  /* Composite spatial index: supports bounding-box pre-filter for proximity queries */
+  index("live_locations_lat_lng_idx").on(t.latitude, t.longitude),
+  /* Composite index: role + recency for fleet queries */
+  index("live_locations_role_updated_idx").on(t.role, t.updatedAt),
 ]);
 
 export const insertLiveLocationSchema = createInsertSchema(liveLocationsTable);
