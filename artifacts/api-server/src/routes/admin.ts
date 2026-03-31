@@ -437,6 +437,8 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "security_otp_cooldown_sec",     value: "60",  label: "OTP Resend Cooldown (seconds)",        category: "auth" },
   { key: "auth_social_google",            value: "off",  label: "Google Social Login (legacy toggle)",  category: "auth" },
   { key: "auth_social_facebook",          value: "off",  label: "Facebook Social Login (legacy toggle)",category: "auth" },
+  { key: "google_client_id",             value: "",     label: "Google OAuth Client ID",               category: "auth" },
+  { key: "facebook_app_id",              value: "",     label: "Facebook App ID",                      category: "auth" },
   { key: "auth_trusted_device_days",      value: "30",   label: "Trusted Device Expiry (days)",         category: "auth" },
   /* ═══════════════════  Ride Dispatch Engine  ═══════════════════ */
   { key: "dispatch_request_timeout_sec",      value: "30",   label: "Rider Accept Timeout (seconds)",                    category: "rides" },
@@ -3283,7 +3285,7 @@ router.get("/school-subscriptions", async (req, res) => {
    "Fresh" = updated within last 5 minutes.
 ══════════════════════════════════════════════════════════ */
 router.get("/live-riders", async (_req, res) => {
-  const settings = await getCachedSettings();
+  const settings = await getPlatformSettings();
   const staleTimeoutSec = parseInt(settings["gps_stale_timeout_sec"] ?? "300", 10);
   const STALE_MS = staleTimeoutSec * 1000;
   const cutoff   = new Date(Date.now() - STALE_MS);

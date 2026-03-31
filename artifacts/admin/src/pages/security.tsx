@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Shield, Save, RefreshCw, Info, AlertTriangle,
-  CheckCircle2, XCircle, Eye, EyeOff, Lock,
+  CheckCircle2, XCircle, Lock,
   KeyRound, FileText, Zap, Bike, BarChart3, Globe,
+  ShieldCheck, Loader2, Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
@@ -14,16 +15,14 @@ import { Toggle, Field, SecretInput } from "@/components/AdminShared";
 type SecTab = "auth" | "authmethods" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud";
 
 const SEC_TABS: { id: SecTab; label: string; emoji: string; active: string; desc: string }[] = [
-  { id: "auth",        label: "Auth & Sessions",  emoji: "🔐", active: "bg-indigo-600",  desc: "OTP bypass, MFA, login lockout, session durations" },
+  { id: "auth",        label: "Auth & Sessions",  emoji: "🔐", active: "bg-indigo-600",  desc: "OTP bypass, MFA, login lockout, session durations, live lockouts" },
   { id: "authmethods", label: "Auth Methods",      emoji: "🔑", active: "bg-cyan-600",    desc: "Per-role login method toggles: Phone OTP, Email OTP, Username/Password, Social, Magic Link, 2FA, Biometric" },
   { id: "ratelimit",   label: "Rate Limiting",     emoji: "🛡️", active: "bg-blue-600",    desc: "API throttling and VPN/TOR blocking" },
   { id: "gps",         label: "GPS & Location",    emoji: "📍", active: "bg-green-600",   desc: "Rider tracking, spoof detection, geofence" },
   { id: "passwords",   label: "Passwords",         emoji: "🔑", active: "bg-amber-600",   desc: "Password policy, JWT rotation, token expiry" },
   { id: "uploads",     label: "File Uploads",      emoji: "📁", active: "bg-teal-600",    desc: "Upload limits, allowed file types, compression" },
-  { id: "fraud",       label: "Fraud Detection",   emoji: "🚨", active: "bg-red-600",     desc: "Fake orders, IP auto-block, account limits, IP whitelist" },
+  { id: "fraud",       label: "Fraud Detection",   emoji: "🚨", active: "bg-red-600",     desc: "Fake orders, IP auto-block, live IP manager, account limits" },
 ];
-
-/* Toggle, Field, SecretInput imported from @/components/AdminShared */
 
 function SecPanel({ title, icon: Icon, color, children }: { title: string; icon: React.ElementType; color: string; children: React.ReactNode }) {
   return (
@@ -45,6 +44,25 @@ export default function SecurityPage() {
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
   const [secTab, setSecTab] = useState<SecTab>("auth");
 
+  /* ── Live Security State ── */
+  const [secDash,       setSecDash]       = useState<any>(null);
+  const [lockouts,      setLockouts]      = useState<any[]>([]);
+  const [blockedIPsList,setBlockedIPsList] = useState<string[]>([]);
+  const [secEvents,     setSecEvents]     = useState<any[]>([]);
+  const [newBlockIP,    setNewBlockIP]    = useState("");
+  const [liveLoading,   setLiveLoading]  = useState(false);
+
+  /* ── MFA / TOTP State ── */
+  const [mfaStatus,    setMfaStatus]    = useState<any>(null);
+  const [mfaSetupData, setMfaSetupData] = useState<any>(null);
+  const [mfaToken,     setMfaToken]     = useState("");
+  const [disableToken, setDisableToken] = useState("");
+  const [mfaLoading,   setMfaLoading]  = useState(false);
+
+  const adminToken  = localStorage.getItem("ajkmart_admin_token") || "";
+  const apiHeaders  = { "Content-Type": "application/json", "x-admin-token": adminToken };
+
+  /* ── Load platform settings ── */
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
@@ -61,6 +79,41 @@ export default function SecurityPage() {
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
+  /* ── Load live data (lockouts, blocked IPs, events, dashboard) ── */
+  const fetchLiveData = useCallback(async () => {
+    if (!adminToken) return;
+    setLiveLoading(true);
+    try {
+      const [dash, lockoutData, ipsData, eventsData] = await Promise.all([
+        fetch(`${window.location.origin}/api/admin/security-dashboard`, { headers: apiHeaders }).then(r => r.json()),
+        fetch(`${window.location.origin}/api/admin/login-lockouts`,     { headers: apiHeaders }).then(r => r.json()),
+        fetch(`${window.location.origin}/api/admin/blocked-ips`,        { headers: apiHeaders }).then(r => r.json()),
+        fetch(`${window.location.origin}/api/admin/security-events?limit=30`, { headers: apiHeaders }).then(r => r.json()),
+      ]);
+      setSecDash(dash);
+      setLockouts(lockoutData.lockouts ?? []);
+      setBlockedIPsList(ipsData.blocked ?? []);
+      setSecEvents(eventsData.events ?? []);
+    } catch { /* silently ignore — network may be unavailable */ }
+    setLiveLoading(false);
+  }, [adminToken]);
+
+  /* ── Load MFA status ── */
+  const fetchMfaStatus = useCallback(async () => {
+    if (!adminToken) return;
+    try {
+      const data = await fetch(`${window.location.origin}/api/admin/mfa/status`, { headers: apiHeaders }).then(r => r.json());
+      setMfaStatus(data);
+    } catch { /* ignore */ }
+  }, [adminToken]);
+
+  /* ── Auto-load live data when switching to auth or fraud tabs ── */
+  useEffect(() => {
+    if (secTab === "auth" || secTab === "fraud") fetchLiveData();
+    if (secTab === "auth") fetchMfaStatus();
+  }, [secTab, fetchLiveData, fetchMfaStatus]);
+
+  /* ── Platform settings handlers ── */
   const handleChange = (key: string, value: string) => {
     setLocalValues(prev => ({ ...prev, [key]: value }));
     setDirtyKeys(prev => { const n = new Set(prev); n.add(key); return n; });
@@ -80,6 +133,114 @@ export default function SecurityPage() {
     setSaving(false);
   };
 
+  /* ── Lockout management ── */
+  const unlockPhone = async (phone: string) => {
+    try {
+      await fetch(`${window.location.origin}/api/admin/login-lockouts/${encodeURIComponent(phone)}`, {
+        method: "DELETE", headers: apiHeaders,
+      });
+      toast({ title: "Account Unlocked", description: `${phone} has been unlocked.` });
+      fetchLiveData();
+    } catch {
+      toast({ title: "Error", description: "Failed to unlock account", variant: "destructive" });
+    }
+  };
+
+  /* ── IP Block management ── */
+  const blockIP = async () => {
+    const ip = newBlockIP.trim();
+    if (!ip) return;
+    const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
+    const ipv6 = /^[0-9a-fA-F:]+$/.test(ip);
+    if (!ipv4 && !ipv6) {
+      toast({ title: "Invalid IP", description: "Enter a valid IPv4 or IPv6 address.", variant: "destructive" });
+      return;
+    }
+    try {
+      await fetch(`${window.location.origin}/api/admin/blocked-ips`, {
+        method: "POST", headers: apiHeaders,
+        body: JSON.stringify({ ip, reason: "Manual block by admin" }),
+      });
+      setNewBlockIP("");
+      toast({ title: "IP Blocked", description: `${ip} has been blocked.` });
+      fetchLiveData();
+    } catch {
+      toast({ title: "Error", description: "Failed to block IP", variant: "destructive" });
+    }
+  };
+
+  const unblockIP = async (ip: string) => {
+    try {
+      await fetch(`${window.location.origin}/api/admin/blocked-ips/${encodeURIComponent(ip)}`, {
+        method: "DELETE", headers: apiHeaders,
+      });
+      toast({ title: "IP Unblocked", description: `${ip} has been unblocked.` });
+      fetchLiveData();
+    } catch {
+      toast({ title: "Error", description: "Failed to unblock IP", variant: "destructive" });
+    }
+  };
+
+  /* ── MFA management ── */
+  const startMfaSetup = async () => {
+    setMfaLoading(true);
+    try {
+      const data = await fetch(`${window.location.origin}/api/admin/mfa/setup`, {
+        method: "POST", headers: apiHeaders,
+      }).then(r => r.json());
+      if (data.secret) { setMfaSetupData(data); setMfaToken(""); }
+      else toast({ title: "Error", description: data.error ?? "Failed to start MFA setup", variant: "destructive" });
+    } catch {
+      toast({ title: "Error", description: "Network error", variant: "destructive" });
+    }
+    setMfaLoading(false);
+  };
+
+  const verifyMfaToken = async () => {
+    if (!mfaToken || mfaToken.length !== 6) {
+      toast({ title: "Invalid Code", description: "Enter the 6-digit code from your authenticator app.", variant: "destructive" });
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      const data = await fetch(`${window.location.origin}/api/admin/mfa/verify`, {
+        method: "POST", headers: apiHeaders, body: JSON.stringify({ token: mfaToken }),
+      }).then(r => r.json());
+      if (data.success) {
+        toast({ title: "MFA Activated!", description: "Two-factor authentication is now enabled." });
+        setMfaSetupData(null); setMfaToken(""); fetchMfaStatus();
+      } else {
+        toast({ title: "Invalid Code", description: data.error ?? "Wrong TOTP code. Try again.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Network error", variant: "destructive" });
+    }
+    setMfaLoading(false);
+  };
+
+  const disableMfa = async () => {
+    if (!disableToken || disableToken.length !== 6) {
+      toast({ title: "Code Required", description: "Enter your 6-digit TOTP code to disable MFA.", variant: "destructive" });
+      return;
+    }
+    setMfaLoading(true);
+    try {
+      const data = await fetch(`${window.location.origin}/api/admin/mfa/disable`, {
+        method: "DELETE", headers: apiHeaders, body: JSON.stringify({ token: disableToken }),
+      }).then(r => r.json());
+      if (data.success) {
+        toast({ title: "MFA Disabled", description: "Two-factor authentication has been disabled." });
+        setDisableToken(""); fetchMfaStatus();
+      } else {
+        toast({ title: "Error", description: data.error ?? "Failed to disable MFA", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Network error", variant: "destructive" });
+    }
+    setMfaLoading(false);
+  };
+
+  /* ── Helpers ── */
   const val   = (k: string, def = "")    => localValues[k] ?? def;
   const dirty = (k: string)              => dirtyKeys.has(k);
   const tog   = (k: string, def = "off") => (localValues[k] ?? def) === "on";
@@ -149,6 +310,7 @@ export default function SecurityPage() {
       {/* ─── Auth & Sessions ─── */}
       {secTab === "auth" && (
         <div className="space-y-4">
+          {/* DANGER ZONE */}
           <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-5 space-y-3">
             <div className="flex items-center gap-2 text-red-700 mb-1">
               <AlertTriangle className="w-4 h-4" />
@@ -157,10 +319,10 @@ export default function SecurityPage() {
             <T k="security_otp_bypass" label="OTP Bypass Mode" sub="All OTPs auto-accept (NEVER enable in production)" danger />
           </div>
 
-          <SecPanel title="Multi-Factor Authentication" icon={Shield} color="text-indigo-700">
+          <SecPanel title="Multi-Factor Authentication (Policy)" icon={Shield} color="text-indigo-700">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <T k="security_mfa_required" label="Two-Factor Auth for Admin Login" sub="Adds TOTP code requirement" />
-              <T k="security_multi_device" label="Allow Multiple Device Logins"    sub="One session or many" />
+              <T k="security_mfa_required" label="Two-Factor Auth for Admin Login" sub="Adds TOTP code requirement at every login" />
+              <T k="security_multi_device" label="Allow Multiple Device Logins"    sub="One active session or concurrent devices" />
             </div>
           </SecPanel>
 
@@ -181,6 +343,133 @@ export default function SecurityPage() {
               <N k="security_login_max_attempts" label="Max Failed Login Attempts" placeholder="5"  hint="Before account lockout" />
               <N k="security_lockout_minutes"    label="Lockout Duration"          suffix="min"     placeholder="30" hint="0 = permanent until admin unlocks" />
             </div>
+          </SecPanel>
+
+          {/* ── Live: Locked Accounts ── */}
+          <SecPanel title="Live Account Lockouts" icon={Users} color="text-indigo-700">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-muted-foreground">Real-time locked accounts due to failed login / OTP attempts</p>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={fetchLiveData} disabled={liveLoading}>
+                <RefreshCw className={`w-3 h-3 ${liveLoading ? "animate-spin" : ""}`} /> Refresh
+              </Button>
+            </div>
+            {liveLoading && lockouts.length === 0 ? (
+              <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+              </div>
+            ) : lockouts.length === 0 ? (
+              <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-700">
+                <CheckCircle2 className="w-4 h-4" /> No accounts currently locked. All clear!
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {lockouts.map(l => (
+                  <div key={l.phone} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-xl">
+                    <div>
+                      <p className="text-xs font-bold font-mono text-red-800">{l.phone}</p>
+                      <p className="text-[10px] text-red-600 mt-0.5">
+                        {l.minutesLeft ? `Locked — ${l.minutesLeft} min remaining` : `${l.attempts} failed attempts`}
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300 hover:bg-green-50"
+                      onClick={() => unlockPhone(l.phone)}>Unlock</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SecPanel>
+
+          {/* ── MFA Setup & Management ── */}
+          <SecPanel title="Admin MFA Setup & Management" icon={ShieldCheck} color="text-indigo-700">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex gap-2 mb-4">
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>Set up TOTP-based two-factor authentication for your admin account using Google Authenticator, Authy, or any compatible app.</span>
+            </div>
+
+            {/* MFA Active */}
+            {mfaStatus?.enabled ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-300 rounded-xl">
+                  <ShieldCheck className="w-5 h-5 text-green-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-green-800">MFA is Active</p>
+                    <p className="text-xs text-green-700 mt-0.5">Your admin account is protected with TOTP two-factor authentication.</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">To disable MFA, enter a valid 6-digit code from your authenticator app:</p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={disableToken}
+                      onChange={e => setDisableToken(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="6-digit TOTP code"
+                      maxLength={6}
+                      className="h-9 text-sm font-mono w-40"
+                      onKeyDown={e => e.key === "Enter" && disableMfa()}
+                    />
+                    <Button size="sm" variant="destructive" onClick={disableMfa} disabled={mfaLoading || disableToken.length !== 6}
+                      className="h-9 gap-1.5">
+                      {mfaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                      Disable MFA
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : mfaSetupData ? (
+              /* MFA Setup in progress */
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-5 items-start">
+                  <div className="flex-shrink-0 bg-white border-2 border-indigo-200 rounded-xl p-2">
+                    <img src={mfaSetupData.qrCode} alt="MFA QR Code" className="w-36 h-36 rounded" />
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    <p className="text-xs font-bold text-foreground">Step 1 — Scan with your authenticator app</p>
+                    <p className="text-xs text-muted-foreground">Open Google Authenticator, Authy, or any TOTP app and scan the QR code on the left.</p>
+                    <div className="bg-muted/60 rounded-lg p-2">
+                      <p className="text-[10px] text-muted-foreground mb-1 font-medium">Manual setup key:</p>
+                      <p className="text-xs font-mono font-bold text-foreground break-all">{mfaSetupData.secret}</p>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-foreground mb-2">Step 2 — Enter the 6-digit code to verify and activate:</p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={mfaToken}
+                      onChange={e => setMfaToken(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000"
+                      maxLength={6}
+                      className="h-9 text-sm font-mono w-32 tracking-widest"
+                      onKeyDown={e => e.key === "Enter" && verifyMfaToken()}
+                    />
+                    <Button size="sm" onClick={verifyMfaToken} disabled={mfaLoading || mfaToken.length !== 6}
+                      className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5">
+                      {mfaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                      Verify & Activate
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setMfaSetupData(null); setMfaToken(""); }} className="h-9">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* MFA not set up */
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-amber-800">MFA Not Configured</p>
+                    <p className="text-xs text-amber-700 mt-0.5">Your admin account does not have two-factor authentication. Set it up for stronger security.</p>
+                  </div>
+                </div>
+                <Button size="sm" onClick={startMfaSetup} disabled={mfaLoading}
+                  className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                  {mfaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                  Set Up MFA (TOTP)
+                </Button>
+              </div>
+            )}
           </SecPanel>
         </div>
       )}
@@ -227,12 +516,11 @@ export default function SecurityPage() {
 
             function toggleRole(settingKey: string, role: string, current: Record<string, boolean>) {
               const updated = { ...current, [role]: !current[role] };
-              const jsonVal = JSON.stringify({
+              handleChange(settingKey, JSON.stringify({
                 customer: updated.customer ? "on" : "off",
                 rider:    updated.rider    ? "on" : "off",
                 vendor:   updated.vendor   ? "on" : "off",
-              });
-              handleChange(settingKey, jsonVal);
+              }));
             }
 
             return (
@@ -278,7 +566,7 @@ export default function SecurityPage() {
           <SecPanel title="Social Login (Global)" icon={Globe} color="text-cyan-700">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex gap-2 mb-3">
               <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>Social logins require Client ID / App ID to be configured below. The per-role toggles above control availability; these are the global legacy toggles.</span>
+              <span>Social logins require Client ID / App ID configured below. Per-role toggles above control availability.</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
               <Toggle label="Google Login (legacy)" sub="Global on/off for Google Sign-In" checked={tog("auth_social_google")}
@@ -289,7 +577,7 @@ export default function SecurityPage() {
 
             {(() => {
               const GLOBAL_AUTH_KEYS: { key: string; label: string; sub: string }[] = [
-                { key: "auth_google_enabled",   label: "Google Login (per-role)", sub: "Per-role control for Google Sign-In" },
+                { key: "auth_google_enabled",   label: "Google Login (per-role)",   sub: "Per-role control for Google Sign-In" },
                 { key: "auth_facebook_enabled", label: "Facebook Login (per-role)", sub: "Per-role control for Facebook Login" },
               ];
               const ROLES = ["customer", "rider", "vendor"] as const;
@@ -299,21 +587,25 @@ export default function SecurityPage() {
                 rider:    { on: "bg-green-500",  off: "bg-gray-300", bg: "text-green-700" },
                 vendor:   { on: "bg-orange-500", off: "bg-gray-300", bg: "text-orange-700" },
               };
-              function parseRoleVal(raw: string | undefined): Record<string, boolean> {
+              function parseRoleValLocal(raw: string | undefined): Record<string, boolean> {
                 if (!raw) return { customer: false, rider: false, vendor: false };
                 try {
                   const parsed = JSON.parse(raw) as Record<string, string>;
                   return { customer: parsed.customer === "on", rider: parsed.rider === "on", vendor: parsed.vendor === "on" };
                 } catch { return { customer: raw === "on", rider: raw === "on", vendor: raw === "on" }; }
               }
-              function toggleRole(settingKey: string, role: string, current: Record<string, boolean>) {
+              function toggleRoleLocal(settingKey: string, role: string, current: Record<string, boolean>) {
                 const updated = { ...current, [role]: !current[role] };
-                handleChange(settingKey, JSON.stringify({ customer: updated.customer ? "on" : "off", rider: updated.rider ? "on" : "off", vendor: updated.vendor ? "on" : "off" }));
+                handleChange(settingKey, JSON.stringify({
+                  customer: updated.customer ? "on" : "off",
+                  rider:    updated.rider    ? "on" : "off",
+                  vendor:   updated.vendor   ? "on" : "off",
+                }));
               }
               return (
                 <div className="space-y-3">
                   {GLOBAL_AUTH_KEYS.map(({ key, label, sub }) => {
-                    const roles = parseRoleVal(localValues[key]);
+                    const roles = parseRoleValLocal(localValues[key]);
                     const isDirtyK = dirtyKeys.has(key);
                     return (
                       <div key={key} className={`p-3.5 rounded-xl border transition-all ${isDirtyK ? "ring-2 ring-amber-300 border-amber-200 bg-amber-50/30" : "border-border bg-white hover:bg-muted/20"}`}>
@@ -325,7 +617,7 @@ export default function SecurityPage() {
                           {ROLES.map(role => {
                             const on = roles[role]; const colors = ROLE_COLORS[role];
                             return (
-                              <button key={role} onClick={() => toggleRole(key, role, roles)}
+                              <button key={role} onClick={() => toggleRoleLocal(key, role, roles)}
                                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all border ${on ? `${colors.bg} bg-opacity-10 border-current` : "text-gray-400 bg-gray-50 border-gray-200"}`}>
                                 <div className={`w-3 h-3 rounded-full ${on ? colors.on : colors.off}`} />
                                 {ROLE_LABELS[role]}
@@ -363,7 +655,7 @@ export default function SecurityPage() {
               <Field label="reCAPTCHA Min Score" value={val("recaptcha_min_score", "0.5")} onChange={v => handleChange("recaptcha_min_score", v)}
                 isDirty={dirty("recaptcha_min_score")} type="number" placeholder="0.5" hint="0.0 to 1.0 (higher = stricter)" />
               <Field label="OTP Resend Cooldown" value={val("security_otp_cooldown_sec", "60")} onChange={v => handleChange("security_otp_cooldown_sec", v)}
-                isDirty={dirty("security_otp_cooldown_sec")} type="number" suffix="sec" placeholder="60" hint="Seconds between OTP sends" />
+                isDirty={dirty("security_otp_cooldown_sec")} type="number" suffix="sec" placeholder="60" hint="Seconds between OTP resends" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               <Field label="Trusted Device Expiry" value={val("auth_trusted_device_days", "30")} onChange={v => handleChange("auth_trusted_device_days", v)}
@@ -386,7 +678,7 @@ export default function SecurityPage() {
               <N k="security_rate_admin"  label="Admin Panel"             suffix="req/min" placeholder="60" />
               <N k="security_rate_rider"  label="Rider App API"           suffix="req/min" placeholder="200" />
               <N k="security_rate_vendor" label="Vendor App API"          suffix="req/min" placeholder="150" />
-              <N k="security_rate_burst"  label="Burst Allowance"         suffix="req"     placeholder="20"  hint="Extra requests allowed before block" />
+              <N k="security_rate_burst"  label="Burst Allowance"         suffix="req"     placeholder="20" hint="Extra requests before block" />
             </div>
           </SecPanel>
 
@@ -522,15 +814,15 @@ export default function SecurityPage() {
               <T k="security_scan_uploads"    label="Virus/Malware Scan"   sub="Scan uploads before saving (requires ClamAV)" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <N k="security_max_file_mb" label="Max File Size"        suffix="MB" placeholder="5"  hint="Per upload" />
-              <N k="security_img_quality" label="Compression Quality"  suffix="%" placeholder="80" hint="80% = good balance" />
+              <N k="security_max_file_mb" label="Max File Size"       suffix="MB" placeholder="5"  hint="Per upload" />
+              <N k="security_img_quality" label="Compression Quality" suffix="%"  placeholder="80" hint="80% = good balance" />
             </div>
           </SecPanel>
 
           <SecPanel title="Allowed File Types" icon={FileText} color="text-teal-700">
             <F k="security_allowed_types" label="Allowed Extensions (comma-separated)" placeholder="jpg,jpeg,png,pdf"
               mono hint="Reject all other file types at the upload API layer" />
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 mt-2">
               {val("security_allowed_types", "jpg,jpeg,png,pdf").split(",").map(t => t.trim()).filter(Boolean).map(ext => (
                 <span key={ext} className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-bold uppercase">{ext}</span>
               ))}
@@ -572,6 +864,100 @@ export default function SecurityPage() {
             </div>
           </SecPanel>
 
+          {/* Fraud Risk Score Info */}
+          <SecPanel title="Fraud Risk Signals" icon={Shield} color="text-red-700">
+            <div className="bg-muted/50 rounded-xl p-4 border border-border">
+              <p className="text-xs font-semibold text-foreground mb-3">Risk signals the system monitors:</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { label: "Multiple orders cancelled without payment",   risk: "HIGH" },
+                  { label: "COD orders placed & rejected repeatedly",     risk: "HIGH" },
+                  { label: "Same phone number on multiple accounts",      risk: "MED" },
+                  { label: "Orders placed from known VPN/proxy IPs",      risk: "MED" },
+                  { label: "GPS location changing across cities rapidly",  risk: "MED" },
+                  { label: "New account placing high-value orders day 1", risk: "LOW" },
+                ].map(({ label, risk }) => (
+                  <div key={label} className="flex items-start gap-2 text-xs">
+                    <span className={`px-1.5 py-0.5 rounded font-bold flex-shrink-0 text-[10px] ${
+                      risk === "HIGH" ? "bg-red-100 text-red-700" : risk === "MED" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                    }`}>{risk}</span>
+                    <span className="text-muted-foreground">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </SecPanel>
+
+          {/* ── Live: IP Block Manager ── */}
+          <SecPanel title="Live IP Block Manager" icon={Shield} color="text-red-700">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-muted-foreground">Manually block or unblock IP addresses in real-time</p>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={fetchLiveData} disabled={liveLoading}>
+                <RefreshCw className={`w-3 h-3 ${liveLoading ? "animate-spin" : ""}`} /> Refresh
+              </Button>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <Input
+                value={newBlockIP}
+                onChange={e => setNewBlockIP(e.target.value.trim())}
+                placeholder="Enter IP address e.g. 192.168.1.100"
+                className="h-8 text-xs font-mono flex-1"
+                onKeyDown={e => e.key === "Enter" && blockIP()}
+              />
+              <Button size="sm" className="h-8 text-xs bg-red-600 hover:bg-red-700 text-white" onClick={blockIP} disabled={!newBlockIP.trim()}>
+                Block IP
+              </Button>
+            </div>
+            {liveLoading && blockedIPsList.length === 0 ? (
+              <div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+              </div>
+            ) : blockedIPsList.length === 0 ? (
+              <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-700">
+                <CheckCircle2 className="w-4 h-4" /> No IPs currently blocked.
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                {blockedIPsList.map(ip => (
+                  <div key={ip} className="flex items-center justify-between px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                    <span className="text-xs font-mono font-bold text-red-800">{ip}</span>
+                    <Button size="sm" variant="ghost" className="h-6 text-xs text-green-700 hover:text-green-800"
+                      onClick={() => unblockIP(ip)}>Unblock</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SecPanel>
+
+          {/* ── Recent Security Events ── */}
+          {secEvents.length > 0 && (
+            <SecPanel title="Recent Security Events" icon={AlertTriangle} color="text-red-700">
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                {secEvents.slice(0, 20).map((e, i) => (
+                  <div key={i} className={`flex items-start gap-2 p-2 rounded-lg text-xs border ${
+                    e.severity === "critical" ? "bg-red-50 border-red-200" :
+                    e.severity === "high"     ? "bg-orange-50 border-orange-200" :
+                    e.severity === "medium"   ? "bg-amber-50 border-amber-200" :
+                    "bg-gray-50 border-gray-200"
+                  }`}>
+                    <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] flex-shrink-0 mt-0.5 uppercase ${
+                      e.severity === "critical" ? "bg-red-600 text-white" :
+                      e.severity === "high"     ? "bg-orange-500 text-white" :
+                      e.severity === "medium"   ? "bg-amber-500 text-white" :
+                      "bg-gray-400 text-white"
+                    }`}>{e.severity}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground truncate">{e.type.replace(/_/g, " ")}</p>
+                      <p className="text-muted-foreground truncate">{e.details}</p>
+                      <p className="text-[10px] text-muted-foreground/70">{new Date(e.timestamp).toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SecPanel>
+          )}
+
+          {/* Admin Access & Audit Log settings */}
           <SecPanel title="Admin Access & Audit Log" icon={Shield} color="text-red-700">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
               <T k="security_audit_log"    label="Admin Action Audit Log" sub="Log all admin changes with timestamp & IP" />
@@ -580,14 +966,13 @@ export default function SecurityPage() {
             <F k="security_admin_ip_whitelist" label="Admin IP Whitelist (comma-separated, blank = allow all)"
               placeholder="103.25.0.1, 123.123.123.123" mono
               hint="Only these IPs can access the admin panel. Leave blank for no restriction." />
-            {val("security_admin_ip_whitelist") && (
+            {val("security_admin_ip_whitelist") ? (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {val("security_admin_ip_whitelist").split(",").map(ip => ip.trim()).filter(Boolean).map(ip => (
                   <span key={ip} className="px-2.5 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-mono font-bold">{ip}</span>
                 ))}
               </div>
-            )}
-            {!val("security_admin_ip_whitelist") && (
+            ) : (
               <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 mt-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                 <span>No IP restriction set — admin panel accessible from any IP.</span>
