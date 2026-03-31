@@ -17,6 +17,8 @@ import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
 import { API_BASE } from "@/utils/api";
@@ -24,39 +26,42 @@ import { staticMapUrl } from "@/hooks/useMaps";
 
 const C = Colors.light;
 
-const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",             label: "Pending" },
-  confirmed:        { color: "#2563EB", bg: "#DBEAFE", icon: "checkmark-circle-outline", label: "Confirmed" },
-  preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",             label: "Preparing" },
-  ready:            { color: "#6366F1", bg: "#E0E7FF", icon: "bag-check-outline",        label: "Ready" },
-  picked_up:        { color: "#0891B2", bg: "#CFFAFE", icon: "cube-outline",             label: "Picked Up" },
-  out_for_delivery: { color: "#059669", bg: "#D1FAE5", icon: "bicycle-outline",          label: "On the Way" },
-  delivered:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   label: "Delivered" },
-  cancelled:        { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",     label: "Cancelled" },
-  accepted:         { color: "#059669", bg: "#D1FAE5", icon: "checkmark-circle-outline", label: "Accepted" },
-  arrived:          { color: "#0891B2", bg: "#CFFAFE", icon: "location-outline",         label: "Arrived" },
-  in_transit:       { color: "#7C3AED", bg: "#EDE9FE", icon: "car-outline",              label: "In Transit" },
-  completed:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   label: "Completed" },
-  searching:        { color: "#D97706", bg: "#FEF3C7", icon: "search-outline",           label: "Searching" },
-  bargaining:       { color: "#2563EB", bg: "#DBEAFE", icon: "chatbubbles-outline",      label: "Bargaining" },
-};
-
-const STEPS = ["pending", "confirmed", "preparing", "out_for_delivery", "delivered"];
-const STEP_LABELS = ["Placed", "Confirmed", "Preparing", "On Way", "Delivered"];
+const STATUS_STEPS = ["pending", "confirmed", "preparing", "out_for_delivery", "delivered"];
 const PARCEL_STEPS = ["pending", "accepted", "in_transit", "completed"];
-const PARCEL_STEP_LABELS = ["Placed", "Accepted", "In Transit", "Delivered"];
 
 const LIVE_TRACKING_STATUSES = ["picked_up", "out_for_delivery", "in_transit", "accepted", "arrived"];
 
 export default function OrderDetailScreen() {
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
   const { orderId, type } = useLocalSearchParams<{ orderId: string; type?: string }>();
   const isParcel = type === "parcel";
   const isRide = type === "ride";
   const { token } = useAuth();
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
+
+  const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
+    pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",             label: T("pending") },
+    confirmed:        { color: "#2563EB", bg: "#DBEAFE", icon: "checkmark-circle-outline", label: T("confirmed") },
+    preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",             label: T("preparing") },
+    ready:            { color: "#6366F1", bg: "#E0E7FF", icon: "bag-check-outline",        label: T("statusReady") },
+    picked_up:        { color: "#0891B2", bg: "#CFFAFE", icon: "cube-outline",             label: T("pickedUp") },
+    out_for_delivery: { color: "#059669", bg: "#D1FAE5", icon: "bicycle-outline",          label: T("onTheWay") },
+    delivered:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   label: T("delivered") },
+    cancelled:        { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",     label: T("cancelled") },
+    accepted:         { color: "#059669", bg: "#D1FAE5", icon: "checkmark-circle-outline", label: T("statusAccepted") },
+    arrived:          { color: "#0891B2", bg: "#CFFAFE", icon: "location-outline",         label: T("arrived") },
+    in_transit:       { color: "#7C3AED", bg: "#EDE9FE", icon: "car-outline",              label: T("inTransit") },
+    completed:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   label: T("completed") },
+    searching:        { color: "#D97706", bg: "#FEF3C7", icon: "search-outline",           label: T("searching") },
+    bargaining:       { color: "#2563EB", bg: "#DBEAFE", icon: "chatbubbles-outline",      label: T("bargaining") },
+  };
+
+  const STEP_LABELS = [T("statusPlaced"), T("confirmed"), T("preparing"), T("statusOnWay"), T("delivered")];
+  const PARCEL_STEP_LABELS = [T("statusPlaced"), T("statusAccepted"), T("inTransit"), T("delivered")];
   const [order, setOrder] = useState<any>(null);
   const [serverNow, setServerNow] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
@@ -142,7 +147,7 @@ export default function OrderDetailScreen() {
         }
       } catch {
         if (mountedRef.current) {
-          showToast(isParcel ? "Could not load parcel details" : "Could not load order details", "error");
+          showToast(isParcel ? T("parcelLoadError") : T("orderLoadError"), "error");
         }
       }
       if (mountedRef.current) setLoading(false);
@@ -205,11 +210,11 @@ export default function OrderDetailScreen() {
   }
 
   const RIDE_STEPS = ["searching", "accepted", "arrived", "in_transit", "completed"];
-  const RIDE_STEP_LABELS = ["Searching", "Accepted", "Arrived", "In Transit", "Completed"];
+  const RIDE_STEP_LABELS = [T("searching"), T("statusAccepted"), T("arrived"), T("inTransit"), T("completed")];
 
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG["pending"]!;
   const isActive = !["delivered", "cancelled", "completed"].includes(order.status);
-  const activeSteps = isParcel ? PARCEL_STEPS : isRide ? RIDE_STEPS : STEPS;
+  const activeSteps = isParcel ? PARCEL_STEPS : isRide ? RIDE_STEPS : STATUS_STEPS;
   const activeStepLabels = isParcel ? PARCEL_STEP_LABELS : isRide ? RIDE_STEP_LABELS : STEP_LABELS;
   const stepIdx = activeSteps.indexOf(order.status);
   const isFood = order.type === "food";
@@ -525,7 +530,7 @@ export default function OrderDetailScreen() {
           token={token}
           onClose={() => setCancelTarget(null)}
           onDone={(result) => {
-            showToast("Order cancelled successfully.", "success");
+            showToast(T("orderCancelledSuccess"), "success");
             setOrder((prev: any) => prev ? { ...prev, status: "cancelled" } : prev);
           }}
         />

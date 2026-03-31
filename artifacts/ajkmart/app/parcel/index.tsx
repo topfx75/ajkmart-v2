@@ -43,12 +43,20 @@ interface ParcelType {
   baseFare: number;
 }
 
-const PARCEL_TYPES: ParcelType[] = [
-  { id: "document",    label: "Document",     emoji: "📄", desc: "Papers, certificates, files", baseFare: 150 },
-  { id: "clothes",     label: "Clothes",      emoji: "👕", desc: "Garments, accessories",       baseFare: 200 },
-  { id: "electronics", label: "Electronics",  emoji: "📱", desc: "Phones, gadgets, devices",    baseFare: 350 },
-  { id: "food",        label: "Food/Gift",    emoji: "🎁", desc: "Packed food, gift items",     baseFare: 180 },
-  { id: "other",       label: "Other",        emoji: "📦", desc: "Any other parcel",            baseFare: 250 },
+const DEFAULT_PARCEL_FARES: Record<string, number> = {
+  document:    150,
+  clothes:     200,
+  electronics: 350,
+  food:        180,
+  other:       250,
+};
+
+const PARCEL_TYPE_DEFS: Omit<ParcelType, "baseFare">[] = [
+  { id: "document",    label: "Document",    emoji: "📄", desc: "Papers, certificates, files" },
+  { id: "clothes",     label: "Clothes",     emoji: "👕", desc: "Garments, accessories" },
+  { id: "electronics", label: "Electronics", emoji: "📱", desc: "Phones, gadgets, devices" },
+  { id: "food",        label: "Food/Gift",   emoji: "🎁", desc: "Packed food, gift items" },
+  { id: "other",       label: "Other",       emoji: "📦", desc: "Any other parcel" },
 ];
 
 const steps = ["Sender", "Receiver", "Parcel", "Payment"];
@@ -79,7 +87,7 @@ const PARCEL_DRAFT_KEY = "parcel_wizard_draft";
 
 function ParcelScreenInner() {
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
@@ -88,6 +96,12 @@ function ParcelScreenInner() {
   const appName = platformConfig.platform.appName;
   const inMaintenance = platformConfig.appStatus === "maintenance";
   const parcelEnabled = platformConfig.features.parcel;
+
+  const parcelFaresFromConfig: Record<string, number> = platformConfig.parcelFares ?? {};
+  const PARCEL_TYPES: ParcelType[] = PARCEL_TYPE_DEFS.map(pt => ({
+    ...pt,
+    baseFare: parcelFaresFromConfig[pt.id] ?? DEFAULT_PARCEL_FARES[pt.id] ?? platformConfig.deliveryFee.parcel,
+  }));
 
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -563,7 +577,7 @@ function ParcelScreenInner() {
           </View>
         )}
 
-        <View style={{ height: 120 }} />
+        <View style={{ height: Math.max(insets.bottom + 80, 120) }} />
       </ScrollView>
 
       <View style={[ss.navBar, { paddingBottom: insets.bottom + 12 }]}>

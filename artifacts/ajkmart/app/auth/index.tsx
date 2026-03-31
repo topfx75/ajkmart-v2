@@ -58,7 +58,7 @@ export default function AuthScreen() {
   const authCfg = platformCfg.auth;
   const appName = platformCfg.platform.appName;
   const appTagline = platformCfg.platform.appTagline;
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
 
   const [method, setMethod] = useState<LoginMethod>("phone");
   const [step, setStep] = useState<Step>("method");

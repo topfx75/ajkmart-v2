@@ -96,7 +96,7 @@ function MedCard({ med, qty, onAdd, onRemove }: {
 
 function PharmacyScreenInner() {
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
   const { user, updateUser, token } = useAuth();
   const { items: globalCartItems, addItem: addToGlobalCart, removeItem: removeFromGlobalCart, updateQuantity, clearCart } = useCart();
   const { showToast } = useToast();
@@ -471,7 +471,7 @@ function PharmacyScreenInner() {
             />
           ))
         )}
-        <View style={{ height: cartCount > 0 ? 100 : 24 }} />
+        <View style={{ height: cartCount > 0 ? Math.max(insets.bottom + 80, 100) : Math.max(insets.bottom, 24) }} />
       </ScrollView>
 
       {cartCount > 0 && (

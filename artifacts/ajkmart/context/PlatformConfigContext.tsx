@@ -67,6 +67,7 @@ export interface PlatformConfig {
     freeEnabled: boolean;
     freeDeliveryAbove: number;
   };
+  parcelFares: Record<string, number>;
   rides: {
     bikeBaseFare: number;
     bikePerKm: number;
@@ -200,6 +201,7 @@ const DEFAULT: PlatformConfig = {
     mart: 80, food: 60, pharmacy: 50, parcel: 100,
     parcelPerKg: 40, freeEnabled: true, freeDeliveryAbove: 1000,
   },
+  parcelFares: {} as Record<string, number>,
   rides: {
     bikeBaseFare: 15, bikePerKm: 8, bikeMinFare: 50,
     carBaseFare: 25, carPerKm: 12, carMinFare: 80,
@@ -354,6 +356,9 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           freeEnabled:      raw.deliveryFee?.freeEnabled       ?? DEFAULT.deliveryFee.freeEnabled,
           freeDeliveryAbove: raw.deliveryFee?.freeDeliveryAbove ?? raw.platform?.freeDeliveryAbove ?? DEFAULT.deliveryFee.freeDeliveryAbove,
         },
+        parcelFares: (raw.parcelFares && typeof raw.parcelFares === "object" && !Array.isArray(raw.parcelFares))
+          ? raw.parcelFares as Record<string, number>
+          : DEFAULT.parcelFares,
         rides: {
           bikeBaseFare:    raw.rides?.bikeBaseFare    ?? DEFAULT.rides.bikeBaseFare,
           bikePerKm:       raw.rides?.bikePerKm       ?? DEFAULT.rides.bikePerKm,

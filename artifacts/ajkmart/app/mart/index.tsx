@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   Image,
@@ -144,11 +145,11 @@ function ProductCard({ product }: { product: any }) {
 
 function MartScreenInner() {
   const insets = useSafeAreaInsets();
-  const { itemCount, cartType } = useCart();
+  const { itemCount, cartType, clearCart } = useCart();
   const showCartBanner = itemCount > 0 && cartType === "food";
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState<string | undefined>(undefined);
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
   const { focus } = useLocalSearchParams<{ focus?: string }>();
   const searchInputRef = useRef<TextInput>(null);
   useEffect(() => {
@@ -218,8 +219,18 @@ function MartScreenInner() {
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#92400E" }}>Food cart active</Text>
             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#92400E" }}>Adding Mart items will clear your food cart</Text>
           </View>
-          <Pressable onPress={() => router.push("/cart")} style={{ backgroundColor: "#D97706", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" }}>View Cart</Text>
+          <Pressable
+            onPress={() => Alert.alert(
+              "Clear Food Cart?",
+              "Your food cart will be cleared so you can shop from Mart. Continue?",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Clear & Continue", style: "destructive", onPress: () => clearCart() },
+              ]
+            )}
+            style={{ backgroundColor: "#D97706", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+          >
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" }}>Clear Cart</Text>
           </Pressable>
         </View>
       )}
@@ -312,7 +323,7 @@ function MartScreenInner() {
           </>
         )}
 
-        <View style={{ height: Platform.OS === "web" ? 34 : 20 }} />
+        <View style={{ height: Math.max(insets.bottom, Platform.OS === "web" ? 34 : 20) }} />
       </ScrollView>
     </View>
   );

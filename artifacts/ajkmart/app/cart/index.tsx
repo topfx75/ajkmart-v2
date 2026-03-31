@@ -23,6 +23,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { createOrder } from "@workspace/api-client-react";
 import { API_BASE } from "@/utils/api";
 
@@ -122,6 +124,8 @@ export default function CartScreen() {
   const { items, total, cartType, updateQuantity, clearCart, restoreCart, addItem, validateCart, isValidating } = useCart();
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const appName    = platformConfig.platform.appName;
   const orderRules = platformConfig.orderRules;
   const finance    = platformConfig.finance;
@@ -210,7 +214,7 @@ export default function CartScreen() {
               if (!mountedRef.current) return;
               setGwStep("input");
               if (oid) await cancelPendingOrder(oid);
-              showToast(d.message || "Payment was not successful. Please try again.", "error");
+              showToast(d.message || T("paymentNotSuccessful"), "error");
             }
           } catch {}
         }, 3000);
@@ -219,7 +223,7 @@ export default function CartScreen() {
     return () => sub.remove();
   }, [gwStep, gwBackgrounded, payMethod, clearCart, showToast]);
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
   const deliveryFeeConfig = platformConfig.deliveryFee;
   const freeDeliveryAbove = platformConfig.deliveryFee.freeDeliveryAbove;
   const freeDeliveryEnabled = platformConfig.deliveryFee.freeEnabled;
@@ -308,10 +312,10 @@ export default function CartScreen() {
         setPromoCode(null);
         setPromoDiscount(0);
         setPromoApplied(false);
-        showToast("Promo code is no longer valid — removed", "error");
+        showToast(T("promoInvalidRemoved"), "error");
       }
     } catch {
-      showToast("Could not verify promo code — please try again", "error");
+      showToast(T("promoNetworkError"), "error");
       setPromoCode(null);
       setPromoDiscount(0);
       setPromoApplied(false);
@@ -336,15 +340,15 @@ export default function CartScreen() {
         setPromoDiscount(data.discount);
         setPromoApplied(true);
         setPromoError(null);
-        showToast(`Promo code applied! Rs. ${data.discount} discount received`, "success");
+        showToast(`${T("promoApplied")} Rs. ${data.discount} discount received`, "success");
       } else {
         setPromoCode(null);
         setPromoDiscount(0);
         setPromoApplied(false);
-        setPromoError(data.error || "Invalid promo code");
+        setPromoError(data.error || T("promoInvalid"));
       }
     } catch {
-      setPromoError("Network error — please try again");
+      setPromoError(T("promoNetworkErrRetry"));
     } finally {
       setPromoLoading(false);
     }
@@ -402,16 +406,26 @@ export default function CartScreen() {
 
   const handleCheckout = async () => {
     if (loading || isValidating) return;
-    if (!user) { showToast("Please log in to place an order", "error"); return; }
-    if (items.length === 0) { showToast("Your cart is empty", "error"); return; }
+    if (!user) { showToast(T("pleaseLogin"), "error"); return; }
+    if (items.length === 0) { showToast(T("cartEmpty"), "error"); return; }
     if (cartType === "pharmacy") { router.push("/pharmacy"); return; }
     if (!deliveryLine) {
-      showToast("Please select a delivery address", "error");
+      showToast(T("selectDeliveryAddress"), "error");
       setShowAddrPicker(true);
       return;
     }
     if (selectedAddr && !selectedAddr.city?.trim()) {
-      showToast("Your delivery address is missing a city. Please update it before checking out.", "error");
+      Alert.alert(
+        T("cityMissingTitle"),
+        T("cityMissingError"),
+        [
+          { text: T("cancel"), style: "cancel" },
+          {
+            text: T("editAddress"),
+            onPress: () => router.push({ pathname: "/(tabs)/profile", params: { section: "addresses" } }),
+          },
+        ]
+      );
       return;
     }
     const serviceableCities = orderRules.serviceableCities;
@@ -466,7 +480,7 @@ export default function CartScreen() {
       }
       setLoading(true);
       try { await placeOrder("wallet"); }
-      catch (e: any) { showToast(e.message || "Could not place order.", "error"); }
+      catch (e: any) { showToast(e.message || T("couldNotPlaceOrder"), "error"); }
       setLoading(false);
       return;
     }
@@ -480,13 +494,13 @@ export default function CartScreen() {
 
     setLoading(true);
     try { await placeOrder("cash"); }
-    catch (e: any) { showToast(e.message || "Could not place order. Please try again.", "error"); }
+    catch (e: any) { showToast(e.message || T("couldNotPlaceOrderRetry"), "error"); }
     setLoading(false);
   };
 
   const handleGwPay = async () => {
     if (!gwMobile || gwMobile.replace(/\D/g, "").length < 10) {
-      showToast("Please enter a valid mobile number (03XX-XXXXXXX)", "error");
+      showToast(T("validMobileRequired"), "error");
       return;
     }
     setGwPaying(true);
@@ -585,7 +599,7 @@ export default function CartScreen() {
         gwPollRef.current.intervalId = intervalId;
       });
     } catch (e: any) {
-      showToast(e.message || "Payment failed. Please try again.", "error");
+      showToast(e.message || T("paymentFailed"), "error");
       setGwStep("input");
     }
     setGwPaying(false);
@@ -705,7 +719,7 @@ export default function CartScreen() {
                       const txn = gwTxnRef.current;
                       const oid = gwOrderId.current;
                       if (!txn) {
-                        showToast("Payment reference not found. Please contact support.", "error");
+                        showToast(T("paymentRefNotFound"), "error");
                         return;
                       }
                       try {
@@ -726,12 +740,12 @@ export default function CartScreen() {
                           setGwBackgrounded(false);
                           setGwStep("input");
                           if (oid) await cancelPendingOrder(oid);
-                          showToast(statusData.message || "Payment was not successful. Please try again.", "error");
+                          showToast(statusData.message || T("paymentNotSuccessful"), "error");
                         } else {
-                          showToast("Payment is still pending. Please approve the notification on your phone.", "info");
+                          showToast(T("paymentPending"), "info");
                         }
                       } catch {
-                        showToast("Could not reach payment server. Check your connection.", "error");
+                        showToast(T("paymentServerError"), "error");
                       }
                     }}
                     style={{ marginTop: 16, backgroundColor: C.primary, borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 8 }}
@@ -915,7 +929,7 @@ export default function CartScreen() {
           <Pressable
             onPress={() => {
               if (addresses.length === 0) {
-                showToast("Please add an address in your profile first", "info");
+                showToast(T("addAddressFirst"), "info");
                 return;
               }
               setShowAddrPicker(true);
@@ -931,10 +945,10 @@ export default function CartScreen() {
               ) : (
                 <>
                   <Text style={styles.addrCardLabel}>
-                    {selectedAddr ? selectedAddr.label : "Delivery Address"}
+                    {selectedAddr ? selectedAddr.label : T("deliveryAddress")}
                   </Text>
                   <Text style={styles.addrCardValue} numberOfLines={2}>
-                    {selectedAddr ? `${selectedAddr.address}, ${selectedAddr.city}` : "Select an address"}
+                    {selectedAddr ? `${selectedAddr.address}, ${selectedAddr.city}` : T("selectAnAddress")}
                   </Text>
                 </>
               )}

@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import React, { useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Image,
   Platform,
@@ -84,11 +85,11 @@ function FoodCard({ item }: { item: any }) {
 
 function FoodScreenInner() {
   const insets = useSafeAreaInsets();
-  const { itemCount, cartType } = useCart();
+  const { itemCount, cartType, clearCart } = useCart();
   const showCartBanner = itemCount > 0 && cartType === "mart";
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState<string | undefined>(undefined);
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
 
   const { data: catData } = useGetCategories({ type: "food" });
   const { data, isLoading, isError, refetch } = useGetProducts({ type: "food", search: search || undefined, category: selectedCat });
@@ -144,8 +145,18 @@ function FoodScreenInner() {
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#3730A3" }}>Mart cart active</Text>
             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#3730A3" }}>Adding Food items will clear your mart cart</Text>
           </View>
-          <Pressable onPress={() => router.push("/cart")} style={{ backgroundColor: "#4F46E5", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" }}>View Cart</Text>
+          <Pressable
+            onPress={() => Alert.alert(
+              "Clear Mart Cart?",
+              "Your mart cart will be cleared so you can order food. Continue?",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Clear & Continue", style: "destructive", onPress: () => clearCart() },
+              ]
+            )}
+            style={{ backgroundColor: "#4F46E5", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+          >
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" }}>Clear Cart</Text>
           </Pressable>
         </View>
       )}
@@ -204,7 +215,7 @@ function FoodScreenInner() {
             </View>
           </>
         )}
-        <View style={{ height: Platform.OS === "web" ? 34 : 20 }} />
+        <View style={{ height: Math.max(insets.bottom, Platform.OS === "web" ? 34 : 20) }} />
       </ScrollView>
     </View>
   );

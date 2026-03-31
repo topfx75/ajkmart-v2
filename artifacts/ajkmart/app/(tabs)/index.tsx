@@ -53,7 +53,7 @@ function safeNavigate(route: string) {
   router.push(route as Href);
 }
 
-function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "top" | "bottom" }) {
+function ActiveTrackerStrip({ userId, position, tabBarHeight = 0 }: { userId: string; position?: "top" | "bottom"; tabBarHeight?: number }) {
   const { token } = useAuth();
   const { config: pCfg } = usePlatformConfig();
   const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -87,9 +87,11 @@ function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "
   const isLoading = ordersLoading || ridesLoading;
   const hasError = ordersError || ridesError;
 
+  const bottomStyle = position === "bottom" ? [styles.trackerWrapBottom, { marginBottom: tabBarHeight + 8 }] : undefined;
+
   if (isLoading) {
     return (
-      <View style={[styles.trackerWrap, position === "bottom" && styles.trackerWrapBottom]}>
+      <View style={[styles.trackerWrap, bottomStyle]}>
         <View style={[styles.trackerCard, { backgroundColor: "#E2E8F0", opacity: 0.7, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 }]}>
           <View style={{ width: 100, height: 12, borderRadius: 6, backgroundColor: "#CBD5E1" }} />
         </View>
@@ -99,7 +101,7 @@ function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "
 
   if (hasError) {
     return (
-      <View style={[styles.trackerWrap, position === "bottom" && styles.trackerWrapBottom]}>
+      <View style={[styles.trackerWrap, bottomStyle]}>
         <View style={[styles.trackerCard, { backgroundColor: "#FEF3C7", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 }]}>
           <Ionicons name="warning-outline" size={14} color="#D97706" />
           <Text style={{ flex: 1, fontSize: 12, fontFamily: "Inter_500Medium", color: "#92400E" }}>Could not load active orders</Text>
@@ -177,7 +179,7 @@ function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "
   return (
     <Pressable
       onPress={handleTrackPress}
-      style={[styles.trackerWrap, isBottom && styles.trackerWrapBottom]}
+      style={[styles.trackerWrap, bottomStyle]}
     >
       <LinearGradient
         colors={[c1, c2]}
@@ -665,7 +667,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { itemCount } = useCart();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
   const TAB_H = Platform.OS === "web" ? 72 : 49;
   const hdOp = useRef(new Animated.Value(0)).current;
   const [homeRefreshing, setHomeRefreshing] = useState(false);
@@ -749,7 +751,7 @@ export default function HomeScreen() {
           colors={[C.primaryDark, C.primary, C.primaryLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.header, { paddingTop: topPad + 14 }]}
+          style={[styles.header, { paddingTop: topPad + 8 }]}
         >
           <View style={styles.hdrRow}>
             <View style={{ flex: 1 }}>
@@ -942,7 +944,7 @@ export default function HomeScreen() {
         )}
 
         {user?.id && platformConfig.content.trackerBannerPosition === "bottom" && (
-          <ActiveTrackerStrip userId={user.id} position="bottom" />
+          <ActiveTrackerStrip userId={user.id} position="bottom" tabBarHeight={TAB_H} />
         )}
 
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
@@ -997,7 +999,7 @@ const styles = StyleSheet.create({
     color: C.primary,
   },
 
-  header: { paddingHorizontal: H_PAD, paddingBottom: spacing.xl },
+  header: { paddingHorizontal: H_PAD, paddingBottom: spacing.lg },
   hdrRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1011,7 +1013,7 @@ const styles = StyleSheet.create({
   hdrTitle: {
     ...typography.h2,
     color: "#fff",
-    marginBottom: 5,
+    marginBottom: Platform.OS === "web" ? 2 : 5,
   },
   locRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   locTxt: {

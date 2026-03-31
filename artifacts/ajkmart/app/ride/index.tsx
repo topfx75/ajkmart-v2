@@ -4,6 +4,8 @@ import { useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { withServiceGuard } from "@/components/ServiceGuard";
 import { RideBookingForm } from "@/components/ride/RideBookingForm";
 import { RideTracker } from "@/components/ride/RideTracker";
@@ -17,9 +19,11 @@ const C = Colors.light;
 
 function RideScreenInner() {
   const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Math.max(insets.top, 12);
   const { user, token } = useAuth();
   const { config } = usePlatformConfig();
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const rideCfg = config.rides;
   const ridesEnabled = config.features.rides;
   const inMaintenance = config.appStatus === "maintenance";
@@ -92,7 +96,7 @@ function RideScreenInner() {
               textAlign: "center",
             }}
           >
-            Under Maintenance
+            {T("underMaintenance")}
           </Text>
           <Text
             style={{
@@ -164,7 +168,7 @@ function RideScreenInner() {
               textAlign: "center",
             }}
           >
-            Service Unavailable
+            {T("serviceUnavailable")}
           </Text>
           <Text
             style={{
@@ -176,7 +180,7 @@ function RideScreenInner() {
               marginBottom: 20,
             }}
           >
-            Ride service is currently unavailable. Please try again later.
+            {T("rideUnavailableMsg")}
           </Text>
           <Pressable
             style={{
@@ -195,7 +199,7 @@ function RideScreenInner() {
                 color: "#EF4444",
               }}
             >
-              Back to Home
+              {T("backToHome")}
             </Text>
           </Pressable>
         </View>
@@ -235,7 +239,7 @@ function RideScreenInner() {
               textAlign: "center",
             }}
           >
-            Could Not Load Ride
+            {T("rideLoadErrorTitle")}
           </Text>
           <Text
             style={{
@@ -247,7 +251,7 @@ function RideScreenInner() {
               marginBottom: 20,
             }}
           >
-            There was a problem loading your ride details. Please try again.
+            {T("rideLoadErrorMsg")}
           </Text>
           <Pressable
             style={{
@@ -261,7 +265,7 @@ function RideScreenInner() {
             onPress={() => { setRetryNonce(n => n + 1); }}
           >
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>
-              Try Again
+              {T("tryAgain")}
             </Text>
           </Pressable>
           <Pressable
@@ -275,7 +279,7 @@ function RideScreenInner() {
             onPress={() => router.back()}
           >
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#EF4444" }}>
-              Back to Home
+              {T("backToHome")}
             </Text>
           </Pressable>
         </View>

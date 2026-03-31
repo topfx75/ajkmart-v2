@@ -32,7 +32,10 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "meta": {
+        "viewport": "width=device-width, initial-scale=1, viewport-fit=cover"
+      }
     },
     "plugins": [
       [
