@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { StatusBadge } from "@/components/AdminShared";
 
 function exportOrdersCSV(orders: any[]) {
   const header = "ID,Type,Status,Total,Payment,Customer,Rider,Date";
@@ -102,7 +103,7 @@ export default function Orders() {
     if (!refundAmount || !Number.isFinite(amt) || amt <= 0) return;
     refundMutation.mutate({ id: selectedOrder.id, amount: amt, reason: refundReason.trim() || undefined }, {
       onSuccess: (res: any) => {
-        toast({ title: `Refund issued ✅`, description: `Rs. ${Math.round(res.refundedAmount)} credited to customer wallet` });
+        toast({ title: `Refund issued ✅`, description: `${formatCurrency(Math.round(res.refundedAmount))} credited to customer wallet` });
         setShowRefundConfirm(false);
         setRefundAmount("");
         setRefundReason("");
@@ -296,8 +297,8 @@ export default function Orders() {
         </div>
       </Card>
 
-      {/* Table */}
-      <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+      {/* Desktop Table */}
+      <Card className="hidden md:block rounded-2xl border-border/50 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <Table className="min-w-[640px]">
             <TableHeader className="bg-muted/50">
@@ -374,6 +375,48 @@ export default function Orders() {
         </div>
       </Card>
 
+      {/* Mobile Card List */}
+      <div className="md:hidden space-y-3">
+        {isLoading ? (
+          [1,2,3].map(i => <div key={i} className="h-24 bg-muted rounded-2xl animate-pulse" />)
+        ) : filtered.length === 0 ? (
+          <Card className="rounded-2xl border-border/50 p-12 text-center">
+            <Package className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-muted-foreground text-sm">No orders found.</p>
+          </Card>
+        ) : (
+          filtered.map((order: any) => (
+            <Card
+              key={order.id}
+              className="rounded-2xl border-border/50 shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => { setSelectedOrder(order); setShowCancelConfirm(false); }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-mono font-bold text-sm text-foreground">#{order.id.slice(-8).toUpperCase()}</p>
+                    <Badge variant={order.type === "food" ? "default" : "secondary"} className="text-[10px] capitalize">
+                      {order.type === "food" ? "🍔" : order.type === "pharmacy" ? "💊" : "🛒"} {order.type}
+                    </Badge>
+                    <StatusBadge status={order.status} />
+                  </div>
+                  {order.userName && (
+                    <p className="text-sm text-muted-foreground mt-1 truncate">
+                      {order.userName}{order.userPhone ? ` · ${order.userPhone}` : ""}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-0.5">{formatDate(order.createdAt)}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="font-bold text-foreground">{formatCurrency(order.total)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{Array.isArray(order.items) ? `${order.items.length} items` : ""}</p>
+                </div>
+              </div>
+            </Card>
+          ))
+        )}
+      </div>
+
       {/* Order Detail Modal */}
       <Dialog open={!!selectedOrder} onOpenChange={open => { if (!open) { setSelectedOrder(null); setShowCancelConfirm(false); setShowRefundConfirm(false); } }}>
         <DialogContent className="w-[95vw] max-w-lg rounded-3xl max-h-[90vh] overflow-y-auto">
@@ -381,11 +424,7 @@ export default function Orders() {
             <DialogTitle className="flex items-center gap-2">
               <ShoppingBag className="w-5 h-5 text-indigo-600" />
               Order Detail
-              {selectedOrder && (
-                <Badge variant="outline" className={`ml-2 text-[10px] font-bold uppercase ${getStatusColor(selectedOrder.status)}`}>
-                  {STATUS_LABELS[selectedOrder.status]}
-                </Badge>
-              )}
+              {selectedOrder && <StatusBadge status={selectedOrder.status} />}
             </DialogTitle>
           </DialogHeader>
 
@@ -401,7 +440,7 @@ export default function Orders() {
                   </div>
                   <p className="text-xs text-red-600">
                     {selectedOrder.paymentMethod === "wallet"
-                      ? `Rs. ${Math.round(selectedOrder.total)} customer ki wallet mein refund ho jayega.`
+                      ? `${formatCurrency(Math.round(selectedOrder.total))} customer ki wallet mein refund ho jayega.`
                       : "Cash order — no wallet refund needed."}
                   </p>
                   <div className="flex gap-2">
@@ -425,7 +464,7 @@ export default function Orders() {
                     <p className="text-sm font-bold text-blue-700">Issue Wallet Refund</p>
                   </div>
                   <p className="text-xs text-blue-600">
-                    Max refundable: Rs. {Math.round(selectedOrder.total)}.
+                    Max refundable: {formatCurrency(Math.round(selectedOrder.total))}.
                   </p>
                   <div className="flex gap-1.5 mb-1">
                     {[25, 50, 75, 100].map(pct => (
@@ -597,7 +636,7 @@ export default function Orders() {
                   <p className="text-xs text-muted-foreground font-medium mb-1.5">Admin Actions</p>
                   {selectedOrder.refundedAt ? (
                     <div className="h-9 px-4 bg-green-50 border-2 border-green-300 text-green-700 text-xs font-bold rounded-xl flex items-center gap-1.5">
-                      ✅ Refunded{selectedOrder.refundedAmount ? ` — Rs. ${Math.round(parseFloat(selectedOrder.refundedAmount))}` : ""}
+                      ✅ Refunded{selectedOrder.refundedAmount ? ` — ${formatCurrency(Math.round(parseFloat(selectedOrder.refundedAmount)))}` : ""}
                     </div>
                   ) : !showRefundConfirm ? (
                     <button

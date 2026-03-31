@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { StatusBadge } from "@/components/AdminShared";
 
 /* ── Types ── */
 interface Product { id: string; name: string; price: string | number; category: string; image?: string }
@@ -33,21 +34,6 @@ interface PromoCode {
   appliesTo: string; expiresAt?: string; isActive: boolean;
   status: "active"|"inactive"|"expired"|"exhausted";
   createdAt: string;
-}
-
-/* ── Status Badge ── */
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; className: string }> = {
-    live:       { label: "⚡ Live",       className: "bg-green-100 text-green-700 border-green-200" },
-    scheduled:  { label: "🕐 Scheduled",  className: "bg-blue-100 text-blue-700 border-blue-200" },
-    expired:    { label: "⏱ Expired",    className: "bg-gray-100 text-gray-600 border-gray-200" },
-    sold_out:   { label: "✖ Sold Out",   className: "bg-red-100 text-red-600 border-red-200" },
-    inactive:   { label: "○ Inactive",   className: "bg-gray-100 text-gray-500 border-gray-200" },
-    active:     { label: "✓ Active",     className: "bg-green-100 text-green-700 border-green-200" },
-    exhausted:  { label: "✖ Exhausted",  className: "bg-orange-100 text-orange-600 border-orange-200" },
-  };
-  const cfg = map[status] ?? { label: status, className: "bg-gray-100 text-gray-600" };
-  return <Badge variant="outline" className={`text-xs font-semibold ${cfg.className}`}>{cfg.label}</Badge>;
 }
 
 /* ── Flash Deal Form ── */
@@ -339,7 +325,8 @@ export default function FlashDealsPage() {
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             onClick={() => toggleDeal.mutate({ id: deal.id, isActive: !deal.isActive })}
-                            className="p-2 hover:bg-muted rounded-lg transition-colors"
+                            disabled={toggleDeal.isPending}
+                            className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             title={deal.isActive ? "Deactivate" : "Activate"}
                           >
                             {deal.isActive
@@ -349,7 +336,11 @@ export default function FlashDealsPage() {
                           <button onClick={() => openEditDeal(deal)} className="p-2 hover:bg-muted rounded-lg transition-colors">
                             <Pencil className="w-4 h-4 text-blue-600"/>
                           </button>
-                          <button onClick={() => deleteDeal.mutate(deal.id)} className="p-2 hover:bg-red-50 rounded-lg transition-colors">
+                          <button
+                            onClick={() => deleteDeal.mutate(deal.id)}
+                            disabled={deleteDeal.isPending}
+                            className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
                             <Trash2 className="w-4 h-4 text-red-500"/>
                           </button>
                         </div>
@@ -421,7 +412,8 @@ export default function FlashDealsPage() {
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             onClick={() => togglePromo.mutate({ id: p.id, isActive: !p.isActive })}
-                            className="p-2 hover:bg-muted rounded-lg transition-colors"
+                            disabled={togglePromo.isPending}
+                            className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {p.isActive
                               ? <ToggleRight className="w-5 h-5 text-green-600"/>
@@ -430,7 +422,11 @@ export default function FlashDealsPage() {
                           <button onClick={() => openEditPromo(p)} className="p-2 hover:bg-muted rounded-lg transition-colors">
                             <Pencil className="w-4 h-4 text-blue-600"/>
                           </button>
-                          <button onClick={() => deletePromo.mutate(p.id)} className="p-2 hover:bg-red-50 rounded-lg transition-colors">
+                          <button
+                            onClick={() => deletePromo.mutate(p.id)}
+                            disabled={deletePromo.isPending}
+                            className="p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
                             <Trash2 className="w-4 h-4 text-red-500"/>
                           </button>
                         </div>

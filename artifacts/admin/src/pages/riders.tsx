@@ -64,7 +64,7 @@ function RiderWalletModal({ rider, onClose }: { rider: any; onClose: () => void 
           </div>
 
           <div>
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide block mb-1.5">Amount (Rs.)</label>
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide block mb-1.5">Amount</label>
             <Input type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="h-12 rounded-xl text-lg font-bold" />
           </div>
           <div>

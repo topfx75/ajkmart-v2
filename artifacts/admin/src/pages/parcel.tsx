@@ -272,7 +272,7 @@ export default function Parcel() {
                   </div>
                   <p className="text-xs text-red-600">
                     {selectedBooking.paymentMethod === "wallet"
-                      ? `Rs. ${Math.round(selectedBooking.fare)} customer ki wallet mein refund ho jayega.`
+                      ? `${formatCurrency(Math.round(selectedBooking.fare))} customer ki wallet mein refund ho jayega.`
                       : "Cash booking — no wallet refund needed."}
                   </p>
                   <div className="flex gap-2">

@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { formatCurrency } from "@/lib/format";
 
-const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
+const fc = formatCurrency;
 const fd = (d: string | Date) =>
   new Date(d).toLocaleString("en-PK", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 

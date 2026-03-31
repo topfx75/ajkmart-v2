@@ -320,7 +320,7 @@ export default function Pharmacy() {
                   </div>
                   <p className="text-xs text-red-600">
                     {selectedOrder.paymentMethod === "wallet"
-                      ? `Rs. ${Math.round(parseFloat(selectedOrder.total))} customer ki wallet mein refund ho jayega.`
+                      ? `${formatCurrency(Math.round(parseFloat(selectedOrder.total)))} customer ki wallet mein refund ho jayega.`
                       : "Cash order — no refund needed."}
                   </p>
                   <div className="flex gap-2">

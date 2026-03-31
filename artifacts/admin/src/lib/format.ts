@@ -1,7 +1,8 @@
 import { format } from "date-fns";
+import { getCurrencySymbol } from "./platformConfig";
 
 export const formatCurrency = (amount: number) => {
-  return `Rs. ${amount.toLocaleString()}`;
+  return `${getCurrencySymbol()} ${amount.toLocaleString()}`;
 };
 
 export const formatDate = (dateString: string) => {

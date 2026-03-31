@@ -10,6 +10,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -231,7 +232,7 @@ export default function Vendors() {
   const [commModal,    setCommModal]    = useState<any>(null);
 
   const settings: any[] = settingsData?.settings || [];
-  const vendorCommissionPct = parseFloat(settings.find((s: any) => s.key === "vendor_commission_pct")?.value ?? "15");
+  const vendorCommissionPct = parseFloat(settings.find((s: any) => s.key === "vendor_commission_pct")?.value ?? String(PLATFORM_DEFAULTS.vendorCommissionPct));
   const vendorShare = 1 - vendorCommissionPct / 100;
 
   const vendors: any[] = data?.vendors || [];

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { StatusBadge } from "@/components/AdminShared";
 
 const STATUS_LABELS: Record<string, string> = {
   bargaining: "Bargaining", searching: "Searching", accepted: "Accepted",
@@ -137,7 +138,7 @@ function RideDetailModal({
       toast({ title: "Enter a valid positive amount", variant: "destructive" }); return;
     }
     refundMut.mutate({ id: rideId, amount: amt, reason: refundReason || undefined }, {
-      onSuccess: (d: any) => { toast({ title: `Refunded Rs. ${d.refundedAmount}` }); setShowRefund(false); refetch(); },
+      onSuccess: (d: any) => { toast({ title: `Refunded ${formatCurrency(Number(d.refundedAmount))}` }); setShowRefund(false); refetch(); },
       onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
   };
@@ -188,9 +189,7 @@ function RideDetailModal({
           <DialogTitle className="flex items-center gap-2 flex-wrap">
             <Car className="w-5 h-5 text-green-600" />
             Ride Detail
-            <Badge variant="outline" className={`text-[10px] font-bold uppercase ${getStatusColor(ride.status)}`}>
-              {STATUS_LABELS[ride.status]}
-            </Badge>
+            <StatusBadge status={ride.status} />
             <span className="font-mono text-xs text-muted-foreground ml-auto">#{ride.id.slice(-8).toUpperCase()}</span>
           </DialogTitle>
         </DialogHeader>
@@ -357,7 +356,7 @@ function RideDetailModal({
               </div>
               <Input value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder="Reason (optional)" className="text-sm" />
               <p className="text-xs text-red-600">
-                {ride.paymentMethod === "wallet" ? `Rs. ${Math.round(ride.fare)} will be refunded to customer wallet.` : "Cash ride — no wallet refund needed."}
+                {ride.paymentMethod === "wallet" ? `${formatCurrency(Math.round(ride.fare))} will be refunded to customer wallet.` : "Cash ride — no wallet refund needed."}
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setShowCancel(false)} className="flex-1 h-9 bg-white border border-red-200 text-red-600 text-sm font-bold rounded-xl">Back</button>
@@ -384,7 +383,7 @@ function RideDetailModal({
                 <button onClick={() => setShowRefund(false)} className="flex-1 h-9 bg-white border border-blue-200 text-blue-600 text-sm font-bold rounded-xl">Back</button>
                 <button onClick={handleRefund} disabled={refundMut.isPending}
                   className="flex-1 h-9 bg-blue-600 text-white text-sm font-bold rounded-xl disabled:opacity-60">
-                  {refundMut.isPending ? "Processing..." : `Refund Rs. ${refundAmount || ride.fare}`}
+                  {refundMut.isPending ? "Processing..." : `Refund ${formatCurrency(Number(refundAmount || ride.fare))}`}
                 </button>
               </div>
             </div>
@@ -1520,9 +1519,7 @@ export default function Rides() {
                         <span className="font-mono font-bold text-sm">#{r.id.slice(-6).toUpperCase()}</span>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={`text-[10px] font-bold uppercase ${getStatusColor(r.status)}`}>
-                          {STATUS_LABELS[r.status]}
-                        </Badge>
+                        <StatusBadge status={r.status} />
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={`text-[10px] font-bold uppercase ${svcClr(r.type)}`}>

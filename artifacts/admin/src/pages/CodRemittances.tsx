@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { formatCurrency } from "@/lib/format";
 
-const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
+const fc = formatCurrency;
 const fd = (d: string | Date) =>
   new Date(d).toLocaleString("en-PK", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -52,7 +53,7 @@ function VerifyModal({ item, onClose }: { item: any; onClose: () => void }) {
   const submit = () => {
     verify.mutate({ id: item.id, note }, {
       onSuccess: () => {
-        toast({ title: "✅ Remittance Verified", description: `Rs. ${Math.round(item.amount).toLocaleString()} marked as received. Rider notified.` });
+        toast({ title: "✅ Remittance Verified", description: `${fc(item.amount)} marked as received. Rider notified.` });
         onClose();
       },
       onError: (e: any) => setErr(e.message),

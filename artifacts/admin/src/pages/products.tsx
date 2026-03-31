@@ -3,7 +3,7 @@ import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Dow
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, usePendingProducts, useApproveProduct, useRejectProduct } from "@/hooks/use-admin";
 import { formatCurrency } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -330,7 +330,67 @@ export default function Products() {
               </div>
             </div>
           )}
-          <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+          {/* Mobile cards — visible below md */}
+          <div className="md:hidden space-y-3">
+            {pendingLoading ? (
+              [1,2,3].map(i => <div key={i} className="h-28 bg-muted rounded-2xl animate-pulse" />)
+            ) : pendingProducts.length === 0 ? (
+              <Card className="rounded-2xl border-border/50">
+                <CardContent className="p-12 flex flex-col items-center gap-2 text-muted-foreground">
+                  <CheckCircle className="w-10 h-10 text-green-400" />
+                  <p className="font-semibold">All caught up!</p>
+                  <p className="text-sm">No products waiting for approval.</p>
+                </CardContent>
+              </Card>
+            ) : pendingProducts.map((p: any) => (
+              <Card key={p.id} className="rounded-2xl border-border/50 shadow-sm">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground truncate">{p.name}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <Badge variant={p.type === 'food' ? 'default' : 'secondary'} className="text-[10px] uppercase">{p.type}</Badge>
+                        <span className="text-xs text-muted-foreground capitalize">{p.category}</span>
+                        {p.unit && <span className="text-xs text-muted-foreground">{p.unit}</span>}
+                      </div>
+                      {p.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.description}</p>}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-bold text-foreground">{formatCurrency(p.price)}</p>
+                      {p.originalPrice && <p className="text-xs line-through text-muted-foreground">{formatCurrency(p.originalPrice)}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{p.vendorName || "—"}</span>
+                    <span>{p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" }) : "—"}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleApprove(p)}
+                      disabled={approveMutation.isPending}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white h-8 rounded-xl gap-1.5 text-xs font-bold disabled:opacity-60"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setRejectTarget(p)}
+                      className="flex-1 border-red-300 text-red-600 hover:bg-red-50 h-8 rounded-xl gap-1.5 text-xs font-bold"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      Reject
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Desktop table — visible from md up */}
+          <Card className="hidden md:block rounded-2xl border-border/50 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="min-w-[640px]">
                 <TableHeader className="bg-muted/50">
@@ -386,7 +446,7 @@ export default function Products() {
                               size="sm"
                               onClick={() => handleApprove(p)}
                               disabled={approveMutation.isPending}
-                              className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 rounded-xl gap-1.5 text-xs font-bold"
+                              className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 rounded-xl gap-1.5 text-xs font-bold disabled:opacity-60"
                             >
                               <CheckCircle className="w-3.5 h-3.5" />
                               Approve
@@ -464,7 +524,51 @@ export default function Products() {
             </div>
           </Card>
 
-          <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-3">
+            {isLoading ? (
+              [1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-2xl animate-pulse" />)
+            ) : filtered.length === 0 ? (
+              <Card className="rounded-2xl p-12 text-center border-border/50">
+                <p className="text-muted-foreground text-sm">No products found.</p>
+              </Card>
+            ) : filtered.map((p: any) => (
+              <Card key={p.id} className="rounded-2xl border-border/50 shadow-sm p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-foreground truncate">{p.name}</p>
+                      <Badge variant={p.type === "food" ? "default" : "secondary"} className="text-[10px] uppercase">{p.type}</Badge>
+                      {!p.inStock && <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">Out of Stock</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 capitalize">{p.category}{p.vendorName ? ` · ${p.vendorName}` : ""}</p>
+                    <p className="font-bold text-foreground text-sm mt-1">{formatCurrency(p.price)}</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    <button
+                      onClick={() => toggleStock(p)}
+                      disabled={updateMutation.isPending}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border ${p.inStock ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}
+                    >
+                      {p.inStock ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
+                      {p.inStock ? "In Stock" : "Out"}
+                    </button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="hover:bg-blue-50 hover:text-blue-600 h-7 w-7">
+                        <Edit className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} className="hover:bg-red-50 hover:text-red-600 h-7 w-7">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <Card className="hidden md:block rounded-2xl border-border/50 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="min-w-[600px]">
                 <TableHeader className="bg-muted/50">

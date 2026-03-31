@@ -75,6 +75,46 @@ The project is structured as a pnpm monorepo using TypeScript. The frontend leve
 - **crypto.scryptSync:** For password hashing.
 - **react-native-qrcode-svg:** For generating real QR codes in the wallet Receive Money modal.
 
+### Admin Panel UI/UX & Bug Fix (Task #4)
+
+All changes are in `artifacts/admin/src/`:
+
+**Shared Component Library (`components/AdminShared.tsx`)**
+- `Toggle`, `Field`, `SecretInput`, `StatusBadge` — shared across settings, security, flash-deals
+- Added `SLabel` (section heading) and `ModeBtn` (pill mode button) — previously duplicated inline in settings.tsx
+
+**Mobile Card-Views**
+- `orders.tsx`, `users.tsx`, `products.tsx`: Added `sm:hidden` card layouts for mobile and `hidden sm:block` for desktop tables
+
+**Mobile Header Declutter (`AdminLayout.tsx`)**
+- Language selector hidden from header on mobile (`hidden sm:block`), shown in sidebar on mobile (`lg:hidden`)
+
+**Live Riders Map (`live-riders-map.tsx`)**
+- Fully rewritten using `react-leaflet` (MapContainer/TileLayer/Marker/Popup) — no more script tag injection
+- Map center reads from platform settings (`map_default_lat`, `map_default_lng`)
+
+**Currency De-hardcoding**
+- `formatCurrency()` from `lib/format.ts` used everywhere in place of hardcoded `` `Rs. ${n}` `` strings
+- Files updated: `orders.tsx`, `users.tsx`, `rides.tsx`, `parcel.tsx`, `pharmacy.tsx`, `CodRemittances.tsx`, `Withdrawals.tsx`, `DepositRequests.tsx`
+- `CodRemittances.tsx`, `Withdrawals.tsx`, `DepositRequests.tsx`: replaced local `fc` helper with `const fc = formatCurrency`
+
+**Button Loading States**
+- All mutation buttons across all pages use `isPending`/`isLoading` + `disabled` + spinner pattern (was already consistent; confirmed across all 8+ pages)
+
+**Settings.tsx Split (5232 → 2435 lines)**
+- `settings-payment.tsx` (~1027 lines): GatewayCard, BankSection, CODSection, WalletSection, PaymentRules, PaymentSection
+- `settings-integrations.tsx` (~574 lines): IntCard, IntStatusBadge, IntegrationsSection  
+- `settings-security.tsx` (~764 lines): SecPanel, SecuritySection
+- `settings-system.tsx` (~481 lines): SystemSection (DB management)
+- settings.tsx imports from sub-files via `import { X } from "./settings-*"`
+
+**StatusBadge Adoption**
+- `orders.tsx` and `rides.tsx` now import and use `StatusBadge` from AdminShared for read-only status displays
+- SelectTrigger status coloring still uses `getStatusColor` (requires CSS class string, not a component)
+
+**Vendor Commission Centralization**
+- `vendors.tsx`: added `DEFAULT_VENDOR_COMMISSION_PCT = 15` named constant; fallback reads from it instead of inline `"15"`
+
 ### Customer App — 33-Issue Deep Trace Fix (Task #10)
 
 All changes are client-side only (`artifacts/ajkmart/`):

@@ -199,7 +199,28 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         ))}
       </div>
 
-      <div className="p-3 border-t border-sidebar-border/50 shrink-0">
+      <div className="p-3 border-t border-sidebar-border/50 shrink-0 space-y-1">
+        {/* Language selector — visible in sidebar on mobile only */}
+        <div className="lg:hidden">
+          <p className="px-3 mb-1.5 text-[10px] font-bold text-sidebar-foreground/35 uppercase tracking-widest">Language</p>
+          <div className="flex flex-wrap gap-1 px-1">
+            {LANGUAGE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setLanguage(opt.value as any)}
+                disabled={langLoading}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  language === opt.value
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <button
           onClick={handleLogout}
           className="flex items-center w-full px-3 py-2.5 rounded-xl text-sidebar-foreground/70 hover:bg-red-500/10 hover:text-red-500 transition-colors text-sm"
@@ -259,7 +280,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setCmdOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border/60 bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground group"
+              className="hidden sm:flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-xl border border-border/60 bg-muted/50 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground group"
             >
               <Search className="w-3.5 h-3.5" />
               <span className="hidden sm:inline text-xs font-medium">{T("search_placeholder")}</span>
@@ -273,8 +294,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               <span className="text-xs font-medium text-muted-foreground">{T("live")}</span>
             </div>
 
-            {/* Language Selector */}
-            <div className="relative">
+            {/* Language Selector — desktop only; on mobile it's in the sidebar menu */}
+            <div className="relative hidden sm:block">
               <button
                 onClick={() => setLangOpen(o => !o)}
                 disabled={langLoading}
@@ -282,7 +303,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                 title="Change language"
               >
                 <Globe className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline font-medium">{currentLangLabel}</span>
+                <span className="font-medium">{currentLangLabel}</span>
               </button>
               {langOpen && (
                 <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg z-50 min-w-[140px] overflow-hidden">
@@ -299,16 +320,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               )}
             </div>
 
-            <button
-              onClick={handleLogout}
-              className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              {T("logout")}
-            </button>
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shadow-inner">
+            <div className="hidden sm:flex w-9 h-9 rounded-full bg-primary/10 items-center justify-center text-primary font-bold text-sm shadow-inner">
               A
             </div>
+
+            {/* Mobile-only compact logout */}
+            <button
+              onClick={handleLogout}
+              className="sm:hidden p-2 rounded-xl hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </header>
 

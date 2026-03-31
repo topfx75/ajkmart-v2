@@ -688,7 +688,7 @@ export default function Users() {
   const waiveDebtMutation = useMutation({
     mutationFn: (userId: string) => fetcher(`/admin/users/${userId}/waive-debt`, { method: "PATCH" }),
     onSuccess: (data: any, userId: string) => {
-      toast({ title: "Debt Waived", description: `Rs. ${data.waived?.toFixed(0) || "0"} cancellation debt cleared.` });
+      toast({ title: "Debt Waived", description: `${formatCurrency(Number(data.waived?.toFixed(0) || 0))} cancellation debt cleared.` });
       qc.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -1019,7 +1019,59 @@ export default function Users() {
           </div>
         </Card>
       ) : (
-        <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+        <>
+        {/* Mobile card list */}
+        <div className="md:hidden space-y-3">
+          {isLoading ? (
+            [1,2,3].map(i => <div key={i} className="h-20 bg-muted rounded-2xl animate-pulse" />)
+          ) : filtered.length === 0 ? (
+            <Card className="rounded-2xl p-12 text-center border-border/50">
+              <UsersIcon className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-muted-foreground text-sm">No users found</p>
+            </Card>
+          ) : filtered.map((user: any) => {
+            const userRoles = (user.roles || user.role || "customer").split(",").filter(Boolean);
+            const isBanned  = user.isBanned;
+            const isBlocked = !user.isActive && !isBanned;
+            return (
+              <Card key={user.id} className={`rounded-2xl border-border/50 shadow-sm p-4 ${isBanned ? "bg-red-50/30 border-red-200/60" : isBlocked ? "bg-amber-50/30 border-amber-200/60" : ""}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${isBanned ? "bg-red-100 text-red-600" : isBlocked ? "bg-amber-100 text-amber-600" : "bg-[#1A56DB]/10 text-[#1A56DB]"}`}>
+                    {(user.name || user.phone || "U")[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold text-foreground truncate">{user.name || user.phone}</p>
+                      {isBanned && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200 px-1">BANNED</Badge>}
+                      {isBlocked && <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-600 border-amber-200 px-1">BLOCKED</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">{user.phone}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {userRoles.map((r: string) => (
+                        <Badge key={r} variant="outline" className={`text-[10px] capitalize px-1.5 border ${ROLE_COLORS[r] || "bg-gray-100 text-gray-700 border-gray-200"}`}>{r}</Badge>
+                      ))}
+                      <span className="text-xs text-muted-foreground">{formatCurrency(user.walletBalance)}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => setKycUser(user)} className="h-8 px-2.5 rounded-lg border-purple-200 text-purple-700 text-xs">
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 px-2.5 rounded-lg border-slate-200 text-slate-600 text-xs">
+                      <Shield className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => { setTopupUser(user); setTopupAmount(""); setTopupNote(""); }} className="h-8 px-2.5 rounded-lg border-emerald-200 text-emerald-700 text-xs">
+                      <Wallet className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <Card className="hidden md:block rounded-2xl border-border/50 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <Table className="min-w-[820px]">
               <TableHeader>
@@ -1163,6 +1215,7 @@ export default function Users() {
             </div>
           )}
         </Card>
+        </>
       )}
 
       <Dialog open={!!topupUser} onOpenChange={(open) => { if (!open) setTopupUser(null); }}>

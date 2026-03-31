@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
+import { formatCurrency } from "@/lib/format";
 
-const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
+const fc = formatCurrency;
 const fd = (d: string | Date) =>
   new Date(d).toLocaleString("en-PK", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -56,7 +57,7 @@ function ApproveModal({ w, onClose }: { w: any; onClose: () => void }) {
   const handleApprove = () => {
     if (!refNo.trim()) { toast({ title: "Reference number required", variant: "destructive" }); return; }
     approve.mutate({ id: w.id, refNo: refNo.trim(), note: note.trim() || undefined }, {
-      onSuccess: () => { toast({ title: "✅ Withdrawal Approved", description: `Rs. ${w.amount.toLocaleString()} marked as paid — Ref: ${refNo}` }); onClose(); },
+      onSuccess: () => { toast({ title: "✅ Withdrawal Approved", description: `${fc(w.amount)} marked as paid — Ref: ${refNo}` }); onClose(); },
       onError:   (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };

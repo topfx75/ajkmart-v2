@@ -9,6 +9,7 @@ import { fetcher } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Toggle, Field, SecretInput } from "@/components/AdminShared";
 
 type SecTab = "auth" | "authmethods" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud";
 
@@ -22,84 +23,7 @@ const SEC_TABS: { id: SecTab; label: string; emoji: string; active: string; desc
   { id: "fraud",       label: "Fraud Detection",   emoji: "🚨", active: "bg-red-600",     desc: "Fake orders, IP auto-block, account limits, IP whitelist" },
 ];
 
-function Toggle({ checked, onChange, label, isDirty, danger, sub }: {
-  checked: boolean; onChange: (v: boolean) => void;
-  label: string; isDirty: boolean; danger?: boolean; sub?: string;
-}) {
-  return (
-    <div onClick={() => onChange(!checked)}
-      className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-all select-none
-        ${checked ? danger ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200" : "bg-white border-border hover:bg-muted/30"}
-        ${isDirty ? "ring-2 ring-amber-300" : ""}`}
-    >
-      <div className="flex items-center gap-2.5 flex-1 min-w-0">
-        {danger && <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground leading-snug truncate">{label}</p>
-          {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
-          <p className={`text-xs font-bold ${checked ? (danger ? "text-red-600" : "text-green-600") : "text-muted-foreground"}`}>
-            {checked ? (danger ? "⚠ ENABLED" : "● Active") : "○ Disabled"}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-        {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold hidden sm:flex">CHANGED</Badge>}
-        <div className={`w-11 h-6 rounded-full relative transition-colors ${checked ? (danger ? "bg-red-500" : "bg-green-500") : "bg-gray-300"}`}>
-          <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SecretInput({ label, value, onChange, placeholder, isDirty }: {
-  label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; isDirty: boolean;
-}) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <label className="text-xs font-semibold text-foreground">{label}</label>
-        {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
-        {value && !isDirty && <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />}
-      </div>
-      <div className="relative">
-        <Input type={show ? "text" : "password"} value={value} onChange={e => onChange(e.target.value)}
-          placeholder={placeholder || "Not configured"}
-          className={`h-9 rounded-lg text-sm font-mono pr-8 ${isDirty ? "border-amber-300 bg-amber-50/50" : ""} ${!value ? "border-dashed" : ""}`}
-        />
-        <button type="button" onClick={() => setShow(s => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-          {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, isDirty, type = "text", suffix, mono, hint }: {
-  label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; isDirty: boolean; type?: string;
-  suffix?: string; mono?: boolean; hint?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <label className="text-xs font-semibold text-foreground">{label}</label>
-        {isDirty && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
-        {value && !isDirty && <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />}
-      </div>
-      <div className="relative">
-        <Input type={type} value={value} onChange={e => onChange(e.target.value)}
-          placeholder={placeholder || ""}
-          className={`h-9 rounded-lg text-sm ${mono ? "font-mono" : ""} ${suffix ? "pr-14" : ""} ${isDirty ? "border-amber-300 bg-amber-50/50" : ""} ${!value ? "border-dashed" : ""}`}
-        />
-        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">{suffix}</span>}
-      </div>
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
+/* Toggle, Field, SecretInput imported from @/components/AdminShared */
 
 function SecPanel({ title, icon: Icon, color, children }: { title: string; icon: React.ElementType; color: string; children: React.ReactNode }) {
   return (
