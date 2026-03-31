@@ -218,6 +218,35 @@ router.patch("/online", async (req, res) => {
     res.status(403).json({ error: "Your account is pending re-verification. You cannot go online until an admin approves your profile." }); return;
   }
   await db.update(usersTable).set({ isOnline: !!isOnline, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
+
+  /* When going online, immediately upsert live_locations with last known
+     coordinates so the rider appears on the admin map without waiting for
+     the first GPS ping. Falls back gracefully if no prior location exists. */
+  if (isOnline) {
+    try {
+      const [lastLog] = await db
+        .select({ latitude: locationLogsTable.latitude, longitude: locationLogsTable.longitude })
+        .from(locationLogsTable)
+        .where(and(eq(locationLogsTable.userId, riderId), eq(locationLogsTable.role, "rider")))
+        .orderBy(desc(locationLogsTable.createdAt))
+        .limit(1);
+      if (lastLog) {
+        const now = new Date();
+        await db.insert(liveLocationsTable).values({
+          userId: riderId,
+          latitude: lastLog.latitude,
+          longitude: lastLog.longitude,
+          role: "rider",
+          action: null,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: liveLocationsTable.userId,
+          set: { role: "rider", action: null, updatedAt: now },
+        });
+      }
+    } catch { /* non-critical — rider will appear on next GPS ping */ }
+  }
+
   res.json({ success: true, isOnline: !!isOnline });
 });
 
@@ -1733,6 +1762,7 @@ router.patch("/location", async (req, res) => {
     set: {
       latitude: latitude.toString(),
       longitude: longitude.toString(),
+      role: "rider",
       action,
       updatedAt: nowDate,
     },

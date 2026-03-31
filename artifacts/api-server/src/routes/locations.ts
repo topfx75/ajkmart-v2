@@ -155,6 +155,7 @@ router.post("/update", async (req, res) => {
     set: {
       latitude: lat.toString(),
       longitude: lon.toString(),
+      role: effectiveRole,
       action: action ?? null,
       updatedAt: now,
     },

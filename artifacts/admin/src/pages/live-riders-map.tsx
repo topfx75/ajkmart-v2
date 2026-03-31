@@ -484,7 +484,7 @@ export default function LiveRidersMap() {
   const offlineAfterSec: number = data?.staleTimeoutSec ?? DEFAULT_OFFLINE_AFTER_SEC;
 
   /* Merge WebSocket overrides into the rider list */
-  const riders: Rider[] = baseRiders.map(r => {
+  const mergedBaseRiders: Rider[] = baseRiders.map(r => {
     const ov = riderOverrides[r.userId];
     if (!ov) return r;
     const ageSeconds = Math.floor((Date.now() - new Date(ov.updatedAt).getTime()) / 1000);
@@ -499,6 +499,29 @@ export default function LiveRidersMap() {
       isOnline: ageSeconds < offlineAfterSec,
     };
   });
+
+  /* Add WebSocket-only riders (online but not yet in REST API response) */
+  const mergedBaseRiderIds = new Set(mergedBaseRiders.map(r => r.userId));
+  const wsOnlyRiders: Rider[] = Object.entries(riderOverrides)
+    .filter(([uid]) => !mergedBaseRiderIds.has(uid))
+    .map(([uid, ov]) => {
+      const ageSeconds = Math.floor((Date.now() - new Date(ov.updatedAt).getTime()) / 1000);
+      return {
+        userId: uid,
+        name: "Rider",
+        phone: null,
+        isOnline: ageSeconds < offlineAfterSec,
+        vehicleType: null,
+        lat: ov.lat,
+        lng: ov.lng,
+        updatedAt: ov.updatedAt,
+        ageSeconds,
+        isFresh: ageSeconds < offlineAfterSec,
+        action: ov.action ?? null,
+      };
+    });
+
+  const riders: Rider[] = [...mergedBaseRiders, ...wsOnlyRiders];
 
   /* Customer locations */
   type RawCustomer = { userId: string; name?: string; lat?: number; latitude?: number; lng?: number; longitude?: number; updatedAt: string };
