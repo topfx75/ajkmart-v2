@@ -180,6 +180,12 @@ export default function Orders() {
         [payload.userId]: { lat: payload.latitude, lng: payload.longitude, updatedAt: payload.updatedAt },
       }));
     });
+    socket.on("order:new", () => {
+      qc.invalidateQueries({ queryKey: ["vendor-orders"] });
+    });
+    socket.on("order:update", () => {
+      qc.invalidateQueries({ queryKey: ["vendor-orders"] });
+    });
     return () => { socket.disconnect(); socketRef.current = null; };
   }, [user?.id]);
 

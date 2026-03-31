@@ -363,16 +363,38 @@ export default function CartScreen() {
   };
 
   const placeOrder = async (finalPayMethod: PayMethod) => {
-    const order = await createOrder({
-      type: cartType === "mixed" ? "mart" : cartType,
-      items: items.map(i => ({
-        productId: i.productId, name: i.name,
-        price: i.price, quantity: i.quantity, image: i.image,
-      })),
-      deliveryAddress: deliveryLine,
-      paymentMethod: finalPayMethod,
-      ...(promoCode ? { promoCode } : {}),
-    } as any);
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+    let order: any = null;
+    const idemKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        order = await createOrder({
+          type: cartType === "mixed" ? "mart" : cartType,
+          items: items.map(i => ({
+            productId: i.productId, name: i.name,
+            price: i.price, quantity: i.quantity, image: i.image,
+          })),
+          deliveryAddress: deliveryLine,
+          paymentMethod: finalPayMethod,
+          idempotencyKey: idemKey,
+          ...(promoCode ? { promoCode } : {}),
+        } as any);
+        lastError = null;
+        break;
+      } catch (err: any) {
+        lastError = err;
+        const status = err?.status ?? err?.statusCode ?? 0;
+        if (status >= 400 && status < 500) throw err;
+        if (attempt < MAX_RETRIES - 1) {
+          const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+    }
+    if (lastError || !order) throw lastError ?? new Error("Order failed after retries");
+
     if (finalPayMethod === "wallet") {
       const serverDeducted = parseFloat((order as any).total ?? grandTotal);
       updateUser({ walletBalance: (user!.walletBalance ?? 0) - serverDeducted });

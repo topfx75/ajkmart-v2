@@ -7,6 +7,7 @@ import {
   setOnTokenRefreshed,
 } from "@workspace/api-client-react";
 import { useLanguage } from "./LanguageContext";
+import { io, type Socket } from "socket.io-client";
 
 export type UserRole = "customer" | "rider" | "vendor";
 
@@ -368,6 +369,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   };
+
+  const socketRef = useRef<Socket | null>(null);
+  useEffect(() => {
+    if (!token || !user?.id) {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      return;
+    }
+    const base = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}`;
+    const socket = io(base, {
+      path: "/api/socket.io",
+      auth: { token },
+      transports: ["websocket", "polling"],
+    });
+    socketRef.current = socket;
+
+    socket.on("wallet:update", (payload: { balance: number }) => {
+      if (typeof payload?.balance === "number") {
+        setUser(prev => prev ? { ...prev, walletBalance: payload.balance } : prev);
+        AsyncStorage.getItem(USER_KEY).then(stored => {
+          if (!stored) return;
+          try {
+            const parsed = JSON.parse(stored);
+            AsyncStorage.setItem(USER_KEY, JSON.stringify({ ...parsed, walletBalance: payload.balance }));
+          } catch {}
+        });
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token, user?.id]);
 
   return (
     <AuthContext.Provider value={{

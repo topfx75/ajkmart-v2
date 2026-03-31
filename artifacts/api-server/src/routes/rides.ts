@@ -13,6 +13,13 @@ import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings } from "./admin.js";
 import { customerAuth, riderAuth, verifyUserJwt } from "../middleware/security.js";
 import { loadRide, requireRideState, requireRideOwner } from "../middleware/ride-guards.js";
+import { getIO } from "../lib/socketio.js";
+
+function broadcastWalletUpdate(userId: string, newBalance: number) {
+  const io = getIO();
+  if (!io) return;
+  io.to(`user:${userId}`).emit("wallet:update", { balance: newBalance });
+}
 import { t, type TranslationKey } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 
@@ -582,6 +589,9 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
 
     return upd;
   });
+
+  const [postCancelUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (postCancelUser) broadcastWalletUpdate(userId, parseFloat(postCancelUser.walletBalance ?? "0"));
 
   const cancelLang = await getUserLanguage(userId);
   if (fareWasCharged) {

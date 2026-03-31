@@ -223,12 +223,13 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       }
     }
 
-    /* Allow riders to join their personal room rider:{userId} to receive admin chat */
+    /* Auto-join personal rooms for all authenticated users */
     const userToken = getTokenFromHandshake(headers, auth);
     if (userToken) {
       const userPayload = verifyUserJwt(userToken);
       if (userPayload?.userId) {
         socket.join(`rider:${userPayload.userId}`);
+        socket.join(`user:${userPayload.userId}`);
       }
     }
 
@@ -276,6 +277,18 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
         message: payload.message.trim(),
         sentAt: new Date().toISOString(),
         from: "rider",
+      });
+    });
+
+    /* Rider heartbeat: broadcast battery level to admin-fleet */
+    socket.on("rider:heartbeat", (payload: { batteryLevel?: number; timestamp?: string }) => {
+      if (!userToken) return;
+      const hbPay = verifyUserJwt(userToken);
+      if (!hbPay?.userId || hbPay.role !== "rider") return;
+      _io!.to("admin-fleet").emit("rider:heartbeat", {
+        userId: hbPay.userId,
+        batteryLevel: typeof payload?.batteryLevel === "number" ? payload.batteryLevel : null,
+        timestamp: payload?.timestamp ?? new Date().toISOString(),
       });
     });
 
@@ -348,6 +361,15 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
 
 export function getIO(): SocketIOServer | null {
   return _io;
+}
+
+export function emitRiderStatus(payload: {
+  userId: string;
+  isOnline: boolean;
+  updatedAt: string;
+}) {
+  if (!_io) return;
+  _io.to("admin-fleet").emit("rider:status", payload);
 }
 
 export function emitRiderLocation(payload: {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
@@ -8,6 +8,7 @@ import { tDual } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { playRequestSound, unlockAudio, silenceFor, isSilenced, unsilence, getSilenceRemaining, getSilenceMode, setSilenceMode } from "../lib/notificationSound";
 import { logRideEvent } from "../lib/rideUtils";
+import { io, type Socket } from "socket.io-client";
 import {
   AlertTriangle, MapPin, Pin, Bike, Car, Bus, ShoppingBag,
   ShoppingCart, Pill, Package, Banana, Navigation, Wifi,
@@ -336,6 +337,51 @@ export default function Home() {
     setGpsWarning(val);
   };
 
+  const batteryRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && "getBattery" in navigator) {
+      (navigator as any).getBattery().then((batt: any) => {
+        batteryRef.current = Math.round(batt.level * 100);
+        batt.addEventListener("levelchange", () => {
+          batteryRef.current = Math.round(batt.level * 100);
+        });
+      }).catch(() => {});
+    }
+  }, []);
+
+  const socketRef = useRef<Socket | null>(null);
+  useEffect(() => {
+    if (!user?.isOnline || !user?.id) return;
+    const token = api.getToken();
+    if (!token) return;
+
+    const socket = io(window.location.origin, {
+      path: "/api/socket.io",
+      auth: { token },
+      transports: ["websocket", "polling"],
+    });
+    socketRef.current = socket;
+
+    const heartbeat = setInterval(() => {
+      if (socket.connected) {
+        socket.emit("rider:heartbeat", {
+          batteryLevel: batteryRef.current,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }, 30_000);
+
+    socket.on("new:request", () => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+    });
+
+    return () => {
+      clearInterval(heartbeat);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [user?.isOnline, user?.id]);
+
   useEffect(() => {
     if (!user?.isOnline || hasActiveTask || !user?.id) return;
     if (!navigator?.geolocation) return;
@@ -343,8 +389,6 @@ export default function Home() {
     let lastSentTime = 0;
     let lastLat: number | null = null;
     let lastLng: number | null = null;
-    /* Idle-mode interval: 4 minutes. Active-mode (hasActiveTask) is handled
-       in Active.tsx with 8-second intervals. This effect only runs when idle. */
     const IDLE_INTERVAL_MS = 4 * 60 * 1000;
     const MIN_DISTANCE_METERS = 25;
 
@@ -361,15 +405,11 @@ export default function Home() {
         const now = Date.now();
         const { latitude, longitude, accuracy, speed, heading } = pos.coords;
 
-        /* Client-side spoof heuristic: exactly zero accuracy is impossible with real GPS.
-           Threshold changed from < 1 to === 0 to avoid false positives on high-end devices
-           that legitimately report sub-meter accuracy (e.g. 0.3m–0.9m). */
         if (accuracy !== null && accuracy === 0) {
           setGpsWarningWithRef("Suspicious GPS accuracy detected. Please disable mock location apps.");
           return;
         }
 
-        /* Distance throttling: skip if rider hasn't moved enough */
         if (lastLat !== null && lastLng !== null) {
           const dist = haversineMeters(lastLat, lastLng, latitude, longitude);
           if (dist < MIN_DISTANCE_METERS && now - lastSentTime < IDLE_INTERVAL_MS * 4) return;
@@ -386,6 +426,7 @@ export default function Home() {
           accuracy:  accuracy ?? undefined,
           speed:     speed ?? undefined,
           heading:   heading ?? undefined,
+          batteryLevel: batteryRef.current,
         }).then(() => {
           if (gpsWarningRef.current) setGpsWarningWithRef(null);
         }).catch((err: Error) => {

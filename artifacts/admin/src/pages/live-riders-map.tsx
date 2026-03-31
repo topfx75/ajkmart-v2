@@ -11,7 +11,7 @@ import "leaflet/dist/leaflet.css";
 import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { io, type Socket } from "socket.io-client";
 import { fetcher } from "@/lib/api";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 /* Fallback used only until the first API response provides the server-configured value */
@@ -43,6 +43,7 @@ type Rider = {
   ageSeconds: number;
   isFresh: boolean;
   action?: string | null;
+  batteryLevel?: number | null;
 };
 
 type CustomerLoc = {
@@ -363,6 +364,7 @@ function FleetAnalyticsTab() {
 }
 
 export default function LiveRidersMap() {
+  const qc = useQueryClient();
   const { data, isLoading, refetch, dataUpdatedAt } = useLiveRiders();
   const { data: settingsData } = usePlatformSettings();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -378,6 +380,10 @@ export default function LiveRidersMap() {
   const [selectedSOS, setSelectedSOS] = useState<SOSAlert | null>(null);
   const [chatMessages, setChatMessages] = useState<Record<string, Array<{ text: string; ts: string; from: "admin" | "rider" }>>>({});
   const [chatInput, setChatInput] = useState("");
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, { isOnline: boolean; updatedAt: string }>>({});
+  const [batteryOverrides, setBatteryOverrides] = useState<Record<string, number>>({});
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "busy" | "offline">("all");
   const socketRef = useRef<Socket | null>(null);
 
   const { data: routeData } = useRiderRoute(selectedId, routeDate);
@@ -498,6 +504,32 @@ export default function LiveRidersMap() {
       }));
     });
 
+    socket.on("rider:status", (payload: { userId: string; isOnline: boolean; updatedAt: string }) => {
+      if (typeof payload.userId !== "string") return;
+      setStatusOverrides(prev => ({ ...prev, [payload.userId]: { isOnline: payload.isOnline, updatedAt: payload.updatedAt } }));
+    });
+
+    socket.on("rider:location", (payload: any) => {
+      if (typeof payload?.batteryLevel === "number" && typeof payload?.userId === "string") {
+        setBatteryOverrides(prev => ({ ...prev, [payload.userId]: payload.batteryLevel }));
+      }
+    });
+
+    socket.on("rider:heartbeat", (payload: { userId: string; batteryLevel: number | null }) => {
+      if (typeof payload?.userId === "string" && typeof payload?.batteryLevel === "number") {
+        setBatteryOverrides(prev => ({ ...prev, [payload.userId]: payload.batteryLevel }));
+      }
+    });
+
+    socket.on("order:new", () => {
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      qc.invalidateQueries({ queryKey: ["admin-orders-enriched"] });
+    });
+    socket.on("order:update", () => {
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      qc.invalidateQueries({ queryKey: ["admin-orders-enriched"] });
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -523,18 +555,21 @@ export default function LiveRidersMap() {
   /* Merge WebSocket overrides into the rider list */
   const mergedBaseRiders: Rider[] = baseRiders.map(r => {
     const ov = riderOverrides[r.userId];
-    if (!ov) return r;
-    const ageSeconds = Math.floor((Date.now() - new Date(ov.updatedAt).getTime()) / 1000);
-    return {
+    const sov = statusOverrides[r.userId];
+    const bat = batteryOverrides[r.userId];
+    const base = ov ? {
       ...r,
       lat: ov.lat,
       lng: ov.lng,
       updatedAt: ov.updatedAt,
       action: ov.action ?? r.action,
-      ageSeconds,
-      isFresh: ageSeconds < offlineAfterSec,
-      /* Preserve DB isOnline — don't override it with GPS age */
-      isOnline: r.isOnline,
+      ageSeconds: Math.floor((Date.now() - new Date(ov.updatedAt).getTime()) / 1000),
+      isFresh: Math.floor((Date.now() - new Date(ov.updatedAt).getTime()) / 1000) < offlineAfterSec,
+    } : r;
+    return {
+      ...base,
+      isOnline: sov ? sov.isOnline : base.isOnline,
+      batteryLevel: bat ?? base.batteryLevel ?? null,
     };
   });
 
@@ -937,7 +972,30 @@ export default function LiveRidersMap() {
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Customer</span>
               </div>
 
-              <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden" style={{ maxHeight: 492, overflow: "auto" }}>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="Search riders..."
+                  value={sidebarSearch}
+                  onChange={e => setSidebarSearch(e.target.value)}
+                  className="w-full text-sm border rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-green-400"
+                />
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["all", "online", "busy", "offline"] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setStatusFilter(f)}
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg capitalize ${
+                        statusFilter === f ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden" style={{ maxHeight: 440, overflow: "auto" }}>
                 {isLoading && riders.length === 0 ? (
                   <div className="p-8 text-center text-muted-foreground text-sm">Loading riders...</div>
                 ) : riders.length === 0 ? (
@@ -945,52 +1003,70 @@ export default function LiveRidersMap() {
                     <Users className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">No riders tracked yet</p>
                   </div>
-                ) : (
-                  <div className="divide-y divide-border/40">
-                    {riders.map(rider => {
-                      const status = getRiderStatus(rider);
-                      const stale = isGpsStale(rider, offlineAfterSec);
-                      return (
-                        <button
-                          key={rider.userId}
-                          onClick={() => setSelectedId(rider.userId === selectedId ? null : rider.userId)}
-                          className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left ${
-                            rider.userId === selectedId ? "bg-green-50 border-l-4 border-green-500" : ""
-                          }`}
-                        >
-                          <div className="flex-shrink-0">
-                            <StatusDot status={status} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-sm text-foreground truncate">{rider.name || "Unknown Rider"}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {getVehicleIcon(rider.vehicleType)} {rider.phone || "No phone"}{rider.vehicleType ? ` · ${rider.vehicleType}` : ""}
-                            </p>
-                            {stale && status !== "offline" && (
-                              <p className="text-[10px] text-amber-500 mt-0.5">⚠ GPS stale</p>
-                            )}
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <Badge
-                              className={`text-[10px] font-bold ${
-                                status === "busy"
-                                  ? "bg-red-100 text-red-700"
-                                  : status === "online"
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-gray-100 text-gray-500"
-                              }`}
-                            >
-                              {status === "busy" ? "Busy" : status === "online" ? "Online" : "Offline"}
-                            </Badge>
-                            <p className="text-[10px] text-muted-foreground mt-1">
-                              {fd(rider.updatedAt)}
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                ) : (() => {
+                  const q = sidebarSearch.toLowerCase();
+                  const filtered = riders.filter(r => {
+                    if (statusFilter !== "all" && getRiderStatus(r) !== statusFilter) return false;
+                    if (q && !(r.name || "").toLowerCase().includes(q) && !(r.phone || "").includes(q) && !(r.vehicleType || "").toLowerCase().includes(q)) return false;
+                    return true;
+                  });
+                  if (filtered.length === 0) return (
+                    <div className="p-6 text-center text-sm text-muted-foreground">No riders match filters</div>
+                  );
+                  return (
+                    <div className="divide-y divide-border/40">
+                      {filtered.map(rider => {
+                        const status = getRiderStatus(rider);
+                        const stale = isGpsStale(rider, offlineAfterSec);
+                        return (
+                          <button
+                            key={rider.userId}
+                            onClick={() => setSelectedId(rider.userId === selectedId ? null : rider.userId)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left ${
+                              rider.userId === selectedId ? "bg-green-50 border-l-4 border-green-500" : ""
+                            }`}
+                          >
+                            <div className="flex-shrink-0">
+                              <StatusDot status={status} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-sm text-foreground truncate">{rider.name || "Unknown Rider"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {getVehicleIcon(rider.vehicleType)} {rider.phone || "No phone"}{rider.vehicleType ? ` · ${rider.vehicleType}` : ""}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {rider.batteryLevel != null && (
+                                  <span className={`text-[10px] font-medium ${rider.batteryLevel <= 20 ? "text-red-500" : rider.batteryLevel <= 50 ? "text-amber-500" : "text-green-600"}`}>
+                                    🔋 {rider.batteryLevel}%
+                                  </span>
+                                )}
+                                {stale && status !== "offline" && (
+                                  <span className="text-[10px] text-amber-500">⚠ GPS stale</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <Badge
+                                className={`text-[10px] font-bold ${
+                                  status === "busy"
+                                    ? "bg-red-100 text-red-700"
+                                    : status === "online"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-gray-100 text-gray-500"
+                                }`}
+                              >
+                                {status === "busy" ? "Busy" : status === "online" ? "Online" : "Offline"}
+                              </Badge>
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                {fd(rider.updatedAt)}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </Card>
             </div>
           </div>
@@ -1037,6 +1113,12 @@ export default function LiveRidersMap() {
                     {getRiderStatus(selectedRider) === "offline"
                       ? `Last Seen ${fd(selectedRider.updatedAt)}`
                       : fd(selectedRider.updatedAt)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Battery</p>
+                  <p className={`font-bold mt-0.5 ${selectedRider.batteryLevel != null ? (selectedRider.batteryLevel <= 20 ? "text-red-500" : selectedRider.batteryLevel <= 50 ? "text-amber-500" : "text-green-600") : ""}`}>
+                    {selectedRider.batteryLevel != null ? `🔋 ${selectedRider.batteryLevel}%` : "—"}
                   </p>
                 </div>
                 <div>

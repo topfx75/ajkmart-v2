@@ -1,12 +1,49 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable } from "@workspace/db/schema";
+import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, and, gte, count, desc, SQL, sql, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { addSecurityEvent, getClientIp, getCachedSettings, customerAuth, idorGuard } from "../middleware/security.js";
+import { getIO } from "../lib/socketio.js";
 
 const router: IRouter = Router();
+
+const idempotencyCache = new Map<string, any>();
+const IDEMPOTENCY_TTL_MS = 5 * 60_000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of idempotencyCache) {
+    if (now - val._ts > IDEMPOTENCY_TTL_MS) idempotencyCache.delete(key);
+  }
+}, 60_000);
+
+function broadcastNewOrder(order: ReturnType<typeof mapOrder>, vendorId?: string | null) {
+  const io = getIO();
+  if (!io) return;
+  io.to("admin-fleet").emit("order:new", order);
+  if (vendorId) {
+    io.to(`vendor:${vendorId}`).emit("order:new", order);
+  }
+}
+
+function broadcastOrderUpdate(order: ReturnType<typeof mapOrder>, vendorId?: string | null) {
+  const io = getIO();
+  if (!io) return;
+  io.to("admin-fleet").emit("order:update", order);
+  if (vendorId) {
+    io.to(`vendor:${vendorId}`).emit("order:update", order);
+  }
+  if (order.riderId) {
+    io.to(`rider:${order.riderId}`).emit("order:update", order);
+  }
+}
+
+function broadcastWalletUpdate(userId: string, newBalance: number) {
+  const io = getIO();
+  if (!io) return;
+  io.to(`user:${userId}`).emit("wallet:update", { balance: newBalance });
+}
 
 function mapOrder(o: typeof ordersTable.$inferSelect, deliveryFee?: number, gstAmount?: number, codFee?: number) {
   return {
@@ -216,6 +253,18 @@ router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const { type, items, deliveryAddress, paymentMethod } = req.body;
   const ip = getClientIp(req);
+
+  const idempotencyKey = typeof req.headers["x-idempotency-key"] === "string"
+    ? req.headers["x-idempotency-key"].trim()
+    : typeof req.body?.idempotencyKey === "string"
+    ? req.body.idempotencyKey.trim() : null;
+  if (idempotencyKey) {
+    const cached = idempotencyCache.get(`${userId}:${idempotencyKey}`);
+    if (cached) {
+      res.status(200).json(cached);
+      return;
+    }
+  }
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     res.status(400).json({ error: "items (array) required" }); return;
@@ -535,7 +584,13 @@ router.post("/", customerAuth, async (req, res) => {
         }
         return newOrder!;
       });
-      res.status(201).json({ ...mapOrder(order, deliveryFee, gstAmount, codFee), promoDiscount });
+      const mapped = { ...mapOrder(order, deliveryFee, gstAmount, codFee), promoDiscount };
+      broadcastNewOrder(mapped, (order as any).vendorId);
+
+      const [updatedUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (updatedUser) broadcastWalletUpdate(userId, parseFloat(updatedUser.walletBalance ?? "0"));
+
+      res.status(201).json(mapped);
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
@@ -555,7 +610,12 @@ router.post("/", customerAuth, async (req, res) => {
       .where(eq(promoCodesTable.id, promoId))
       .catch(() => {});
   }
-  res.status(201).json({ ...mapOrder(order!, deliveryFee, gstAmount, codFee), promoDiscount });
+  const mapped = { ...mapOrder(order!, deliveryFee, gstAmount, codFee), promoDiscount };
+  broadcastNewOrder(mapped, (order as any).vendorId);
+  if (idempotencyKey) {
+    idempotencyCache.set(`${userId}:${idempotencyKey}`, { ...mapped, _ts: Date.now() });
+  }
+  res.status(201).json(mapped);
 });
 
 /* ── PATCH /orders/:id/cancel — customer cancel only ────────────────────── */
@@ -587,25 +647,56 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     res.status(400).json({ error: "This order can no longer be cancelled." }); return;
   }
 
-  const [order] = await db.update(ordersTable)
-    .set({ status: "cancelled", updatedAt: new Date() })
-    .where(and(eq(ordersTable.id, String(req.params["id"])), eq(ordersTable.userId, userId)))
-    .returning();
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-
   const isWallet = existingOrder.paymentMethod === "wallet";
   const refundAmount = isWallet ? parseFloat(String(existingOrder.total)) : 0;
 
-  if (reason) {
-    req.log?.info({ orderId: order.id, reason }, "Order cancelled with reason");
-  }
+  try {
+    const order = await db.transaction(async (tx) => {
+      const [cancelled] = await tx.update(ordersTable)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(and(
+          eq(ordersTable.id, String(req.params["id"])),
+          eq(ordersTable.userId, userId),
+          inArray(ordersTable.status, ["pending", "confirmed"]),
+        ))
+        .returning();
+      if (!cancelled) throw new Error("Order already cancelled or no longer cancellable");
 
-  res.json({
-    ...mapOrder(order),
-    refundAmount,
-    refundMethod: isWallet ? "wallet" : null,
-    cancelReason: reason,
-  });
+      if (isWallet && refundAmount > 0) {
+        await tx.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance + ${refundAmount.toFixed(2)}` })
+          .where(eq(usersTable.id, userId));
+        await tx.insert(walletTransactionsTable).values({
+          id: generateId(), userId, type: "credit",
+          amount: refundAmount.toFixed(2),
+          description: `Refund for cancelled order #${cancelled.id.slice(-6).toUpperCase()}`,
+          reference: `refund:${cancelled.id}`,
+        });
+      }
+
+      return cancelled;
+    });
+
+    if (isWallet && refundAmount > 0) {
+      const [updatedUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      if (updatedUser) broadcastWalletUpdate(userId, parseFloat(updatedUser.walletBalance ?? "0"));
+    }
+
+    broadcastOrderUpdate(mapOrder(order), (order as any).vendorId);
+
+    if (reason) {
+      req.log?.info({ orderId: order.id, reason }, "Order cancelled with reason");
+    }
+
+    res.json({
+      ...mapOrder(order),
+      refundAmount,
+      refundMethod: isWallet ? "wallet" : null,
+      cancelReason: reason,
+    });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || "Could not cancel order" });
+  }
 });
 
 export default router;

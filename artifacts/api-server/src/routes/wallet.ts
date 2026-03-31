@@ -7,6 +7,13 @@ import { getPlatformSettings, adminAuth } from "./admin.js";
 import { customerAuth } from "../middleware/security.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
+import { getIO } from "../lib/socketio.js";
+
+function broadcastWalletUpdate(userId: string, newBalance: number) {
+  const io = getIO();
+  if (!io) return;
+  io.to(`user:${userId}`).emit("wallet:update", { balance: newBalance });
+}
 
 const router: IRouter = Router();
 
@@ -112,6 +119,7 @@ router.post("/topup", adminAuth, async (req, res) => {
       return parseFloat(updated.walletBalance ?? "0");
     });
 
+    broadcastWalletUpdate(userId, result);
     const transactions = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId));
     res.json({ balance: result, transactions: transactions.map(mapTx) });
   } catch (e: any) {
@@ -207,6 +215,9 @@ router.post("/deposit", customerAuth, async (req, res) => {
       body: t("notifWalletCreditedBody", depositLang).replace("{amount}", amt.toFixed(0)),
       type: "wallet", icon: "wallet-outline",
     }).catch(e => console.error("customer deposit notif insert failed:", e));
+
+    const [freshUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (freshUser) broadcastWalletUpdate(userId, parseFloat(freshUser.walletBalance ?? "0"));
 
     res.json({ success: true, txId, status: "approved:auto", amount: amt });
   } else {
@@ -377,6 +388,10 @@ router.post("/send", customerAuth, async (req, res) => {
 
       return { newBalance: parseFloat(deducted.walletBalance ?? "0"), receiverName: receiver.name || receiverPhone, receiverId: receiver.id, senderName: sender.name || sender.phone, amount: sendAmt, fee: feeAmt };
     });
+
+    broadcastWalletUpdate(senderUserId, result.newBalance);
+    const [rcvBal] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, result.receiverId)).limit(1);
+    if (rcvBal) broadcastWalletUpdate(result.receiverId, parseFloat(rcvBal.walletBalance ?? "0"));
 
     const sendLang = await getUserLanguage(result.receiverId);
     db.insert(notificationsTable).values({

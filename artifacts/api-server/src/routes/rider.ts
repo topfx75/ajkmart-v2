@@ -5,7 +5,7 @@ import { eq, desc, and, or, sql, count, sum, avg, gte, isNull, type InferSelectM
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { verifyUserJwt, getCachedSettings, detectGPSSpoof, addSecurityEvent, getClientIp } from "../middleware/security.js";
-import { emitRiderLocation } from "../lib/socketio.js";
+import { emitRiderLocation, emitRiderStatus } from "../lib/socketio.js";
 import { z } from "zod";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
@@ -246,6 +246,8 @@ router.patch("/online", async (req, res) => {
       }
     } catch { /* non-critical — rider will appear on next GPS ping */ }
   }
+
+  emitRiderStatus({ userId: riderId, isOnline: !!isOnline, updatedAt: new Date().toISOString() });
 
   res.json({ success: true, isOnline: !!isOnline });
 });
@@ -1825,6 +1827,87 @@ router.patch("/location", async (req, res) => {
   });
 
   res.json({ success: true, updatedAt });
+});
+
+/* ── POST /rider/location/batch — Replay queued offline GPS pings ── */
+const batchLocationSchema = z.object({
+  locations: z.array(z.object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+    accuracy: z.number().optional(),
+    speed: z.number().optional(),
+    heading: z.number().optional(),
+    batteryLevel: z.number().min(0).max(100).optional(),
+    timestamp: z.string(),
+  })).min(1).max(100),
+});
+
+router.post("/location/batch", async (req, res) => {
+  const parsed = batchLocationSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
+  const riderId = req.riderId!;
+
+  const sorted = parsed.data.locations.sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+
+  let inserted = 0;
+  for (const loc of sorted) {
+    try {
+      const ts = new Date(loc.timestamp);
+      await db.insert(locationLogsTable).values({
+        id: generateId(),
+        userId: riderId,
+        role: "rider",
+        latitude: loc.latitude.toString(),
+        longitude: loc.longitude.toString(),
+        accuracy: loc.accuracy ?? null,
+        speed: loc.speed ?? null,
+        heading: loc.heading ?? null,
+        batteryLevel: loc.batteryLevel ?? null,
+        isSpoofed: false,
+        createdAt: ts,
+      });
+      inserted++;
+    } catch { /* skip invalid entries */ }
+  }
+
+  const last = sorted[sorted.length - 1]!;
+  const nowDate = new Date();
+  await db.insert(liveLocationsTable).values({
+    userId: riderId,
+    latitude: last.latitude.toString(),
+    longitude: last.longitude.toString(),
+    role: "rider",
+    action: null,
+    updatedAt: nowDate,
+  }).onConflictDoUpdate({
+    target: liveLocationsTable.userId,
+    set: {
+      latitude: last.latitude.toString(),
+      longitude: last.longitude.toString(),
+      role: "rider",
+      action: null,
+      updatedAt: nowDate,
+    },
+  });
+
+  emitRiderLocation({
+    userId: riderId,
+    latitude: last.latitude,
+    longitude: last.longitude,
+    accuracy: last.accuracy,
+    speed: last.speed,
+    heading: last.heading,
+    batteryLevel: last.batteryLevel,
+    action: null,
+    rideId: null,
+    vendorId: null,
+    orderId: null,
+    updatedAt: nowDate.toISOString(),
+  });
+
+  res.json({ success: true, inserted, total: sorted.length });
 });
 
 /* ── GET /rider/wallet/deposits — Deposit history ── */

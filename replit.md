@@ -84,6 +84,39 @@ The project is structured as a pnpm monorepo using TypeScript. The frontend leve
 - **crypto.scryptSync:** For password hashing.
 - **react-native-qrcode-svg:** For generating real QR codes in the wallet Receive Money modal.
 
+### Order-to-Delivery Stabilization (Task #1 Rider-Admin Sync + Order Reliability)
+
+**Server-Side (API Server):**
+- `orders.ts`: Socket.io broadcast on order creation (`order:new`) and update (`order:update`) to admin-fleet and vendor rooms. Wallet balance broadcast (`wallet:update`) after wallet payment deduction. **Critical bugfix**: Cancel handler now atomically refunds wallet inside a DB transaction (was calculating refund amount but never crediting it). Retry-safe 4xx vs 5xx distinction.
+- `wallet.ts`: Added `broadcastWalletUpdate()` after admin topup, auto-approved deposits, and P2P transfers. Both sender and receiver get real-time balance updates via Socket.io.
+- `rides.ts`: Added `broadcastWalletUpdate()` after ride cancellation refund/fee deduction.
+- `socketio.ts`: Added `rider:heartbeat` server handler — validates rider JWT, rebroadcasts batteryLevel to admin-fleet. Added `emitRiderStatus()` for instant online/offline status changes.
+
+**Rider App (`Home.tsx`):**
+- Socket.io heartbeat: 30-second interval emitting `rider:heartbeat` with battery level. Auto-joins personal `rider:{userId}` room for admin chat and push notifications.
+- Battery API integration: reads `navigator.getBattery()` level, includes in GPS location updates and heartbeat payloads.
+- GPS location updates now include `batteryLevel` field.
+
+**Admin Map (`live-riders-map.tsx`):**
+- Real-time `rider:status` listener: updates isOnline without page refresh when riders toggle online/offline.
+- `rider:heartbeat` and `rider:location` listeners: update battery level in real-time.
+- `order:new` / `order:update` listeners: invalidate order queries for instant admin notification.
+- Sidebar: search input (by name/phone/vehicle), status filter buttons (All/Online/Busy/Offline), battery level display with color coding (red ≤20%, amber ≤50%, green >50%).
+- Selected rider detail panel: battery level display.
+
+**Vendor App (`Orders.tsx`):**
+- `order:new` and `order:update` Socket.io listeners: invalidate vendor order queries for instant notification without polling.
+
+**Customer App (`AuthContext.tsx`):**
+- Socket.io connection: connects when logged in, auto-joins personal room via JWT auth.
+- `wallet:update` listener: instantly updates user wallet balance in AuthContext and persists to AsyncStorage. No page refresh needed.
+
+**Customer App (`cart/index.tsx`):**
+- Exponential backoff retry: `placeOrder` retries up to 3 times with 1s/2s/4s delays on 5xx errors. 4xx errors (validation) fail immediately without retry. Cart only clears after confirmed 200 OK response.
+
+**Offline GPS Queue (Rider App `api.ts`):**
+- IndexedDB-based offline GPS ping queue (`enqueueGpsPing`/`drainGpsQueue`). Location updates queue when offline, drain via `POST /rider/location/batch` on reconnect.
+
 ### Live Fleet Tracking — Complete System (Task #3)
 
 **API Server:**
