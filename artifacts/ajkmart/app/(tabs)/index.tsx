@@ -11,6 +11,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -501,7 +502,8 @@ function BannerCarousel({
   const banners = getActiveBanners(features);
   const scrollRef = useRef<ScrollView>(null);
   const [active, setActive] = useState(0);
-  const BANNER_W = W - H_PAD * 2;
+  const { width: windowWidth } = useWindowDimensions();
+  const BANNER_W = windowWidth - H_PAD * 2;
 
   useEffect(() => {
     if (banners.length <= 1) return;
@@ -530,7 +532,7 @@ function BannerCarousel({
       <ScrollView
         ref={scrollRef}
         horizontal
-        pagingEnabled
+        pagingEnabled={false}
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
@@ -538,7 +540,7 @@ function BannerCarousel({
         snapToInterval={BANNER_W}
         snapToAlignment="start"
         contentContainerStyle={{ paddingHorizontal: 0 }}
-        style={{ width: W - H_PAD * 2 }}
+        style={{ width: BANNER_W }}
       >
         {banners.map((b, i) => (
           <Pressable

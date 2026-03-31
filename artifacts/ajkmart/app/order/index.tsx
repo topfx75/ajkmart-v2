@@ -25,14 +25,20 @@ import { staticMapUrl } from "@/hooks/useMaps";
 const C = Colors.light;
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-  pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",            label: "Pending" },
+  pending:          { color: "#D97706", bg: "#FEF3C7", icon: "time-outline",             label: "Pending" },
   confirmed:        { color: "#2563EB", bg: "#DBEAFE", icon: "checkmark-circle-outline", label: "Confirmed" },
-  preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",            label: "Preparing" },
-  ready:            { color: "#6366F1", bg: "#E0E7FF", icon: "bag-check-outline",       label: "Ready" },
-  picked_up:        { color: "#0891B2", bg: "#CFFAFE", icon: "cube-outline",            label: "Picked Up" },
+  preparing:        { color: "#7C3AED", bg: "#EDE9FE", icon: "flame-outline",             label: "Preparing" },
+  ready:            { color: "#6366F1", bg: "#E0E7FF", icon: "bag-check-outline",        label: "Ready" },
+  picked_up:        { color: "#0891B2", bg: "#CFFAFE", icon: "cube-outline",             label: "Picked Up" },
   out_for_delivery: { color: "#059669", bg: "#D1FAE5", icon: "bicycle-outline",          label: "On the Way" },
   delivered:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   label: "Delivered" },
   cancelled:        { color: "#DC2626", bg: "#FEE2E2", icon: "close-circle-outline",     label: "Cancelled" },
+  accepted:         { color: "#059669", bg: "#D1FAE5", icon: "checkmark-circle-outline", label: "Accepted" },
+  arrived:          { color: "#0891B2", bg: "#CFFAFE", icon: "location-outline",         label: "Arrived" },
+  in_transit:       { color: "#7C3AED", bg: "#EDE9FE", icon: "car-outline",              label: "In Transit" },
+  completed:        { color: "#6B7280", bg: "#F3F4F6", icon: "checkmark-done-outline",   label: "Completed" },
+  searching:        { color: "#D97706", bg: "#FEF3C7", icon: "search-outline",           label: "Searching" },
+  bargaining:       { color: "#2563EB", bg: "#DBEAFE", icon: "chatbubbles-outline",      label: "Bargaining" },
 };
 
 const STEPS = ["pending", "confirmed", "preparing", "out_for_delivery", "delivered"];
@@ -40,13 +46,14 @@ const STEP_LABELS = ["Placed", "Confirmed", "Preparing", "On Way", "Delivered"];
 const PARCEL_STEPS = ["pending", "accepted", "in_transit", "completed"];
 const PARCEL_STEP_LABELS = ["Placed", "Accepted", "In Transit", "Delivered"];
 
-const LIVE_TRACKING_STATUSES = ["picked_up", "out_for_delivery", "in_transit"];
+const LIVE_TRACKING_STATUSES = ["picked_up", "out_for_delivery", "in_transit", "accepted", "arrived"];
 
 export default function OrderDetailScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { orderId, type } = useLocalSearchParams<{ orderId: string; type?: string }>();
   const isParcel = type === "parcel";
+  const isRide = type === "ride";
   const { token } = useAuth();
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
@@ -76,6 +83,8 @@ export default function OrderDetailScreen() {
       try {
         const endpoint = isParcel
           ? `${API_BASE}/rides/${orderId}/track`
+          : isRide
+          ? `${API_BASE}/rides/${orderId}/track`
           : isPharmacyType
           ? `${API_BASE}/pharmacy-orders/${orderId}/track`
           : `${API_BASE}/orders/${orderId}/track`;
@@ -99,7 +108,7 @@ export default function OrderDetailScreen() {
     ivRef = setInterval(fetchTrack, 15000);
     fetchTrack();
     return () => { if (ivRef !== null) clearInterval(ivRef); };
-  }, [order?.status, orderId, token, isParcel, isPharmacyType]);
+  }, [order?.status, orderId, token, isParcel, isRide, isPharmacyType]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -108,6 +117,8 @@ export default function OrderDetailScreen() {
       ? `${API_BASE}/parcel-bookings/${orderId}`
       : isPharmacyType
       ? `${API_BASE}/pharmacy-orders/${orderId}`
+      : isRide
+      ? `${API_BASE}/rides/${orderId}`
       : `${API_BASE}/orders/${orderId}`;
     let ivRef: ReturnType<typeof setInterval> | null = null;
     const fetchAndMaybeClear = async () => {
@@ -140,7 +151,7 @@ export default function OrderDetailScreen() {
       mountedRef.current = false;
       if (ivRef !== null) clearInterval(ivRef);
     };
-  }, [orderId, isParcel]);
+  }, [orderId, isParcel, isRide]);
 
   if (loading) {
     return (
@@ -160,21 +171,31 @@ export default function OrderDetailScreen() {
           <Pressable onPress={() => router.back()} style={s.backBtn}>
             <Ionicons name="chevron-back" size={20} color={C.text} />
           </Pressable>
-          <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : "Order Details"}</Text>
+          <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : isRide ? "Ride Details" : "Order Details"}</Text>
           <View style={{ width: 36 }} />
         </View>
         <View style={s.loadingWrap}>
           <Ionicons name="alert-circle-outline" size={48} color={C.textMuted} />
-          <Text style={s.loadingText}>{isParcel ? "Parcel not found" : "Order not found"}</Text>
+          <Text style={s.loadingText}>{isParcel ? "Parcel not found" : isRide ? "Ride not found" : "Order not found"}</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 4 }}>This order may have been removed or you may not have access.</Text>
+          <Pressable
+            onPress={() => router.replace("/(tabs)")}
+            style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: C.primary, borderRadius: 14 }}
+          >
+            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>Go to Home</Text>
+          </Pressable>
         </View>
       </View>
     );
   }
 
+  const RIDE_STEPS = ["searching", "accepted", "arrived", "in_transit", "completed"];
+  const RIDE_STEP_LABELS = ["Searching", "Accepted", "Arrived", "In Transit", "Completed"];
+
   const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG["pending"]!;
   const isActive = !["delivered", "cancelled", "completed"].includes(order.status);
-  const activeSteps = isParcel ? PARCEL_STEPS : STEPS;
-  const activeStepLabels = isParcel ? PARCEL_STEP_LABELS : STEP_LABELS;
+  const activeSteps = isParcel ? PARCEL_STEPS : isRide ? RIDE_STEPS : STEPS;
+  const activeStepLabels = isParcel ? PARCEL_STEP_LABELS : isRide ? RIDE_STEP_LABELS : STEP_LABELS;
   const stepIdx = activeSteps.indexOf(order.status);
   const isFood = order.type === "food";
   const isPharmacy = order.type === "pharmacy" || type === "pharmacy";
@@ -186,6 +207,8 @@ export default function OrderDetailScreen() {
   const cancelWindowMin = config.orderRules?.cancelWindowMin ?? 15;
   const canCancel = isParcelType
     ? ["pending", "accepted"].includes(order.status)
+    : isRide
+    ? ["searching", "bargaining", "accepted", "arrived"].includes(order.status)
     : ["pending", "confirmed"].includes(order.status) && minutesSincePlaced <= cancelWindowMin;
 
   return (
@@ -194,7 +217,7 @@ export default function OrderDetailScreen() {
         <Pressable onPress={() => router.back()} style={s.backBtn}>
           <Ionicons name="chevron-back" size={20} color={C.text} />
         </Pressable>
-        <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : "Order Details"}</Text>
+        <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : isRide ? "Ride Details" : "Order Details"}</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -306,52 +329,96 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        <View style={s.card}>
-          <View style={s.cardHeader}>
-            {isPharmacy ? (
-              <View style={[s.typeChip, { backgroundColor: "#F3E8FF" }]}>
-                <Ionicons name="medical-outline" size={13} color="#7C3AED" />
-                <Text style={[s.typeChipText, { color: "#7C3AED" }]}>Pharmacy</Text>
+        {isRide ? (
+          <View style={s.card}>
+            <View style={s.cardHeader}>
+              <View style={[s.typeChip, { backgroundColor: "#FEF3C7" }]}>
+                <Ionicons name="car-outline" size={13} color="#D97706" />
+                <Text style={[s.typeChipText, { color: "#D97706" }]}>Ride · {(order.type || "").charAt(0).toUpperCase() + (order.type || "").slice(1)}</Text>
               </View>
-            ) : isParcelType ? (
-              <View style={[s.typeChip, { backgroundColor: "#ECFDF5" }]}>
-                <Ionicons name="cube-outline" size={13} color="#059669" />
-                <Text style={[s.typeChipText, { color: "#059669" }]}>Parcel</Text>
-              </View>
-            ) : (
-              <View style={[s.typeChip, { backgroundColor: isFood ? "#FEF3C7" : "#EFF6FF" }]}>
-                <Ionicons name={isFood ? "restaurant-outline" : "storefront-outline"} size={13} color={isFood ? "#D97706" : "#1A56DB"} />
-                <Text style={[s.typeChipText, { color: isFood ? "#D97706" : "#1A56DB" }]}>{isFood ? "Food" : "Mart"}</Text>
-              </View>
-            )}
-            {order.vendorName && <Text style={s.vendorName}>{order.vendorName}</Text>}
-          </View>
-
-          {isPharmacy && order.prescriptionNote ? (
-            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#F3E8FF", borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: "#DDD6FE" }}>
-              <Ionicons name="document-text-outline" size={16} color="#7C3AED" style={{ marginTop: 1 }} />
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#5B21B6", flex: 1, lineHeight: 19 }}>{order.prescriptionNote}</Text>
             </View>
-          ) : null}
-
-          <Text style={s.sectionTitle}>Items</Text>
-          {(order.items || []).map((item: any, i: number) => (
-            <View key={i} style={s.itemRow}>
-              <View style={s.itemQty}>
-                <Text style={s.itemQtyText}>{item.quantity}×</Text>
+            <View style={{ gap: 12, marginTop: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#10B981", marginTop: 4 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Pickup</Text>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 }}>{order.pickupAddress || "—"}</Text>
+                </View>
               </View>
-              <Text style={s.itemName} numberOfLines={2}>{item.name}</Text>
-              <Text style={s.itemPrice}>Rs. {item.price * item.quantity}</Text>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444", marginTop: 4 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Drop-off</Text>
+                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 }}>{order.dropAddress || "—"}</Text>
+                </View>
+              </View>
+              {order.distance ? (
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1, backgroundColor: C.surfaceSecondary, borderRadius: 10, padding: 10, alignItems: "center" }}>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Distance</Text>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, marginTop: 2 }}>{parseFloat(order.distance).toFixed(1)} km</Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: C.surfaceSecondary, borderRadius: 10, padding: 10, alignItems: "center" }}>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Fare</Text>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#D97706", marginTop: 2 }}>Rs. {parseFloat(order.fare || 0).toLocaleString()}</Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={s.totalRow}>
+                  <Text style={s.totalLabel}>Fare</Text>
+                  <Text style={s.totalAmount}>Rs. {parseFloat(order.fare || 0).toLocaleString()}</Text>
+                </View>
+              )}
             </View>
-          ))}
-
-          <View style={s.totalRow}>
-            <Text style={s.totalLabel}>Total</Text>
-            <Text style={s.totalAmount}>Rs. {order.total?.toLocaleString()}</Text>
           </View>
-        </View>
+        ) : (
+          <View style={s.card}>
+            <View style={s.cardHeader}>
+              {isPharmacy ? (
+                <View style={[s.typeChip, { backgroundColor: "#F3E8FF" }]}>
+                  <Ionicons name="medical-outline" size={13} color="#7C3AED" />
+                  <Text style={[s.typeChipText, { color: "#7C3AED" }]}>Pharmacy</Text>
+                </View>
+              ) : isParcelType ? (
+                <View style={[s.typeChip, { backgroundColor: "#ECFDF5" }]}>
+                  <Ionicons name="cube-outline" size={13} color="#059669" />
+                  <Text style={[s.typeChipText, { color: "#059669" }]}>Parcel</Text>
+                </View>
+              ) : (
+                <View style={[s.typeChip, { backgroundColor: isFood ? "#FEF3C7" : "#EFF6FF" }]}>
+                  <Ionicons name={isFood ? "restaurant-outline" : "storefront-outline"} size={13} color={isFood ? "#D97706" : "#1A56DB"} />
+                  <Text style={[s.typeChipText, { color: isFood ? "#D97706" : "#1A56DB" }]}>{isFood ? "Food" : "Mart"}</Text>
+                </View>
+              )}
+              {order.vendorName && <Text style={s.vendorName}>{order.vendorName}</Text>}
+            </View>
 
-        {order.deliveryAddress && (
+            {isPharmacy && order.prescriptionNote ? (
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#F3E8FF", borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: "#DDD6FE" }}>
+                <Ionicons name="document-text-outline" size={16} color="#7C3AED" style={{ marginTop: 1 }} />
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#5B21B6", flex: 1, lineHeight: 19 }}>{order.prescriptionNote}</Text>
+              </View>
+            ) : null}
+
+            <Text style={s.sectionTitle}>Items</Text>
+            {(order.items || []).map((item: any, i: number) => (
+              <View key={i} style={s.itemRow}>
+                <View style={s.itemQty}>
+                  <Text style={s.itemQtyText}>{item.quantity}×</Text>
+                </View>
+                <Text style={s.itemName} numberOfLines={2}>{item.name}</Text>
+                <Text style={s.itemPrice}>Rs. {item.price * item.quantity}</Text>
+              </View>
+            ))}
+
+            <View style={s.totalRow}>
+              <Text style={s.totalLabel}>Total</Text>
+              <Text style={s.totalAmount}>Rs. {order.total?.toLocaleString()}</Text>
+            </View>
+          </View>
+        )}
+
+        {!isRide && order.deliveryAddress && (
           <View style={s.card}>
             <Text style={s.sectionTitle}>Delivery Address</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -365,7 +432,7 @@ export default function OrderDetailScreen() {
 
         {order.riderName && (
           <View style={s.card}>
-            <Text style={s.sectionTitle}>Delivery Rider</Text>
+            <Text style={s.sectionTitle}>{isRide ? "Your Driver" : "Delivery Rider"}</Text>
             <View style={s.riderRow}>
               <View style={s.riderAvatar}>
                 <Text style={s.riderInitial}>{order.riderName.charAt(0).toUpperCase()}</Text>
@@ -420,16 +487,16 @@ export default function OrderDetailScreen() {
                 : Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
               setCancelTarget({
                 id: order.id,
-                type: isParcelType ? "parcel" : isPharmacy ? "pharmacy" : "order",
+                type: isRide ? "ride" : isParcelType ? "parcel" : isPharmacy ? "pharmacy" : "order",
                 status: order.status,
-                total: isParcelType ? parseFloat(order.fare ?? order.total ?? "0") : order.total,
+                total: isRide ? parseFloat(order.fare ?? "0") : isParcelType ? parseFloat(order.fare ?? order.total ?? "0") : order.total,
                 paymentMethod: order.paymentMethod,
                 cancelMinsLeft,
               });
             }}
           >
             <Ionicons name="close-circle-outline" size={16} color="#DC2626" />
-            <Text style={s.cancelOrderBtnText}>{isParcelType ? "Cancel Booking" : "Cancel Order"}</Text>
+            <Text style={s.cancelOrderBtnText}>{isRide ? "Cancel Ride" : isParcelType ? "Cancel Booking" : "Cancel Order"}</Text>
           </Pressable>
         )}
 

@@ -41,6 +41,7 @@ export default function UniversalSearchScreen() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [added, setAdded] = useState<Record<string, boolean>>({});
 
   const firstEnabledService: ServiceType = config.features.mart
@@ -66,6 +67,7 @@ export default function UniversalSearchScreen() {
 
   const fetchResults = async (q: string, type: ServiceType) => {
     setLoading(true);
+    setSearchError(false);
     try {
       const params: Parameters<typeof getProducts>[0] & { limit?: number } = { type: type as GetProductsType, search: q, limit: 30 };
       const data = await getProducts(params as Parameters<typeof getProducts>[0]);
@@ -73,6 +75,7 @@ export default function UniversalSearchScreen() {
       setResults(items);
     } catch {
       setResults([]);
+      setSearchError(true);
     } finally {
       setLoading(false);
     }
@@ -147,7 +150,17 @@ export default function UniversalSearchScreen() {
         </View>
       )}
 
-      {!loading && query.trim() && results.length === 0 && (
+      {!loading && query.trim() && results.length === 0 && searchError && (
+        <View style={s.center}>
+          <Ionicons name="wifi-outline" size={40} color="#EF4444" />
+          <Text style={[s.emptyTxt, { color: "#EF4444" }]}>Search failed</Text>
+          <Text style={s.emptySub}>Check your connection and try again</Text>
+          <Pressable onPress={() => fetchResults(query, service)} style={{ marginTop: 12, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: C.primary, borderRadius: 10 }}>
+            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#fff" }}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
+      {!loading && query.trim() && results.length === 0 && !searchError && (
         <View style={s.center}>
           <Ionicons name="search-outline" size={40} color={C.textMuted} />
           <Text style={s.emptyTxt}>No results for "{query}"</Text>

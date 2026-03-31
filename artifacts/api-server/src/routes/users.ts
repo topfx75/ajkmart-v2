@@ -168,13 +168,27 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
 router.put("/profile", async (req, res) => {
   const userId = req.customerId!;
   const { userId: _ignored, name, email, avatar, cnic, city, address } = req.body;
+
+  if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+    res.status(400).json({ error: "Name cannot be empty" });
+    return;
+  }
+  if (email !== undefined && email !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "Invalid email format" });
+    return;
+  }
+  if (cnic !== undefined && cnic !== "" && !/^\d{13}$/.test(cnic.replace(/[-\s]/g, ""))) {
+    res.status(400).json({ error: "CNIC must be 13 digits (e.g. 3740512345678)" });
+    return;
+  }
+
   const updates: any = { updatedAt: new Date() };
-  if (name    !== undefined) updates.name    = name;
-  if (email   !== undefined) updates.email   = email;
+  if (name    !== undefined) updates.name    = String(name).trim();
+  if (email   !== undefined) updates.email   = String(email).trim();
   if (avatar  !== undefined) updates.avatar  = avatar;
-  if (cnic    !== undefined) updates.cnic    = cnic;
-  if (city    !== undefined) updates.city    = city;
-  if (address !== undefined) updates.address = address;
+  if (cnic    !== undefined) updates.cnic    = String(cnic).replace(/[-\s]/g, "").trim();
+  if (city    !== undefined) updates.city    = String(city).trim();
+  if (address !== undefined) updates.address = String(address).trim();
   await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
@@ -187,15 +201,12 @@ router.put("/profile", async (req, res) => {
     name: user.name,
     email: user.email,
     role: user.role,
-    roles: user.roles,
     avatar: user.avatar,
     walletBalance: parseFloat(user.walletBalance ?? "0"),
-    isActive: user.isActive,
     cnic: user.cnic,
     city: user.city,
     address: user.address,
     createdAt: user.createdAt.toISOString(),
-    lastLoginAt: user.lastLoginAt?.toISOString(),
   });
 });
 

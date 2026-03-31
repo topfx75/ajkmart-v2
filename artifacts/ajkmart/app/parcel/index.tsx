@@ -109,7 +109,15 @@ function ParcelScreenInner() {
 
   const [parcelType, setParcelType] = useState<string>("");
   const [weight, setWeight] = useState("");
+  const [length, setLength] = useState("");
+  const [width, setWidth] = useState("");
+  const [height, setHeight] = useState("");
   const [description, setDescription] = useState("");
+
+  const VOLUMETRIC_DIVISOR = 5000;
+  const volumetricWeight = (parseFloat(length) || 0) * (parseFloat(width) || 0) * (parseFloat(height) || 0) / VOLUMETRIC_DIVISOR;
+  const actualWeight = parseFloat(weight) || 0;
+  const chargeableWeight = Math.max(actualWeight, volumetricWeight);
 
   const [payMethod, setPayMethod] = useState<string>("cash");
   const [payMethods, setPayMethods] = useState<Array<{ id: string; label: string; logo: string; description: string }>>([
@@ -135,12 +143,11 @@ function ParcelScreenInner() {
   useEffect(() => {
     if (!parcelType) { setEstimatedFare(0); return; }
     setFareLoading(true);
-    const wgt = parseFloat(weight) || 0;
-    estimateParcel({ parcelType, weight: wgt })
+    estimateParcel({ parcelType, weight: chargeableWeight > 0 ? chargeableWeight : undefined })
       .then(data => { if (data.fare) setEstimatedFare(data.fare); })
       .catch(() => {})
       .finally(() => setFareLoading(false));
-  }, [parcelType, weight]);
+  }, [parcelType, chargeableWeight]);
 
   const phoneRegex = /^03\d{9}$/;
 
@@ -171,7 +178,7 @@ function ParcelScreenInner() {
   const bookParcel = async () => {
     setLoading(true);
     try {
-      const w = parseFloat(weight) || undefined;
+      const w = chargeableWeight > 0 ? chargeableWeight : (parseFloat(weight) || undefined);
       const payload: ParcelBookingPayload = {
         senderName, senderPhone, pickupAddress,
         receiverName, receiverPhone, dropAddress,
@@ -356,7 +363,7 @@ function ParcelScreenInner() {
               </View>
             </View>
             <View style={ss.card}>
-              <Text style={ss.label}>{T("weightOptional")}</Text>
+              <Text style={ss.label}>{T("weightOptional")} (kg)</Text>
               <TextInput
                 value={weight}
                 onChangeText={setWeight}
@@ -365,10 +372,27 @@ function ParcelScreenInner() {
                 style={ss.input}
                 keyboardType="decimal-pad"
               />
-              {weight && parseFloat(weight) > 0 && (
-                <Text style={ss.weightNote}>
-                  {T("weightKg")}: {parseFloat(weight).toFixed(1)} kg
-                </Text>
+              <Text style={ss.label}>Dimensions (cm) — Optional</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[ss.label, { fontSize: 11, marginBottom: 4 }]}>Length</Text>
+                  <TextInput value={length} onChangeText={setLength} placeholder="L" placeholderTextColor={C.textMuted} style={[ss.input, { textAlign: "center" }]} keyboardType="decimal-pad" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[ss.label, { fontSize: 11, marginBottom: 4 }]}>Width</Text>
+                  <TextInput value={width} onChangeText={setWidth} placeholder="W" placeholderTextColor={C.textMuted} style={[ss.input, { textAlign: "center" }]} keyboardType="decimal-pad" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[ss.label, { fontSize: 11, marginBottom: 4 }]}>Height</Text>
+                  <TextInput value={height} onChangeText={setHeight} placeholder="H" placeholderTextColor={C.textMuted} style={[ss.input, { textAlign: "center" }]} keyboardType="decimal-pad" />
+                </View>
+              </View>
+              {volumetricWeight > 0 && (
+                <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 10, marginTop: 4, gap: 4 }}>
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#92400E" }}>Weight Breakdown</Text>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#92400E" }}>Actual: {actualWeight.toFixed(1)} kg  •  Volumetric: {volumetricWeight.toFixed(2)} kg</Text>
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#D97706" }}>Chargeable: {chargeableWeight.toFixed(2)} kg</Text>
+                </View>
               )}
               <Text style={ss.label}>{T("descriptionOptional")}</Text>
               <TextInput
@@ -451,7 +475,7 @@ function ParcelScreenInner() {
               </View>
               <View style={ss.summaryRow}>
                 <Ionicons name="cube-outline" size={14} color={C.textMuted} />
-                <Text style={ss.summaryTxt}>{selectedType?.emoji} {selectedType?.label}{weight ? ` • ${weight} kg` : ""}</Text>
+                <Text style={ss.summaryTxt}>{selectedType?.emoji} {selectedType?.label}{chargeableWeight > 0 ? ` • ${chargeableWeight.toFixed(2)} kg${volumetricWeight > actualWeight ? " (vol.)" : ""}` : weight ? ` • ${weight} kg` : ""}</Text>
               </View>
               <View style={[{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border }]}>
                 {estimatedFare > 0 && confirmedFare > 0 && confirmedFare !== estimatedFare && (

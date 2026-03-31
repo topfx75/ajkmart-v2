@@ -106,9 +106,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
   const canRate = reviews && isDelivered && !order._reviewed && hourssinceDelivery <= ratingWindowHours;
 
   const handleCardPress = () => {
-    if (isActive) {
-      router.push(`/order?orderId=${order.id}`);
-    }
+    router.push(`/order?orderId=${order.id}`);
   };
 
   return (
@@ -216,12 +214,10 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
         </View>
       )}
 
-      {isActive && (
-        <View style={styles.tapHint}>
-          <Ionicons name="open-outline" size={11} color={C.textMuted} />
-          <Text style={styles.tapHintText}>Tap for details</Text>
-        </View>
-      )}
+      <View style={styles.tapHint}>
+        <Ionicons name="open-outline" size={11} color={C.textMuted} />
+        <Text style={styles.tapHintText}>Tap for details</Text>
+      </View>
     </Pressable>
   );
 }
@@ -249,11 +245,13 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
   const handleCardPress = () => {
     if (isActive) {
       router.push(`/ride?rideId=${ride.id}`);
+    } else {
+      router.push({ pathname: "/order", params: { orderId: ride.id, type: "ride" } });
     }
   };
 
   return (
-    <Pressable onPress={handleCardPress} disabled={!isActive} style={styles.card}>
+    <Pressable onPress={handleCardPress} style={styles.card}>
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#ECFDF5" }]}>
           <Ionicons
@@ -330,7 +328,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
         <Pressable style={styles.cancelBtn} onPress={() => onCancel(ride)}>
           <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
           <Text style={styles.cancelBtnText}>
-            {["accepted", "arrived", "in_transit"].includes(ride.status) ? T("cancelRideFee") : T("cancelRide")}
+            {["accepted", "arrived"].includes(ride.status) ? T("cancelRideFee") : T("cancelRide")}
           </Text>
         </Pressable>
       )}
@@ -382,12 +380,10 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
         </View>
       )}
 
-      {isActive && (
-        <View style={styles.tapHint}>
-          <Ionicons name="open-outline" size={11} color={C.textMuted} />
-          <Text style={styles.tapHintText}>Tap to track</Text>
-        </View>
-      )}
+      <View style={styles.tapHint}>
+        <Ionicons name="open-outline" size={11} color={C.textMuted} />
+        <Text style={styles.tapHintText}>{isActive ? "Tap to track" : "Tap for details"}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -497,13 +493,11 @@ function ParcelCard({ booking }: { booking: any }) {
     : T("parcel");
 
   const handleCardPress = () => {
-    if (isActive) {
-      router.push(`/order?orderId=${booking.id}&type=parcel`);
-    }
+    router.push(`/order?orderId=${booking.id}&type=parcel`);
   };
 
   return (
-    <Pressable onPress={handleCardPress} disabled={!isActive} style={styles.card}>
+    <Pressable onPress={handleCardPress} style={styles.card}>
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#FEF3C7" }]}>
           <Ionicons name="cube-outline" size={13} color="#D97706" />
@@ -558,12 +552,10 @@ function ParcelCard({ booking }: { booking: any }) {
         </View>
       )}
 
-      {isActive && (
-        <View style={styles.tapHint}>
-          <Ionicons name="open-outline" size={11} color={C.textMuted} />
-          <Text style={styles.tapHintText}>Tap to track</Text>
-        </View>
-      )}
+      <View style={styles.tapHint}>
+        <Ionicons name="open-outline" size={11} color={C.textMuted} />
+        <Text style={styles.tapHintText}>{isActive ? "Tap to track" : "Tap for details"}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -1059,13 +1051,14 @@ export default function OrdersScreen() {
     const anyPast   = pastOrders.length + pastRides.length + pastPharm.length + pastParcel.length;
 
     if (anyActive + anyPast === 0) {
+      const tabLabel = activeTab === "all" ? "any orders" : activeTab === "rides" ? "any rides" : activeTab === "pharmacy" ? "any pharmacy orders" : activeTab === "parcel" ? "any parcels" : activeTab === "mart" ? "any mart orders" : "any food orders";
       return (
         <View style={styles.center}>
           <View style={styles.emptyFilterIcon}>
-            <Ionicons name="search-outline" size={36} color={C.textMuted} />
+            <Ionicons name={activeTab === "rides" ? "car-outline" : activeTab === "parcel" ? "cube-outline" : activeTab === "pharmacy" ? "medical-outline" : "bag-outline"} size={36} color={C.textMuted} />
           </View>
-          <Text style={styles.emptyTitle}>{T("noRecordsFound")}</Text>
-          <Text style={styles.emptyText}>{T("noActivitySection")}</Text>
+          <Text style={styles.emptyTitle}>No {tabLabel} yet</Text>
+          <Text style={styles.emptyText}>{activeTab === "all" ? "Your order history will appear here once you place an order." : `You haven't placed ${tabLabel}. Start exploring!`}</Text>
         </View>
       );
     }

@@ -300,6 +300,12 @@ router.post("/send", customerAuth, async (req, res) => {
 
   const maxBalance = parseFloat(s["wallet_max_balance"] ?? "50000");
 
+  const [receiverPre] = await db.select({ id: usersTable.id, name: usersTable.name, blockedServices: usersTable.blockedServices })
+    .from(usersTable).where(eq(usersTable.phone, receiverPhone.trim())).limit(1);
+  if (!receiverPre) { res.status(404).json({ error: "Receiver not found. Phone number check karein." }); return; }
+  if (receiverPre.id === senderUserId) { res.status(400).json({ error: "Apne aap ko transfer nahi kar sakte" }); return; }
+  if (isWalletFrozen(receiverPre)) { res.status(403).json({ error: "Receiver's wallet is currently frozen. Transfer cannot be completed.", walletFrozen: true }); return; }
+
   try {
     const result = await db.transaction(async (tx) => {
       const [sender] = await tx.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
@@ -328,9 +334,8 @@ router.post("/send", customerAuth, async (req, res) => {
         throw new Error(`Daily P2P transfer limit is Rs. ${p2pDailyLimit}. Aaj Rs. ${todayTotal.toFixed(0)} transfer ho chuke hain.`);
       }
 
-      const [receiver] = await tx.select().from(usersTable).where(eq(usersTable.phone, receiverPhone)).limit(1);
-      if (!receiver) throw new Error("Receiver not found. Phone number check karein.");
-      if (receiver.id === senderUserId) throw new Error("Apne aap ko transfer nahi kar sakte");
+      const [receiver] = await tx.select().from(usersTable).where(eq(usersTable.id, receiverPre.id)).limit(1);
+      if (!receiver) throw new Error("Receiver not found");
       if (isWalletFrozen(receiver)) throw Object.assign(new Error("Receiver's wallet is currently frozen. Transfer cannot be completed."), { walletFrozen: true });
 
       const [deducted] = await tx.update(usersTable)

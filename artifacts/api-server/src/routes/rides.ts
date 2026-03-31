@@ -461,7 +461,7 @@ router.post("/", customerAuth, async (req, res) => {
   }
 });
 
-router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargaining", "accepted", "arrived", "in_transit"]), requireRideOwner("userId"), async (req, res) => {
+router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargaining", "accepted", "arrived"]), requireRideOwner("userId"), async (req, res) => {
   const userId = req.customerId!;
   const ride = req.ride!;
   const cancelParsed = cancelRideSchema.safeParse(req.body ?? {});

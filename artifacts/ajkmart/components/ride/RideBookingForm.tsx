@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { router } from "expo-router";
-import { useMapsAutocomplete, resolveLocation } from "@/hooks/useMaps";
+import { useMapsAutocomplete, resolveLocation, staticMapUrl } from "@/hooks/useMaps";
 import type { MapPrediction } from "@/hooks/useMaps";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Modal,
   Platform,
@@ -13,6 +14,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   StyleSheet,
 } from "react-native";
@@ -90,6 +92,7 @@ type RideBookingFormProps = {
 export function RideBookingForm({ onBooked }: RideBookingFormProps) {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const { width: screenWidth } = useWindowDimensions();
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
@@ -1305,6 +1308,25 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
               backgroundColor: "#fff",
             }}
           >
+            {pickupObj && dropObj && (
+              <Pressable
+                onPress={() => {
+                  const url = `https://www.google.com/maps/dir/?api=1&origin=${pickupObj.lat},${pickupObj.lng}&destination=${dropObj.lat},${dropObj.lng}&travelmode=driving`;
+                  Linking.openURL(url);
+                }}
+                style={{ width: "100%", height: 120, backgroundColor: C.surfaceSecondary }}
+              >
+                <Image
+                  source={{ uri: staticMapUrl([{ lat: pickupObj.lat, lng: pickupObj.lng, color: "green" }, { lat: dropObj.lat, lng: dropObj.lng, color: "red" }], { width: Math.round(screenWidth - 40), height: 120 }) }}
+                  style={{ width: "100%", height: 120 }}
+                  resizeMode="cover"
+                />
+                <View style={{ position: "absolute", bottom: 6, right: 8, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Ionicons name="navigate-outline" size={11} color="#fff" />
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#fff" }}>Open in Maps</Text>
+                </View>
+              </Pressable>
+            )}
             <View style={{ padding: 18 }}>
               <View
                 style={{

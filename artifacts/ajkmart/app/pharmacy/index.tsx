@@ -349,17 +349,23 @@ function PharmacyScreenInner() {
           </View>
           <Text style={s.successTitle}>{T("orderPlaced")}</Text>
           <Text style={s.successSub}>
-            #{confirmedOrderId.slice(-6).toUpperCase()}{"\n"}
+            Order #{confirmedOrderId.slice(-6).toUpperCase()}{"\n"}
             {T("eta")}: 25-40 min
           </Text>
           <View style={s.successMeta}>
             <Ionicons name="location-outline" size={14} color={C.textMuted} />
             <Text style={s.successMetaTxt} numberOfLines={2}>{address}</Text>
           </View>
-          <Pressable style={s.successBtn} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
-            <Text style={s.successBtnTxt}>{T("backToHome")}</Text>
-          </Pressable>
-          <Pressable style={[s.successBtn, { backgroundColor: "#F5F3FF", marginTop: 8 }]} onPress={() => { setConfirmed(false); }}>
+          <View style={{ flexDirection: "row", gap: 8, width: "100%", marginTop: 8 }}>
+            <Pressable style={[s.successBtn, { flex: 1, backgroundColor: "#F5F3FF" }]} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
+              <Text style={[s.successBtnTxt, { color: "#7C3AED" }]}>{T("backToHome")}</Text>
+            </Pressable>
+            <Pressable style={[s.successBtn, { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 }]} onPress={() => { setConfirmed(false); router.push({ pathname: "/order", params: { orderId: confirmedOrderId, type: "pharmacy" } }); }}>
+              <Ionicons name="navigate-outline" size={15} color="#fff" />
+              <Text style={s.successBtnTxt}>Track Order</Text>
+            </Pressable>
+          </View>
+          <Pressable style={[s.successBtn, { backgroundColor: "#F5F3FF", marginTop: 8, width: "100%" }]} onPress={() => { setConfirmed(false); }}>
             <Text style={[s.successBtnTxt, { color: "#7C3AED" }]}>{T("orderMore")}</Text>
           </Pressable>
         </View>
