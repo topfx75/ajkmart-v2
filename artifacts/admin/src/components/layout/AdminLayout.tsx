@@ -70,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navProducts",     href: "/products",     icon: PackageSearch },
       { nameKey: "navFlashDeals",   href: "/flash-deals",  icon: Zap },
       { nameKey: "navPromoCodes",   href: "/promo-codes",  icon: Ticket },
+      { nameKey: "navReviews",      href: "/reviews",      icon: Star },
     ],
   },
   {

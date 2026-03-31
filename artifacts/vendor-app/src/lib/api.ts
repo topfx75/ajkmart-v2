@@ -148,6 +148,10 @@ export const api = {
     if (params?.sort)  q.set("sort",  params.sort);
     return apiFetch(`/vendor/reviews?${q.toString()}`);
   },
+  getPublicReviews:    (vendorId: string) => apiFetch(`/reviews/vendor/${vendorId}`),
+  postVendorReply:     (reviewId: string, reply: string) => apiFetch(`/reviews/${reviewId}/vendor-reply`, { method: "POST", body: JSON.stringify({ reply }) }),
+  updateVendorReply:   (reviewId: string, reply: string) => apiFetch(`/reviews/${reviewId}/vendor-reply`, { method: "PUT", body: JSON.stringify({ reply }) }),
+  deleteVendorReply:   (reviewId: string) => apiFetch(`/reviews/${reviewId}/vendor-reply`, { method: "DELETE" }),
 
   /* Wallet */
   getWallet:      () => apiFetch("/vendor/wallet/transactions"),

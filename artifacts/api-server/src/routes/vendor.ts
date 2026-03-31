@@ -607,6 +607,9 @@ router.get("/reviews", async (req, res) => {
       comment: reviewsTable.comment,
       orderType: reviewsTable.orderType,
       createdAt: reviewsTable.createdAt,
+      status: reviewsTable.status,
+      vendorReply: reviewsTable.vendorReply,
+      vendorRepliedAt: reviewsTable.vendorRepliedAt,
       customerName: usersTable.name,
     })
     .from(reviewsTable)

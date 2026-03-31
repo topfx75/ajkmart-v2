@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { useRiders, useUpdateRiderStatus, useRiderPayout, useRiderBonus, useToggleRiderOnline, useRiderPenalties, useRiderRatings, useRestrictRider, useUnrestrictRider } from "@/hooks/use-admin";
+import { useRiders, useUpdateRiderStatus, useRiderPayout, useRiderBonus, useToggleRiderOnline, useRiderPenalties, useRiderRatings, useRestrictRider, useUnrestrictRider, useOverrideSuspension } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -279,6 +279,7 @@ export default function Riders() {
   const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch, isFetching } = useRiders();
   const toggleOnlineMutation = useToggleRiderOnline();
+  const overrideSuspM = useOverrideSuspension("riders");
   const { toast } = useToast();
 
   const [search,       setSearch]       = useState("");
@@ -491,6 +492,17 @@ export default function Riders() {
                       className="h-9 rounded-xl gap-1.5 text-xs border-blue-200 text-blue-700 hover:bg-blue-50">
                       <Eye className="w-3.5 h-3.5" /> Details
                     </Button>
+                    {r.autoSuspendedAt && !r.adminOverrideSuspension && (
+                      <Button size="sm" variant="outline" onClick={() => {
+                        overrideSuspM.mutate(r.id, {
+                          onSuccess: () => toast({ title: "Suspension overridden ✅", description: "Rider is now active again." }),
+                          onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+                        });
+                      }} disabled={overrideSuspM.isPending}
+                        className="h-9 rounded-xl gap-1.5 text-xs border-purple-200 text-purple-700 hover:bg-purple-50">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Override Suspend
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>

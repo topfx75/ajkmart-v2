@@ -28,7 +28,7 @@ import {
   locationLogsTable,
   reviewsTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import {
   checkAdminIPWhitelist,
@@ -153,6 +153,11 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "vendor_auto_approve",        value: "off",    label: "Auto-Approve New Vendors",               category: "vendor" },
   { key: "vendor_promo_enabled",       value: "on",     label: "Vendors Can Create Promo Codes",         category: "vendor" },
   { key: "vendor_withdrawal_enabled",  value: "on",     label: "Vendors Can Submit Withdrawal Requests", category: "vendor" },
+  /* Auto-Suspension Settings */
+  { key: "auto_suspend_rating_threshold", value: "2.5",  label: "Auto-Suspend Rating Threshold (avg below this)", category: "rider" },
+  { key: "auto_suspend_min_reviews",      value: "10",   label: "Auto-Suspend Min Reviews in 30 Days",            category: "rider" },
+  { key: "auto_suspend_vendor_threshold", value: "2.5",  label: "Auto-Suspend Vendor Rating Threshold",           category: "vendor" },
+  { key: "auto_suspend_vendor_min_reviews", value: "10", label: "Auto-Suspend Vendor Min Reviews in 30 Days",     category: "vendor" },
   /* App Feature Toggles */
   { key: "feature_mart",           value: "on",    label: "Mart (Grocery) Service",        category: "features" },
   { key: "feature_food",           value: "on",    label: "Food Delivery Service",         category: "features" },
@@ -4293,6 +4298,336 @@ router.delete("/ride-ratings/:id", adminAuth, async (req, res) => {
     .set({ deletedAt: new Date(), deletedBy: adminId, hidden: true })
     .where(eq(rideRatingsTable.id, existing.id));
   res.json({ success: true });
+});
+
+/* ── GET /admin/reviews/export — export CSV ────────────────────────────── */
+router.get("/reviews/export", async (req, res) => {
+  const { status, type } = req.query as Record<string, string>;
+
+  const conditions: any[] = [];
+  if (status && status !== "all") conditions.push(eq(reviewsTable.status, status));
+  if (type && type !== "all") conditions.push(eq(reviewsTable.orderType, type));
+
+  const rows = await db
+    .select({
+      review: reviewsTable,
+      reviewerName: usersTable.name,
+      reviewerPhone: usersTable.phone,
+    })
+    .from(reviewsTable)
+    .leftJoin(usersTable, eq(reviewsTable.userId, usersTable.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(reviewsTable.createdAt));
+
+  const escCSV = (v: any) => {
+    const s = String(v ?? "").replace(/"/g, '""');
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s}"` : s;
+  };
+
+  const header = ["id", "orderType", "orderId", "vendorId", "riderId", "reviewer", "stars", "comment", "vendorReply", "status", "date"].join(",");
+  const csvRows = rows.map(r => [
+    escCSV(r.review.id),
+    escCSV(r.review.orderType),
+    escCSV(r.review.orderId),
+    escCSV(r.review.vendorId || ""),
+    escCSV(r.review.riderId || ""),
+    escCSV(r.reviewerName || r.reviewerPhone || ""),
+    escCSV(r.review.rating),
+    escCSV(r.review.comment || ""),
+    escCSV(r.review.vendorReply || ""),
+    escCSV(r.review.status),
+    escCSV(r.review.createdAt.toISOString().slice(0, 10)),
+  ].join(","));
+
+  const csv = [header, ...csvRows].join("\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="reviews-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(csv);
+});
+
+/* ── POST /admin/reviews/import — import CSV ────────────────────────────── */
+router.post("/reviews/import", async (req, res) => {
+  const { csvData } = req.body;
+  if (!csvData || typeof csvData !== "string") {
+    res.status(400).json({ error: "csvData (string) is required" });
+    return;
+  }
+
+  const lines = csvData.split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) {
+    res.status(400).json({ error: "CSV must have a header and at least one data row" });
+    return;
+  }
+
+  const header = lines[0]!.split(",").map(h => h.trim().replace(/^"|"$/g, "").toLowerCase());
+  const requiredCols = ["ordertype", "orderid", "stars"];
+  const missing = requiredCols.filter(c => !header.includes(c));
+  if (missing.length > 0) {
+    res.status(400).json({ error: `Missing required columns: ${missing.join(", ")}` });
+    return;
+  }
+
+  const col = (row: string[], name: string) => {
+    const idx = header.indexOf(name);
+    return idx >= 0 ? (row[idx] || "").replace(/^"|"$/g, "").trim() : "";
+  };
+
+  let imported = 0, skipped = 0, errored = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const cells = (lines[i] || "").match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g) || lines[i]!.split(",");
+    try {
+      const orderId   = col(cells, "orderid");
+      const userId    = col(cells, "userid") || generateId();
+      const orderType = col(cells, "ordertype");
+      const ratingStr = col(cells, "stars") || col(cells, "rating");
+      const rating    = parseInt(ratingStr);
+
+      if (!orderId || !orderType || isNaN(rating) || rating < 1 || rating > 5) {
+        errored++;
+        continue;
+      }
+
+      const existing = await db.select({ id: reviewsTable.id })
+        .from(reviewsTable)
+        .where(and(eq(reviewsTable.orderId, orderId), eq(reviewsTable.userId, userId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        skipped++;
+        continue;
+      }
+
+      await db.insert(reviewsTable).values({
+        id: generateId(),
+        orderId,
+        userId,
+        vendorId: col(cells, "vendorid") || null,
+        riderId: col(cells, "riderid") || null,
+        orderType,
+        rating,
+        comment: col(cells, "comment") || null,
+        vendorReply: col(cells, "vendorreply") || null,
+        status: col(cells, "status") || "visible",
+      });
+      imported++;
+    } catch {
+      errored++;
+    }
+  }
+
+  res.json({ imported, skipped, errored, total: lines.length - 1 });
+});
+
+/* ── GET /admin/reviews/moderation-queue — pending moderation ─────────── */
+router.get("/reviews/moderation-queue", async (req, res) => {
+  const rows = await db
+    .select({
+      review: reviewsTable,
+      reviewerName: usersTable.name,
+      reviewerPhone: usersTable.phone,
+    })
+    .from(reviewsTable)
+    .leftJoin(usersTable, eq(reviewsTable.userId, usersTable.id))
+    .where(eq(reviewsTable.status, "pending_moderation"))
+    .orderBy(desc(reviewsTable.createdAt));
+
+  res.json({
+    reviews: rows.map(r => ({
+      ...r.review,
+      reviewerName: r.reviewerName,
+      reviewerPhone: r.reviewerPhone,
+    })),
+    total: rows.length,
+  });
+});
+
+/* ── PATCH /admin/reviews/:id/approve — approve a moderated review ──────── */
+router.patch("/reviews/:id/approve", async (req, res) => {
+  const [updated] = await db.update(reviewsTable)
+    .set({ status: "visible" })
+    .where(and(eq(reviewsTable.id, req.params["id"]!), eq(reviewsTable.status, "pending_moderation")))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Review not found or not pending moderation" }); return; }
+  res.json(updated);
+});
+
+/* ── PATCH /admin/reviews/:id/reject — reject (soft-delete) a moderated review ─ */
+router.patch("/reviews/:id/reject", async (req, res) => {
+  const [updated] = await db.update(reviewsTable)
+    .set({ status: "rejected" })
+    .where(eq(reviewsTable.id, req.params["id"]!))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Review not found" }); return; }
+  res.json(updated);
+});
+
+/* ── POST /admin/jobs/rating-suspension — auto-suspend low-rated riders/vendors ─ */
+router.post("/jobs/rating-suspension", async (req, res) => {
+  const s = await getPlatformSettings();
+  const riderThreshold  = parseFloat(s["auto_suspend_rating_threshold"] ?? "2.5");
+  const riderMinReviews = parseInt(s["auto_suspend_min_reviews"] ?? "10");
+  const vendorThreshold  = parseFloat(s["auto_suspend_vendor_threshold"] ?? "2.5");
+  const vendorMinReviews = parseInt(s["auto_suspend_vendor_min_reviews"] ?? "10");
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const now = new Date();
+
+  let suspendedRiders = 0;
+  let suspendedVendors = 0;
+
+  /* ── Rider auto-suspension ── */
+  const riderRatings = await db
+    .select({
+      riderId: reviewsTable.riderId,
+      avgRating: avg(reviewsTable.rating),
+      reviewCount: count(),
+    })
+    .from(reviewsTable)
+    .where(and(
+      eq(reviewsTable.status, "visible"),
+      gte(reviewsTable.createdAt, thirtyDaysAgo),
+      ne(reviewsTable.riderId, ""),
+    ))
+    .groupBy(reviewsTable.riderId);
+
+  for (const row of riderRatings) {
+    if (!row.riderId) continue;
+    const avg_ = parseFloat(String(row.avgRating ?? "5"));
+    const cnt  = Number(row.reviewCount ?? 0);
+    if (cnt >= riderMinReviews && avg_ < riderThreshold) {
+      const [rider] = await db.select({ id: usersTable.id, isActive: usersTable.isActive, adminOverrideSuspension: usersTable.adminOverrideSuspension })
+        .from(usersTable)
+        .where(eq(usersTable.id, row.riderId))
+        .limit(1);
+
+      if (rider && rider.isActive && !rider.adminOverrideSuspension) {
+        await db.update(usersTable).set({
+          isActive: false,
+          autoSuspendedAt: now,
+          autoSuspendReason: `Average rating ${avg_.toFixed(1)} (${cnt} reviews in last 30 days) fell below threshold ${riderThreshold}`,
+          updatedAt: now,
+        }).where(eq(usersTable.id, rider.id));
+
+        await db.insert(notificationsTable).values({
+          id: generateId(),
+          userId: rider.id,
+          title: "Account Suspended",
+          body: `Your account has been automatically suspended due to a low average rating of ${avg_.toFixed(1)} stars. Please contact support for assistance.`,
+          type: "system",
+          icon: "alert-circle-outline",
+        }).catch(() => {});
+
+        suspendedRiders++;
+      }
+    }
+  }
+
+  /* ── Vendor auto-suspension ── */
+  const vendorRatings = await db
+    .select({
+      vendorId: reviewsTable.vendorId,
+      avgRating: avg(reviewsTable.rating),
+      reviewCount: count(),
+    })
+    .from(reviewsTable)
+    .where(and(
+      eq(reviewsTable.status, "visible"),
+      gte(reviewsTable.createdAt, thirtyDaysAgo),
+      ne(reviewsTable.vendorId, ""),
+    ))
+    .groupBy(reviewsTable.vendorId);
+
+  for (const row of vendorRatings) {
+    if (!row.vendorId) continue;
+    const avg_ = parseFloat(String(row.avgRating ?? "5"));
+    const cnt  = Number(row.reviewCount ?? 0);
+    if (cnt >= vendorMinReviews && avg_ < vendorThreshold) {
+      const [vendor] = await db.select({ id: usersTable.id, isActive: usersTable.isActive, adminOverrideSuspension: usersTable.adminOverrideSuspension })
+        .from(usersTable)
+        .where(eq(usersTable.id, row.vendorId))
+        .limit(1);
+
+      if (vendor && vendor.isActive && !vendor.adminOverrideSuspension) {
+        await db.update(usersTable).set({
+          isActive: false,
+          autoSuspendedAt: now,
+          autoSuspendReason: `Average vendor rating ${avg_.toFixed(1)} (${cnt} reviews in last 30 days) fell below threshold ${vendorThreshold}`,
+          updatedAt: now,
+        }).where(eq(usersTable.id, vendor.id));
+
+        await db.insert(notificationsTable).values({
+          id: generateId(),
+          userId: vendor.id,
+          title: "Store Suspended",
+          body: `Your store has been automatically suspended due to a low average rating of ${avg_.toFixed(1)} stars. Please contact support for assistance.`,
+          type: "system",
+          icon: "alert-circle-outline",
+        }).catch(() => {});
+
+        suspendedVendors++;
+      }
+    }
+  }
+
+  res.json({
+    success: true,
+    suspendedRiders,
+    suspendedVendors,
+    message: `Suspended ${suspendedRiders} rider(s) and ${suspendedVendors} vendor(s) due to low ratings.`,
+  });
+});
+
+/* ── POST /admin/riders/:id/override-suspension — override auto-suspension ─ */
+router.post("/riders/:id/override-suspension", async (req, res) => {
+  const userId = req.params["id"]!;
+  const [user] = await db.select({ id: usersTable.id, autoSuspendedAt: usersTable.autoSuspendedAt })
+    .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { res.status(404).json({ error: "Rider not found" }); return; }
+  if (!user.autoSuspendedAt) { res.status(400).json({ error: "Rider was not auto-suspended" }); return; }
+
+  const [updated] = await db.update(usersTable).set({
+    isActive: true,
+    adminOverrideSuspension: true,
+    updatedAt: new Date(),
+  }).where(eq(usersTable.id, userId)).returning();
+
+  await db.insert(notificationsTable).values({
+    id: generateId(),
+    userId,
+    title: "Suspension Overridden",
+    body: "An admin has reviewed and overridden your account suspension. You are now active again.",
+    type: "system",
+    icon: "shield-checkmark-outline",
+  }).catch(() => {});
+
+  res.json({ success: true, user: stripUser(updated as any) });
+});
+
+/* ── POST /admin/vendors/:id/override-suspension — override auto-suspension ─ */
+router.post("/vendors/:id/override-suspension", async (req, res) => {
+  const userId = req.params["id"]!;
+  const [user] = await db.select({ id: usersTable.id, autoSuspendedAt: usersTable.autoSuspendedAt })
+    .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { res.status(404).json({ error: "Vendor not found" }); return; }
+  if (!user.autoSuspendedAt) { res.status(400).json({ error: "Vendor was not auto-suspended" }); return; }
+
+  const [updated] = await db.update(usersTable).set({
+    isActive: true,
+    adminOverrideSuspension: true,
+    updatedAt: new Date(),
+  }).where(eq(usersTable.id, userId)).returning();
+
+  await db.insert(notificationsTable).values({
+    id: generateId(),
+    userId,
+    title: "Suspension Overridden",
+    body: "An admin has reviewed and overridden your store suspension. You are now active again.",
+    type: "system",
+    icon: "shield-checkmark-outline",
+  }).catch(() => {});
+
+  res.json({ success: true, user: stripUser(updated as any) });
 });
 
 export default router;

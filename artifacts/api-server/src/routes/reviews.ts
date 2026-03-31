@@ -1,12 +1,78 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, pharmacyOrdersTable, parcelBookingsTable, reviewsTable, rideRatingsTable, ridesTable, usersTable } from "@workspace/db/schema";
 import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { customerAuth } from "../middleware/security.js";
+import { customerAuth, verifyUserJwt, writeAuthAuditLog, getClientIp } from "../middleware/security.js";
+import OpenAI from "openai";
 
 const router: IRouter = Router();
+
+/* ── Local Vendor Auth ─────────────────────────────────────────────────── */
+async function vendorAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers["authorization"];
+  const tokenHeader = req.headers["x-auth-token"] as string | undefined;
+  const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
+  const ip = getClientIp(req);
+  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
+  const payload = verifyUserJwt(raw);
+  if (!payload) {
+    writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, role: "vendor" } });
+    res.status(401).json({ error: "Invalid or expired session" }); return;
+  }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+  if (!user || !user.isActive || user.isBanned) { res.status(403).json({ error: "Access denied" }); return; }
+  const dbRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
+  if (!dbRoles.includes("vendor")) { res.status(403).json({ error: "Vendor role required" }); return; }
+  req.vendorId = user.id;
+  req.vendorUser = user;
+  next();
+}
+
+/* ── AI Moderation Client ──────────────────────────────────────────────── */
+let aiClient: OpenAI | null = null;
+function getAIClient(): OpenAI | null {
+  if (!process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"] || !process.env["AI_INTEGRATIONS_OPENAI_API_KEY"]) {
+    return null;
+  }
+  if (!aiClient) {
+    aiClient = new OpenAI({
+      baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
+      apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"],
+    });
+  }
+  return aiClient;
+}
+
+async function moderateComment(comment: string): Promise<{ flagged: boolean; reason: string | null }> {
+  const client = getAIClient();
+  if (!client || !comment || comment.trim().length < 5) {
+    return { flagged: false, reason: null };
+  }
+  try {
+    const response = await client.chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 100,
+      messages: [
+        {
+          role: "system",
+          content: "You are a content moderation assistant. Analyze the following review comment and reply ONLY with a JSON object in the format: {\"flagged\": true/false, \"reason\": \"reason or null\"}. Flag as true if the comment contains spam, hate speech, profanity, offensive language, or abusive content. Otherwise set flagged to false and reason to null.",
+        },
+        { role: "user", content: comment },
+      ],
+    });
+    const text = response.choices[0]?.message?.content?.trim() || "{}";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return { flagged: !!parsed.flagged, reason: parsed.reason || null };
+    }
+  } catch (e) {
+    console.error("[moderation] AI check failed:", e);
+  }
+  return { flagged: false, reason: null };
+}
 
 /* ── POST /reviews — submit a review ─────────────────────────────────────── */
 router.post("/", customerAuth, async (req, res) => {
@@ -28,7 +94,6 @@ router.post("/", customerAuth, async (req, res) => {
     }
   }
 
-  /* ── Feature gate: admin can disable reviews globally ── */
   const s = await getPlatformSettings();
   const reviewsEnabled = (s["feature_reviews"] ?? "on") === "on";
   if (!reviewsEnabled) {
@@ -162,6 +227,17 @@ router.post("/", customerAuth, async (req, res) => {
   }
 
   /* Use authoritative subjects from DB, not client-supplied IDs */
+  let status = "visible";
+  let moderationNote: string | null = null;
+
+  if (comment && comment.trim().length > 0) {
+    const modResult = await moderateComment(comment);
+    if (modResult.flagged) {
+      status = "pending_moderation";
+      moderationNote = modResult.reason;
+    }
+  }
+
   const [review] = await db.insert(reviewsTable).values({
     id: generateId(),
     orderId,
@@ -172,9 +248,15 @@ router.post("/", customerAuth, async (req, res) => {
     rating,
     riderRating: (authoritativeRiderId && riderRating) ? riderRating : null,
     comment: comment ?? null,
+    status,
+    moderationNote,
   }).returning();
 
-  res.status(201).json(review);
+  if (status === "pending_moderation") {
+    res.status(201).json({ ...review, _moderated: true, message: "Your review is under moderation and will be visible once approved." });
+  } else {
+    res.status(201).json(review);
+  }
 });
 
 /* ── GET /reviews?orderId= — check if reviewed (IDOR-protected) ── */
@@ -324,6 +406,99 @@ router.get("/vendor/:vendorId", async (req, res) => {
     : null;
 
   res.json({ reviews: rows, avgRating: avg ? parseFloat(avg) : null, total: rows.length });
+});
+
+/* ── POST /reviews/:id/vendor-reply — vendor reply ─────────────────────── */
+router.post("/:id/vendor-reply", vendorAuth, async (req, res) => {
+  const vendorId = req.vendorId!;
+  const reviewId = req.params["id"]!;
+  const { reply } = req.body;
+
+  if (!reply || typeof reply !== "string" || reply.trim().length === 0) {
+    res.status(400).json({ error: "reply text is required" });
+    return;
+  }
+
+  const [review] = await db.select().from(reviewsTable)
+    .where(and(eq(reviewsTable.id, reviewId), eq(reviewsTable.vendorId, vendorId)))
+    .limit(1);
+
+  if (!review) {
+    res.status(404).json({ error: "Review not found or does not belong to your store" });
+    return;
+  }
+
+  if (review.vendorReply) {
+    res.status(409).json({ error: "A reply already exists. Use PUT to update it." });
+    return;
+  }
+
+  const [updated] = await db.update(reviewsTable)
+    .set({ vendorReply: reply.trim(), vendorRepliedAt: new Date() })
+    .where(eq(reviewsTable.id, reviewId))
+    .returning();
+
+  res.status(201).json(updated);
+});
+
+/* ── PUT /reviews/:id/vendor-reply — edit vendor reply ──────────────────── */
+router.put("/:id/vendor-reply", vendorAuth, async (req, res) => {
+  const vendorId = req.vendorId!;
+  const reviewId = req.params["id"]!;
+  const { reply } = req.body;
+
+  if (!reply || typeof reply !== "string" || reply.trim().length === 0) {
+    res.status(400).json({ error: "reply text is required" });
+    return;
+  }
+
+  const [review] = await db.select().from(reviewsTable)
+    .where(and(eq(reviewsTable.id, reviewId), eq(reviewsTable.vendorId, vendorId)))
+    .limit(1);
+
+  if (!review) {
+    res.status(404).json({ error: "Review not found or does not belong to your store" });
+    return;
+  }
+
+  if (!review.vendorReply) {
+    res.status(404).json({ error: "No reply exists. Use POST to create one." });
+    return;
+  }
+
+  const [updated] = await db.update(reviewsTable)
+    .set({ vendorReply: reply.trim(), vendorRepliedAt: new Date() })
+    .where(eq(reviewsTable.id, reviewId))
+    .returning();
+
+  res.json(updated);
+});
+
+/* ── DELETE /reviews/:id/vendor-reply — delete vendor reply ─────────────── */
+router.delete("/:id/vendor-reply", vendorAuth, async (req, res) => {
+  const vendorId = req.vendorId!;
+  const reviewId = req.params["id"]!;
+
+  const [review] = await db.select().from(reviewsTable)
+    .where(and(eq(reviewsTable.id, reviewId), eq(reviewsTable.vendorId, vendorId)))
+    .limit(1);
+
+  if (!review) {
+    res.status(404).json({ error: "Review not found or does not belong to your store" });
+    return;
+  }
+
+  if (!review.vendorReply) {
+    res.status(404).json({ error: "No reply exists" });
+    return;
+  }
+
+  const [updated] = await db.update(reviewsTable)
+    .set({ vendorReply: null, vendorRepliedAt: null })
+    .where(eq(reviewsTable.id, reviewId))
+    .returning();
+
+  res.json(updated);
 });
 
 export default router;

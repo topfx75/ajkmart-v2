@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride } from "@/hooks/use-admin";
+import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { useToast } from "@/hooks/use-toast";
@@ -221,6 +221,7 @@ export default function Vendors() {
   const [, setLocation] = useLocation();
   const { data, isLoading, refetch, isFetching } = useVendors();
   const { data: settingsData } = usePlatformSettings();
+  const overrideSuspM = useOverrideSuspension("vendors");
   const { toast } = useToast();
 
   const [search,       setSearch]       = useState("");
@@ -423,6 +424,17 @@ export default function Vendors() {
                         : <><CheckCircle2 className="w-3.5 h-3.5" /> Activate</>
                       }
                     </Button>
+                    {v.autoSuspendedAt && !v.adminOverrideSuspension && (
+                      <Button size="sm" variant="outline" onClick={() => {
+                        overrideSuspM.mutate(v.id, {
+                          onSuccess: () => toast({ title: "Suspension overridden ✅", description: "Vendor is now active again." }),
+                          onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+                        });
+                      }} disabled={overrideSuspM.isPending}
+                        className="h-9 rounded-xl gap-1.5 text-xs border-purple-200 text-purple-700 hover:bg-purple-50">
+                        <Settings2 className="w-3.5 h-3.5" /> Override Suspend
+                      </Button>
+                    )}
                   </div>
                 </div>
 

@@ -80,6 +80,10 @@ export const usersTable = pgTable("users", {
   cancellationDebt: decimal("cancellation_debt", { precision: 10, scale: 2 }).notNull().default("0"),
   /* ── Token version — incremented on logout/ban/role change to invalidate access JWTs ── */
   tokenVersion:    integer("token_version").notNull().default(0),
+  /* ── Auto-suspension tracking ── */
+  autoSuspendedAt: timestamp("auto_suspended_at"),
+  autoSuspendReason: text("auto_suspend_reason"),
+  adminOverrideSuspension: boolean("admin_override_suspension").notNull().default(false),
   lastLoginAt:       timestamp("last_login_at"),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
   updatedAt:       timestamp("updated_at").notNull().defaultNow(),

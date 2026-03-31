@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -33,13 +33,24 @@ function StarRating({ value, size = "sm" }: { value: number; size?: "sm" | "lg" 
   );
 }
 
+function StatusPill({ status }: { status: string }) {
+  if (status === "visible")            return <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold">Visible</span>;
+  if (status === "pending_moderation") return <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">Under Review</span>;
+  if (status === "rejected")           return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Rejected</span>;
+  return null;
+}
+
 export default function Reviews() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
 
-  const [page, setPage]   = useState(1);
-  const [stars, setStars] = useState<string>("");
-  const [sort, setSort]   = useState<string>("newest");
+  const [page, setPage]           = useState(1);
+  const [stars, setStars]         = useState<string>("");
+  const [sort, setSort]           = useState<string>("newest");
+  const [replyOpen, setReplyOpen] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+
+  const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["vendor-reviews", page, stars, sort],
@@ -47,18 +58,56 @@ export default function Reviews() {
     staleTime: 30_000,
   });
 
+  const postM = useMutation({
+    mutationFn: ({ reviewId, reply }: { reviewId: string, reply: string }) => api.postVendorReply(reviewId, reply),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ["vendor-reviews"] }); 
+      setReplyOpen(null);
+      setReplyText("");
+    },
+  });
+
+  const putM = useMutation({
+    mutationFn: ({ reviewId, reply }: { reviewId: string, reply: string }) => api.updateVendorReply(reviewId, reply),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ["vendor-reviews"] }); 
+      setReplyOpen(null);
+      setReplyText("");
+    },
+  });
+
+  const delM = useMutation({
+    mutationFn: (reviewId: string) => api.deleteVendorReply(reviewId),
+    onSuccess: () => { 
+      qc.invalidateQueries({ queryKey: ["vendor-reviews"] }); 
+      setReplyOpen(null);
+      setReplyText("");
+    },
+  });
+
   const reviews: Array<{
     id: string;
     rating: number;
     comment: string | null;
     orderType: string | null;
+    status: string;
     createdAt: string;
     customerName: string | null;
+    vendorReply: string | null;
   }>                          = data?.reviews      ?? [];
   const total: number         = data?.total        ?? 0;
   const pages: number         = data?.pages        ?? 1;
   const avgRating: number | null = data?.avgRating ?? null;
   const breakdown: Record<number, number> = data?.starBreakdown ?? {};
+
+  const handleReplySubmit = (reviewId: string, existing: boolean) => {
+    if (!replyText.trim()) return;
+    if (existing) {
+      putM.mutate({ reviewId, reply: replyText.trim() });
+    } else {
+      postM.mutate({ reviewId, reply: replyText.trim() });
+    }
+  };
 
   return (
     <div className="px-4 py-5 max-w-2xl mx-auto">
@@ -147,7 +196,10 @@ export default function Reviews() {
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-gray-800">{r.customerName ?? T("customer")}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-bold text-gray-800">{r.customerName ?? T("customer")}</p>
+                      <StatusPill status={r.status} />
+                    </div>
                     <p className="text-xs text-gray-400">
                       {r.orderType && (
                         <span className="mr-1 bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 capitalize">
@@ -160,12 +212,84 @@ export default function Reviews() {
                     </p>
                   </div>
                 </div>
-                <StarRating value={r.rating} />
+                <div className="flex flex-col items-end gap-1">
+                  <StarRating value={r.rating} />
+                  {r.status === "visible" && (
+                    <button
+                      className="text-xs text-blue-600 underline font-medium"
+                      onClick={() => {
+                        if (replyOpen === r.id) {
+                          setReplyOpen(null);
+                        } else {
+                          setReplyOpen(r.id);
+                          setReplyText(r.vendorReply || "");
+                        }
+                      }}
+                    >
+                      {r.vendorReply ? "Edit Reply" : "Reply"}
+                    </button>
+                  )}
+                </div>
               </div>
+
               {r.comment && (
                 <p className="text-sm text-gray-600 mt-2 leading-relaxed border-t border-gray-50 pt-2 italic">
                   "{r.comment}"
                 </p>
+              )}
+
+              {/* Vendor reply display */}
+              {r.vendorReply && replyOpen !== r.id && (
+                <div className="mt-3 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                  <div className="text-blue-500 mt-0.5">
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current stroke-2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-blue-700 mb-0.5">Your Reply</p>
+                    <p className="text-xs text-blue-600">{r.vendorReply}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Reply form */}
+              {replyOpen === r.id && (
+                <div className="mt-3 space-y-2">
+                  <textarea
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    rows={3}
+                    placeholder="Write your reply to this customer..."
+                    value={replyText}
+                    onChange={e => setReplyText(e.target.value)}
+                    disabled={postM.isPending || putM.isPending || delM.isPending}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-60"
+                      onClick={() => handleReplySubmit(r.id, !!r.vendorReply)}
+                      disabled={postM.isPending || putM.isPending || delM.isPending || !replyText.trim()}
+                    >
+                      {postM.isPending || putM.isPending ? "Saving..." : r.vendorReply ? "Update Reply" : "Post Reply"}
+                    </button>
+                    {r.vendorReply && (
+                      <button
+                        className="py-2 px-4 rounded-xl bg-red-50 text-red-600 text-sm font-semibold border border-red-200 disabled:opacity-60"
+                        onClick={() => delM.mutate(r.id)}
+                        disabled={delM.isPending}
+                      >
+                        {delM.isPending ? "..." : "Delete"}
+                      </button>
+                    )}
+                    <button 
+                      className="py-2 px-4 rounded-xl bg-gray-100 text-gray-600 text-sm font-semibold" 
+                      onClick={() => setReplyOpen(null)}
+                      disabled={postM.isPending || putM.isPending || delM.isPending}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ))}

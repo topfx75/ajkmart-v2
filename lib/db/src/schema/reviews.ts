@@ -19,6 +19,10 @@ export const reviewsTable = pgTable("reviews", {
   hidden: boolean("hidden").notNull().default(false),
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
+  status: text("status").notNull().default("visible"),
+  moderationNote: text("moderation_note"),
+  vendorReply: text("vendor_reply"),
+  vendorRepliedAt: timestamp("vendor_replied_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("reviews_order_user_uidx").on(t.orderId, t.userId),

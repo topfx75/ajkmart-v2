@@ -901,3 +901,61 @@ export const useRiderRoute = (userId: string | null, date?: string) =>
     enabled: !!userId,
     staleTime: 30_000,
   });
+
+/* ── Reviews ── */
+export const useAdminReviews = (params?: { status?: string; type?: string; q?: string }) =>
+  useQuery({
+    queryKey: ["admin-reviews", params],
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (params?.status && params.status !== "all") qs.set("status", params.status);
+      if (params?.type   && params.type   !== "all") qs.set("type", params.type);
+      if (params?.q)                                  qs.set("q", params.q);
+      const query = qs.toString();
+      return fetcher(`/reviews${query ? `?${query}` : ""}`);
+    },
+    refetchInterval: 30_000,
+  });
+
+export const useModerationQueue = () =>
+  useQuery({
+    queryKey: ["admin-moderation-queue"],
+    queryFn: () => fetcher("/reviews/moderation-queue"),
+    refetchInterval: 15_000,
+  });
+
+export const useApproveReview = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetcher(`/reviews/${id}/approve`, { method: "PATCH" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-moderation-queue"] });
+      qc.invalidateQueries({ queryKey: ["admin-reviews"] });
+    },
+  });
+};
+
+export const useRejectReview = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetcher(`/reviews/${id}/reject`, { method: "PATCH" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-moderation-queue"] });
+      qc.invalidateQueries({ queryKey: ["admin-reviews"] });
+    },
+  });
+};
+
+export const useRunRatingSuspension = () =>
+  useMutation({ mutationFn: () => fetcher("/jobs/rating-suspension", { method: "POST" }) });
+
+export const useOverrideSuspension = (role: "riders" | "vendors") => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetcher(`/${role}/${id}/override-suspension`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-riders"] });
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+    },
+  });
+};
