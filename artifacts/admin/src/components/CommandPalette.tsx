@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, ShoppingBag, Car, Pill, Box,
   PackageSearch, Megaphone, Receipt, Settings2, Zap,
   AppWindow, Store, Bike, Ticket, BellRing, BanknoteIcon,
-  Banknote, Search, ArrowRight, X, User, Hash, Shield,
+  Banknote, Search, ArrowRight, X, User, Hash, Shield, Navigation,
 } from "lucide-react";
 
 /* ─── Static nav pages ─────────────────────────────────────────────────── */
@@ -30,6 +30,7 @@ const PAGES = [
   { label: "App Management",  href: "/app-management", icon: AppWindow,       group: "Pages" },
   { label: "Settings",        href: "/settings",       icon: Settings2,       group: "Pages" },
   { label: "Security",        href: "/security",       icon: Shield,          group: "Pages" },
+  { label: "Live Riders Map", href: "/live-riders-map",icon: Navigation,      group: "Pages" },
 ];
 
 /* ─── Settings sections as searchable items ───────────────────────────── */

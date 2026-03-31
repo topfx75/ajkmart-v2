@@ -211,26 +211,57 @@ router.patch("/orders/:id/status", async (req, res) => {
     return;
   }
 
-  /* Include vendorId in UPDATE WHERE to close the TOCTOU window between SELECT and UPDATE */
-  const [updated] = await db.update(ordersTable).set({ status, updatedAt: new Date() }).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.vendorId, vendorId))).returning();
+  const orderId = req.params["id"]!;
   const msgs: Record<string, { title: string; body: string }> = {
     confirmed: { title: "Order Confirmed! ✅", body: "Your order has been accepted by the store." },
     preparing: { title: "Being Prepared 🍳",  body: "The store is preparing your order now." },
     ready:     { title: "Order Ready! 📦",    body: "Your order is ready and waiting for pickup." },
     cancelled: { title: "Order Cancelled ❌", body: "Your order was cancelled by the store." },
   };
+
+  let updated: typeof order;
+
+  if (status === "cancelled" && order.paymentMethod === "wallet") {
+    /* Atomic: status update + wallet credit + refund stamp in one tx.
+       WHERE refunded_at IS NULL guard prevents double-credit under concurrent requests. */
+    const refundAmt = safeNum(order.total);
+    const now = new Date();
+    const txResult = await db.transaction(async (tx) => {
+      const result = await tx.update(ordersTable)
+        .set({ status, refundedAt: now, refundedAmount: refundAmt.toFixed(2), paymentStatus: "refunded", updatedAt: now })
+        .where(and(eq(ordersTable.id, orderId), eq(ordersTable.vendorId, vendorId), isNull(ordersTable.refundedAt)))
+        .returning();
+      if (result.length === 0) throw new Error("ALREADY_REFUNDED");
+      await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: now })
+        .where(eq(usersTable.id, order.userId));
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId: order.userId, type: "credit",
+        amount: refundAmt.toFixed(2),
+        description: `Refund — Order #${orderId.slice(-6).toUpperCase()} cancelled by store`,
+      });
+      return result[0];
+    }).catch((err: Error) => {
+      if (err.message === "ALREADY_REFUNDED") return null;
+      throw err;
+    });
+    if (!txResult) { res.status(409).json({ error: "Order has already been refunded" }); return; }
+    updated = txResult;
+    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: "Refund Processed 💰", body: `Rs. ${refundAmt} refunded to your wallet — Order #${orderId.slice(-6).toUpperCase()}`, type: "wallet", icon: "wallet-outline" }).catch(() => {});
+  } else {
+    /* Non-wallet or non-cancel: plain status update — vendorId in WHERE closes TOCTOU window */
+    const [result] = await db.update(ordersTable)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(ordersTable.id, orderId), eq(ordersTable.vendorId, vendorId)))
+      .returning();
+    if (!result) { res.status(404).json({ error: "Order not found" }); return; }
+    updated = result;
+  }
+
   if (msgs[status]) {
     await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: msgs[status]!.title, body: msgs[status]!.body, type: "order", icon: "bag-outline" }).catch(()=>{});
   }
-  // Wallet refund for cancellations — wrapped in transaction (atomic)
-  if (status === "cancelled" && order.paymentMethod === "wallet") {
-    const refundAmt = safeNum(order.total);
-    await db.transaction(async (tx) => {
-      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, order.userId));
-      await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Order #${order.id.slice(-6).toUpperCase()} cancelled by store` });
-    }).catch(() => {});
-    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: "Refund Processed 💰", body: `Rs. ${refundAmt} refunded to your wallet — Order #${order.id.slice(-6).toUpperCase()}`, type: "wallet", icon: "wallet-outline" }).catch(() => {});
-  }
+
   res.json({ ...updated, total: safeNum(updated.total) });
 });
 
@@ -269,9 +300,10 @@ router.post("/products", async (req, res) => {
     name: body.name, description: body.description || null,
     price: String(body.price), originalPrice: body.originalPrice ? String(body.originalPrice) : null,
     category: body.category || "general", type: body.type || "mart",
-    image: body.image || null, inStock: body.inStock !== false,
+    image: body.image || null, inStock: false,
     stock: body.stock ? Number(body.stock) : null,
     unit: body.unit || null, deliveryTime: body.deliveryTime || null,
+    approvalStatus: "pending",
   }).returning();
   res.status(201).json({ ...product, price: safeNum(product.price) });
 });
@@ -300,8 +332,9 @@ router.post("/products/bulk", async (req, res) => {
       name: p.name, description: p.description || null,
       price: String(p.price), originalPrice: p.originalPrice ? String(p.originalPrice) : null,
       category: p.category || "general", type: p.type || "mart",
-      image: p.image || null, inStock: p.inStock !== false,
+      image: p.image || null, inStock: false,
       stock: p.stock ? Number(p.stock) : null, unit: p.unit || null,
+      approvalStatus: "pending",
     }))
   ).returning();
   res.status(201).json({ inserted: inserted.length, products: inserted.map(p => ({ ...p, price: safeNum(p.price) })) });

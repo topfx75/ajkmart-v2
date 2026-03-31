@@ -9,13 +9,15 @@ const router: IRouter = Router();
 
 router.get("/", async (req, res) => {
   const { category, search, type } = req.query;
-  const conditions: SQL[] = [];
+  /* Public endpoint: only serve approved, in-stock products */
+  const conditions: SQL[] = [
+    eq(productsTable.approvalStatus, "approved"),
+    eq(productsTable.inStock, true),
+  ];
   if (type) conditions.push(eq(productsTable.type, type as string));
   if (category) conditions.push(eq(productsTable.category, category as string));
   if (search) conditions.push(ilike(productsTable.name, `%${search}%`));
-  const products = conditions.length > 0
-    ? await db.select().from(productsTable).where(and(...conditions))
-    : await db.select().from(productsTable);
+  const products = await db.select().from(productsTable).where(and(...conditions));
   res.json({
     products: products.map(p => ({
       ...p,

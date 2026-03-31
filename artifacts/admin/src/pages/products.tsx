@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter } from "lucide-react";
-import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from "@/hooks/use-admin";
+import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter, CheckCircle, XCircle, Clock } from "lucide-react";
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, usePendingProducts, useApproveProduct, useRejectProduct } from "@/hooks/use-admin";
 import { formatCurrency } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -18,15 +18,59 @@ const EMPTY_FORM = {
   inStock: true, deliveryTime: "30-45 min"
 };
 
+function RejectModal({ product, onClose }: { product: any; onClose: () => void }) {
+  const [reason, setReason] = useState("");
+  const { toast } = useToast();
+  const reject = useRejectProduct();
+  const handleReject = () => {
+    if (!reason.trim()) { toast({ title: "Reason required", variant: "destructive" }); return; }
+    reject.mutate({ id: product.id, reason: reason.trim() }, {
+      onSuccess: () => { toast({ title: "Product rejected" }); onClose(); },
+      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    });
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-red-600 to-rose-600 p-5">
+          <h2 className="text-lg font-extrabold text-white">❌ Reject Product</h2>
+          <p className="text-red-200 text-sm mt-0.5">Product reject ho jayega aur vendor ko notify kar diya jayega</p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="bg-red-50 rounded-xl p-4 space-y-1">
+            <p className="text-sm font-bold text-gray-800">{product.name}</p>
+            <p className="text-xs text-gray-500">By: {product.vendorName || "Unknown Vendor"} · {formatCurrency(product.price)}</p>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Rejection Reason *</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+              placeholder="e.g. Poor image quality · Price too high · Duplicate product"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-red-400 resize-none"/>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold" onClick={handleReject} disabled={reject.isPending}>
+              {reject.isPending ? "Rejecting..." : "❌ Reject"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Products() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading } = useProducts();
+  const { data: pendingData, isLoading: pendingLoading } = usePendingProducts();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const deleteMutation = useDeleteProduct();
+  const approveMutation = useApproveProduct();
   const { toast } = useToast();
 
+  const [tab, setTab] = useState<"all" | "pending">("all");
   const [search, setSearch]         = useState("");
   const [typeFilter, setTypeFilter]   = useState("all");
   const [vendorFilter, setVendorFilter] = useState("");
@@ -35,6 +79,7 @@ export default function Products() {
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [formData, setFormData]       = useState({ ...EMPTY_FORM });
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [rejectTarget, setRejectTarget] = useState<any>(null);
 
   const openAdd = () => {
     setEditingId(null);
@@ -84,15 +129,12 @@ export default function Products() {
     });
   };
 
-  const products = data?.products || [];
-  const vendors = [...new Set(products.filter((p: any) => p.vendorName).map((p: any) => p.vendorName as string))];
-  const q = search.toLowerCase();
-  const filtered = products.filter((p: any) =>
-    (typeFilter === "all" || p.type === typeFilter) &&
-    (stockFilter === "all" || (stockFilter === "in" ? p.inStock : !p.inStock)) &&
-    (!vendorFilter || (p.vendorName || "").toLowerCase().includes(vendorFilter.toLowerCase())) &&
-    (p.name.toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q))
-  );
+  const handleApprove = (prod: any) => {
+    approveMutation.mutate({ id: prod.id }, {
+      onSuccess: () => toast({ title: "Product approved ✅", description: `${prod.name} is now live in the store` }),
+      onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    });
+  };
 
   const toggleStock = (prod: any) => {
     updateMutation.mutate({ id: prod.id, inStock: !prod.inStock }, {
@@ -113,8 +155,20 @@ export default function Products() {
     a.click();
   };
 
+  const products = data?.products || [];
+  const pendingProducts = pendingData?.products || [];
+  const vendors = [...new Set(products.filter((p: any) => p.vendorName).map((p: any) => p.vendorName as string))];
+  const q = search.toLowerCase();
+  const filtered = products.filter((p: any) =>
+    (typeFilter === "all" || p.type === typeFilter) &&
+    (stockFilter === "all" || (stockFilter === "in" ? p.inStock : !p.inStock)) &&
+    (!vendorFilter || (p.vendorName || "").toLowerCase().includes(vendorFilter.toLowerCase())) &&
+    (p.name.toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q))
+  );
+
   const martCount = products.filter((p: any) => p.type === "mart").length;
   const foodCount = products.filter((p: any) => p.type === "food").length;
+  const pendingCount = pendingProducts.length;
 
   return (
     <div className="space-y-6">
@@ -125,7 +179,7 @@ export default function Products() {
           </div>
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">{T("products")}</h1>
-            <p className="text-muted-foreground text-sm">{martCount} mart · {foodCount} food · {products.length} {T("total")}</p>
+            <p className="text-muted-foreground text-sm">{martCount} mart · {foodCount} food · {products.length} {T("total")} {pendingCount > 0 && `· ${pendingCount} pending approval`}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -136,6 +190,30 @@ export default function Products() {
             <Plus className="w-5 h-5" /> Add Product
           </Button>
         </div>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-2 border-b border-border/40 pb-0">
+        <button
+          onClick={() => setTab("all")}
+          className={`px-5 py-2.5 text-sm font-bold rounded-t-xl border-b-2 transition-colors ${
+            tab === "all" ? "border-primary text-primary bg-primary/5" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          All Products ({products.length})
+        </button>
+        <button
+          onClick={() => setTab("pending")}
+          className={`px-5 py-2.5 text-sm font-bold rounded-t-xl border-b-2 transition-colors flex items-center gap-2 ${
+            tab === "pending" ? "border-amber-500 text-amber-700 bg-amber-50" : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          Pending Approval
+          {pendingCount > 0 && (
+            <span className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{pendingCount}</span>
+          )}
+        </button>
       </div>
 
       {/* Add/Edit Dialog */}
@@ -237,126 +315,228 @@ export default function Products() {
         </DialogContent>
       </Dialog>
 
-      {/* Filters */}
-      <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name or category..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 h-11 rounded-xl"
-            />
-          </div>
-          <div className="relative sm:w-44">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Filter vendor..."
-              value={vendorFilter}
-              onChange={e => setVendorFilter(e.target.value)}
-              className="pl-9 h-11 rounded-xl"
-            />
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {["all", "mart", "food"].map(t => (
-            <button
-              key={t}
-              onClick={() => setTypeFilter(t)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-colors border ${
-                typeFilter === t ? "bg-primary text-white border-primary" : "bg-muted/30 border-border/50 hover:border-primary text-muted-foreground"
-              }`}
-            >
-              {t === "mart" ? "🛒 " : t === "food" ? "🍔 " : ""}{t}
-            </button>
-          ))}
-          <div className="w-px bg-border/60 mx-1" />
-          {[{ v: "all", l: "All Stock" }, { v: "in", l: "✓ In Stock" }, { v: "out", l: "✗ Out of Stock" }].map(s => (
-            <button
-              key={s.v}
-              onClick={() => setStockFilter(s.v)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors border ${
-                stockFilter === s.v ? "bg-green-600 text-white border-green-600" : "bg-muted/30 border-border/50 hover:border-green-300 text-muted-foreground"
-              }`}
-            >
-              {s.l}
-            </button>
-          ))}
-        </div>
-      </Card>
+      {/* Reject Modal */}
+      {rejectTarget && <RejectModal product={rejectTarget} onClose={() => setRejectTarget(null)} />}
 
-      <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table className="min-w-[600px]">
-            <TableHeader className="bg-muted/50">
-              <TableRow>
-                <TableHead>{T("product")}</TableHead>
-                <TableHead>{T("category")}</TableHead>
-                <TableHead>{T("price")}</TableHead>
-                <TableHead>{T("vendor")}</TableHead>
-                <TableHead>{T("stock")}</TableHead>
-                <TableHead className="text-right">{T("actions")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">Loading products...</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No products found.</TableCell></TableRow>
-              ) : (
-                filtered.map((p: any) => (
-                  <TableRow key={p.id} className="hover:bg-muted/30">
-                    <TableCell>
-                      <p className="font-semibold text-foreground">{p.name}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant={p.type === 'food' ? 'default' : 'secondary'} className="text-[10px] uppercase">
-                          {p.type}
-                        </Badge>
-                        {p.unit && <span className="text-xs text-muted-foreground">{p.unit}</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="capitalize font-medium text-sm">{p.category}</TableCell>
-                    <TableCell>
-                      <p className="font-bold text-foreground">{formatCurrency(p.price)}</p>
-                      {p.originalPrice && (
-                        <p className="text-xs line-through text-muted-foreground">{formatCurrency(p.originalPrice)}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{p.vendorName || "—"}</TableCell>
-                    <TableCell>
-                      <button
-                        onClick={() => toggleStock(p)}
-                        disabled={updateMutation.isPending}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-                          p.inStock
-                            ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                            : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                        }`}
-                      >
-                        {p.inStock
-                          ? <><ToggleRight className="w-4 h-4" /> In Stock</>
-                          : <><ToggleLeft  className="w-4 h-4" /> Out of Stock</>
-                        }
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="hover:bg-blue-50 hover:text-blue-600 h-8 w-8">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} className="hover:bg-red-50 hover:text-red-600 h-8 w-8">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+      {/* PENDING APPROVAL TAB */}
+      {tab === "pending" && (
+        <div className="space-y-4">
+          {pendingCount > 0 && (
+            <div className="flex items-center gap-3 bg-amber-50 border-2 border-amber-400 rounded-2xl px-4 py-3">
+              <span className="text-2xl">⏳</span>
+              <div>
+                <p className="text-sm font-bold text-amber-800">{pendingCount} product{pendingCount > 1 ? "s" : ""} waiting for your review</p>
+                <p className="text-xs text-amber-600">Vendor-submitted products that need approval before going live</p>
+              </div>
+            </div>
+          )}
+          <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table className="min-w-[640px]">
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Submitted</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {pendingLoading ? (
+                    <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">Loading pending products...</TableCell></TableRow>
+                  ) : pendingProducts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-48 text-center">
+                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                          <CheckCircle className="w-10 h-10 text-green-400" />
+                          <p className="font-semibold">All caught up!</p>
+                          <p className="text-sm">No products waiting for approval.</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    pendingProducts.map((p: any) => (
+                      <TableRow key={p.id} className="hover:bg-amber-50/40">
+                        <TableCell>
+                          <p className="font-semibold text-foreground">{p.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant={p.type === 'food' ? 'default' : 'secondary'} className="text-[10px] uppercase">
+                              {p.type}
+                            </Badge>
+                            {p.unit && <span className="text-xs text-muted-foreground">{p.unit}</span>}
+                          </div>
+                          {p.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{p.description}</p>}
+                        </TableCell>
+                        <TableCell className="capitalize font-medium text-sm">{p.category}</TableCell>
+                        <TableCell>
+                          <p className="font-bold text-foreground">{formatCurrency(p.price)}</p>
+                          {p.originalPrice && (
+                            <p className="text-xs line-through text-muted-foreground">{formatCurrency(p.originalPrice)}</p>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{p.vendorName || "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" }) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApprove(p)}
+                              disabled={approveMutation.isPending}
+                              className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 rounded-xl gap-1.5 text-xs font-bold"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setRejectTarget(p)}
+                              className="border-red-300 text-red-600 hover:bg-red-50 h-8 px-3 rounded-xl gap-1.5 text-xs font-bold"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
         </div>
-      </Card>
+      )}
+
+      {/* ALL PRODUCTS TAB */}
+      {tab === "all" && (
+        <>
+          {/* Filters */}
+          <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or category..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9 h-11 rounded-xl"
+                />
+              </div>
+              <div className="relative sm:w-44">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Filter vendor..."
+                  value={vendorFilter}
+                  onChange={e => setVendorFilter(e.target.value)}
+                  className="pl-9 h-11 rounded-xl"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {["all", "mart", "food"].map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTypeFilter(t)}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-colors border ${
+                    typeFilter === t ? "bg-primary text-white border-primary" : "bg-muted/30 border-border/50 hover:border-primary text-muted-foreground"
+                  }`}
+                >
+                  {t === "mart" ? "🛒 " : t === "food" ? "🍔 " : ""}{t}
+                </button>
+              ))}
+              <div className="w-px bg-border/60 mx-1" />
+              {[{ v: "all", l: "All Stock" }, { v: "in", l: "✓ In Stock" }, { v: "out", l: "✗ Out of Stock" }].map(s => (
+                <button
+                  key={s.v}
+                  onClick={() => setStockFilter(s.v)}
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors border ${
+                    stockFilter === s.v ? "bg-green-600 text-white border-green-600" : "bg-muted/30 border-border/50 hover:border-green-300 text-muted-foreground"
+                  }`}
+                >
+                  {s.l}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table className="min-w-[600px]">
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead>{T("product")}</TableHead>
+                    <TableHead>{T("category")}</TableHead>
+                    <TableHead>{T("price")}</TableHead>
+                    <TableHead>{T("vendor")}</TableHead>
+                    <TableHead>{T("stock")}</TableHead>
+                    <TableHead className="text-right">{T("actions")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">Loading products...</TableCell></TableRow>
+                  ) : filtered.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No products found.</TableCell></TableRow>
+                  ) : (
+                    filtered.map((p: any) => (
+                      <TableRow key={p.id} className="hover:bg-muted/30">
+                        <TableCell>
+                          <p className="font-semibold text-foreground">{p.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant={p.type === 'food' ? 'default' : 'secondary'} className="text-[10px] uppercase">
+                              {p.type}
+                            </Badge>
+                            {p.unit && <span className="text-xs text-muted-foreground">{p.unit}</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="capitalize font-medium text-sm">{p.category}</TableCell>
+                        <TableCell>
+                          <p className="font-bold text-foreground">{formatCurrency(p.price)}</p>
+                          {p.originalPrice && (
+                            <p className="text-xs line-through text-muted-foreground">{formatCurrency(p.originalPrice)}</p>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{p.vendorName || "—"}</TableCell>
+                        <TableCell>
+                          <button
+                            onClick={() => toggleStock(p)}
+                            disabled={updateMutation.isPending}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
+                              p.inStock
+                                ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                                : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                            }`}
+                          >
+                            {p.inStock
+                              ? <><ToggleRight className="w-4 h-4" /> In Stock</>
+                              : <><ToggleLeft  className="w-4 h-4" /> Out of Stock</>
+                            }
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="hover:bg-blue-50 hover:text-blue-600 h-8 w-8">
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} className="hover:bg-red-50 hover:text-red-600 h-8 w-8">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

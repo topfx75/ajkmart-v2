@@ -264,6 +264,51 @@ export const useDeleteProduct = () => {
   });
 };
 
+export const usePendingProducts = () => {
+  return useQuery({
+    queryKey: ["admin-products-pending"],
+    queryFn: () => fetcher("/products/pending"),
+    refetchInterval: 30_000,
+  });
+};
+
+export const useApproveProduct = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      fetcher(`/products/${id}/approve`, { method: "PATCH", body: JSON.stringify({ note }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-products-pending"] });
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+    },
+  });
+};
+
+export const useRejectProduct = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      fetcher(`/products/${id}/reject`, { method: "PATCH", body: JSON.stringify({ reason }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-products-pending"] });
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+    },
+  });
+};
+
+export const useOrderRefund = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount, reason }: { id: string; amount?: number; reason?: string }) =>
+      fetcher(`/orders/${id}/refund`, { method: "POST", body: JSON.stringify({ amount, reason }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-orders-enriched"] });
+      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
+  });
+};
+
 // Broadcast
 export const useBroadcast = () => {
   return useMutation({
@@ -718,7 +763,7 @@ export const useLiveRiders = () => {
   return useQuery({
     queryKey: ["admin-live-riders"],
     queryFn: () => fetcher("/live-riders"),
-    refetchInterval: 20_000,
+    refetchInterval: 10_000,
   });
 };
 

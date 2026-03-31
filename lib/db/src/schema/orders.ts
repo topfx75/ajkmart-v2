@@ -18,6 +18,8 @@ export const ordersTable = pgTable("orders", {
   proofPhotoUrl: text("proof_photo_url"),
   txnRef: text("txn_ref"),
   paymentStatus: text("payment_status").default("pending"),
+  refundedAt: timestamp("refunded_at"),
+  refundedAmount: decimal("refunded_amount", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

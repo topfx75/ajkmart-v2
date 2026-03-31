@@ -20,6 +20,7 @@ export const productsTable = pgTable("products", {
   stock: integer("stock"),
   unit: text("unit"),
   deliveryTime: text("delivery_time"),
+  approvalStatus: text("approval_status").notNull().default("approved"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

@@ -27,6 +27,7 @@ import {
   Search,
   Globe,
   Shield,
+  Navigation,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -56,8 +57,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: "navRiderApp",
     items: [
-      { nameKey: "navRides",        href: "/rides",        icon: Car },
-      { nameKey: "navRiders",       href: "/riders",       icon: Bike },
+      { nameKey: "navRides",          href: "/rides",            icon: Car },
+      { nameKey: "navRiders",         href: "/riders",           icon: Bike },
+      { nameKey: "navLiveRidersMap",  href: "/live-riders-map",  icon: Navigation },
     ],
   },
   {

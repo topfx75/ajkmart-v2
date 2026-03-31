@@ -26,7 +26,7 @@ import {
   rideEventLogsTable,
   rideNotifiedRidersTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import {
   checkAdminIPWhitelist,
@@ -991,12 +991,55 @@ router.get("/orders", async (req, res) => {
 
 router.patch("/orders/:id/status", async (req, res) => {
   const { status } = req.body;
-  const [order] = await db
-    .update(ordersTable)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(ordersTable.id, req.params["id"]!))
-    .returning();
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  const orderId = req.params["id"]!;
+
+  /* For wallet-paid → cancelled: do status update + wallet refund in ONE transaction */
+  const [preOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+  if (!preOrder) { res.status(404).json({ error: "Order not found" }); return; }
+
+  let order = preOrder;
+
+  if (status === "cancelled" && preOrder.paymentMethod === "wallet" && !preOrder.refundedAt) {
+    const refundAmt = parseFloat(String(preOrder.total));
+    const now = new Date();
+    /* Atomic: status update + wallet credit + refund stamp in one transaction.
+       Guard: WHERE refunded_at IS NULL prevents double-credit under concurrency.
+       If the conditional update returns 0 rows, we throw to roll back the transaction. */
+    const txResult = await db.transaction(async (tx) => {
+      const result = await tx.update(ordersTable)
+        .set({ status, refundedAt: now, refundedAmount: refundAmt.toFixed(2), paymentStatus: "refunded", updatedAt: now })
+        .where(and(eq(ordersTable.id, orderId), isNull(ordersTable.refundedAt)))
+        .returning();
+      if (result.length === 0) {
+        /* Already refunded (concurrent request won) — throw to roll back entire tx */
+        throw new Error("ALREADY_REFUNDED");
+      }
+      await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: now })
+        .where(eq(usersTable.id, preOrder.userId));
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId: preOrder.userId, type: "credit",
+        amount: refundAmt.toFixed(2),
+        description: `Refund — Order #${orderId.slice(-6).toUpperCase()} cancelled by admin`,
+      });
+      return result[0];
+    }).catch((err: Error) => {
+      if (err.message === "ALREADY_REFUNDED") return null;
+      throw err;
+    });
+    if (!txResult) { res.status(409).json({ error: "Order has already been refunded" }); return; }
+    order = txResult;
+    /* Notifications after successful commit */
+    await sendUserNotification(preOrder.userId, "Order Refund 💰", `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya — Order #${orderId.slice(-6).toUpperCase()}`, "mart", "wallet-outline");
+  } else {
+    /* Non-wallet or non-cancel: plain status update */
+    const [updated] = await db.update(ordersTable)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(ordersTable.id, orderId))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Order not found" }); return; }
+    order = updated;
+  }
 
   const notif = ORDER_NOTIFICATIONS[status];
   if (notif) {
@@ -1005,16 +1048,6 @@ router.patch("/orders/:id/status", async (req, res) => {
 
   // NOTE: Wallet is already debited when order is PLACED (orders.ts).
   // Do NOT deduct again here. Only credit the rider's share on delivery.
-
-  // Wallet refund on admin cancellation (atomic)
-  if (status === "cancelled" && order.paymentMethod === "wallet") {
-    const refundAmt = parseFloat(String(order.total));
-    await db.transaction(async (tx) => {
-      await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, order.userId));
-      await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Order #${order.id.slice(-6).toUpperCase()} cancelled by admin` });
-    }).catch(() => {});
-    await sendUserNotification(order.userId, "Order Refund 💰", `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya — Order #${order.id.slice(-6).toUpperCase()}`, "mart", "wallet-outline");
-  }
 
   if (status === "delivered") {
     const total = parseFloat(String(order.total));
@@ -1036,6 +1069,88 @@ router.patch("/orders/:id/status", async (req, res) => {
   }
 
   res.json({ ...order, total: parseFloat(String(order.total)) });
+});
+
+router.post("/orders/:id/refund", async (req, res) => {
+  const { amount, reason } = req.body;
+  const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
+  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+
+  /* Only allow refunds for terminal orders */
+  if (order.status !== "delivered" && order.status !== "cancelled") {
+    res.status(400).json({ error: "Refund only allowed for delivered or cancelled orders" }); return;
+  }
+
+  /* Only wallet-paid orders can be wallet-refunded */
+  if (order.paymentMethod !== "wallet") {
+    res.status(400).json({ error: "Refund only applies to wallet-paid orders" }); return;
+  }
+
+  /* Fast-path: pre-check before entering transaction */
+  if (order.refundedAt) {
+    res.status(409).json({
+      error: "Order has already been refunded",
+      refundedAt: order.refundedAt,
+      refundedAmount: order.refundedAmount ? parseFloat(String(order.refundedAmount)) : null,
+    });
+    return;
+  }
+
+  /* Validate refund amount — reject invalid/negative instead of silently defaulting */
+  const maxRefund = parseFloat(String(order.total));
+  const parsedAmount = amount !== undefined && amount !== null && amount !== ""
+    ? parseFloat(String(amount))
+    : NaN;
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    res.status(400).json({ error: "amount must be a positive number" }); return;
+  }
+  const refundAmt = Math.min(parsedAmount, maxRefund);
+  if (refundAmt <= 0) { res.status(400).json({ error: "Refund amount must be positive" }); return; }
+
+  const now = new Date();
+  let alreadyRefunded = false;
+
+  await db.transaction(async (tx) => {
+    /* Atomic idempotency: only stamp refunded_at if it is still NULL.
+       The WHERE clause with IS NULL means only one concurrent request will get rowCount > 0. */
+    const updated = await tx.update(ordersTable)
+      .set({ refundedAt: now, refundedAmount: refundAmt.toFixed(2), paymentStatus: "refunded", updatedAt: now })
+      .where(and(eq(ordersTable.id, order.id), isNull(ordersTable.refundedAt)))
+      .returning({ id: ordersTable.id });
+
+    if (updated.length === 0) {
+      /* Another concurrent request beat us to the refund — abort */
+      alreadyRefunded = true;
+      return;
+    }
+
+    /* Credit customer wallet only if we successfully stamped the order */
+    await tx.update(usersTable)
+      .set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: now })
+      .where(eq(usersTable.id, order.userId));
+
+    await tx.insert(walletTransactionsTable).values({
+      id: generateId(),
+      userId: order.userId,
+      type: "credit",
+      amount: refundAmt.toFixed(2),
+      description: `Admin refund — Order #${order.id.slice(-6).toUpperCase()}${reason ? `. ${reason}` : ""}`,
+    });
+  });
+
+  if (alreadyRefunded) {
+    res.status(409).json({ error: "Order has already been refunded" }); return;
+  }
+
+  await sendUserNotification(
+    order.userId,
+    "Order Refund 💰",
+    `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya — Order #${order.id.slice(-6).toUpperCase()}`,
+    "mart",
+    "wallet-outline"
+  );
+
+  res.json({ success: true, refundedAmount: refundAmt, orderId: order.id });
 });
 
 /* ── All Rides ── */
@@ -1209,6 +1324,73 @@ router.get("/products", async (_req, res) => {
     })),
     total: products.length,
   });
+});
+
+router.get("/products/pending", async (_req, res) => {
+  const products = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.approvalStatus, "pending"))
+    .orderBy(desc(productsTable.createdAt));
+  res.json({
+    products: products.map(p => ({
+      ...p,
+      price: parseFloat(p.price),
+      originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : null,
+      rating: p.rating ? parseFloat(p.rating) : null,
+      createdAt: p.createdAt.toISOString(),
+    })),
+    total: products.length,
+  });
+});
+
+router.patch("/products/:id/approve", async (req, res) => {
+  const { note } = req.body;
+  const [product] = await db
+    .update(productsTable)
+    .set({ approvalStatus: "approved", inStock: true, updatedAt: new Date() })
+    .where(eq(productsTable.id, req.params["id"]!))
+    .returning();
+  if (!product) { res.status(404).json({ error: "Product not found" }); return; }
+  if (product.vendorId && product.vendorId !== "ajkmart_system") {
+    const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
+    if (vendor) {
+      await db.insert(notificationsTable).values({
+        id: generateId(),
+        userId: vendor.id,
+        title: "Product Approved ✅",
+        body: `"${product.name}" approve ho gaya aur ab store mein visible hai.${note ? ` Note: ${note}` : ""}`,
+        type: "system",
+        icon: "checkmark-circle-outline",
+      }).catch(() => {});
+    }
+  }
+  res.json({ ...product, price: parseFloat(product.price) });
+});
+
+router.patch("/products/:id/reject", async (req, res) => {
+  const { reason } = req.body;
+  if (!reason) { res.status(400).json({ error: "reason is required" }); return; }
+  const [product] = await db
+    .update(productsTable)
+    .set({ approvalStatus: "rejected", inStock: false, updatedAt: new Date() })
+    .where(eq(productsTable.id, req.params["id"]!))
+    .returning();
+  if (!product) { res.status(404).json({ error: "Product not found" }); return; }
+  if (product.vendorId && product.vendorId !== "ajkmart_system") {
+    const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
+    if (vendor) {
+      await db.insert(notificationsTable).values({
+        id: generateId(),
+        userId: vendor.id,
+        title: "Product Rejected ❌",
+        body: `"${product.name}" reject ho gaya. Wajah: ${reason}`,
+        type: "system",
+        icon: "close-circle-outline",
+      }).catch(() => {});
+    }
+  }
+  res.json({ ...product, price: parseFloat(product.price) });
 });
 
 router.post("/products", async (req, res) => {
@@ -3145,7 +3327,7 @@ router.get("/live-riders", async (_req, res) => {
 
   const enriched = await Promise.all(locs.map(async loc => {
     const [user] = await db
-      .select({ name: usersTable.name, phone: usersTable.phone, isOnline: usersTable.isOnline })
+      .select({ name: usersTable.name, phone: usersTable.phone, isOnline: usersTable.isOnline, vehicleType: usersTable.vehicleType })
       .from(usersTable)
       .where(eq(usersTable.id, loc.userId))
       .limit(1);
@@ -3155,13 +3337,14 @@ router.get("/live-riders", async (_req, res) => {
     const isFresh    = updatedAt >= cutoff;
 
     return {
-      userId:     loc.userId,
-      name:       user?.name  ?? "Unknown Rider",
-      phone:      user?.phone ?? null,
-      isOnline:   user?.isOnline ?? false,
-      lat:        parseFloat(String(loc.latitude)),
-      lng:        parseFloat(String(loc.longitude)),
-      updatedAt:  updatedAt.toISOString(),
+      userId:      loc.userId,
+      name:        user?.name        ?? "Unknown Rider",
+      phone:       user?.phone       ?? null,
+      isOnline:    user?.isOnline    ?? false,
+      vehicleType: user?.vehicleType ?? null,
+      lat:         parseFloat(String(loc.latitude)),
+      lng:         parseFloat(String(loc.longitude)),
+      updatedAt:   updatedAt.toISOString(),
       ageSeconds,
       isFresh,
     };

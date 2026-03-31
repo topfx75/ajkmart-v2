@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useOrdersEnriched, useUpdateOrder, useAssignRider, useRiders } from "@/hooks/use-admin";
+import { useOrdersEnriched, useUpdateOrder, useAssignRider, useRiders, useOrderRefund } from "@/hooks/use-admin";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -53,6 +53,7 @@ export default function Orders() {
   const { data: ridersData } = useRiders();
   const updateMutation  = useUpdateOrder();
   const assignMutation  = useAssignRider();
+  const refundMutation  = useOrderRefund();
   const { toast } = useToast();
 
   const [search, setSearch]               = useState("");
@@ -62,6 +63,9 @@ export default function Orders() {
   const [dateTo, setDateTo]               = useState("");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showRefundConfirm, setShowRefundConfirm] = useState(false);
+  const [refundAmount, setRefundAmount]   = useState("");
+  const [refundReason, setRefundReason]   = useState("");
   const [cancelling, setCancelling]       = useState(false);
   const [showAssignRider, setShowAssignRider] = useState(false);
   const [riderSearch, setRiderSearch]     = useState("");
@@ -89,6 +93,21 @@ export default function Orders() {
         setCancelling(false);
         toast({ title: "Cancel failed", description: err.message, variant: "destructive" });
       },
+    });
+  };
+
+  const handleRefundOrder = () => {
+    if (!selectedOrder) return;
+    const amt = parseFloat(refundAmount);
+    if (!refundAmount || !Number.isFinite(amt) || amt <= 0) return;
+    refundMutation.mutate({ id: selectedOrder.id, amount: amt, reason: refundReason.trim() || undefined }, {
+      onSuccess: (res: any) => {
+        toast({ title: `Refund issued ✅`, description: `Rs. ${Math.round(res.refundedAmount)} credited to customer wallet` });
+        setShowRefundConfirm(false);
+        setRefundAmount("");
+        setRefundReason("");
+      },
+      onError: (err: any) => toast({ title: "Refund failed", description: err.message, variant: "destructive" }),
     });
   };
 
@@ -356,7 +375,7 @@ export default function Orders() {
       </Card>
 
       {/* Order Detail Modal */}
-      <Dialog open={!!selectedOrder} onOpenChange={open => { if (!open) { setSelectedOrder(null); setShowCancelConfirm(false); } }}>
+      <Dialog open={!!selectedOrder} onOpenChange={open => { if (!open) { setSelectedOrder(null); setShowCancelConfirm(false); setShowRefundConfirm(false); } }}>
         <DialogContent className="w-[95vw] max-w-lg rounded-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -393,6 +412,57 @@ export default function Orders() {
                     <button onClick={handleCancelOrder} disabled={cancelling}
                       className="flex-1 h-9 bg-red-600 text-white text-sm font-bold rounded-xl disabled:opacity-60">
                       {cancelling ? "Cancelling..." : "Confirm Cancel"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Refund confirmation inline */}
+              {showRefundConfirm && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-blue-600 shrink-0" />
+                    <p className="text-sm font-bold text-blue-700">Issue Wallet Refund</p>
+                  </div>
+                  <p className="text-xs text-blue-600">
+                    Max refundable: Rs. {Math.round(selectedOrder.total)}.
+                  </p>
+                  <div className="flex gap-1.5 mb-1">
+                    {[25, 50, 75, 100].map(pct => (
+                      <button key={pct} type="button"
+                        onClick={() => setRefundAmount(Math.round(selectedOrder.total * pct / 100).toString())}
+                        className="flex-1 h-7 text-xs font-bold bg-white border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-100">
+                        {pct === 100 ? "Full" : `${pct}%`}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      max={selectedOrder.total}
+                      placeholder={`Amount (required, max ${Math.round(selectedOrder.total)})`}
+                      value={refundAmount}
+                      onChange={e => setRefundAmount(e.target.value)}
+                      className="h-9 rounded-xl text-sm"
+                      required
+                    />
+                    <Input
+                      placeholder="Reason (optional)"
+                      value={refundReason}
+                      onChange={e => setRefundReason(e.target.value)}
+                      className="h-9 rounded-xl text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowRefundConfirm(false)}
+                      className="flex-1 h-9 bg-white border border-blue-200 text-blue-600 text-sm font-bold rounded-xl">
+                      Back
+                    </button>
+                    <button onClick={handleRefundOrder}
+                      disabled={refundMutation.isPending || !refundAmount || parseFloat(refundAmount) <= 0}
+                      className="flex-1 h-9 bg-blue-600 text-white text-sm font-bold rounded-xl disabled:opacity-60">
+                      {refundMutation.isPending ? "Processing..." : "💰 Issue Refund"}
                     </button>
                   </div>
                 </div>
@@ -522,6 +592,24 @@ export default function Orders() {
               </div>
 
               {/* Action buttons */}
+              {isTerminal(selectedOrder.status) && selectedOrder.paymentMethod === "wallet" && (
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium mb-1.5">Admin Actions</p>
+                  {selectedOrder.refundedAt ? (
+                    <div className="h-9 px-4 bg-green-50 border-2 border-green-300 text-green-700 text-xs font-bold rounded-xl flex items-center gap-1.5">
+                      ✅ Refunded{selectedOrder.refundedAmount ? ` — Rs. ${Math.round(parseFloat(selectedOrder.refundedAmount))}` : ""}
+                    </div>
+                  ) : !showRefundConfirm ? (
+                    <button
+                      onClick={() => { setShowRefundConfirm(true); setShowCancelConfirm(false); setRefundAmount(""); setRefundReason(""); }}
+                      className="h-9 px-4 bg-blue-50 hover:bg-blue-100 border-2 border-blue-300 text-blue-700 text-xs font-bold rounded-xl whitespace-nowrap transition-colors flex items-center gap-1.5"
+                    >
+                      💰 Issue Wallet Refund
+                    </button>
+                  ) : null}
+                </div>
+              )}
+
               {!isTerminal(selectedOrder.status) && (
                 <div className="flex gap-3">
                   <div className="flex-1">
