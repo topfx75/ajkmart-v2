@@ -44,7 +44,7 @@ router.post("/update", async (req, res) => {
   const effectiveRole = jwtPayload.role || "customer";
 
   const { latitude, longitude, accuracy, speed, heading, batteryLevel, action } = req.body;
-  if (!latitude || !longitude) {
+  if (latitude == null || longitude == null) {
     res.status(400).json({ error: "latitude and longitude are required" });
     return;
   }
@@ -76,10 +76,12 @@ router.post("/update", async (req, res) => {
 
   let isSpoofed = false;
 
-  /* ── GPS Spoof Detection (riders only) ── */
-  if (settings["security_spoof_detection"] === "on" && effectiveRole === "rider") {
-    const maxSpeedKmh = parseInt(settings["security_max_speed_kmh"] ?? "150", 10);
+  /* ── Single DB lookup for both spoof detection and distance throttling (riders only) ── */
+  const needsSpoofCheck = settings["security_spoof_detection"] === "on" && effectiveRole === "rider";
+  const minDistanceMeters = parseInt(settings["gps_min_distance_meters"] ?? "25", 10);
+  const needsDistanceCheck = effectiveRole === "rider" && minDistanceMeters > 0;
 
+  if (needsSpoofCheck || needsDistanceCheck) {
     const [prev] = await db
       .select()
       .from(liveLocationsTable)
@@ -89,45 +91,36 @@ router.post("/update", async (req, res) => {
     if (prev) {
       const prevLat = parseFloat(String(prev.latitude));
       const prevLon = parseFloat(String(prev.longitude));
-      const prevTime = prev.updatedAt;
 
-      const { spoofed, speedKmh } = detectGPSSpoof(prevLat, prevLon, prevTime, lat, lon, maxSpeedKmh);
-
-      if (spoofed) {
-        isSpoofed = true;
-        addSecurityEvent({
-          type: "gps_spoof_detected",
-          ip,
-          userId,
-          details: `GPS spoof detected: speed ${speedKmh.toFixed(1)} km/h exceeds limit of ${maxSpeedKmh} km/h`,
-          severity: "high",
-        });
-        res.status(400).json({
-          error: "GPS location rejected: movement speed is physically impossible. Please disable mock location apps.",
-          detectedSpeedKmh: Math.round(speedKmh),
-          maxAllowedKmh: maxSpeedKmh,
-        });
-        return;
+      /* GPS Spoof Detection */
+      if (needsSpoofCheck) {
+        const maxSpeedKmh = parseInt(settings["security_max_speed_kmh"] ?? "150", 10);
+        const { spoofed, speedKmh } = detectGPSSpoof(prevLat, prevLon, prev.updatedAt, lat, lon, maxSpeedKmh);
+        if (spoofed) {
+          isSpoofed = true;
+          addSecurityEvent({
+            type: "gps_spoof_detected",
+            ip,
+            userId,
+            details: `GPS spoof detected: speed ${speedKmh.toFixed(1)} km/h exceeds limit of ${parseInt(settings["security_max_speed_kmh"] ?? "150", 10)} km/h`,
+            severity: "high",
+          });
+          res.status(400).json({
+            error: "GPS location rejected: movement speed is physically impossible. Please disable mock location apps.",
+            detectedSpeedKmh: Math.round(speedKmh),
+            maxAllowedKmh: parseInt(settings["security_max_speed_kmh"] ?? "150", 10),
+          });
+          return;
+        }
       }
-    }
-  }
 
-  /* ── Server-side distance throttling for riders ── */
-  const minDistanceMeters = parseInt(settings["gps_min_distance_meters"] ?? "25", 10);
-  if (effectiveRole === "rider" && minDistanceMeters > 0) {
-    const [prev] = await db
-      .select({ latitude: liveLocationsTable.latitude, longitude: liveLocationsTable.longitude })
-      .from(liveLocationsTable)
-      .where(eq(liveLocationsTable.userId, userId))
-      .limit(1);
-
-    if (prev) {
-      const prevLat = parseFloat(String(prev.latitude));
-      const prevLon = parseFloat(String(prev.longitude));
-      const dist = distanceMeters(prevLat, prevLon, lat, lon);
-      if (dist < minDistanceMeters) {
-        res.json({ success: true, skipped: true, reason: "distance_threshold", updatedAt: new Date().toISOString() });
-        return;
+      /* Distance Throttling */
+      if (needsDistanceCheck) {
+        const dist = distanceMeters(prevLat, prevLon, lat, lon);
+        if (dist < minDistanceMeters) {
+          res.json({ success: true, skipped: true, reason: "distance_threshold", updatedAt: new Date().toISOString() });
+          return;
+        }
       }
     }
   }

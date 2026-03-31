@@ -8,6 +8,18 @@ import { eq, or, and } from "drizzle-orm";
 
 let _io: SocketIOServer | null = null;
 
+/**
+ * Pending ride-room buffers: while a socket is in the async authorization
+ * window for a ride room, outbound rider:location payloads destined for that
+ * room are buffered here so they are not silently dropped.
+ * Key: `${socketId}::${roomName}` → array of payloads to replay.
+ */
+const _pendingRideJoins = new Map<string, unknown[]>();
+
+function bufferKey(socketId: string, room: string): string {
+  return `${socketId}::${room}`;
+}
+
 /* ── JWT helpers ── */
 function extractBearerToken(header: string | string[] | undefined): string | null {
   const h = Array.isArray(header) ? header[0] : header;
@@ -182,15 +194,22 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
             logger.debug({ socketId: socket.id, room }, "Socket denied vendor room (unauthorized)");
           }
         } else if (room.startsWith("ride:")) {
-          /* Ride rooms require async DB lookup — handled via async join below */
+          /* Ride rooms require async DB lookup — buffer outbound emits during authorization */
           const rideId = room.slice("ride:".length);
+          const key = bufferKey(socket.id, room);
+          _pendingRideJoins.set(key, []);
           isAuthorizedForRideRoom(rideId, headers, auth).then(ok => {
+            const buffered = _pendingRideJoins.get(key) ?? [];
+            _pendingRideJoins.delete(key);
             if (ok) {
               socket.join(room);
+              for (const payload of buffered) {
+                socket.emit("rider:location", payload);
+              }
             } else {
               logger.debug({ socketId: socket.id, room }, "Socket denied ride room (not a participant)");
             }
-          }).catch(() => {});
+          }).catch(() => { _pendingRideJoins.delete(key); });
         } else if (room.startsWith("order:")) {
           const orderId = room.slice("order:".length);
           isAuthorizedForOrderRoom(orderId, headers, auth).then(ok => {
@@ -225,14 +244,21 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
         }
       } else if (room.startsWith("ride:")) {
         const rideId = room.slice("ride:".length);
+        const key = bufferKey(socket.id, room);
+        _pendingRideJoins.set(key, []);
         isAuthorizedForRideRoom(rideId, headers, auth).then(ok => {
+          const buffered = _pendingRideJoins.get(key) ?? [];
+          _pendingRideJoins.delete(key);
           if (ok) {
             socket.join(room);
+            for (const payload of buffered) {
+              socket.emit("rider:location", payload);
+            }
             logger.debug({ socketId: socket.id, room }, "Socket joined ride room");
           } else {
             logger.debug({ socketId: socket.id, room }, "Socket join denied ride room (not a participant)");
           }
-        }).catch(() => {});
+        }).catch(() => { _pendingRideJoins.delete(key); });
       } else if (room.startsWith("order:")) {
         const orderId = room.slice("order:".length);
         isAuthorizedForOrderRoom(orderId, headers, auth).then(ok => {
@@ -251,6 +277,11 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
     });
 
     socket.on("disconnect", () => {
+      /* Clean up any pending ride-room buffers for this socket */
+      const prefix = `${socket.id}::`;
+      for (const key of _pendingRideJoins.keys()) {
+        if (key.startsWith(prefix)) _pendingRideJoins.delete(key);
+      }
       logger.debug({ socketId: socket.id }, "Socket disconnected");
     });
   });
@@ -281,7 +312,14 @@ export function emitRiderLocation(payload: {
   if (!_io) return;
   _io.to("admin-fleet").emit("rider:location", payload);
   if (payload.rideId) {
-    _io.to(`ride:${payload.rideId}`).emit("rider:location", payload);
+    const room = `ride:${payload.rideId}`;
+    _io.to(room).emit("rider:location", payload);
+    /* Feed any sockets still pending authorization for this ride room */
+    for (const [key, buf] of _pendingRideJoins) {
+      if (key.endsWith(`::${room}`)) {
+        buf.push(payload);
+      }
+    }
   }
   if (payload.vendorId) {
     _io.to(`vendor:${payload.vendorId}`).emit("rider:location", payload);

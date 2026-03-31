@@ -266,22 +266,61 @@ export default function LiveRidersMap() {
     updatedAt: c.updatedAt,
   }));
 
-  const customers: CustomerLoc[] = baseCustomers.map(c => {
+  const mergedCustomers: CustomerLoc[] = baseCustomers.map(c => {
     const ov = customerOverrides[c.userId];
     if (!ov) return c;
     return { ...c, lat: ov.lat, lng: ov.lng, updatedAt: ov.updatedAt };
   });
-  /* Also include any socket-only customers not yet in base */
-  for (const [uid, ov] of Object.entries(customerOverrides)) {
-    if (!customers.find(c => c.userId === uid)) {
-      customers.push({ userId: uid, lat: ov.lat, lng: ov.lng, updatedAt: ov.updatedAt });
-    }
-  }
+  /* Also include any socket-only customers not yet in base — immutable concat */
+  const mergedCustomerIds = new Set(mergedCustomers.map(c => c.userId));
+  const customers: CustomerLoc[] = [
+    ...mergedCustomers,
+    ...Object.entries(customerOverrides)
+      .filter(([uid]) => !mergedCustomerIds.has(uid))
+      .map(([uid, ov]) => ({ userId: uid, lat: ov.lat, lng: ov.lng, updatedAt: ov.updatedAt })),
+  ];
 
-  const onlineCount  = riders.filter(r => r.isOnline).length;
-  const freshCount   = data?.freshCount ?? 0;
+  const onlineCount  = riders.filter(r => getRiderStatus(r, offlineAfterSec) === "online").length;
+  const freshCount   = riders.filter(r => r.isFresh).length;
   const onTripCount  = riders.filter(r => getRiderStatus(r, offlineAfterSec) === "on_trip").length;
   const selectedRider = riders.find(r => r.userId === selectedId) || null;
+
+  /**
+   * Stable icon caches keyed by a string of (userId, status, isSelected) or (userId).
+   * Using refs means the cache persists across renders regardless of array identity changes,
+   * so Leaflet does not recreate DOM nodes on timer-only re-renders (secAgo ticks).
+   */
+  const riderIconCacheRef = useRef<Map<string, ReturnType<typeof makeRiderIcon>>>(new Map());
+  const customerIconCacheRef = useRef<Map<string, ReturnType<typeof makeCustomerIcon>>>(new Map());
+
+  const riderIconMap = (() => {
+    const result = new Map<string, ReturnType<typeof makeRiderIcon>>();
+    for (const rider of riders) {
+      const status = getRiderStatus(rider, offlineAfterSec);
+      const isSelected = rider.userId === selectedId;
+      const cacheKey = `${rider.userId}:${status}:${isSelected ? "1" : "0"}`;
+      let icon = riderIconCacheRef.current.get(cacheKey);
+      if (!icon) {
+        icon = makeRiderIcon(status, isSelected);
+        riderIconCacheRef.current.set(cacheKey, icon);
+      }
+      result.set(rider.userId, icon);
+    }
+    return result;
+  })();
+
+  const customerIconMap = (() => {
+    const result = new Map<string, ReturnType<typeof makeCustomerIcon>>();
+    const cached = customerIconCacheRef.current.get("customer:false") ?? (() => {
+      const icon = makeCustomerIcon(false);
+      customerIconCacheRef.current.set("customer:false", icon);
+      return icon;
+    })();
+    for (const c of customers) {
+      result.set(c.userId, cached);
+    }
+    return result;
+  })();
 
   const polylinePositions: [number, number][] = visibleRoute.map(p => [p.latitude, p.longitude]);
   const loginPoint = routePoints[0] ?? null;
@@ -302,7 +341,7 @@ export default function LiveRidersMap() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : secAgo < 25 ? "bg-green-500" : "bg-amber-400"}`} />
+            <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
             {wsConnected ? "Live" : isLoading ? "Refreshing..." : `${secAgo}s ago`}
           </div>
           <Button
@@ -369,12 +408,11 @@ export default function LiveRidersMap() {
                 {/* Rider markers */}
                 {riders.map(rider => {
                   const status = getRiderStatus(rider, offlineAfterSec);
-                  const isSelected = rider.userId === selectedId;
                   return (
                     <Marker
                       key={rider.userId}
                       position={[rider.lat, rider.lng]}
-                      icon={makeRiderIcon(status, isSelected)}
+                      icon={riderIconMap.get(rider.userId)!}
                       eventHandlers={{ click: () => setSelectedId(rider.userId) }}
                     >
                       <Popup maxWidth={200}>
@@ -397,7 +435,7 @@ export default function LiveRidersMap() {
                   <Marker
                     key={c.userId}
                     position={[c.lat, c.lng]}
-                    icon={makeCustomerIcon(false)}
+                    icon={customerIconMap.get(c.userId)!}
                   >
                     <Popup maxWidth={160}>
                       <div style={{ fontFamily: "sans-serif" }}>
