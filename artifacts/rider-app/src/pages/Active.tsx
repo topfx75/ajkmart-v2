@@ -250,6 +250,11 @@ export default function Active() {
     return () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); };
   }, []);
 
+  /* Stable refs to avoid stale closures in the online/offline effect */
+  const refetchRef   = useRef<(() => void) | null>(null);
+  const showToastRef = useRef<((msg: string, isError?: boolean) => void) | null>(null);
+  const TRef         = useRef<((key: TranslationKey) => string) | null>(null);
+
   useEffect(() => {
     const goOffline = () => setIsOffline(true);
     const goOnline = () => {
@@ -267,11 +272,11 @@ export default function Active() {
         qc.invalidateQueries({ queryKey: ["rider-history"] });
         qc.invalidateQueries({ queryKey: ["rider-earnings"] });
         qc.invalidateQueries({ queryKey: ["rider-requests"] });
-        showToast(T("statusUpdated"));
+        showToastRef.current?.(TRef.current?.("statusUpdated") ?? "Status updated");
       }).catch(() => {
         pendingUpdatesRef.current.push(item);
       }));
-      refetch();
+      refetchRef.current?.();
     };
     window.addEventListener("offline", goOffline);
     window.addEventListener("online", goOnline);
@@ -279,7 +284,7 @@ export default function Active() {
       window.removeEventListener("offline", goOffline);
       window.removeEventListener("online", goOnline);
     };
-  }, [language]);
+  }, [qc]);
 
 
   const showToast = (msg: string, isError = false) => {
@@ -287,6 +292,9 @@ export default function Active() {
     setToastMsg(msg); setToastIsError(isError);
     toastTimerRef.current = setTimeout(() => setToastMsg(""), 3000);
   };
+  /* Keep refs in sync with latest closures */
+  showToastRef.current = showToast;
+  TRef.current = T;
 
   const [tabVisible, setTabVisible] = useState(!document.hidden);
 
@@ -301,6 +309,8 @@ export default function Active() {
     queryFn:  () => api.getActive(),
     refetchInterval: tabVisible ? 8000 : false,
   });
+  /* Keep refetchRef in sync so the offline→online handler always calls the latest refetch */
+  refetchRef.current = refetch;
 
   useEffect(() => {
     if (tabVisible) refetch();
@@ -339,16 +349,12 @@ export default function Active() {
         const now = Date.now();
         if (now - lastSentTime < MIN_INTERVAL_MS) return;
         lastSentTime = now;
-        /* Client-side spoof heuristic: implausibly high accuracy (< 1m) or zero altitude
-           are common signals of mock location apps on Android */
+        /* Client-side spoof heuristic: implausibly high accuracy (< 1m) is a strong
+           signal of a mock location app on Android. The altitude === 0 check was removed
+           because it caused false positives on desktops and WiFi-only devices. */
         const accuracy = pos.coords.accuracy;
-        const altitude = pos.coords.altitude;
         if (accuracy !== null && accuracy < 1) {
           if (isMountedRef.current) setGpsWarningWithRef("Suspicious GPS accuracy detected. Please disable mock location apps.");
-          return;
-        }
-        if (altitude !== null && altitude === 0 && accuracy !== null && accuracy < 5) {
-          if (isMountedRef.current) setGpsWarningWithRef("Suspicious GPS signal detected. Please disable mock location apps.");
           return;
         }
 
@@ -439,6 +445,8 @@ export default function Active() {
       if (vars.status === "delivered") {
         sessionStorage.removeItem("orderPickedUp");
         setProofPhoto(null);
+        setProofFileName("");
+        if (photoInputRef.current) photoInputRef.current.value = "";
         showToast(T("orderDeliveredEarnings"));
       } else if (vars.status === "cancelled") {
         sessionStorage.removeItem("orderPickedUp");

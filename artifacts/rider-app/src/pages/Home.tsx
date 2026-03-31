@@ -346,16 +346,12 @@ export default function Home() {
         const now = Date.now();
         if (now - lastSentTime < MIN_INTERVAL_MS) return;
         lastSentTime = now;
-        /* Client-side spoof heuristic: implausibly high accuracy (< 1m) or zero altitude
-           are common signals of mock location apps on Android */
+        /* Client-side spoof heuristic: implausibly high accuracy (< 1m) is a strong
+           signal of a mock location app on Android. The altitude === 0 check was removed
+           because it caused false positives on desktops and WiFi-only devices. */
         const accuracy = pos.coords.accuracy;
-        const altitude = pos.coords.altitude;
         if (accuracy !== null && accuracy < 1) {
           setGpsWarningWithRef("Suspicious GPS accuracy detected. Please disable mock location apps.");
-          return;
-        }
-        if (altitude !== null && altitude === 0 && accuracy !== null && accuracy < 5) {
-          setGpsWarningWithRef("Suspicious GPS signal detected. Please disable mock location apps.");
           return;
         }
         api.updateLocation({

@@ -264,6 +264,22 @@ export default function Profile() {
     setEditing(section);
   };
 
+  /* Explicitly reset fields to current saved values when the user cancels editing.
+     Previously only setEditing(null) was called, which relied on the user-change useEffect
+     to sync fields — but that effect only runs when the user object itself changes. */
+  const cancelEdit = (section: EditSection) => {
+    if (section === "personal") {
+      setName(user?.name || ""); setEmail(user?.email || ""); setCnic(user?.cnic || "");
+      setCity(user?.city || ""); setAddress(user?.address || ""); setEmergency(user?.emergencyContact || "");
+    } else if (section === "vehicle") {
+      setVehicleType(user?.vehicleType || ""); setVehiclePlate(user?.vehiclePlate || "");
+      setVehicleRegNo(user?.vehicleRegNo || ""); setDrivingLicense(user?.drivingLicense || "");
+    } else if (section === "bank") {
+      setBankName(user?.bankName || ""); setBankAccount(user?.bankAccount || ""); setBankAccountTitle(user?.bankAccountTitle || "");
+    }
+    setEditing(null);
+  };
+
   /* Re-sync form fields when user data updates from server (e.g. after refreshUser) */
   useEffect(() => {
     if (!editing) {
@@ -597,7 +613,7 @@ export default function Profile() {
                   </div>
                   <div className="flex items-center gap-2">
                     <SavedCheckmark show={savedSection === "personal"} label={T("savedFeedback")} />
-                    <button onClick={() => editing === "personal" ? setEditing(null) : startEdit("personal")}
+                    <button onClick={() => editing === "personal" ? cancelEdit("personal") : startEdit("personal")}
                       className={`text-sm font-bold py-1.5 px-3 rounded-xl transition-all flex items-center gap-1.5 ${
                         editing === "personal" ? "bg-gray-100 text-gray-600" : "bg-gray-100 text-gray-900 active:bg-gray-200"
                       }`}>
@@ -666,7 +682,7 @@ export default function Profile() {
                   </div>
                   <div className="flex items-center gap-2">
                     <SavedCheckmark show={savedSection === "vehicle"} label={T("savedFeedback")} />
-                    <button onClick={() => editing === "vehicle" ? setEditing(null) : startEdit("vehicle")}
+                    <button onClick={() => editing === "vehicle" ? cancelEdit("vehicle") : startEdit("vehicle")}
                       className={`text-sm font-bold py-1.5 px-3 rounded-xl transition-all flex items-center gap-1.5 ${
                         editing === "vehicle" ? "bg-gray-100 text-gray-600" : "bg-gray-100 text-gray-900 active:bg-gray-200"
                       }`}>
@@ -818,7 +834,7 @@ export default function Profile() {
                   </div>
                   <div className="flex items-center gap-2">
                     <SavedCheckmark show={savedSection === "bank"} label={T("savedFeedback")} />
-                    <button onClick={() => editing === "bank" ? setEditing(null) : startEdit("bank")}
+                    <button onClick={() => editing === "bank" ? cancelEdit("bank") : startEdit("bank")}
                       className={`text-sm font-bold py-1.5 px-3 rounded-xl transition-all flex items-center gap-1.5 ${
                         editing === "bank" ? "bg-gray-100 text-gray-600" : "bg-gray-100 text-gray-900 active:bg-gray-200"
                       }`}>

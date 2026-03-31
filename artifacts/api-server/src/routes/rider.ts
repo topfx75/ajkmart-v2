@@ -602,27 +602,45 @@ async function handleCancelPenalty(riderId: string): Promise<{ dailyCancels: num
   return { dailyCancels, penaltyApplied, restricted };
 }
 
-/* ── GET /rider/cancel-stats — Rider's cancellation stats for today ── */
+/* ── GET /rider/cancel-stats — Rider's cancellation stats ── */
 router.get("/cancel-stats", async (req, res) => {
   const riderId = req.riderId!;
   const s = await getPlatformSettings();
-  const limit = parseInt(s["rider_cancel_limit_daily"] ?? "3", 10);
+  const dailyLimit = parseInt(s["rider_cancel_limit_daily"] ?? "3", 10);
   const penaltyAmt = parseFloat(s["rider_cancel_penalty_amount"] ?? "50");
+  const restrictEnabled = (s["rider_cancel_restrict_enabled"] ?? "on") === "on";
 
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const [countRow] = await db.select({ c: count() })
-    .from(walletTransactionsTable)
-    .where(and(
-      eq(walletTransactionsTable.userId, riderId),
-      eq(walletTransactionsTable.type, "cancel_penalty"),
-      gte(walletTransactionsTable.createdAt, today),
-    ));
+  const now = new Date();
+  const today    = new Date(now); today.setHours(0, 0, 0, 0);
+  const weekAgo  = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
+  const monthAgo = new Date(today); monthAgo.setDate(monthAgo.getDate() - 30);
+
+  /* Source of truth: walletTransactionsTable rows with type="cancel_penalty" where
+     reference starts with "cancel:" — these are the base cancellation events (one per
+     cancel, amount=0) written by handleCancelPenalty. Penalty rows have reference
+     "cancel_penalty:..." and are excluded to avoid double-counting penalised cancels. */
+  const [todayRow, weekRow, monthRow] = await Promise.all([
+    db.select({ c: count() }).from(walletTransactionsTable)
+      .where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "cancel_penalty"), gte(walletTransactionsTable.createdAt, today), sql`reference LIKE 'cancel:%'`)),
+    db.select({ c: count() }).from(walletTransactionsTable)
+      .where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "cancel_penalty"), gte(walletTransactionsTable.createdAt, weekAgo), sql`reference LIKE 'cancel:%'`)),
+    db.select({ c: count() }).from(walletTransactionsTable)
+      .where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "cancel_penalty"), gte(walletTransactionsTable.createdAt, monthAgo), sql`reference LIKE 'cancel:%'`)),
+  ]);
+
+  const todayCount  = todayRow[0]?.c  ?? 0;
+  const weekCount   = weekRow[0]?.c   ?? 0;
+  const monthCount  = monthRow[0]?.c  ?? 0;
 
   res.json({
-    dailyCancels: countRow?.c ?? 0,
-    dailyLimit: limit,
+    today:        { cancels: todayCount  },
+    week:         { cancels: weekCount   },
+    month:        { cancels: monthCount  },
+    dailyCancels:  todayCount,
+    dailyLimit,
     penaltyAmount: penaltyAmt,
-    remaining: Math.max(0, limit - (countRow?.c ?? 0)),
+    remaining:     Math.max(0, dailyLimit - todayCount),
+    restrictEnabled,
   });
 });
 
@@ -1181,15 +1199,20 @@ router.get("/history", async (req, res) => {
   const s = await getPlatformSettings();
   const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
 
+  const rawLimit  = parseInt(String(req.query["limit"]  || "50"), 10);
+  const rawOffset = parseInt(String(req.query["offset"] || "0"),  10);
+  const limitParam  = Math.min(isNaN(rawLimit)  || rawLimit  < 1  ? 50  : rawLimit,  200);
+  const offsetParam = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset;
   const [orders, rides] = await Promise.all([
-    db.select().from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"))).orderBy(desc(ordersTable.updatedAt)).limit(10),
-    db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "completed"), eq(ridesTable.status, "cancelled")))).orderBy(desc(ridesTable.updatedAt)).limit(10),
+    db.select().from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"))).orderBy(desc(ordersTable.updatedAt)).limit(limitParam).offset(offsetParam),
+    db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "completed"), eq(ridesTable.status, "cancelled")))).orderBy(desc(ridesTable.updatedAt)).limit(limitParam).offset(offsetParam),
   ]);
 
   const combined = [
     ...orders.map(o => ({ kind: "order" as const, id: o.id, status: o.status, amount: safeNum(o.total), earnings: parseFloat((safeNum(o.total) * riderKeepPct).toFixed(2)), address: o.deliveryAddress, type: o.type, createdAt: o.createdAt })),
     ...rides.map(r => ({ kind: "ride" as const, id: r.id, status: r.status, amount: safeNum(r.fare), earnings: parseFloat((safeNum(r.fare) * riderKeepPct).toFixed(2)), address: r.dropAddress, type: r.type, createdAt: r.createdAt })),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+   .slice(0, limitParam);  /* Cap combined result to the requested limit */
 
   res.json({ history: combined });
 });
@@ -1653,17 +1676,14 @@ async function handleIgnorePenalty(riderId: string): Promise<{ dailyIgnores: num
       await tx.update(usersTable)
         .set({ walletBalance: sql`wallet_balance - ${penaltyAmt}`, updatedAt: new Date() })
         .where(eq(usersTable.id, riderId));
-      /* Insert wallet ledger entry so the rider can see the deduction in their transaction history */
+      /* Insert wallet ledger entry so the rider can see the deduction in their transaction history.
+         Note: the riderPenaltiesTable "ignore" row is already inserted above this transaction
+         so we do NOT insert a second penalties row here — only the wallet ledger + notification. */
       await tx.insert(walletTransactionsTable).values({
         id: generateId(), userId: riderId, type: "ignore_penalty",
         amount: penaltyAmt.toFixed(2),
         description: `Ignore penalty (${dailyIgnores}/${limit} today) — Rs. ${penaltyAmt}`,
         reference: `ignore_penalty:${Date.now()}`,
-      });
-      await tx.insert(riderPenaltiesTable).values({
-        id: generateId(), riderId, type: "ignore_penalty",
-        amount: penaltyAmt.toFixed(2),
-        reason: `Excessive ignore penalty (${dailyIgnores}/${limit} today) — Rs. ${penaltyAmt} deducted`,
       });
     });
 

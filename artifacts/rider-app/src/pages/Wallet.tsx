@@ -197,7 +197,7 @@ export default function Wallet() {
   const maxPayout         = config.rider?.maxPayout      ?? 50000;
   const withdrawalEnabled = config.rider?.withdrawalEnabled !== false;
   const depositEnabled    = config.rider?.depositEnabled !== false;
-  const minBalance        = config.rider?.minBalance     ?? 0;
+  const minBalanceFallback = config.rider?.minBalance ?? 0;
   const procDays          = config.wallet?.withdrawalProcessingDays ?? 2;
   const qc = useQueryClient();
 
@@ -262,6 +262,16 @@ export default function Wallet() {
     enabled: showDeposits && config.features.wallet,
     staleTime: 30000,
   });
+
+  /* Live minBalance: fetched eagerly so DepositModal always shows the admin-configured value,
+     not the potentially-stale value baked into the platform config response. */
+  const { data: minBalanceData } = useQuery({
+    queryKey: ["rider-min-balance"],
+    queryFn: () => api.getMinBalance(),
+    staleTime: 60000,
+    enabled: config.features.wallet,
+  });
+  const minBalance = (minBalanceData?.minBalance ?? minBalanceFallback) as number;
 
   const transactions: WalletTx[] = data?.transactions || [];
   /* When getWallet returns no balance field, fall back to cached user balance but flag it as stale */
@@ -801,7 +811,11 @@ export default function Wallet() {
           onClose={() => setShowRemittance(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["rider-cod"] });
+            qc.invalidateQueries({ queryKey: ["rider-wallet"] });
+            qc.invalidateQueries({ queryKey: ["rider-deposits"] });
+            refetch();
             refetchCod();
+            refetchDeposits();
             showToast(T("codRemittanceSubmitted"));
           }}
         />
@@ -813,6 +827,11 @@ export default function Wallet() {
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["rider-wallet"] });
+            qc.invalidateQueries({ queryKey: ["rider-cod"] });
+            qc.invalidateQueries({ queryKey: ["rider-deposits"] });
+            refetch();
+            refetchCod();
+            refetchDeposits();
             refreshUser().catch(() => {});
             /* Show "Under Review" message so rider knows the request is pending admin review
                and their balance will only be deducted after the request is approved. */
@@ -827,6 +846,10 @@ export default function Wallet() {
           onClose={() => setShowDeposit(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["rider-wallet"] });
+            qc.invalidateQueries({ queryKey: ["rider-deposits"] });
+            refetch();
+            refetchCod();
+            refetchDeposits();
             showToast(T("depositSubmittedMsg"));
           }}
         />
