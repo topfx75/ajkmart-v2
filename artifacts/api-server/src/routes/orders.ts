@@ -4,7 +4,7 @@ import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, prod
 import { eq, and, gte, count, desc, SQL, sql, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { addSecurityEvent, getClientIp, getCachedSettings, customerAuth } from "../middleware/security.js";
+import { addSecurityEvent, getClientIp, getCachedSettings, customerAuth, idorGuard } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -166,8 +166,7 @@ router.get("/:id", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  /* Ensure customers can only view their own orders */
-  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (idorGuard(res, order.userId, userId)) return;
   res.json(mapOrder(order));
 });
 

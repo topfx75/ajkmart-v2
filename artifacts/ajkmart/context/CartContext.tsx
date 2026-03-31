@@ -26,6 +26,7 @@ interface CartContextType {
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, qty: number) => void;
   clearCart: () => void;
+  restoreCart: (snapshot: CartItem[]) => void;
   validateCart: () => Promise<CartValidationResult>;
   isValidating: boolean;
 }
@@ -171,6 +172,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearCart = () => save([]);
+  const restoreCart = (snapshot: CartItem[]) => save([...snapshot]);
 
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
   const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -182,7 +184,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     "mixed";
 
   return (
-    <CartContext.Provider value={{ items, itemCount, total, cartType, addItem, removeItem, updateQuantity, clearCart, validateCart, isValidating }}>
+    <CartContext.Provider value={{ items, itemCount, total, cartType, addItem, removeItem, updateQuantity, clearCart, restoreCart, validateCart, isValidating }}>
       {children}
     </CartContext.Provider>
   );

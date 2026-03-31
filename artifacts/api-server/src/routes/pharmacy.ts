@@ -1,10 +1,10 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { notificationsTable, pharmacyOrdersTable, usersTable, walletTransactionsTable, liveLocationsTable } from "@workspace/db/schema";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { notificationsTable, pharmacyOrdersTable, productsTable, usersTable, walletTransactionsTable, liveLocationsTable } from "@workspace/db/schema";
+import { eq, sql, and, gte, count, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { customerAuth, riderAuth } from "../middleware/security.js";
+import { customerAuth, riderAuth, addSecurityEvent, idorGuard } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -58,7 +58,7 @@ router.get("/:id", customerAuth, async (req, res) => {
     res.status(404).json({ error: "Pharmacy order not found" });
     return;
   }
-  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (idorGuard(res, order.userId, userId)) return;
   res.json(mapOrder(order));
 });
 
@@ -72,7 +72,7 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     .limit(1);
 
   if (!order) { res.status(404).json({ error: "Pharmacy order not found" }); return; }
-  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (idorGuard(res, order.userId, userId)) return;
 
   const TRACKABLE = ["picked_up", "out_for_delivery", "in_transit"];
   let riderLat: number | null = null;
@@ -135,6 +135,40 @@ router.post("/", customerAuth, async (req, res) => {
     res.status(503).json({ error: "Pharmacy service is currently disabled" }); return;
   }
 
+  /* ── Fraud detection (mirrors orders.ts pattern) ── */
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  {
+    const [userRecord] = await db.select({ isBanned: usersTable.isBanned, isActive: usersTable.isActive }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (userRecord?.isBanned) {
+      res.status(403).json({ error: "Your account has been suspended." }); return;
+    }
+    if (userRecord && !userRecord.isActive) {
+      res.status(403).json({ error: "Your account is inactive. Please contact support." }); return;
+    }
+
+    if ((s["security_fake_order_detect"] ?? "off") === "on") {
+      const maxDailyOrders = parseInt(s["security_max_daily_orders"] ?? "20", 10);
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const [dailyResult] = await db.select({ c: count() }).from(pharmacyOrdersTable).where(and(eq(pharmacyOrdersTable.userId, userId), gte(pharmacyOrdersTable.createdAt, todayStart)));
+      const dailyCount = Number(dailyResult?.c ?? 0);
+      if (dailyCount >= maxDailyOrders) {
+        addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily pharmacy limit: ${dailyCount}/${maxDailyOrders}`, severity: "medium" });
+        res.status(429).json({ error: `Daily pharmacy order limit (${maxDailyOrders}) reached. Please try again tomorrow.` }); return;
+      }
+
+      if (deliveryAddress) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const sameAddrLimit = parseInt(s["security_same_addr_limit"] ?? "5", 10);
+        const sameAddrOrders = await db.select({ c: count() }).from(pharmacyOrdersTable).where(and(eq(pharmacyOrdersTable.deliveryAddress, deliveryAddress), gte(pharmacyOrdersTable.createdAt, oneHourAgo)));
+        const sameAddrCount = Number(sameAddrOrders[0]?.c ?? 0);
+        if (sameAddrCount >= sameAddrLimit) {
+          addSecurityEvent({ type: "same_address_limit", ip, userId, details: `Pharmacy same-address limit: ${deliveryAddress} (${sameAddrCount}/hr)`, severity: "high" });
+          res.status(429).json({ error: "Too many pharmacy orders to this address. Please try again later." }); return;
+        }
+      }
+    }
+  }
+
   /* Per-item validation — prevents negative-price injection */
   const badItem = (items as any[]).find(
     (it) => !Number.isFinite(Number(it.price)) || Number(it.price) <= 0 ||
@@ -144,10 +178,35 @@ router.post("/", customerAuth, async (req, res) => {
     res.status(400).json({ error: "Each item must have a valid positive price and quantity" }); return;
   }
 
-  /* ── Prescription (Rx) enforcement: if any item flagged requires_prescription,
-     the customer must supply a note or photo. The flag is set on the item by the
-     client (populated from the product catalog at browse time). ── */
-  const hasRxItem = (items as any[]).some((it: any) => it.requires_prescription || it.requiresPrescription);
+  /* ── Prescription (Rx) enforcement ──
+     Server-authoritative check: look up product IDs in the DB to determine Rx requirement.
+     If a product is not found in DB, fall back to platform setting:
+     - If pharmacy_always_require_rx = "on": require Rx for ALL pharmacy orders
+     - Otherwise: treat unknown items as not requiring Rx (safe default for items without IDs) ── */
+  const alwaysRx = (s["pharmacy_always_require_rx"] ?? "off") === "on";
+  let hasRxItem = alwaysRx;
+
+  if (!hasRxItem) {
+    const itemIds = (items as any[]).map((it: any) => it.id).filter(Boolean);
+    if (itemIds.length > 0) {
+      try {
+        const dbProducts = await db
+          .select({ id: productsTable.id, name: productsTable.name, category: productsTable.category })
+          .from(productsTable)
+          .where(inArray(productsTable.id, itemIds));
+        const RX_KEYWORDS = /\b(antibiotic|amoxicillin|azithromycin|ciprofloxacin|metformin|insulin|steroid|cortisone|opioid|codeine|tramadol|diazepam|alprazolam|morphine|fentanyl|prescription|rx only)\b/i;
+        hasRxItem = dbProducts.some(p => RX_KEYWORDS.test(p.name ?? "") || p.category === "prescription");
+        if (!hasRxItem) {
+          const unlistedRx = (items as any[]).some((it: any) => it.requires_prescription || it.requiresPrescription);
+          hasRxItem = unlistedRx;
+        }
+      } catch { /* non-fatal: fall back to client flag on DB error */ }
+    }
+    if (!hasRxItem) {
+      hasRxItem = (items as any[]).some((it: any) => it.requires_prescription || it.requiresPrescription);
+    }
+  }
+
   if (hasRxItem && !mergedPrescriptionNote) {
     res.status(400).json({
       error: "One or more items in your order require a doctor's prescription. Please add a prescription note or upload a photo.",
@@ -303,7 +362,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     .limit(1);
 
   if (!order) { res.status(404).json({ error: "Pharmacy order not found" }); return; }
-  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (idorGuard(res, order.userId, userId)) return;
   if (order.status !== "pending") {
     res.status(409).json({ error: "Only pending pharmacy orders can be cancelled" });
     return;

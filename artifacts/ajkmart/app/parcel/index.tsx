@@ -2,7 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useMapsAutocomplete, resolveLocation } from "@/hooks/useMaps";
-import React, { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -74,6 +75,8 @@ function Steps({ current, labels }: { current: number; labels: string[] }) {
   );
 }
 
+const PARCEL_DRAFT_KEY = "parcel_wizard_draft";
+
 function ParcelScreenInner() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -129,6 +132,44 @@ function ParcelScreenInner() {
 
   const selectedType = PARCEL_TYPES.find(t => t.id === parcelType);
 
+  // Load wizard draft from AsyncStorage on mount
+  useEffect(() => {
+    AsyncStorage.getItem(PARCEL_DRAFT_KEY)
+      .then(raw => {
+        if (!raw) return;
+        const d = JSON.parse(raw);
+        if (d.senderName)    setSenderName(d.senderName);
+        if (d.senderPhone)   setSenderPhone(d.senderPhone);
+        if (d.pickupAddress) setPickupAddress(d.pickupAddress);
+        if (d.receiverName)  setReceiverName(d.receiverName);
+        if (d.receiverPhone) setReceiverPhone(d.receiverPhone);
+        if (d.dropAddress)   setDropAddress(d.dropAddress);
+        if (d.parcelType)    setParcelType(d.parcelType);
+        if (d.weight)        setWeight(d.weight);
+        if (d.description)   setDescription(d.description);
+        if (d.step !== undefined) setStep(d.step);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist wizard draft to AsyncStorage whenever key fields change
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (confirmed) {
+      AsyncStorage.removeItem(PARCEL_DRAFT_KEY).catch(() => {});
+      return;
+    }
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+    draftSaveTimer.current = setTimeout(() => {
+      AsyncStorage.setItem(PARCEL_DRAFT_KEY, JSON.stringify({
+        senderName, senderPhone, pickupAddress,
+        receiverName, receiverPhone, dropAddress,
+        parcelType, weight, description, step,
+      })).catch(() => {});
+    }, 500);
+    return () => { if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current); };
+  }, [senderName, senderPhone, pickupAddress, receiverName, receiverPhone, dropAddress, parcelType, weight, description, step, confirmed]);
+
   useEffect(() => {
     getPaymentMethods()
       .then(data => {
@@ -178,6 +219,35 @@ function ParcelScreenInner() {
   const bookParcel = async () => {
     setLoading(true);
     try {
+      // Geocode any manually-typed addresses that don't have coordinates yet
+      let finalPickupLat = pickupLat;
+      let finalPickupLng = pickupLng;
+      let finalDropLat   = dropLat;
+      let finalDropLng   = dropLng;
+
+      if (finalPickupLat === undefined || finalPickupLng === undefined) {
+        try {
+          const loc = await resolveLocation(pickupAddress);
+          if (loc?.lat && loc?.lng) { finalPickupLat = loc.lat; finalPickupLng = loc.lng; }
+        } catch { /* swallow — will fail validation below */ }
+      }
+      if (finalDropLat === undefined || finalDropLng === undefined) {
+        try {
+          const loc = await resolveLocation(dropAddress);
+          if (loc?.lat && loc?.lng) { finalDropLat = loc.lat; finalDropLng = loc.lng; }
+        } catch { /* swallow — will fail validation below */ }
+      }
+
+      // Block booking if either address could not be geocoded
+      if (finalPickupLat === undefined || finalPickupLng === undefined) {
+        showToast("Could not locate pickup address. Please select from suggestions or enter a more specific address.", "error");
+        return;
+      }
+      if (finalDropLat === undefined || finalDropLng === undefined) {
+        showToast("Could not locate drop-off address. Please select from suggestions or enter a more specific address.", "error");
+        return;
+      }
+
       const w = chargeableWeight > 0 ? chargeableWeight : (parseFloat(weight) || undefined);
       const payload: ParcelBookingPayload = {
         senderName, senderPhone, pickupAddress,
@@ -185,8 +255,8 @@ function ParcelScreenInner() {
         parcelType: parcelType!, weight: w,
         description: description || undefined,
         paymentMethod: payMethod as "cash" | "wallet",
-        ...(pickupLat !== undefined && pickupLng !== undefined ? { pickupLat, pickupLng } : {}),
-        ...(dropLat !== undefined && dropLng !== undefined ? { dropLat, dropLng } : {}),
+        ...(finalPickupLat !== undefined && finalPickupLng !== undefined ? { pickupLat: finalPickupLat, pickupLng: finalPickupLng } : {}),
+        ...(finalDropLat !== undefined && finalDropLng !== undefined ? { dropLat: finalDropLat, dropLng: finalDropLng } : {}),
       };
       const data = await createParcelBooking(payload as CreateParcelBookingRequest);
       if (payMethod === "wallet" && user) {

@@ -62,35 +62,45 @@ function AddressPickerModal({
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>Choose Delivery Address</Text>
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
-            {addresses.map(addr => {
-              const isSel = selected === addr.id;
-              return (
-                <Pressable
-                  key={addr.id}
-                  onPress={() => { onSelect(addr); onClose(); }}
-                  style={[styles.addrOpt, isSel && styles.addrOptSel]}
-                >
-                  <View style={[styles.addrOptIcon, { backgroundColor: isSel ? "#DBEAFE" : C.surfaceSecondary }]}>
-                    <Ionicons name={(addr.icon as any) || "location-outline"} size={20} color={isSel ? C.primary : C.textSecondary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={[styles.addrOptLabel, isSel && { color: C.primary }]}>{addr.label}</Text>
-                      {addr.isDefault && (
-                        <View style={styles.defaultTag}>
-                          <Text style={styles.defaultTagText}>Default</Text>
-                        </View>
-                      )}
+          {addresses.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: 28, gap: 10 }}>
+              <Ionicons name="location-outline" size={40} color={C.textMuted} />
+              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.text }}>No saved addresses</Text>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, textAlign: "center" }}>
+                Add a delivery address to continue
+              </Text>
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
+              {addresses.map(addr => {
+                const isSel = selected === addr.id;
+                return (
+                  <Pressable
+                    key={addr.id}
+                    onPress={() => { onSelect(addr); onClose(); }}
+                    style={[styles.addrOpt, isSel && styles.addrOptSel]}
+                  >
+                    <View style={[styles.addrOptIcon, { backgroundColor: isSel ? "#DBEAFE" : C.surfaceSecondary }]}>
+                      <Ionicons name={(addr.icon as any) || "location-outline"} size={20} color={isSel ? C.primary : C.textSecondary} />
                     </View>
-                    <Text style={styles.addrOptAddress} numberOfLines={1}>{addr.address}</Text>
-                    <Text style={styles.addrOptCity}>{addr.city}</Text>
-                  </View>
-                  {isSel && <Ionicons name="checkmark-circle" size={22} color={C.primary} />}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={[styles.addrOptLabel, isSel && { color: C.primary }]}>{addr.label}</Text>
+                        {addr.isDefault && (
+                          <View style={styles.defaultTag}>
+                            <Text style={styles.defaultTagText}>Default</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.addrOptAddress} numberOfLines={1}>{addr.address}</Text>
+                      <Text style={styles.addrOptCity}>{addr.city}</Text>
+                    </View>
+                    {isSel && <Ionicons name="checkmark-circle" size={22} color={C.primary} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
           <Pressable onPress={() => { onClose(); router.push({ pathname: "/(tabs)/profile", params: { section: "addresses" } }); }} style={[styles.addrOpt, { borderColor: C.primary, borderStyle: "dashed", marginTop: 8 }]}>
             <View style={[styles.addrOptIcon, { backgroundColor: "#DBEAFE" }]}>
               <Ionicons name="add-outline" size={20} color={C.primary} />
@@ -109,7 +119,7 @@ function AddressPickerModal({
 export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const { user, updateUser, token } = useAuth();
-  const { items, total, cartType, updateQuantity, clearCart, validateCart, isValidating } = useCart();
+  const { items, total, cartType, updateQuantity, clearCart, restoreCart, addItem, validateCart, isValidating } = useCart();
   const { showToast } = useToast();
   const { config: platformConfig } = usePlatformConfig();
   const appName    = platformConfig.platform.appName;
@@ -120,6 +130,9 @@ export default function CartScreen() {
   const [payMethod, setPayMethod] = useState<PayMethod>("cash");
   const [loading, setLoading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [undoSnapshot, setUndoSnapshot] = useState<typeof items | null>(null);
+  const [showUndoClear, setShowUndoClear] = useState(false);
+  const undoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [orderSuccess, setOrderSuccess] = useState<{ id: string; time: string; payMethod?: string } | null>(null);
 
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
@@ -170,12 +183,41 @@ export default function CartScreen() {
           gwPollRef.current.intervalId = undefined;
         }
         if (mountedRef.current) setGwBackgrounded(true);
+      } else if (nextState === "active" && gwBackgrounded) {
+        // Auto-resume polling when user returns to foreground
+        setGwBackgrounded(false);
+        const txn = gwTxnRef.current;
+        const oid = gwOrderId.current;
+        if (!txn) return;
+        gwPollRef.current.active = true;
+        gwPollRef.current.intervalId = setInterval(async () => {
+          if (!gwPollRef.current.active) return;
+          try {
+            const r = await fetch(`${API_BASE}/payments/status/${encodeURIComponent(txn)}`);
+            const d = await r.json() as any;
+            if (d.status === "completed" || d.status === "success") {
+              gwPollRef.current.active = false;
+              if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
+              if (!mountedRef.current) return;
+              setGwStep("done");
+              await new Promise(res => setTimeout(res, 600));
+              clearCart();
+              setOrderSuccess({ id: (oid || txn).slice(-6).toUpperCase(), time: "30-45 min", payMethod });
+              setShowGwModal(false);
+            } else if (d.status === "failed" || d.status === "expired") {
+              gwPollRef.current.active = false;
+              if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
+              if (!mountedRef.current) return;
+              setGwStep("input");
+              if (oid) await cancelPendingOrder(oid);
+              showToast(d.message || "Payment was not successful. Please try again.", "error");
+            }
+          } catch {}
+        }, 3000);
       }
-      // Intentionally NOT resetting gwBackgrounded on foreground —
-      // the paused state stays visible until the user explicitly checks status.
     });
     return () => sub.remove();
-  }, [gwStep]);
+  }, [gwStep, gwBackgrounded, payMethod, clearCart, showToast]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const deliveryFeeConfig = platformConfig.deliveryFee;
@@ -253,6 +295,7 @@ export default function CartScreen() {
   }, [cartFingerprint]);
 
   const revalidatePromo = async (code: string) => {
+    setPromoLoading(true);
     try {
       const orderType = (cartType === "mixed" || cartType === "pharmacy" || cartType === "none") ? "mart" : cartType;
       const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
@@ -272,6 +315,8 @@ export default function CartScreen() {
       setPromoCode(null);
       setPromoDiscount(0);
       setPromoApplied(false);
+    } finally {
+      setPromoLoading(false);
     }
   };
 
@@ -373,14 +418,32 @@ export default function CartScreen() {
     if (
       selectedAddr &&
       selectedAddr.city?.trim() &&
-      serviceableCities.length > 0 &&
-      !serviceableCities.some(c => c.toLowerCase() === selectedAddr.city.trim().toLowerCase())
+      serviceableCities.length > 0
     ) {
-      showToast(
-        `Delivery is currently only available in: ${serviceableCities.join(", ")}. Your address is in ${selectedAddr.city}.`,
-        "error",
-      );
-      return;
+      const normalizeCity = (s: string) =>
+        s.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+      const userCity = normalizeCity(selectedAddr.city);
+      const cityAliases: Record<string, string[]> = {
+        "muzaffarabad": ["mzd", "muzafarabad", "muzaffarabd"],
+        "mirpur": ["mirpur ajk", "mirpurajk"],
+        "rawalakot": ["rawala kot", "rawalakot ajk"],
+        "abbottabad": ["abbotabad", "abottabad"],
+        "islamabad": ["isb"],
+        "rawalpindi": ["pindi", "rwp"],
+      };
+      const isServicable = serviceableCities.some(c => {
+        const normC = normalizeCity(c);
+        if (normC === userCity) return true;
+        const aliases = cityAliases[normC] || [];
+        return aliases.some(alias => normalizeCity(alias) === userCity);
+      });
+      if (!isServicable) {
+        showToast(
+          `Delivery is currently only available in: ${serviceableCities.join(", ")}. Your address is in ${selectedAddr.city}.`,
+          "error",
+        );
+        return;
+      }
     }
     if (total < orderRules.minOrderAmount) {
       showToast(`Minimum order Rs.${orderRules.minOrderAmount} — add Rs.${orderRules.minOrderAmount - total} more`, "error");
@@ -798,7 +861,18 @@ export default function CartScreen() {
               <Pressable onPress={() => setShowClearConfirm(false)} style={styles.clearNo}>
                 <Text style={styles.clearNoTxt}>No</Text>
               </Pressable>
-              <Pressable onPress={() => { clearCart(); setShowClearConfirm(false); }} style={styles.clearYes}>
+              <Pressable onPress={() => {
+                const snapshot = [...items];
+                clearCart();
+                setShowClearConfirm(false);
+                setUndoSnapshot(snapshot);
+                setShowUndoClear(true);
+                if (undoClearTimerRef.current) clearTimeout(undoClearTimerRef.current);
+                undoClearTimerRef.current = setTimeout(() => {
+                  setShowUndoClear(false);
+                  setUndoSnapshot(null);
+                }, 5000);
+              }} style={styles.clearYes}>
                 <Text style={styles.clearYesTxt}>Yes</Text>
               </Pressable>
             </View>
@@ -1059,8 +1133,13 @@ export default function CartScreen() {
             </View>
           </View>
         ) : (
-          <Pressable style={[styles.checkoutBtn, (loading || addrLoading) && { opacity: 0.7 }]} onPress={handleCheckout} disabled={loading || addrLoading}>
-            {loading ? <ActivityIndicator color="#fff" size="small" /> : (
+          <Pressable style={[styles.checkoutBtn, (loading || addrLoading || promoLoading) && { opacity: 0.7 }]} onPress={handleCheckout} disabled={loading || addrLoading || promoLoading}>
+            {loading ? <ActivityIndicator color="#fff" size="small" /> : promoLoading ? (
+              <>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.checkoutBtnTxt}>Validating promo...</Text>
+              </>
+            ) : (
               <>
                 <Text style={styles.checkoutBtnTxt}>Place Order</Text>
                 <Ionicons name="arrow-forward" size={18} color="#fff" />
@@ -1079,6 +1158,23 @@ export default function CartScreen() {
       />
 
       <GatewayModal />
+
+      {showUndoClear && (
+        <View style={{ position: "absolute", bottom: 90, left: 16, right: 16, backgroundColor: "#1E293B", borderRadius: 14, flexDirection: "row", alignItems: "center", padding: 14, gap: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 10 }}>
+          <Ionicons name="trash-outline" size={18} color="#94A3B8" />
+          <Text style={{ flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: "#F8FAFC" }}>Cart cleared</Text>
+          <Pressable onPress={() => {
+            if (undoSnapshot) {
+              restoreCart(undoSnapshot);
+            }
+            setShowUndoClear(false);
+            setUndoSnapshot(null);
+            if (undoClearTimerRef.current) clearTimeout(undoClearTimerRef.current);
+          }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: C.primary }}>Undo</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }

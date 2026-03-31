@@ -3,12 +3,26 @@ import { db } from "@workspace/db";
 import { productsTable } from "@workspace/db/schema";
 import { eq, ilike, and, SQL } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
-import { adminAuth } from "./admin.js";
+import { adminAuth, getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
 
 router.get("/", async (req, res) => {
   const { category, search, type } = req.query;
+
+  // Feature flag check: if a specific type is requested, verify that service is enabled
+  if (type && typeof type === "string") {
+    try {
+      const s = await getPlatformSettings();
+      const featureKey = `feature_${type}`;
+      const enabled = (s[featureKey] ?? "on") === "on";
+      if (!enabled) {
+        res.status(503).json({ error: `${type.charAt(0).toUpperCase() + type.slice(1)} service is currently disabled`, products: [], total: 0 });
+        return;
+      }
+    } catch {}
+  }
+
   /* Public endpoint: only serve approved, in-stock products */
   const conditions: SQL[] = [
     eq(productsTable.approvalStatus, "approved"),
@@ -34,6 +48,17 @@ router.get("/:id", async (req, res) => {
   if (!product) {
     res.status(404).json({ error: "Product not found" });
     return;
+  }
+  // Feature flag check: verify the product's service type is enabled
+  if (product.type) {
+    try {
+      const s = await getPlatformSettings();
+      const featureKey = `feature_${product.type}`;
+      if ((s[featureKey] ?? "on") !== "on") {
+        res.status(503).json({ error: `${product.type.charAt(0).toUpperCase() + product.type.slice(1)} service is currently disabled` });
+        return;
+      }
+    } catch {}
   }
   res.json({
     ...product,

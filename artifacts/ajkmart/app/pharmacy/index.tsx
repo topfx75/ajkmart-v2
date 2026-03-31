@@ -570,6 +570,13 @@ function PharmacyScreenInner() {
                 >
                   <Ionicons name="close" size={16} color="#fff" />
                 </Pressable>
+                <Pressable
+                  onPress={pickPrescriptionPhoto}
+                  style={{ position: "absolute", bottom: 8, right: 8, backgroundColor: "rgba(124,58,237,0.85)", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 4 }}
+                >
+                  <Ionicons name="refresh-outline" size={12} color="#fff" />
+                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#fff" }}>Retry</Text>
+                </Pressable>
               </View>
             )}
           </View>

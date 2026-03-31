@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -47,21 +49,16 @@ type PayMethod = {
 
 type DepositStep = "method" | "details" | "amount" | "confirm" | "done";
 
+const TX_STATUS_PENDING  = "pending";
+const TX_STATUS_APPROVED = "approved";
+const TX_STATUS_REJECTED = "rejected";
+
 function TxItem({ tx }: { tx: any }) {
-  const txStatus: string | undefined = tx.status;
+  const txStatus: string = tx.status ?? TX_STATUS_PENDING;
   const isManualTx = tx.type === "deposit" || tx.type === "withdrawal";
-  const isPending  = isManualTx && (
-    txStatus === "pending" ||
-    (!txStatus && (!tx.reference || tx.reference === "pending" || tx.reference.startsWith("pending:")))
-  );
-  const isApproved = isManualTx && (
-    txStatus === "approved" ||
-    (!txStatus && tx.reference?.startsWith("approved:"))
-  );
-  const isRejected = isManualTx && (
-    txStatus === "rejected" ||
-    (!txStatus && tx.reference?.startsWith("rejected:"))
-  );
+  const isPending  = isManualTx && txStatus === TX_STATUS_PENDING;
+  const isApproved = isManualTx && txStatus === TX_STATUS_APPROVED;
+  const isRejected = isManualTx && txStatus === TX_STATUS_REJECTED;
   const isCredit   = tx.type === "credit" || (tx.type === "deposit" && isApproved);
   const date = new Date(tx.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" });
   const time = new Date(tx.createdAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" });
@@ -130,6 +127,14 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
   const [submitting, setSubmitting]   = useState(false);
   const [err, setErr]                 = useState("");
   const { showToast } = useToast();
+  const doneAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (step === "done") {
+      doneAnim.setValue(0);
+      Animated.timing(doneAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    }
+  }, [step]);
 
   const WITHDRAW_METHODS: { id: WithdrawMethod; label: string; placeholder: string }[] = [
     { id: "jazzcash",  label: "JazzCash",  placeholder: "03XX-XXXXXXX" },
@@ -170,7 +175,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
             {step === "done" && (
-              <View style={{ alignItems: "center", paddingVertical: 20 }}>
+              <Animated.View style={{ alignItems: "center", paddingVertical: 20, opacity: doneAnim, transform: [{ translateY: doneAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
                 <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
                   <Ionicons name="arrow-up-circle" size={40} color={C.danger} />
                 </View>
@@ -194,7 +199,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 <Pressable onPress={onClose} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 16, width: "100%" }]}>
                   <Text style={ws.actionBtnTxt}>Done</Text>
                 </Pressable>
-              </View>
+              </Animated.View>
             )}
 
             {step === "method" && (
@@ -298,6 +303,8 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
   );
 }
 
+const SUBMITTED_TX_KEY = "wallet_submitted_tx_ids";
+
 function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null; minTopup: number; maxTopup: number }) {
   const [step, setStep]               = useState<DepositStep>("method");
   const [methods, setMethods]         = useState<PayMethod[]>([]);
@@ -312,6 +319,18 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
   const [submittedTxIds, setSubmittedTxIds] = useState<Set<string>>(new Set());
   const [err, setErr]                 = useState("");
   const { showToast } = useToast();
+
+  // Load previously submitted TxIDs from AsyncStorage on mount
+  useEffect(() => {
+    AsyncStorage.getItem(SUBMITTED_TX_KEY)
+      .then(raw => {
+        if (raw) {
+          const ids: string[] = JSON.parse(raw);
+          setSubmittedTxIds(new Set(ids));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/payments/methods`)
@@ -380,7 +399,16 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
         setErr(data.error === "wallet_frozen" ? data.message : (data.error || "Request failed"));
         setSubmitting(false); return;
       }
-      setSubmittedTxIds(prev => new Set(prev).add(normalizedTxId));
+      const newSet = new Set(submittedTxIds).add(normalizedTxId);
+      setSubmittedTxIds(newSet);
+      // Persist to AsyncStorage so dedup survives app restarts
+      AsyncStorage.getItem(SUBMITTED_TX_KEY)
+        .then(raw => {
+          const existing: string[] = raw ? JSON.parse(raw) : [];
+          const merged = Array.from(new Set([...existing, normalizedTxId])).slice(-100);
+          return AsyncStorage.setItem(SUBMITTED_TX_KEY, JSON.stringify(merged));
+        })
+        .catch(() => {});
       setStep("done");
       onSuccess();
     } catch {

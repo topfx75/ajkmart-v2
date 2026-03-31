@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
 
@@ -24,8 +25,21 @@ const FOOD_CATEGORIES = [
 
 router.get("/", async (req, res) => {
   const type = req.query["type"] as string;
+
+  // Feature flag check: if a specific type is requested, verify that service is enabled
+  if (type && (type === "mart" || type === "food")) {
+    try {
+      const s = await getPlatformSettings();
+      const featureKey = `feature_${type}`;
+      if ((s[featureKey] ?? "on") !== "on") {
+        res.json({ categories: [] });
+        return;
+      }
+    } catch {}
+  }
+
   let categories = type === "food" ? FOOD_CATEGORIES : type === "mart" ? MART_CATEGORIES : [...MART_CATEGORIES, ...FOOD_CATEGORIES];
-  res.json({ categories: categories.map((c, i) => ({ ...c, productCount: Math.floor(Math.random() * 50) + 5 })) });
+  res.json({ categories: categories.map((c) => ({ ...c, productCount: Math.floor(Math.random() * 50) + 5 })) });
 });
 
 export default router;

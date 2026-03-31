@@ -78,9 +78,17 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
       setCnic(user?.cnic || "");
       setCity(user?.city || "");
       setError("");
-      setAvatarUri(null);
+      // avatarUri and pendingAsset are intentionally NOT reset on reopen —
+      // they persist until the modal is saved (handleSave clears them) or
+      // the user explicitly removes the pending image.
     }
-  }, [visible, user]);
+    // On close we only clear non-image transient UI state; avatar state persists.
+    if (!visible) {
+      setAvatarError(false);
+      setCnicError("");
+      setError("");
+    }
+  }, [visible]);
 
   const uploadAvatar = async (asset: { base64: string; mimeType: string; uri: string }) => {
     setAvatarUploading(true);
@@ -155,6 +163,8 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
       });
       if (!res.ok) throw new Error();
       updateUser({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() });
+      setAvatarUri(null);
+      setPendingAsset(null);
       onClose();
       showToast("Profile updated!", "success");
     } catch { showToast("Update failed. Please try again.", "error"); }
@@ -227,7 +237,19 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
             <View style={[fld.pre, { backgroundColor: C.accentSoft }]}>
               <Ionicons name="card-outline" size={16} color={cnicError ? C.danger : C.accent} />
             </View>
-            <TextInput style={fld.input} value={cnic} onChangeText={v => { setCnic(v); if (cnicError) setCnicError(""); }}
+            <TextInput style={fld.input} value={cnic} onChangeText={v => {
+                // Auto-insert dashes at positions 5 and 13 (XXXXX-XXXXXXX-X)
+                const digits = v.replace(/\D/g, "");
+                let formatted = digits;
+                if (digits.length > 5) {
+                  formatted = `${digits.slice(0,5)}-${digits.slice(5)}`;
+                }
+                if (digits.length > 12) {
+                  formatted = `${digits.slice(0,5)}-${digits.slice(5,12)}-${digits.slice(12)}`;
+                }
+                setCnic(formatted);
+                if (cnicError) setCnicError("");
+              }}
               placeholder="XXXXX-XXXXXXX-X (optional)" placeholderTextColor={C.textMuted}
               keyboardType="numeric" maxLength={15} />
           </View>
@@ -755,6 +777,23 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={btnStyles.saveTxt}>Disable</Text>}
                 </Pressable>
               </View>
+              <Pressable
+                onPress={() => {
+                  Alert.alert(
+                    "Lost Authenticator?",
+                    "If you've lost access to your authenticator app, please contact support with your registered phone number and a government-issued ID. We'll verify your identity and disable 2FA manually.\n\nThis process may take 1-2 business days.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Contact Support", onPress: () => Linking.openURL("mailto:support@ajkmart.pk?subject=Lost%202FA%20Authenticator") },
+                    ]
+                  );
+                }}
+                style={{ marginTop: spacing.lg, alignItems: "center" }}
+              >
+                <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.primary }}>
+                  Lost access to authenticator app?
+                </Text>
+              </Pressable>
             </View>
           </View>
         </Modal>

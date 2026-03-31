@@ -755,3 +755,23 @@ export async function verifyCaptcha(req: Request, res: Response, next: NextFunct
     res.status(502).json({ error: "CAPTCHA verification failed. Please try again later." });
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   IDOR GUARD — ensures the requesting user owns the resource.
+   Usage: if (idorGuard(res, requestedOwnerId, req.userId)) return;
+══════════════════════════════════════════════════════════════ */
+export function idorGuard(
+  res: Response,
+  resourceOwnerId: string | null | undefined,
+  requestingUserId: string,
+  opts: { adminBypass?: boolean; requestingRole?: string } = {}
+): boolean {
+  if (opts.adminBypass && opts.requestingRole && ["admin", "superadmin"].includes(opts.requestingRole)) {
+    return false;
+  }
+  if (!resourceOwnerId || resourceOwnerId !== requestingUserId) {
+    res.status(403).json({ error: "Access denied." });
+    return true;
+  }
+  return false;
+}

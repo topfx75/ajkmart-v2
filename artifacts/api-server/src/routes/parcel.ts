@@ -1,10 +1,10 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { notificationsTable, parcelBookingsTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { eq, sql, and, gte, count } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { customerAuth, riderAuth } from "../middleware/security.js";
+import { customerAuth, riderAuth, addSecurityEvent, idorGuard } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -70,7 +70,7 @@ router.get("/:id", customerAuth, async (req, res) => {
     res.status(404).json({ error: "Parcel booking not found" });
     return;
   }
-  if (booking.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (idorGuard(res, booking.userId, userId)) return;
   res.json(mapBooking(booking));
 });
 
@@ -102,6 +102,40 @@ router.post("/", customerAuth, async (req, res) => {
   const parcelEnabled = (s["feature_parcel"] ?? "on") === "on";
   if (!parcelEnabled) {
     res.status(503).json({ error: "Parcel delivery service is currently disabled" }); return;
+  }
+
+  /* ── Fraud detection (mirrors orders.ts pattern) ── */
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+  {
+    const [userRecord] = await db.select({ isBanned: usersTable.isBanned, isActive: usersTable.isActive, createdAt: usersTable.createdAt }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (userRecord?.isBanned) {
+      res.status(403).json({ error: "Your account has been suspended." }); return;
+    }
+    if (userRecord && !userRecord.isActive) {
+      res.status(403).json({ error: "Your account is inactive. Please contact support." }); return;
+    }
+
+    if ((s["security_fake_order_detect"] ?? "off") === "on") {
+      const maxDailyOrders = parseInt(s["security_max_daily_orders"] ?? "20", 10);
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const [dailyResult] = await db.select({ c: count() }).from(parcelBookingsTable).where(and(eq(parcelBookingsTable.userId, userId), gte(parcelBookingsTable.createdAt, todayStart)));
+      const dailyCount = Number(dailyResult?.c ?? 0);
+      if (dailyCount >= maxDailyOrders) {
+        addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily parcel limit: ${dailyCount}/${maxDailyOrders}`, severity: "medium" });
+        res.status(429).json({ error: `Daily parcel booking limit (${maxDailyOrders}) reached. Please try again tomorrow.` }); return;
+      }
+
+      if (dropAddress) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const sameAddrLimit = parseInt(s["security_same_addr_limit"] ?? "5", 10);
+        const sameAddrOrders = await db.select({ c: count() }).from(parcelBookingsTable).where(and(eq(parcelBookingsTable.dropAddress, dropAddress), gte(parcelBookingsTable.createdAt, oneHourAgo)));
+        const sameAddrCount = Number(sameAddrOrders[0]?.c ?? 0);
+        if (sameAddrCount >= sameAddrLimit) {
+          addSecurityEvent({ type: "same_address_limit", ip, userId, details: `Parcel same-address limit hit: ${dropAddress} (${sameAddrCount}/hr)`, severity: "high" });
+          res.status(429).json({ error: "Too many parcel bookings to this address. Please try again later." }); return;
+        }
+      }
+    }
   }
 
   /* ── Delivery fare from admin settings (replaces hardcoded lookup table) ── */
@@ -237,7 +271,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     .limit(1);
 
   if (!booking) { res.status(404).json({ error: "Parcel booking not found" }); return; }
-  if (booking.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (idorGuard(res, booking.userId, userId)) return;
   if (!["pending", "accepted"].includes(booking.status)) {
     res.status(409).json({ error: "Parcel cannot be cancelled at this stage" }); return;
   }

@@ -9,6 +9,7 @@ import {
   NativeSyntheticEvent,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -40,10 +41,12 @@ const W = Dimensions.get("window").width;
 const H_PAD = spacing.lg;
 const HALF_W = (W - H_PAD * 2 - spacing.md) / 2;
 
-const KNOWN_ROUTES = new Set(["/mart", "/food", "/ride", "/pharmacy", "/parcel", "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/cart", "/search"]);
-
 function safeNavigate(route: string) {
-  if (!route || (!KNOWN_ROUTES.has(route) && !route.startsWith("/(tabs)"))) {
+  const knownRoutes = new Set<string>([
+    ...Object.values(SERVICE_REGISTRY).map(s => String(s.route)),
+    "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/cart", "/search",
+  ]);
+  if (!route || (!knownRoutes.has(route) && !route.startsWith("/(tabs)"))) {
     router.push("/(tabs)" as Href);
     return;
   }
@@ -55,10 +58,11 @@ function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "
   const { config: pCfg } = usePlatformConfig();
   const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-  const { data: ordersData } = useQuery({
+  const { data: ordersData, isLoading: ordersLoading, isError: ordersError } = useQuery({
     queryKey: ["home-active-orders", userId],
     queryFn: async () => {
       const r = await fetch(`${API_BASE}/orders?status=active`, { headers: authHdrs });
+      if (!r.ok) throw new Error("orders fetch failed");
       return r.json();
     },
     enabled: !!userId && !!token,
@@ -66,10 +70,11 @@ function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "
     staleTime: 8000,
   });
 
-  const { data: ridesData } = useQuery({
+  const { data: ridesData, isLoading: ridesLoading, isError: ridesError } = useQuery({
     queryKey: ["home-active-rides", userId],
     queryFn: async () => {
       const r = await fetch(`${API_BASE}/rides?status=active`, { headers: authHdrs });
+      if (!r.ok) throw new Error("rides fetch failed");
       return r.json();
     },
     enabled: !!userId && !!token,
@@ -78,6 +83,30 @@ function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "
   });
 
   if (!pCfg.content.trackerBannerEnabled) return null;
+
+  const isLoading = ordersLoading || ridesLoading;
+  const hasError = ordersError || ridesError;
+
+  if (isLoading) {
+    return (
+      <View style={[styles.trackerWrap, position === "bottom" && styles.trackerWrapBottom]}>
+        <View style={[styles.trackerCard, { backgroundColor: "#E2E8F0", opacity: 0.7, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 }]}>
+          <View style={{ width: 100, height: 12, borderRadius: 6, backgroundColor: "#CBD5E1" }} />
+        </View>
+      </View>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <View style={[styles.trackerWrap, position === "bottom" && styles.trackerWrapBottom]}>
+        <View style={[styles.trackerCard, { backgroundColor: "#FEF3C7", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 }]}>
+          <Ionicons name="warning-outline" size={14} color="#D97706" />
+          <Text style={{ flex: 1, fontSize: 12, fontFamily: "Inter_500Medium", color: "#92400E" }}>Could not load active orders</Text>
+        </View>
+      </View>
+    );
+  }
 
   const activeOrders = (ordersData?.orders || []).filter((o: any) =>
     !["delivered", "cancelled"].includes(o.status)
@@ -639,24 +668,38 @@ export default function HomeScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const TAB_H = Platform.OS === "web" ? 72 : 49;
   const hdOp = useRef(new Animated.Value(0)).current;
+  const [homeRefreshing, setHomeRefreshing] = useState(false);
 
   const { config: platformConfig, loading: configLoading, refresh: refreshConfig } = usePlatformConfig();
+
+  const handleHomeRefresh = useCallback(async () => {
+    setHomeRefreshing(true);
+    try { await refreshConfig(); } catch {}
+    setHomeRefreshing(false);
+  }, [refreshConfig]);
   const features = platformConfig.features;
   const appName = platformConfig.platform.appName;
   const contentBanner = platformConfig.content.banner;
   const announcement = platformConfig.content.announcement;
   const [announceDismissed, setAnnounceDismissed] = useState(false);
 
+  const announceKey = React.useMemo(() => {
+    if (!announcement) return "";
+    const hash = Array.from(announcement).reduce(
+      (h, c) => (((h * 31) | 0) + c.charCodeAt(0)) >>> 0, 0
+    ).toString(36);
+    return `announce_dismissed_${hash}`;
+  }, [announcement]);
+
   useEffect(() => {
     if (!announcement) {
       setAnnounceDismissed(false);
       return;
     }
-    const key = `announce_dismissed_${announcement.slice(0, 60)}`;
-    AsyncStorage.getItem(key).then(val => {
+    AsyncStorage.getItem(announceKey).then(val => {
       setAnnounceDismissed(val === "1");
     }).catch(() => { setAnnounceDismissed(false); });
-  }, [announcement]);
+  }, [announcement, announceKey]);
 
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
@@ -686,9 +729,8 @@ export default function HomeScreen() {
           <Pressable
             onPress={() => {
               setAnnounceDismissed(true);
-              if (announcement) {
-                const key = `announce_dismissed_${announcement.slice(0, 60)}`;
-                AsyncStorage.setItem(key, "1").catch(() => {});
+              if (announceKey) {
+                AsyncStorage.setItem(announceKey, "1").catch(() => {});
               }
             }}
             style={styles.announceClose}
@@ -761,6 +803,7 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={homeRefreshing} onRefresh={handleHomeRefresh} tintColor={C.primary} />}
       >
         <View style={styles.secRow}>
           <Text style={styles.secTitle}>{T("ourServices")}</Text>
