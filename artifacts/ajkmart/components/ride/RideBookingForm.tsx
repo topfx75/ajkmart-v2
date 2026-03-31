@@ -172,6 +172,7 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
   const [showBargain, setShowBargain] = useState(false);
   const [offeredFare, setOfferedFare] = useState("");
   const [bargainNote, setBargainNote] = useState("");
+  const [pickupError, setPickupError] = useState("");
   const [pickupFocus, setPickupFocus] = useState(false);
   const [dropFocus, setDropFocus] = useState(false);
   const [popularSpots, setPopularSpots] = useState<PopularSpot[]>([]);
@@ -450,12 +451,14 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
       return;
     }
     if (!pickupObj) {
+      setPickupError("Please select an exact pickup location from the suggestions");
       showToast(
         "Please select pickup location from the list (exact location required)",
         "error",
       );
       return;
     }
+    setPickupError("");
     if (!dropObj) {
       showToast(
         "Please select drop location from the list (exact location required)",
@@ -486,6 +489,13 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
       if (parsedOffer < estimate.minOffer) {
         showToast(
           `Minimum offer is Rs. ${estimate.minOffer} (${Math.round((estimate.minOffer / estimate.fare) * 100)}% of platform fare)`,
+          "error",
+        );
+        return;
+      }
+      if (parsedOffer > estimate.fare) {
+        showToast(
+          `Offer cannot exceed the platform fare of Rs. ${estimate.fare}`,
           "error",
         );
         return;
@@ -724,6 +734,7 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
               onChangeText={(v) => {
                 setPickup(v);
                 setPickupObj(null);
+                if (pickupError) setPickupError("");
               }}
               onFocus={() => setPickupFocus(true)}
               onBlur={() => setTimeout(() => setPickupFocus(false), 250)}
@@ -742,12 +753,20 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
                 onPress={() => {
                   setPickup("");
                   setPickupObj(null);
+                  setPickupError("");
                 }}
               >
                 <Ionicons name="close-circle" size={16} color={C.textMuted} />
               </Pressable>
             )}
           </View>
+
+          {pickup !== "" && !pickupObj && pickupError ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, marginLeft: 20 }}>
+              <Ionicons name="alert-circle-outline" size={12} color="#EF4444" />
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#EF4444" }}>{pickupError}</Text>
+            </View>
+          ) : null}
 
           {pickupFocus && (
             <View style={rs.sugg}>

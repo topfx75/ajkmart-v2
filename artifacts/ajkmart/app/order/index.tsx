@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -64,6 +64,7 @@ export default function OrderDetailScreen() {
   const [riderLat, setRiderLat] = useState<number | null>(null);
   const [riderLng, setRiderLng] = useState<number | null>(null);
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [trackFailed, setTrackFailed] = useState(false);
 
   const mountedRef = useRef(true);
   const isPharmacyType = type === "pharmacy";
@@ -98,10 +99,11 @@ export default function OrderDetailScreen() {
             setRiderLat(d.riderLat ?? null);
             setRiderLng(d.riderLng ?? null);
             setEtaMinutes(d.etaMinutes ?? null);
+            setTrackFailed(false);
           }
         }
       } catch {
-        // silent — tracking is best-effort
+        if (mountedRef.current) setTrackFailed(true);
       }
     };
 
@@ -152,6 +154,19 @@ export default function OrderDetailScreen() {
       if (ivRef !== null) clearInterval(ivRef);
     };
   }, [orderId, isParcel, isRide]);
+
+  const mapUrl = useMemo(() => {
+    if (riderLat === null || riderLng === null) return null;
+    return staticMapUrl(
+      [
+        { lat: riderLat, lng: riderLng, color: "blue" },
+        ...(order?.deliveryLat && order?.deliveryLng
+          ? [{ lat: Number(order.deliveryLat), lng: Number(order.deliveryLng), color: "red" }]
+          : []),
+      ],
+      { width: 600, height: 180, zoom: 14 },
+    );
+  }, [riderLat, riderLng, order?.deliveryLat, order?.deliveryLng]);
 
   if (loading) {
     return (
@@ -238,18 +253,17 @@ export default function OrderDetailScreen() {
 
         {isActive && LIVE_TRACKING_STATUSES.includes(order.status) && (
           <View style={[s.card, { backgroundColor: "#ECFDF5", borderColor: "#6EE7B7", padding: 0, overflow: "hidden" }]}>
+            {/* Tracking failure banner */}
+            {trackFailed && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF3C7", borderBottomWidth: 1, borderBottomColor: "#FDE68A", paddingHorizontal: 14, paddingVertical: 10 }}>
+                <Ionicons name="warning-outline" size={15} color="#D97706" />
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#92400E", flex: 1 }}>Live tracking is temporarily unavailable. Your order is still on the way.</Text>
+              </View>
+            )}
             {/* Static map showing rider position */}
-            {riderLat !== null && riderLng !== null ? (
+            {mapUrl ? (
               <Image
-                source={{ uri: staticMapUrl(
-                  [
-                    { lat: riderLat, lng: riderLng, color: "blue" },
-                    ...(order.deliveryLat && order.deliveryLng
-                      ? [{ lat: Number(order.deliveryLat), lng: Number(order.deliveryLng), color: "red" }]
-                      : []),
-                  ],
-                  { width: 600, height: 180, zoom: 14 },
-                )}}
+                source={{ uri: mapUrl }}
                 style={{ width: "100%", height: 160 }}
                 resizeMode="cover"
               />

@@ -52,7 +52,7 @@ function useAdaptiveTabConfig() {
       walletTitle: T("wallet"),
       profileTitle: T("profile"),
       showWalletTab: hasWallet,
-      showOrdersTab: active.length > 0,
+      showOrdersTab: true,
     };
   }, [features, language]);
 }

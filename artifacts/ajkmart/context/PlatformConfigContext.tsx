@@ -56,6 +56,7 @@ export interface PlatformConfig {
     preptimeMin: number;
     ratingWindowHours: number;
     scheduleEnabled: boolean;
+    serviceableCities: string[];
   };
   deliveryFee: {
     mart: number;
@@ -193,6 +194,7 @@ const DEFAULT: PlatformConfig = {
     preptimeMin:       15,
     ratingWindowHours: 48,
     scheduleEnabled:   false,
+    serviceableCities: [] as string[],
   },
   deliveryFee: {
     mart: 80, food: 60, pharmacy: 50, parcel: 100,
@@ -341,6 +343,7 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           preptimeMin:       raw.orderRules?.preptimeMin       ?? DEFAULT.orderRules.preptimeMin,
           ratingWindowHours: raw.orderRules?.ratingWindowHours ?? DEFAULT.orderRules.ratingWindowHours,
           scheduleEnabled:   raw.orderRules?.scheduleEnabled   ?? DEFAULT.orderRules.scheduleEnabled,
+          serviceableCities: Array.isArray(raw.orderRules?.serviceableCities) ? raw.orderRules.serviceableCities : [],
         },
         deliveryFee: {
           mart:             raw.deliveryFee?.mart              ?? DEFAULT.deliveryFee.mart,

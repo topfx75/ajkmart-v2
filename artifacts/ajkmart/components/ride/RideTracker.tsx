@@ -314,6 +314,62 @@ export function RideTracker({
             )}
           </Pressable>
           <Pressable
+            onPress={onReset}
+            style={{
+              backgroundColor: "rgba(245,158,11,0.18)",
+              borderWidth: 1.5,
+              borderColor: "rgba(245,158,11,0.4)",
+              borderRadius: 16,
+              paddingVertical: 14,
+              paddingHorizontal: 32,
+              alignItems: "center",
+              width: "100%",
+              marginBottom: 12,
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            <Ionicons name="trending-up-outline" size={16} color="#F59E0B" />
+            <Text
+              style={{
+                fontFamily: "Inter_600SemiBold",
+                fontSize: 15,
+                color: "#F59E0B",
+              }}
+            >
+              Increase Offer
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={onReset}
+            style={{
+              backgroundColor: "rgba(99,102,241,0.15)",
+              borderWidth: 1.5,
+              borderColor: "rgba(99,102,241,0.35)",
+              borderRadius: 16,
+              paddingVertical: 14,
+              paddingHorizontal: 32,
+              alignItems: "center",
+              width: "100%",
+              marginBottom: 12,
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            <Ionicons name="swap-horizontal-outline" size={16} color="#818CF8" />
+            <Text
+              style={{
+                fontFamily: "Inter_600SemiBold",
+                fontSize: 15,
+                color: "#818CF8",
+              }}
+            >
+              Try a Different Service
+            </Text>
+          </Pressable>
+          <Pressable
             onPress={() => openUnifiedCancelModal()}
             disabled={cancelling}
             style={{

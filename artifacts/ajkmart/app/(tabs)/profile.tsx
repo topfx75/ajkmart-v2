@@ -57,6 +57,9 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
   const [error,       setError]      = useState("");
   const [avatarUri,   setAvatarUri]  = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+  const [pendingAsset, setPendingAsset] = useState<{ base64: string; mimeType: string; uri: string } | null>(null);
+  const [cnicError, setCnicError] = useState("");
 
   const cityList: string[] = React.useMemo(() => {
     const raw: any = (platformConfig as any).cities ?? (platformConfig as any).platform?.cities;
@@ -79,6 +82,39 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
     }
   }, [visible, user]);
 
+  const uploadAvatar = async (asset: { base64: string; mimeType: string; uri: string }) => {
+    setAvatarUploading(true);
+    setAvatarError(false);
+    try {
+      const mimeType = asset.mimeType ?? "image/jpeg";
+      const avatarRes = await fetch(`${API}/users/avatar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          file: `data:${mimeType};base64,${asset.base64}`,
+          mimeType,
+        }),
+      });
+      if (!avatarRes.ok) {
+        const err = await avatarRes.json().catch(() => ({}));
+        throw new Error((err as any)?.error || "Avatar upload failed");
+      }
+      const avatarData = await avatarRes.json();
+      const avatarUrl: string = avatarData.avatarUrl;
+      if (!avatarUrl) throw new Error("No URL returned from server");
+      updateUser({ avatar: avatarUrl });
+      setAvatarUri(asset.uri);
+      setPendingAsset(null);
+      setAvatarError(false);
+      showToast("Avatar updated!", "success");
+    } catch (e: any) {
+      setAvatarError(true);
+      showToast(e.message || "Avatar upload failed — tap Retry", "error");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   const pickAvatar = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -93,37 +129,22 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0]!;
       if (!asset.base64) { showToast("Could not read image data", "error"); return; }
-      setAvatarUploading(true);
-      try {
-        const mimeType = asset.mimeType ?? "image/jpeg";
-        const avatarRes = await fetch(`${API}/users/avatar`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({
-            file: `data:${mimeType};base64,${asset.base64}`,
-            mimeType,
-          }),
-        });
-        if (!avatarRes.ok) {
-          const err = await avatarRes.json().catch(() => ({}));
-          throw new Error((err as any)?.error || "Avatar upload failed");
-        }
-        const avatarData = await avatarRes.json();
-        const avatarUrl: string = avatarData.avatarUrl;
-        if (!avatarUrl) throw new Error("No URL returned from server");
-        updateUser({ avatar: avatarUrl });
-        setAvatarUri(asset.uri);
-        showToast("Avatar updated!", "success");
-      } catch (e: any) {
-        showToast(e.message || "Avatar upload failed", "error");
-      } finally {
-        setAvatarUploading(false);
-      }
+      const prepared = { base64: asset.base64, mimeType: asset.mimeType ?? "image/jpeg", uri: asset.uri };
+      setPendingAsset(prepared);
+      await uploadAvatar(prepared);
     } catch { showToast("Could not open photo library", "error"); }
   };
 
   const save = async () => {
     if (!name.trim()) { setError("Name is required"); return; }
+    if (cnic.trim()) {
+      const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
+      if (!cnicRegex.test(cnic.trim())) {
+        setCnicError("CNIC must be in format XXXXX-XXXXXXX-X");
+        return;
+      }
+    }
+    setCnicError("");
     setError("");
     setSaving(true);
     try {
@@ -148,20 +169,28 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
           <Text style={sheet.title}>Edit Profile</Text>
           <Text style={sheet.sub}>Update your information</Text>
 
-          <Pressable onPress={pickAvatar} disabled={avatarUploading} style={{ alignSelf: "center", marginBottom: spacing.lg }}>
-            <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: C.primary, overflow: "hidden" }}>
-              {avatarUploading
-                ? <ActivityIndicator color={C.primary} />
-                : avatarUri
-                  ? <Image source={{ uri: avatarUri }} style={{ width: 80, height: 80, borderRadius: 40 }} />
-                  : user?.avatar
-                    ? <Image source={{ uri: user.avatar.startsWith("/") ? `${API.replace(/\/api$/, "")}${user.avatar}` : user.avatar }} style={{ width: 80, height: 80, borderRadius: 40 }} />
-                    : <Ionicons name="camera-outline" size={28} color={C.primary} />}
-            </View>
-            <View style={{ position: "absolute", bottom: 0, right: 0, backgroundColor: C.primary, borderRadius: 12, padding: 4 }}>
-              <Ionicons name="pencil" size={11} color="#fff" />
-            </View>
-          </Pressable>
+          <View style={{ alignSelf: "center", alignItems: "center", marginBottom: spacing.lg, gap: 8 }}>
+            <Pressable onPress={pickAvatar} disabled={avatarUploading} style={{ position: "relative" }}>
+              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: avatarError ? C.danger : C.primary, overflow: "hidden" }}>
+                {avatarUploading
+                  ? <ActivityIndicator color={C.primary} />
+                  : avatarUri
+                    ? <Image source={{ uri: avatarUri }} style={{ width: 80, height: 80, borderRadius: 40 }} />
+                    : user?.avatar
+                      ? <Image source={{ uri: user.avatar.startsWith("/") ? `${API.replace(/\/api$/, "")}${user.avatar}` : user.avatar }} style={{ width: 80, height: 80, borderRadius: 40 }} />
+                      : <Ionicons name="camera-outline" size={28} color={C.primary} />}
+              </View>
+              <View style={{ position: "absolute", bottom: 0, right: 0, backgroundColor: C.primary, borderRadius: 12, padding: 4 }}>
+                <Ionicons name="pencil" size={11} color="#fff" />
+              </View>
+            </Pressable>
+            {avatarError && pendingAsset && (
+              <Pressable onPress={() => uploadAvatar(pendingAsset)} disabled={avatarUploading} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#FEE2E2", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: "#FCA5A5" }}>
+                <Ionicons name="refresh-outline" size={13} color={C.danger} />
+                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: C.danger }}>Retry Upload</Text>
+              </Pressable>
+            )}
+          </View>
 
           <Text style={fld.label}>Phone Number</Text>
           <View style={[fld.wrap, { backgroundColor: C.surfaceSecondary }]}>
@@ -194,15 +223,22 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
           </View>
 
           <Text style={[fld.label, { marginTop: spacing.md }]}>CNIC / National ID</Text>
-          <View style={fld.wrap}>
+          <View style={[fld.wrap, cnicError ? { borderColor: C.danger, borderWidth: 1 } : {}]}>
             <View style={[fld.pre, { backgroundColor: C.accentSoft }]}>
-              <Ionicons name="card-outline" size={16} color={C.accent} />
+              <Ionicons name="card-outline" size={16} color={cnicError ? C.danger : C.accent} />
             </View>
-            <TextInput style={fld.input} value={cnic} onChangeText={setCnic}
+            <TextInput style={fld.input} value={cnic} onChangeText={v => { setCnic(v); if (cnicError) setCnicError(""); }}
               placeholder="XXXXX-XXXXXXX-X (optional)" placeholderTextColor={C.textMuted}
               keyboardType="numeric" maxLength={15} />
           </View>
-          <Text style={fld.hint}>For verification (optional)</Text>
+          {cnicError ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
+              <Ionicons name="alert-circle-outline" size={13} color={C.danger} />
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.danger }}>{cnicError}</Text>
+            </View>
+          ) : (
+            <Text style={fld.hint}>For verification (optional)</Text>
+          )}
 
           <Text style={[fld.label, { marginTop: spacing.md }]}>City</Text>
           <View style={[fld.wrap, { paddingRight: 0, overflow: "hidden" }]}>
@@ -328,16 +364,24 @@ function NotificationsModal({ visible, userId, token, onClose }: {
           </View>
         </View>
 
-        {loading ? (
+        {loading && notifs.length === 0 ? (
           <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
         ) : notifs.length === 0 ? (
-          <View style={empty.wrap}>
-            <Text style={{ fontSize: 52 }}>🔔</Text>
-            <Text style={empty.title}>No notifications</Text>
-            <Text style={empty.sub}>You're all caught up!</Text>
-          </View>
+          <ScrollView
+            contentContainerStyle={{ flexGrow: 1 }}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={load} colors={[C.primary]} tintColor={C.primary} />}
+          >
+            <View style={empty.wrap}>
+              <Text style={{ fontSize: 52 }}>🔔</Text>
+              <Text style={empty.title}>No notifications</Text>
+              <Text style={empty.sub}>You're all caught up!</Text>
+            </View>
+          </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: 6 }}>
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: 6 }}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={load} colors={[C.primary]} tintColor={C.primary} />}
+          >
             {notifs.map(n => {
               const [icon, color, bg] = typeMap[n.type] || typeMap.system!;
               return (

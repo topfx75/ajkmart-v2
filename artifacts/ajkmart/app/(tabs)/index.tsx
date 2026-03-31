@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { router, type Href } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -38,6 +39,16 @@ const C = Colors.light;
 const W = Dimensions.get("window").width;
 const H_PAD = spacing.lg;
 const HALF_W = (W - H_PAD * 2 - spacing.md) / 2;
+
+const KNOWN_ROUTES = new Set(["/mart", "/food", "/ride", "/pharmacy", "/parcel", "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/cart", "/search"]);
+
+function safeNavigate(route: string) {
+  if (!route || (!KNOWN_ROUTES.has(route) && !route.startsWith("/(tabs)"))) {
+    router.push("/(tabs)" as Href);
+    return;
+  }
+  router.push(route as Href);
+}
 
 function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "top" | "bottom" }) {
   const { token } = useAuth();
@@ -124,9 +135,10 @@ function ActiveTrackerStrip({ userId, position }: { userId: string; position?: "
   const isBottom = (position || pCfg.content.trackerBannerPosition) === "bottom";
 
   const handleTrackPress = () => {
-    if (activeRides.length === 1 && activeOrders.length === 0) {
+    // Rides take priority (more time-sensitive); otherwise pick the first active order.
+    if (activeRides.length > 0) {
       router.push(`/ride?rideId=${activeRides[0].id}`);
-    } else if (activeOrders.length === 1 && activeRides.length === 0) {
+    } else if (activeOrders.length > 0) {
       router.push(`/order?orderId=${activeOrders[0].id}`);
     } else {
       router.push("/(tabs)/orders");
@@ -218,7 +230,7 @@ function ServiceHero({
   const hero = service.heroConfig;
   const displayTitle = service.key === "mart" ? appName : hero.title;
   return (
-    <Tap onPress={() => router.push(service.route)} style={styles.heroWrap} delay={80}>
+    <Tap onPress={() => safeNavigate(service.route)} style={styles.heroWrap} delay={80}>
       <LinearGradient
         colors={hero.gradient}
         start={{ x: 0, y: 0 }}
@@ -299,7 +311,7 @@ function SvcCard({
 
   return (
     <Tap
-      onPress={() => router.push(service.route)}
+      onPress={() => safeNavigate(service.route)}
       style={[styles.svcWrap, fullWidth ? { width: "100%" } : { width: HALF_W }]}
       delay={delay}
     >
@@ -346,7 +358,7 @@ function SingleServiceHero({
   const hero = service.heroConfig;
   const displayTitle = service.key === "mart" ? appName : hero.title;
   return (
-    <Tap onPress={() => router.push(service.route)} style={styles.singleHeroWrap} delay={80}>
+    <Tap onPress={() => safeNavigate(service.route)} style={styles.singleHeroWrap} delay={80}>
       <LinearGradient
         colors={hero.gradient}
         start={{ x: 0, y: 0 }}
@@ -394,7 +406,7 @@ function SingleServiceHero({
   );
 }
 
-function NoServicesState() {
+function NoServicesState({ onRefresh }: { onRefresh?: () => void }) {
   return (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
@@ -404,6 +416,12 @@ function NoServicesState() {
       <Text style={styles.emptySub}>
         No services are currently available.{"\n"}Please check back later!
       </Text>
+      {onRefresh && (
+        <Pressable onPress={onRefresh} style={styles.refreshBtn}>
+          <Ionicons name="refresh-outline" size={16} color={C.primary} />
+          <Text style={styles.refreshBtnTxt}>Refresh</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -622,12 +640,23 @@ export default function HomeScreen() {
   const TAB_H = Platform.OS === "web" ? 72 : 49;
   const hdOp = useRef(new Animated.Value(0)).current;
 
-  const { config: platformConfig } = usePlatformConfig();
+  const { config: platformConfig, loading: configLoading, refresh: refreshConfig } = usePlatformConfig();
   const features = platformConfig.features;
   const appName = platformConfig.platform.appName;
   const contentBanner = platformConfig.content.banner;
   const announcement = platformConfig.content.announcement;
   const [announceDismissed, setAnnounceDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!announcement) {
+      setAnnounceDismissed(false);
+      return;
+    }
+    const key = `announce_dismissed_${announcement.slice(0, 60)}`;
+    AsyncStorage.getItem(key).then(val => {
+      setAnnounceDismissed(val === "1");
+    }).catch(() => { setAnnounceDismissed(false); });
+  }, [announcement]);
 
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
@@ -655,7 +684,13 @@ export default function HomeScreen() {
             {announcement}
           </Text>
           <Pressable
-            onPress={() => setAnnounceDismissed(true)}
+            onPress={() => {
+              setAnnounceDismissed(true);
+              if (announcement) {
+                const key = `announce_dismissed_${announcement.slice(0, 60)}`;
+                AsyncStorage.setItem(key, "1").catch(() => {});
+              }
+            }}
             style={styles.announceClose}
           >
             <Ionicons name="close" size={16} color="rgba(255,255,255,0.8)" />
@@ -741,8 +776,14 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {noServicesActive ? (
-          <NoServicesState />
+        {configLoading ? (
+          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 8 }}>
+            {[1, 2, 3].map(i => (
+              <View key={i} style={{ height: i === 1 ? 160 : 110, borderRadius: 20, backgroundColor: C.surfaceSecondary, opacity: 0.6 }} />
+            ))}
+          </View>
+        ) : noServicesActive ? (
+          <NoServicesState onRefresh={refreshConfig} />
         ) : (
           <>
             {activeServices.length === 1 ? (
@@ -1347,6 +1388,22 @@ const styles = StyleSheet.create({
     color: C.textMuted,
     textAlign: "center",
     lineHeight: 21,
+  },
+  refreshBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: radii.lg,
+    backgroundColor: C.primarySoft,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  refreshBtnTxt: {
+    ...typography.captionMedium,
+    color: C.primary,
   },
 
   blob: { position: "absolute", borderRadius: 999, backgroundColor: "#fff" },

@@ -121,7 +121,7 @@ function MethodIcon({ id, size = 24 }: { id: string; size?: number }) {
 type WithdrawMethod = "jazzcash" | "easypaisa" | "bank";
 type WithdrawStep = "method" | "details" | "done";
 
-function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null; balance: number }) {
+function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdrawal }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null; balance: number; minWithdrawal: number }) {
   const [step, setStep]               = useState<WithdrawStep>("method");
   const [selectedMethod, setSelectedMethod] = useState<WithdrawMethod | null>(null);
   const [amount, setAmount]           = useState("");
@@ -140,6 +140,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance }: { onClo
   const handleSubmit = async () => {
     const amt = parseFloat(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setErr("Please enter a valid amount"); return; }
+    if (amt < minWithdrawal)               { setErr(`Minimum withdrawal amount is Rs. ${minWithdrawal.toLocaleString()}`); return; }
     if (amt > balance)                      { setErr(`Insufficient balance. Available: Rs. ${balance.toLocaleString()}`); return; }
     if (!accountNumber.trim())              { setErr("Account number is required"); return; }
     setSubmitting(true); setErr("");
@@ -450,7 +451,23 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                   <View style={{ backgroundColor: "#FEF2F2", borderRadius: 16, padding: 24, alignItems: "center", gap: 10, borderWidth: 1, borderColor: "#FEE2E2" }}>
                     <Ionicons name="alert-circle-outline" size={28} color={C.danger} />
                     <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.text }}>Methods Unavailable</Text>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center" }}>No payment methods are enabled. Contact support.</Text>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center" }}>Could not load payment methods. Please try again.</Text>
+                    <Pressable onPress={() => {
+                      setMethodsError(false);
+                      setLoadingMethods(true);
+                      fetch(`${API}/payments/methods`)
+                        .then(r => r.json())
+                        .then((data: any) => {
+                          const depositable: PayMethod[] = (data.methods || []).filter((m: any) => ["jazzcash", "easypaisa", "bank"].includes(m.id));
+                          if (depositable.length === 0) setMethodsError(true);
+                          else setMethods(depositable);
+                        })
+                        .catch(() => setMethodsError(true))
+                        .finally(() => setLoadingMethods(false));
+                    }} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 }}>
+                      <Ionicons name="refresh-outline" size={15} color="#fff" />
+                      <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#fff" }}>Try Again</Text>
+                    </Pressable>
                   </View>
                 ) : (
                   <View style={{ gap: 10 }}>
@@ -1013,6 +1030,7 @@ export default function WalletScreen() {
         <WithdrawModal
           token={token}
           balance={balance}
+          minWithdrawal={platformConfig.customer.minTopup}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["getWallet"] });

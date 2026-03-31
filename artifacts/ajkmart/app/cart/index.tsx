@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Modal,
   Platform,
   Pressable,
@@ -143,8 +144,13 @@ export default function CartScreen() {
   const [gwPaying, setGwPaying] = useState(false);
   const [gwStep, setGwStep] = useState<"input" | "waiting" | "done">("input");
 
+  const [gwBackgrounded, setGwBackgrounded] = useState(false);
+
   const mountedRef = useRef(true);
   const gwPollRef = useRef<{ active: boolean; intervalId?: ReturnType<typeof setInterval> }>({ active: false });
+  const gwTxnRef  = useRef<string | null>(null);
+  const gwOrderId = useRef<string | null>(null);
+  const promoRevalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -153,6 +159,23 @@ export default function CartScreen() {
       if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", nextState => {
+      if (gwStep !== "waiting") return;
+      if (nextState === "background" || nextState === "inactive") {
+        gwPollRef.current.active = false;
+        if (gwPollRef.current.intervalId) {
+          clearInterval(gwPollRef.current.intervalId);
+          gwPollRef.current.intervalId = undefined;
+        }
+        if (mountedRef.current) setGwBackgrounded(true);
+      }
+      // Intentionally NOT resetting gwBackgrounded on foreground —
+      // the paused state stays visible until the user explicitly checks status.
+    });
+    return () => sub.remove();
+  }, [gwStep]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const deliveryFeeConfig = platformConfig.deliveryFee;
@@ -219,8 +242,14 @@ export default function CartScreen() {
   const cartFingerprint = items.map(i => `${i.productId}:${i.quantity}:${i.price}`).join("|") + "|" + cartType;
   useEffect(() => {
     if (promoApplied && promoCode) {
-      revalidatePromo(promoCode);
+      if (promoRevalidateTimer.current) clearTimeout(promoRevalidateTimer.current);
+      promoRevalidateTimer.current = setTimeout(() => {
+        revalidatePromo(promoCode);
+      }, 800);
     }
+    return () => {
+      if (promoRevalidateTimer.current) clearTimeout(promoRevalidateTimer.current);
+    };
   }, [cartFingerprint]);
 
   const revalidatePromo = async (code: string) => {
@@ -336,6 +365,23 @@ export default function CartScreen() {
       setShowAddrPicker(true);
       return;
     }
+    if (selectedAddr && !selectedAddr.city?.trim()) {
+      showToast("Your delivery address is missing a city. Please update it before checking out.", "error");
+      return;
+    }
+    const serviceableCities = orderRules.serviceableCities;
+    if (
+      selectedAddr &&
+      selectedAddr.city?.trim() &&
+      serviceableCities.length > 0 &&
+      !serviceableCities.some(c => c.toLowerCase() === selectedAddr.city.trim().toLowerCase())
+    ) {
+      showToast(
+        `Delivery is currently only available in: ${serviceableCities.join(", ")}. Your address is in ${selectedAddr.city}.`,
+        "error",
+      );
+      return;
+    }
     if (total < orderRules.minOrderAmount) {
       showToast(`Minimum order Rs.${orderRules.minOrderAmount} — add Rs.${orderRules.minOrderAmount - total} more`, "error");
       return;
@@ -382,6 +428,7 @@ export default function CartScreen() {
     }
     setGwPaying(true);
     setGwStep("waiting");
+    setGwBackgrounded(false);
     try {
       const order = await createOrder({
         type: cartType === "mixed" ? "mart" : cartType,
@@ -414,6 +461,8 @@ export default function CartScreen() {
       }
 
       const txnRef = data.txnRef || data.transactionRef || realOrderId;
+      gwTxnRef.current  = txnRef;
+      gwOrderId.current = realOrderId;
       const POLL_INTERVAL = 4000;
       const MAX_POLL_TIME = 120000;
       const startTime = Date.now();
@@ -581,11 +630,62 @@ export default function CartScreen() {
 
           {gwStep === "waiting" && (
             <View style={{ alignItems: "center", paddingVertical: 24 }}>
-              <ActivityIndicator size="large" color={gwColor} />
-              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text, marginTop: 20 }}>Payment Processing...</Text>
-              <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
-                {`A ${gwName} notification will be sent to ${gwMobile} — please approve`}
-              </Text>
+              {gwBackgrounded ? (
+                <>
+                  <Ionicons name="pause-circle-outline" size={48} color={C.textMuted} />
+                  <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text, marginTop: 16 }}>Polling Paused</Text>
+                  <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
+                    The app was moved to the background. Resume polling to check if your payment went through.
+                  </Text>
+                  <Pressable
+                    onPress={async () => {
+                      const txn = gwTxnRef.current;
+                      const oid = gwOrderId.current;
+                      if (!txn) {
+                        showToast("Payment reference not found. Please contact support.", "error");
+                        return;
+                      }
+                      try {
+                        const statusRes = await fetch(`${API_BASE}/payments/status/${encodeURIComponent(txn)}`);
+                        const statusData = await statusRes.json() as any;
+                        if (statusData.status === "completed" || statusData.status === "success") {
+                          setGwBackgrounded(false);
+                          setGwStep("done");
+                          await new Promise(r => setTimeout(r, 600));
+                          clearCart();
+                          setOrderSuccess({
+                            id: (oid || txn).slice(-6).toUpperCase(),
+                            time: "30-45 min",
+                            payMethod,
+                          });
+                          setShowGwModal(false);
+                        } else if (statusData.status === "failed" || statusData.status === "expired") {
+                          setGwBackgrounded(false);
+                          setGwStep("input");
+                          if (oid) await cancelPendingOrder(oid);
+                          showToast(statusData.message || "Payment was not successful. Please try again.", "error");
+                        } else {
+                          showToast("Payment is still pending. Please approve the notification on your phone.", "info");
+                        }
+                      } catch {
+                        showToast("Could not reach payment server. Check your connection.", "error");
+                      }
+                    }}
+                    style={{ marginTop: 16, backgroundColor: C.primary, borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 8 }}
+                  >
+                    <Ionicons name="refresh-outline" size={16} color="#fff" />
+                    <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#fff" }}>Check Payment Status</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <ActivityIndicator size="large" color={gwColor} />
+                  <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text, marginTop: 20 }}>Payment Processing...</Text>
+                  <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
+                    {`A ${gwName} notification will be sent to ${gwMobile} — please approve`}
+                  </Text>
+                </>
+              )}
             </View>
           )}
 
