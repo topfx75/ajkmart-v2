@@ -25,7 +25,6 @@ import Riders from "@/pages/riders";
 import PromoCodes from "@/pages/promo-codes";
 import Notifications from "@/pages/notifications";
 import Withdrawals from "@/pages/Withdrawals";
-import CodRemittances from "@/pages/CodRemittances";
 import DepositRequests from "@/pages/DepositRequests";
 import Security from "@/pages/security";
 import LiveRidersMap from "@/pages/live-riders-map";
@@ -99,7 +98,6 @@ function Router() {
       <Route path="/promo-codes"><ProtectedRoute component={PromoCodes} /></Route>
       <Route path="/notifications"><ProtectedRoute component={Notifications} /></Route>
       <Route path="/withdrawals"><ProtectedRoute component={Withdrawals} /></Route>
-      <Route path="/cod-remittances"><ProtectedRoute component={CodRemittances} /></Route>
       <Route path="/deposit-requests"><ProtectedRoute component={DepositRequests} /></Route>
       <Route path="/security"><ProtectedRoute component={Security} /></Route>
       <Route path="/sos-alerts"><ProtectedRoute component={SosAlerts} /></Route>

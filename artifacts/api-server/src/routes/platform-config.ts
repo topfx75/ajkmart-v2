@@ -79,6 +79,14 @@ router.get("/", async (req, res) => {
       bargainingMinPct:   parseFloat(s["ride_bargaining_min_pct"]    ?? "70"),
       bargainingMaxRounds:parseInt(s["ride_bargaining_max_rounds"]   ?? "3", 10),
     },
+    language: (() => {
+      const defaultLang = s["default_language"] ?? "en_roman";
+      let enabledLangs: string[];
+      try { enabledLangs = JSON.parse(s["enabled_languages"] ?? "[]") as string[]; }
+      catch { enabledLangs = ["en", "ur", "roman", "en_roman", "en_ur"]; }
+      if (!enabledLangs.length) enabledLangs = ["en", "ur", "roman", "en_roman", "en_ur"];
+      return { defaultLanguage: defaultLang, enabledLanguages: enabledLangs };
+    })(),
     platform: {
       commissionPct:        parseFloat(s["platform_commission_pct"] ?? "10"),
       vendorCommissionPct:  parseFloat(s["vendor_commission_pct"]   ?? "15"),

@@ -103,6 +103,9 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "order_preptime_min",        value: "15",    label: "Default Prep Time Shown (minutes)",       category: "orders" },
   { key: "order_rating_window_hours", value: "48",    label: "Rating Window After Delivery (hours)",    category: "orders" },
   { key: "order_schedule_enabled",    value: "off",   label: "Allow Advance Order Scheduling",          category: "orders" },
+  /* Language */
+  { key: "default_language",    value: "en_roman",                       label: "Default Language",             category: "general" },
+  { key: "enabled_languages",   value: '["en","ur","roman","en_roman","en_ur"]', label: "Enabled Language Modes (JSON array)", category: "general" },
   /* General */
   { key: "app_name",               value: "AJKMart",                        label: "App Name",                    category: "general" },
   { key: "app_tagline",            value: "Your super app for everything",   label: "App Tagline / Subtitle",      category: "general" },
@@ -2928,85 +2931,6 @@ router.delete("/mfa/disable", adminAuth, async (req, res) => {
   res.json({ success: true, message: "MFA has been disabled for your account." });
 });
 
-/* ══════════════════════════════════════════════════════
-   COD REMITTANCE MANAGEMENT
-══════════════════════════════════════════════════════ */
-
-/* ── GET /admin/cod-remittances ── */
-router.get("/cod-remittances", async (_req, res) => {
-  const txns = await db.select().from(walletTransactionsTable)
-    .where(eq(walletTransactionsTable.type, "cod_remittance"))
-    .orderBy(desc(walletTransactionsTable.createdAt))
-    .limit(300);
-  const enriched = await Promise.all(txns.map(async t => {
-    const [user] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, role: usersTable.role })
-      .from(usersTable).where(eq(usersTable.id, t.userId)).limit(1);
-    const ref = t.reference ?? "pending";
-    const status = ref === "pending" ? "pending" : ref.startsWith("verified:") ? "verified" : ref.startsWith("rejected:") ? "rejected" : "pending";
-    const refDetail = ref.startsWith("verified:") ? ref.slice(9) : ref.startsWith("rejected:") ? ref.slice(9) : "";
-    return { ...t, amount: parseFloat(String(t.amount)), user: user || null, status, refDetail };
-  }));
-  res.json({ remittances: enriched });
-});
-
-/* ── PATCH /admin/cod-remittances/:id/verify ── */
-router.patch("/cod-remittances/:id/verify", async (req, res) => {
-  const { note } = req.body;
-  const txId = req.params["id"]!;
-  const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
-  if (!tx) { res.status(404).json({ error: "Remittance not found" }); return; }
-  if (tx.type !== "cod_remittance") { res.status(400).json({ error: "Not a COD remittance record" }); return; }
-  const dateStr = new Date().toISOString().split("T")[0];
-  const [updated] = await db.update(walletTransactionsTable)
-    .set({ reference: `verified:${dateStr}` })
-    .where(eq(walletTransactionsTable.id, txId)).returning();
-  await sendUserNotification(
-    tx.userId, "COD Remittance Verified ✅",
-    `Rs. ${parseFloat(String(tx.amount)).toLocaleString()} COD remittance verified hai.${note ? ` Note: ${note}` : ""} Shukriya!`,
-    "wallet", "checkmark-circle-outline"
-  );
-  res.json({ success: true, remittance: updated });
-});
-
-/* ── PATCH /admin/cod-remittances/:id/reject ── */
-router.patch("/cod-remittances/:id/reject", async (req, res) => {
-  const { reason } = req.body;
-  const txId = req.params["id"]!;
-  const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
-  if (!tx) { res.status(404).json({ error: "Remittance not found" }); return; }
-  if (tx.type !== "cod_remittance") { res.status(400).json({ error: "Not a COD remittance record" }); return; }
-  const [updated] = await db.update(walletTransactionsTable)
-    .set({ reference: `rejected:${reason || "Verification failed"}` })
-    .where(eq(walletTransactionsTable.id, txId)).returning();
-  await sendUserNotification(
-    tx.userId, "COD Remittance Rejected ❌",
-    `Rs. ${parseFloat(String(tx.amount)).toLocaleString()} remittance reject ho gaya. Reason: ${reason || "Verification failed"}. Please resubmit with correct details.`,
-    "wallet", "close-circle-outline"
-  );
-  res.json({ success: true, remittance: updated });
-});
-
-/* ── PATCH /admin/cod-remittances/batch-verify ── */
-router.patch("/cod-remittances/batch-verify", async (req, res) => {
-  const { ids } = req.body as { ids: string[] };
-  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids required" }); return; }
-  const results: any[] = [];
-  for (const txId of ids) {
-    const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
-    if (!tx || tx.type !== "cod_remittance") continue;
-    if (tx.reference && tx.reference !== "pending") continue;
-    const [updated] = await db.update(walletTransactionsTable)
-      .set({ reference: `verified:batch-${Date.now()}` })
-      .where(eq(walletTransactionsTable.id, txId)).returning();
-    await sendUserNotification(
-      tx.userId, "COD Remittance Verified ✅",
-      `Rs. ${parseFloat(String(tx.amount)).toLocaleString()} COD remittance verify ho gaya.`,
-      "wallet", "checkmark-circle-outline"
-    );
-    results.push(txId);
-  }
-  res.json({ success: true, verified: results });
-});
 
 /* ── POST /admin/riders/:id/credit — Manual wallet credit for rider ── */
 router.post("/riders/:id/credit", async (req, res) => {

@@ -22,7 +22,6 @@ import {
   Ticket,
   BellRing,
   BanknoteIcon,
-  Banknote,
   ArrowDownToLine,
   Search,
   Globe,
@@ -84,7 +83,6 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navTransactions",    href: "/transactions",     icon: Receipt },
       { nameKey: "navWithdrawals",     href: "/withdrawals",      icon: BanknoteIcon },
       { nameKey: "navDepositRequests", href: "/deposit-requests", icon: ArrowDownToLine },
-      { nameKey: "navCodRemittances",  href: "/cod-remittances",  icon: Banknote },
     ],
   },
   {

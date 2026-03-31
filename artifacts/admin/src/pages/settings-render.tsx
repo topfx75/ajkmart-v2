@@ -75,6 +75,7 @@ export const TOGGLE_KEYS = new Set([
 
 export const TEXT_KEYS = new Set([
   "app_name","app_status","support_phone",
+  "default_language","enabled_languages",
   "app_tagline","app_version","support_email","support_hours","business_address","social_facebook","social_instagram",
   "content_banner","content_announcement","content_maintenance_msg","content_support_msg",
   "content_vendor_notice","content_rider_notice",
@@ -658,40 +659,109 @@ export function renderSection(
           </div>
         ))}
 
-        {/* ── Language Support Info ── */}
+        {/* ── Language Settings ── */}
         <div className="space-y-3 border-t border-border/40 pt-6">
-          <SLabel icon={Globe}>Language / زبان Support</SLabel>
+          <SLabel icon={Globe}>Language Settings</SLabel>
           <p className="text-xs text-muted-foreground -mt-1">
-            AJKMart supports 5 language modes. Each user sets their preference from their own profile — the selection is stored in their account and synced across sessions. No action required here; this is informational.
+            Control which language modes are available to users and set the platform default for new accounts.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[
+          {(() => {
+            const ALL_LANGS = [
               { code: "en",       label: "English Only",         native: "English",          rtl: false, desc: "Standard English UI throughout" },
               { code: "ur",       label: "Urdu Only",            native: "اردو",             rtl: true,  desc: "Full Urdu script — RTL layout active" },
               { code: "roman",    label: "Roman Urdu Only",      native: "Roman Urdu",       rtl: false, desc: "Urdu written in Latin script" },
               { code: "en_roman", label: "English + Roman Urdu", native: "English + Roman",  rtl: false, desc: "Default — bilingual, widest reach" },
               { code: "en_ur",    label: "English + Urdu",       native: "English + اردو",   rtl: false, desc: "English with native Urdu below" },
-            ].map(lang => (
-              <div key={lang.code} className="rounded-xl border border-border bg-white p-4 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-foreground">{lang.label}</span>
-                  <div className="flex items-center gap-1.5">
-                    {lang.code === "en_roman" && <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded-full">DEFAULT</span>}
-                    {lang.rtl && <span className="text-[10px] bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded-full">RTL</span>}
-                  </div>
+            ];
+
+            const rawEnabled = localValues["enabled_languages"] ?? '["en","ur","roman","en_roman","en_ur"]';
+            let enabledSet: Set<string>;
+            try { enabledSet = new Set(JSON.parse(rawEnabled) as string[]); }
+            catch { enabledSet = new Set(ALL_LANGS.map(l => l.code)); }
+
+            const defaultLang = localValues["default_language"] ?? "en_roman";
+
+            const toggleLang = (code: string) => {
+              const next = new Set(enabledSet);
+              if (next.has(code)) {
+                if (next.size <= 1) return;
+                next.delete(code);
+                if (defaultLang === code) {
+                  const firstEnabled = ALL_LANGS.find(l => next.has(l.code))?.code ?? "en_roman";
+                  handleChange("default_language", firstEnabled);
+                }
+              } else {
+                next.add(code);
+              }
+              handleChange("enabled_languages", JSON.stringify([...next]));
+            };
+
+            const enabledLangs = ALL_LANGS.filter(l => enabledSet.has(l.code));
+
+            return (
+              <div className="space-y-4">
+                {/* Per-language enable/disable toggles */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {ALL_LANGS.map(lang => {
+                    const isOn = enabledSet.has(lang.code);
+                    const isDefault = defaultLang === lang.code;
+                    return (
+                      <div key={lang.code} className={`rounded-xl border p-3.5 space-y-2 transition-all ${isOn ? "bg-white border-border" : "bg-muted/30 border-border/50 opacity-60"}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-foreground">{lang.label}</span>
+                              {isDefault && <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded-full">DEFAULT</span>}
+                              {lang.rtl && <span className="text-[10px] bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded-full">RTL</span>}
+                            </div>
+                            <p className="text-sm text-gray-500 mt-0.5">{lang.native}</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">{lang.desc}</p>
+                          </div>
+                          <button
+                            onClick={() => toggleLang(lang.code)}
+                            className="shrink-0 flex flex-col items-center gap-0.5"
+                          >
+                            <div className={`w-10 h-5.5 rounded-full relative transition-colors ${isOn ? "bg-green-500" : "bg-gray-300"} ${dirtyKeys.has("enabled_languages") ? "ring-2 ring-amber-400" : ""}`} style={{ width: 44, height: 24 }}>
+                              <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${isOn ? "translate-x-5" : "translate-x-0.5"}`} />
+                            </div>
+                            <span className={`text-[10px] font-bold ${isOn ? "text-green-600" : "text-gray-400"}`}>{isOn ? "ON" : "OFF"}</span>
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/50 font-mono">lang={lang.code}</p>
+                      </div>
+                    );
+                  })}
                 </div>
-                <p className="text-base font-medium text-gray-500">{lang.native}</p>
-                <p className="text-[11px] text-muted-foreground">{lang.desc}</p>
-                <p className="text-[10px] text-muted-foreground/50 font-mono">lang={lang.code}</p>
+
+                {/* Default Language dropdown */}
+                <div className={`rounded-xl border p-4 space-y-2 transition-all ${dirtyKeys.has("default_language") ? "border-amber-300 bg-amber-50/30" : "border-border bg-white"}`}>
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                    <label className="text-sm font-semibold text-foreground flex-1">Default Language for New Users</label>
+                    {dirtyKeys.has("default_language") && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Applied when a new user registers — only enabled languages are available here.</p>
+                  <select
+                    value={defaultLang}
+                    onChange={e => handleChange("default_language", e.target.value)}
+                    className={`w-full h-10 text-sm rounded-xl border px-3 ${dirtyKeys.has("default_language") ? "border-amber-300 bg-amber-50" : "border-input bg-background"}`}
+                  >
+                    {enabledLangs.map(l => (
+                      <option key={l.code} value={l.code}>{l.label} ({l.native})</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground/60 font-mono">default_language</p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5 flex gap-2.5">
+                  <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-blue-700 leading-relaxed">
+                    Individual users can still change their own language from their profile — this setting only affects the default shown to new users. RTL layout activates only for <strong>Urdu Only</strong> mode.
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3.5 flex gap-2.5">
-            <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-700 leading-relaxed">
-              Language preference is per-user and stored in the database. RTL (Right-to-Left) layout applies only when a user selects "Urdu Only". The default for all new users is <strong>English + Roman Urdu</strong>.
-            </p>
-          </div>
+            );
+          })()}
         </div>
       </div>
     );

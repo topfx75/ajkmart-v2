@@ -90,13 +90,6 @@ const depositSchema = z.object({
   note: z.string().optional(),
 });
 
-const codRemitSchema = z.object({
-  amount: z.number().positive(),
-  paymentMethod: z.string().min(1),
-  accountNumber: z.string().min(1),
-  transactionId: z.string().optional(),
-  note: z.string().optional(),
-});
 
 const idParamSchema = z.object({ id: z.string().min(1, "ID is required") });
 
@@ -1373,43 +1366,6 @@ router.get("/cod-summary", async (req, res) => {
     codOrderCount: Number(codAgg[0]?.count ?? 0),
     remittances:   remittances.map(r => ({ ...r, amount: safeNum(r.amount) })),
   });
-});
-
-/* ── POST /rider/cod/remit — Submit a COD remittance ── */
-router.post("/cod/remit", async (req, res) => {
-  const parsed = codRemitSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
-  const riderId = req.riderId!;
-  const { amount, paymentMethod, accountNumber, transactionId, note } = parsed.data;
-  const amt = amount;
-
-  /* Build explicit allowlist of currently-enabled payment methods */
-  const s = await getPlatformSettings();
-  const PAYMENT_METHOD_SETTING: Record<string, string> = {
-    jazzcash: "jazzcash_enabled", easypaisa: "easypaisa_enabled", bank: "bank_enabled",
-  };
-  const enabledMethods = Object.entries(PAYMENT_METHOD_SETTING)
-    .filter(([, settingKey]) => (s[settingKey] ?? "off") === "on")
-    .map(([key]) => key);
-  const methodKey = paymentMethod.toLowerCase().replace(/\s+/g, "");
-  if (enabledMethods.length > 0 && !enabledMethods.includes(methodKey)) {
-    res.status(400).json({ error: `Payment method '${paymentMethod}' is not enabled. Available: ${enabledMethods.join(", ")}.` }); return;
-  }
-  const txId = generateId();
-  await db.insert(walletTransactionsTable).values({
-    id: txId, userId: riderId, type: "cod_remittance",
-    amount: amt.toFixed(2),
-    description: `COD Remittance — ${paymentMethod} · ${accountNumber}${transactionId ? ` · TxID: ${transactionId}` : ""}${note ? ` · ${note}` : ""}`,
-    reference: "pending",
-    paymentMethod,
-  });
-  await db.insert(notificationsTable).values({
-    id: generateId(), userId: riderId,
-    title: "COD Remittance Submitted ✅",
-    body: `Rs. ${amt} COD remittance submitted. Admin 24 hours mein verify karega.`,
-    type: "wallet", icon: "cash-outline",
-  }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
-  res.json({ success: true, txId, amount: amt });
 });
 
 /* ── GET /rider/notifications ── */

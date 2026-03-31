@@ -24,7 +24,6 @@ const PAGES = [
   { label: "Promo Codes",     href: "/promo-codes",    icon: Ticket,          group: "Pages" },
   { label: "Transactions",    href: "/transactions",   icon: Receipt,         group: "Pages" },
   { label: "Withdrawals",     href: "/withdrawals",    icon: BanknoteIcon,    group: "Pages" },
-  { label: "COD Remittances", href: "/cod-remittances",icon: Banknote,        group: "Pages" },
   { label: "Notifications",   href: "/notifications",  icon: BellRing,        group: "Pages" },
   { label: "Broadcast",       href: "/broadcast",      icon: Megaphone,       group: "Pages" },
   { label: "App Management",  href: "/app-management", icon: AppWindow,       group: "Pages" },

@@ -588,41 +588,6 @@ export const useBatchRejectWithdrawals = () => {
   });
 };
 
-// COD Remittances
-export const useCodRemittances = () =>
-  useQuery({
-    queryKey: ["admin-cod-remittances"],
-    queryFn: () => fetcher("/cod-remittances"),
-    refetchInterval: REFETCH_INTERVAL,
-  });
-
-export const useVerifyCodRemittance = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, note }: { id: string; note?: string }) =>
-      fetcher(`/cod-remittances/${id}/verify`, { method: "PATCH", body: JSON.stringify({ note }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-cod-remittances"] }),
-  });
-};
-
-export const useRejectCodRemittance = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      fetcher(`/cod-remittances/${id}/reject`, { method: "PATCH", body: JSON.stringify({ reason }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-cod-remittances"] }),
-  });
-};
-
-export const useBatchVerifyCodRemittances = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (ids: string[]) =>
-      fetcher("/cod-remittances/batch-verify", { method: "PATCH", body: JSON.stringify({ ids }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-cod-remittances"] }),
-  });
-};
-
 export const useCreditRiderWallet = () => {
   const qc = useQueryClient();
   return useMutation({
