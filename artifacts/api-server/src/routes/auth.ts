@@ -33,6 +33,8 @@ import { randomBytes, createHash } from "crypto";
 import { hashPassword, verifyPassword, validatePasswordStrength, generateSecureOtp } from "../services/password.js";
 import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri, encryptTotpSecret, decryptTotpSecret } from "../services/totp.js";
 import { sendVerificationEmail, sendPasswordResetEmail, sendMagicLinkEmail } from "../services/email.js";
+import { getUserLanguage, getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
+import { t, type TranslationKey } from "@workspace/i18n";
 
 function generateVerificationToken(): string {
   return randomBytes(32).toString("hex");
@@ -152,12 +154,16 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
   writeAuthAuditLog("otp_sent", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
   req.log.info({ phone, otp }, "OTP sent");
 
+  /* ── Resolve language for outbound messages ── */
+  const otpUserId = existingUser[0]?.id;
+  const otpLang = otpUserId ? await getUserLanguage(otpUserId) : await getPlatformDefaultLanguage();
+
   /* ── Send OTP via SMS ── */
-  const smsResult = await sendOtpSMS(phone, otp, settings);
+  const smsResult = await sendOtpSMS(phone, otp, settings, otpLang);
 
   /* ── Also try WhatsApp as a fallback / parallel channel ── */
   if (settings["integration_whatsapp"] === "on") {
-    sendWhatsAppOTP(phone, otp, settings).catch(err =>
+    sendWhatsAppOTP(phone, otp, settings, otpLang).catch(err =>
       req.log.warn({ err: err.message }, "WhatsApp OTP send failed (non-fatal)")
     );
   }
@@ -292,9 +298,11 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
           amount: signupBonus.toFixed(2),
           description: `Welcome bonus — Thanks for joining AJKMart!`,
         });
+        const bonusLang = await getUserLanguage(rows[0]!.id);
         await tx.insert(notificationsTable).values({
           id: generateId(), userId: rows[0]!.id,
-          title: "Welcome Bonus! 🎁", body: `Rs. ${signupBonus} has been added to your wallet as a welcome bonus!`,
+          title: t("notifWelcomeBonusTitle" as TranslationKey, bonusLang),
+          body: t("notifWelcomeBonusBody" as TranslationKey, bonusLang).replace("{amount}", String(signupBonus)),
           type: "wallet", icon: "gift-outline",
         });
       }
@@ -663,7 +671,8 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
 
   /* Send OTP via email service. Falls back gracefully when SMTP is not configured.
      In development, the OTP is also exposed in the response for easy testing. */
-  const emailResult = await sendPasswordResetEmail(normalized, otp, user.name ?? undefined);
+  const emailOtpLang = await getUserLanguage(user.id);
+  const emailResult = await sendPasswordResetEmail(normalized, otp, user.name ?? undefined, emailOtpLang);
 
   if (!emailResult.sent) {
     if (isDev) {
@@ -1204,9 +1213,10 @@ router.post("/register", verifyCaptcha, async (req, res) => {
     ntn: ntn || null,
   });
 
-  const smsResult = await sendOtpSMS(normalizedPhone, otp, settings);
+  const registerLang = await getUserLanguage(userId);
+  const smsResult = await sendOtpSMS(normalizedPhone, otp, settings, registerLang);
   if (settings["integration_whatsapp"] === "on") {
-    sendWhatsAppOTP(normalizedPhone, otp, settings).catch(err =>
+    sendWhatsAppOTP(normalizedPhone, otp, settings, registerLang).catch(err =>
       req.log.warn({ err: err.message }, "WhatsApp OTP send failed (non-fatal)")
     );
   }
@@ -1285,22 +1295,24 @@ router.post("/forgot-password", verifyCaptcha, async (req, res) => {
   const otp = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
+  const forgotLang = await getUserLanguage(user.id);
+
   if (phone) {
     await db.update(usersTable)
       .set({ otpCode: otp, otpExpiry, otpUsed: false, updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
     const targetPhone = phone.replace(/-/g, "");
-    await sendOtpSMS(targetPhone, otp, settings);
+    await sendOtpSMS(targetPhone, otp, settings, forgotLang);
     if (settings["integration_whatsapp"] === "on") {
-      sendWhatsAppOTP(targetPhone, otp, settings).catch(() => {});
+      sendWhatsAppOTP(targetPhone, otp, settings, forgotLang).catch(() => {});
     }
   } else {
     await db.update(usersTable)
       .set({ emailOtpCode: otp, emailOtpExpiry: otpExpiry, updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
-    await sendPasswordResetEmail(email, otp, user.name ?? undefined);
+    await sendPasswordResetEmail(email, otp, user.name ?? undefined, forgotLang);
   }
 
   writeAuthAuditLog("forgot_password", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
@@ -1519,7 +1531,8 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
   const domain = process.env["REPLIT_DEV_DOMAIN"] || process.env["APP_DOMAIN"] || "localhost";
   const verificationLink = `https://${domain}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(normalizedEmail)}`;
 
-  const emailResult = await sendVerificationEmail(normalizedEmail, verificationLink, name);
+  const verifyLang = await getUserLanguage(userId);
+  const emailResult = await sendVerificationEmail(normalizedEmail, verificationLink, name, verifyLang);
 
   writeAuthAuditLog("email_register", { userId, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { email: normalizedEmail, role: userRole, emailSent: emailResult.sent } });
 
@@ -2078,7 +2091,8 @@ router.post("/magic-link/send", async (req, res) => {
     expiresAt,
   });
 
-  await sendMagicLinkEmail(normalized, rawToken, settings);
+  const magicLinkLang = await getUserLanguage(user.id);
+  await sendMagicLinkEmail(normalized, rawToken, settings, magicLinkLang);
 
   addAuditEntry({ action: "magic_link_sent", ip, details: `Magic link sent to: ${normalized}`, result: "success" });
   writeAuthAuditLog("magic_link_sent", { ip, metadata: { email: normalized } });

@@ -13,6 +13,8 @@ import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings } from "./admin.js";
 import { customerAuth, riderAuth, verifyUserJwt } from "../middleware/security.js";
 import { loadRide, requireRideState, requireRideOwner } from "../middleware/ride-guards.js";
+import { t, type TranslationKey } from "@workspace/i18n";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
 
 const router: IRouter = Router();
 
@@ -124,12 +126,19 @@ async function broadcastRide(rideId: string) {
 
       const etaMin = Math.max(1, Math.round((dist / avgSpeed) * 60));
       const fareStr = parseFloat(ride.fare ?? "0").toFixed(0);
-      const typeLabel = ride.status === "bargaining" ? "Bargaining Ride" : "New Ride";
+      const riderLang = await getUserLanguage(r.userId);
+      const titleKey = ride.status === "bargaining" ? "notifRideBargaining" : "notifRideRequest";
+      const bodyStr = t("notifRideRequestBody", riderLang)
+        .replace("{from}", ride.pickupAddress)
+        .replace("{to}", ride.dropAddress)
+        .replace("{fare}", fareStr)
+        .replace("{dist}", dist.toFixed(1))
+        .replace("{eta}", String(etaMin));
 
       await db.insert(notificationsTable).values({
         id: generateId(), userId: r.userId,
-        title: `${typeLabel} Request! 🚗`,
-        body: `${ride.pickupAddress} → ${ride.dropAddress} · Rs. ${fareStr} · ${dist.toFixed(1)} km away · ETA ${etaMin} min`,
+        title: `${t(titleKey, riderLang)} 🚗`,
+        body: bodyStr,
         type: "ride", icon: "car-outline", link: `/ride/${rideId}`,
       }).catch(() => {});
 
@@ -445,12 +454,17 @@ router.post("/", customerAuth, async (req, res) => {
       rideRecord = ride!;
     }
 
+    const bookLang = await getUserLanguage(userId);
+    const bookTitle = isBargaining
+      ? t("notifRideOfferSent", bookLang) + " 💬"
+      : t("notifRideBooked", bookLang);
+    const bookBody = isBargaining
+      ? t("notifRideOfferBody", bookLang).replace("{fare}", String(validatedOffer))
+      : t("notifRideBookedBody", bookLang).replace("{fare}", fareToCharge.toFixed(0));
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: isBargaining ? `Ride Offer Sent 💬` : `${type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")} Ride Booked`,
-      body: isBargaining
-        ? `Aapka Rs. ${validatedOffer} ka offer send ho gaya. Rider respond karega.`
-        : `Aapki ride book ho gayi. Rider dhundha ja raha hai. Fare: Rs. ${fareToCharge.toFixed(0)}`,
+      title: bookTitle,
+      body: bookBody,
       type: "ride", icon: ({ bike: "bicycle-outline", car: "car-outline", rickshaw: "car-outline", daba: "bus-outline", school_shift: "bus-outline" } as Record<string, string>)[type] ?? "car-outline", link: `/ride`,
     }).catch(() => {});
 
@@ -569,28 +583,33 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
     return upd;
   });
 
+  const cancelLang = await getUserLanguage(userId);
   if (fareWasCharged) {
     const refundAmt = parseFloat(ride.fare);
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: "Ride Refund 💰",
-      body: `Rs. ${refundAmt.toFixed(0)} refunded to your wallet.${actualCancelFee > 0 ? ` Rs. ${actualCancelFee} cancellation fee applied.` : ""}`,
+      title: t("notifWalletCredited", cancelLang) + " 💰",
+      body: actualCancelFee > 0
+        ? t("notifRideRefundWithFeeBody", cancelLang).replace("{refund}", refundAmt.toFixed(0)).replace("{fee}", String(actualCancelFee))
+        : t("notifRideRefundBody", cancelLang).replace("{refund}", refundAmt.toFixed(0)),
       type: "ride", icon: "wallet-outline",
     }).catch(() => {});
   } else if (ride.status === "bargaining" || ride.bargainStatus === "customer_offered") {
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: "Ride Offer Cancelled",
-      body: "Aapka ride offer cancel ho gaya.",
+      title: t("notifRideOfferSent", cancelLang),
+      body: t("notifRideCancelledBody", cancelLang),
       type: "ride", icon: "close-circle-outline",
     }).catch(() => {});
   } else {
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: "Ride Cancelled",
+      title: t("notifRideCancelled", cancelLang),
       body: riderAssigned && cancelFee > 0
-        ? `A cancellation fee of Rs. ${cancelFee} has been applied.${cancelFeeAsDebt ? " Remaining balance will be deducted from future wallet top-ups." : ""}`
-        : "Aapki ride cancel ho gayi.",
+        ? (cancelFeeAsDebt
+            ? t("notifRideCancelledFeeDebtBody" as TranslationKey, cancelLang).replace("{fee}", String(cancelFee))
+            : t("notifRideCancelledFeeBody" as TranslationKey, cancelLang).replace("{fee}", String(cancelFee)))
+        : t("notifRideCancelledBody", cancelLang),
       type: "ride", icon: "close-circle-outline",
     }).catch(() => {});
   }
@@ -703,10 +722,11 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
   const { rideUpdate, bid } = updated;
   const agreedFare = parseFloat(bid.fare);
 
+  const bidLang = await getUserLanguage(bid.riderId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: bid.riderId,
-    title: "Aapka Bid Accept Ho Gaya! 🎉",
-    body: `Customer ne aapka Rs. ${agreedFare.toFixed(0)} ka offer accept kar liya. Pickup ke liye jaayein!`,
+    title: t("notifRideAccepted", bidLang) + " 🎉",
+    body: t("notifRideAcceptedBody", bidLang).replace("{fare}", agreedFare.toFixed(0)),
     type: "ride", icon: "checkmark-circle-outline",
   }).catch(() => {});
 
@@ -1028,10 +1048,11 @@ router.post("/:id/rate", customerAuth, requireRideState(["completed"]), requireR
     comment: comment || null,
   }).returning();
 
+  const ratingLang = await getUserLanguage(ride.riderId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: ride.riderId,
-    title: `${stars} Star Rating ⭐`,
-    body: comment ? `Customer ne ${stars} stars diye: "${comment}"` : `Customer ne aapko ${stars} stars diye!`,
+    title: `${stars} ${t("rating", ratingLang)} ⭐`,
+    body: comment ? `${stars} ${t("rating", ratingLang)}: "${comment}"` : `${t("rateRider", ratingLang)}: ${stars} ⭐`,
     type: "ride", icon: "star-outline",
   }).catch(() => {});
 
@@ -1153,11 +1174,12 @@ async function runDispatchCycle() {
             .set({ status: "expired", updatedAt: new Date() })
             .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)));
 
+          const expLang = await getUserLanguage(ride.userId);
           await db.insert(notificationsTable).values({
             id: generateId(),
             userId: ride.userId,
-            title: "No Rider Found",
-            body: "Koi rider available nahi mila. Please dubara try karein ya fare adjust karein.",
+            title: t("searching", expLang),
+            body: t("noRequests", expLang),
             type: "ride",
             icon: "close-circle-outline",
           }).catch(() => {});
@@ -1175,10 +1197,11 @@ async function runDispatchCycle() {
           await db.update(ridesTable)
             .set({ status: "no_riders", updatedAt: new Date() })
             .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)));
+          const noRiderLang = await getUserLanguage(ride.userId);
           await db.insert(notificationsTable).values({
             id: generateId(), userId: ride.userId,
-            title: "No Riders Available",
-            body: "Koi rider available nahi mila. Dobara try karein ya fare badhayein.",
+            title: t("noRequests", noRiderLang),
+            body: t("searching_driver", noRiderLang),
             type: "ride", icon: "close-circle-outline",
           }).catch(() => {});
           await cleanupNotifiedRiders(ride.id);

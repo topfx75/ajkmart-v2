@@ -13,7 +13,7 @@ const VALID_LANGS = new Set<string>(LANGUAGE_OPTIONS.map(o => o.value));
 function applyRTL(lang: Language) {
   const dir = isRTL(lang) ? "rtl" : "ltr";
   document.documentElement.setAttribute("dir", dir);
-  document.documentElement.setAttribute("lang", lang === "ur" ? "ur" : "en");
+  document.documentElement.setAttribute("lang", lang === "ur" || lang === "en_ur" ? "ur" : "en");
 }
 
 export function useLanguage() {

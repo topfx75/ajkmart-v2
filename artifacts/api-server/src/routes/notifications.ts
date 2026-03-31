@@ -4,6 +4,8 @@ import { notificationsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
+import { t } from "@workspace/i18n";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
 
 /* ── internal-only admin secret (set via ADMIN_SECRET env) ── */
 const INTERNAL_SECRET = process.env["ADMIN_SECRET"] || "ajkmart-admin-secret-CHANGE-IN-PRODUCTION";
@@ -19,10 +21,11 @@ router.get("/", customerAuth, async (req, res) => {
     .orderBy(notificationsTable.createdAt);
 
   if (notifs.length === 0) {
+    const userLang = await getUserLanguage(userId);
     const seeds = [
-      { id: generateId(), userId, title: "Welcome to AJKMart!", body: "AJK ki pehli Super App mein aapka khush amdeed! Grocery, Food, Ride, Pharmacy sab ek jagah.", type: "system", icon: "star-outline", isRead: false },
-      { id: generateId(), userId, title: "Wallet Feature Active", body: "Aapka AJKMart Wallet ready hai. Top up karein aur cashless payments enjoy karein.", type: "wallet", icon: "wallet-outline", isRead: false },
-      { id: generateId(), userId, title: "Ride Service Available", body: "Muzaffarabad, Mirpur, Rawalakot mein bike aur car booking available hai. Abhi try karein!", type: "ride", icon: "car-outline", isRead: true },
+      { id: generateId(), userId, title: t("notifWelcomeTitle", userLang), body: t("notifWelcomeBody", userLang), type: "system", icon: "star-outline", isRead: false },
+      { id: generateId(), userId, title: t("notifWalletReadyTitle", userLang), body: t("notifWalletReadyBody", userLang), type: "wallet", icon: "wallet-outline", isRead: false },
+      { id: generateId(), userId, title: t("notifRideServiceTitle", userLang), body: t("notifRideServiceBody", userLang), type: "ride", icon: "car-outline", isRead: true },
     ];
     await db.insert(notificationsTable).values(seeds);
     notifs = await db.select().from(notificationsTable)

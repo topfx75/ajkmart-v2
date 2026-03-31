@@ -5,6 +5,8 @@ import { eq, and, gte, sum, desc, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings, adminAuth } from "./admin.js";
 import { customerAuth } from "../middleware/security.js";
+import { t } from "@workspace/i18n";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
 
 const router: IRouter = Router();
 
@@ -198,10 +200,11 @@ router.post("/deposit", customerAuth, async (req, res) => {
       res.status(400).json({ error: e.message }); return;
     }
 
+    const depositLang = await getUserLanguage(userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: "Wallet Credited! ✅",
-      body: `Rs. ${amt.toFixed(0)} aapki wallet mein add ho gaye hain.`,
+      title: t("notifWalletCredited", depositLang) + " ✅",
+      body: t("notifWalletCreditedBody", depositLang).replace("{amount}", amt.toFixed(0)),
       type: "wallet", icon: "wallet-outline",
     }).catch(e => console.error("customer deposit notif insert failed:", e));
 
@@ -215,10 +218,11 @@ router.post("/deposit", customerAuth, async (req, res) => {
       paymentMethod,
     });
 
+    const pendingLang = await getUserLanguage(userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: "Deposit Request Submitted ✅",
-      body: `Rs. ${amt.toFixed(0)} deposit request mein hai. Admin 1-2 hours mein verify karke wallet credit karega.`,
+      title: t("notifWalletPending", pendingLang) + " ✅",
+      body: t("notifWalletPendingBody", pendingLang).replace("{amount}", amt.toFixed(0)),
       type: "wallet", icon: "wallet-outline",
     }).catch(e => console.error("customer deposit notif insert failed:", e));
 
@@ -374,10 +378,11 @@ router.post("/send", customerAuth, async (req, res) => {
       return { newBalance: parseFloat(deducted.walletBalance ?? "0"), receiverName: receiver.name || receiverPhone, receiverId: receiver.id, senderName: sender.name || sender.phone, amount: sendAmt, fee: feeAmt };
     });
 
+    const sendLang = await getUserLanguage(result.receiverId);
     db.insert(notificationsTable).values({
       id: generateId(), userId: result.receiverId,
-      title: "Money Received 💰",
-      body: `Rs. ${result.amount.toFixed(0)} received from ${result.senderName}`,
+      title: t("notifWalletCredited", sendLang) + " 💰",
+      body: t("notifWalletReceivedBody", sendLang).replace("{amount}", result.amount.toFixed(0)).replace("{sender}", result.senderName),
       type: "wallet", icon: "wallet-outline",
     }).catch(e => console.error("receiver send notif insert failed:", e));
 
@@ -429,10 +434,11 @@ router.post("/p2p-topup", customerAuth, async (req, res) => {
     paymentMethod: "p2p",
   });
 
+  const p2pLang = await getUserLanguage(userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId,
-    title: "P2P Topup Request Submitted",
-    body: `Rs. ${amt.toFixed(0)} P2P topup request pending hai. Admin approval ke baad wallet credit hoga.`,
+    title: t("notifWalletPending", p2pLang),
+    body: t("notifWalletPendingBody", p2pLang).replace("{amount}", amt.toFixed(0)),
     type: "wallet", icon: "wallet-outline",
   }).catch(e => console.error("p2p topup notif insert failed:", e));
 
@@ -501,10 +507,11 @@ router.post("/withdraw", customerAuth, async (req, res) => {
     res.status(400).json({ error: e.message }); return;
   }
 
+  const withdrawLang = await getUserLanguage(userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId,
-    title: "Withdrawal Request Submitted",
-    body: `Rs. ${amt.toFixed(0)} withdrawal request pending hai. Admin 1-2 business days mein process karega.`,
+    title: t("notifWithdrawalPending", withdrawLang),
+    body: t("notifWithdrawalPendingBody", withdrawLang).replace("{amount}", amt.toFixed(0)),
     type: "wallet", icon: "wallet-outline",
   }).catch(e => console.error("withdrawal notif insert failed:", e));
 

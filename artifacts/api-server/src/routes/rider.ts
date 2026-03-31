@@ -7,6 +7,8 @@ import { getPlatformSettings } from "./admin.js";
 import { verifyUserJwt, getCachedSettings, detectGPSSpoof, addSecurityEvent, getClientIp } from "../middleware/security.js";
 import { emitRiderLocation } from "../lib/socketio.js";
 import { z } from "zod";
+import { t } from "@workspace/i18n";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
 
 const router: IRouter = Router();
 
@@ -285,10 +287,11 @@ router.patch("/profile", async (req, res) => {
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, riderId)).returning();
 
   if (cnicChanged || drivingLicenseChanged) {
+    const reVerifyLang = await getUserLanguage(riderId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: riderId,
-      title: "Re-verification Required",
-      body: "Your identity documents have been updated. Your account is pending admin review before you can accept orders again.",
+      title: t("approvalPending", reVerifyLang),
+      body: t("approvalMsg", reVerifyLang),
       type: "system", icon: "shield-outline",
     }).catch(() => {});
   }
@@ -511,10 +514,11 @@ router.post("/orders/:id/accept", async (req, res) => {
     res.status(409).json({ error: "Order already taken by another rider" }); return;
   }
 
+  const orderAcceptLang = await getUserLanguage(updated.userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: updated.userId,
-    title: "Rider on the Way! 🚴",
-    body: "Your order has been picked up. Rider is on the way!",
+    title: t("notifRideAccepted", orderAcceptLang) + " 🚴",
+    body: t("notifOrderOnWay", orderAcceptLang),
     type: "order", icon: "bicycle-outline",
   }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
 
@@ -579,19 +583,21 @@ async function handleCancelPenalty(riderId: string): Promise<{ dailyCancels: num
       restricted = true;
     }
 
+    const penaltyLang = await getUserLanguage(riderId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: riderId,
-      title: restricted ? "Account Restricted ⚠️" : "Cancellation Penalty ⚠️",
+      title: restricted ? t("notifAccountRestricted", penaltyLang) + " ⚠️" : t("notifCancelPenalty", penaltyLang) + " ⚠️",
       body: restricted
-        ? `You cancelled ${dailyCancels} times today (limit: ${limit}). Rs. ${penaltyAmt} penalty applied and your account has been restricted. Contact support to re-activate.`
-        : `You cancelled ${dailyCancels} times today (limit: ${limit}). Rs. ${penaltyAmt} penalty applied.`,
+        ? t("notifCancelRestrictedBody", penaltyLang).replace("{count}", String(dailyCancels)).replace("{limit}", String(limit)).replace("{amount}", String(penaltyAmt))
+        : t("notifCancelPenaltyBody", penaltyLang).replace("{count}", String(dailyCancels)).replace("{limit}", String(limit)).replace("{amount}", String(penaltyAmt)),
       type: "system", icon: "alert-circle-outline",
     }).catch(() => {});
   } else if (dailyCancels === limit) {
+    const warnLang = await getUserLanguage(riderId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: riderId,
-      title: "Cancellation Warning ⚠️",
-      body: `You have cancelled ${dailyCancels}/${limit} times today. Next cancellation will incur a Rs. ${penaltyAmt} penalty and possible account restriction.`,
+      title: t("notifCancelWarning", warnLang) + " ⚠️",
+      body: t("notifCancelWarningBody", warnLang).replace("{count}", String(dailyCancels)).replace("{limit}", String(limit)).replace("{amount}", String(penaltyAmt)),
       type: "system", icon: "alert-circle-outline",
     }).catch(() => {});
   }
@@ -659,9 +665,10 @@ router.patch("/orders/:id/status", async (req, res) => {
       .set({ riderId: null, status: "preparing", updatedAt: new Date() })
       .where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId)))
       .returning();
+    const riderChangeLang = await getUserLanguage(order.userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: order.userId,
-      title: "Rider Change 🔄", body: "Your rider had to cancel. We're finding a new rider for you.",
+      title: t("notifRiderChange", riderChangeLang) + " 🔄", body: t("notifRiderChangeBody", riderChangeLang),
       type: "order", icon: "refresh-outline",
     }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
     res.json({
@@ -718,9 +725,10 @@ router.patch("/orders/:id/status", async (req, res) => {
           });
         }
       });
+      const riderCashLang = await getUserLanguage(riderId);
       await db.insert(notificationsTable).values({
         id: generateId(), userId: riderId,
-        title: "Cash Delivery Completed", body: `Rs. ${platformFee} platform fee deducted from wallet. Cash collected: Rs. ${orderTotal.toFixed(0)}.`,
+        title: t("notifOrderDelivered", riderCashLang), body: t("notifCashFeeDeductedBody", riderCashLang).replace("{fee}", String(platformFee)).replace("{cash}", orderTotal.toFixed(0)),
         type: "wallet", icon: "wallet-outline",
       }).catch((e: Error) => console.error("[rider] notif insert failed:", e.message));
     } else {
@@ -742,16 +750,18 @@ router.patch("/orders/:id/status", async (req, res) => {
           });
         }
       });
+      const riderEarnLang = await getUserLanguage(riderId);
       await db.insert(notificationsTable).values({
         id: generateId(), userId: riderId,
-        title: "Delivery Earning Credited", body: `Rs. ${earnings} wallet mein add ho gaya!`,
+        title: t("notifWalletCredited", riderEarnLang), body: t("notifWalletCreditedBody", riderEarnLang).replace("{amount}", earnings.toFixed(0)),
         type: "wallet", icon: "wallet-outline",
       }).catch((e: Error) => console.error("[rider] notif insert failed:", e.message));
     }
 
+    const custDelivLang = await getUserLanguage(order.userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: order.userId,
-      title: "Order Delivered! 🎉", body: "Your order has been delivered. Enjoy!",
+      title: t("notifOrderDelivered", custDelivLang) + " 🎉", body: t("orderDeliveredEnjoy", custDelivLang),
       type: "order", icon: "bag-check-outline",
     }).catch(e => console.error("customer notif insert failed:", e));
 
@@ -772,9 +782,10 @@ router.patch("/orders/:id/status", async (req, res) => {
           amount: loyaltyPts.toFixed(2),
           description: `Loyalty points (${loyaltyPtsPerHundred} pts/Rs.100) — Order #${order.id.slice(-6).toUpperCase()}`,
         }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
+        const loyaltyLang = await getUserLanguage(order.userId);
         await db.insert(notificationsTable).values({
           id: generateId(), userId: order.userId,
-          title: "Loyalty Points Earned! ⭐", body: `+${loyaltyPts} loyalty points added for your order!`,
+          title: t("notifLoyaltyEarned", loyaltyLang) + " ⭐", body: t("notifLoyaltyEarnedBody", loyaltyLang).replace("{points}", String(loyaltyPts)),
           type: "wallet", icon: "star-outline",
         }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
       }
@@ -798,9 +809,10 @@ router.patch("/orders/:id/status", async (req, res) => {
           amount: cashbackAmt.toFixed(2),
           description: `Cashback ${Math.round(cashbackPct * 100)}% — Order #${order.id.slice(-6).toUpperCase()}`,
         }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
+        const cashbackLang = await getUserLanguage(order.userId);
         await db.insert(notificationsTable).values({
           id: generateId(), userId: order.userId,
-          title: "Cashback Credited! 🎁", body: `Rs. ${cashbackAmt} cashback added to your wallet!`,
+          title: t("notifCashbackCredited", cashbackLang) + " 🎁", body: t("notifCashbackCreditedBody", cashbackLang).replace("{amount}", cashbackAmt.toFixed(0)),
           type: "wallet", icon: "wallet-outline",
         }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
       }
@@ -939,12 +951,13 @@ router.post("/rides/:id/accept", async (req, res) => {
     .set({ status: "rejected", updatedAt: new Date() })
     .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.status, "pending")));
 
+  const rideAssignLang = await getUserLanguage(updated.userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: updated.userId,
-    title: "Rider Assigned! 🚗",
+    title: t("notifRideAccepted", rideAssignLang) + " 🚗",
     body: isBargaining
       ? `${riderUser.name || "Your rider"} ne Rs. ${safeNum(agreedFare).toFixed(0)} par offer accept kar liya!`
-      : `${riderUser.name || "Your rider"} is coming to pick you up.`,
+      : `${riderUser.name || "Your rider"} ${t("notifRiderComingBody", rideAssignLang)}`,
     type: "ride", icon: updated.type === "bike" ? "bicycle-outline" : "car-outline",
   }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
 
@@ -1037,9 +1050,10 @@ router.patch("/rides/:id/status", async (req, res) => {
           });
         }
       });
+      const rideCashLang = await getUserLanguage(riderId);
       await db.insert(notificationsTable).values({
         id: generateId(), userId: riderId,
-        title: "Cash Ride Completed", body: `Rs. ${platformFee} platform fee deducted from wallet. Cash collected: Rs. ${fareAmt.toFixed(0)}.`,
+        title: t("rideCompleted", rideCashLang), body: t("notifCashFeeDeductedBody", rideCashLang).replace("{fee}", String(platformFee)).replace("{cash}", fareAmt.toFixed(0)),
         type: "wallet", icon: "wallet-outline",
       }).catch((e: Error) => console.error("[rider] notif insert failed:", e.message));
     } else {
@@ -1061,16 +1075,18 @@ router.patch("/rides/:id/status", async (req, res) => {
           });
         }
       });
+      const rideEarnLang = await getUserLanguage(riderId);
       await db.insert(notificationsTable).values({
         id: generateId(), userId: riderId,
-        title: "Ride Earning Credited", body: `Rs. ${earnings} wallet mein add ho gaya!`,
+        title: t("notifWalletCredited", rideEarnLang), body: t("notifWalletCreditedBody", rideEarnLang).replace("{amount}", earnings.toFixed(0)),
         type: "wallet", icon: "wallet-outline",
       }).catch(e => console.error("notif insert failed:", e));
     }
 
+    const custRideCompleteLang = await getUserLanguage(ride.userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: ride.userId,
-      title: "Ride Completed! ✅", body: "Thanks for riding with AJKMart. Rate your experience!",
+      title: t("rideCompleted", custRideCompleteLang) + " ✅", body: t("notifRideCompletedBody", custRideCompleteLang),
       type: "ride", icon: "checkmark-circle-outline",
     }).catch(e => console.error("customer notif insert failed:", e));
   }
@@ -1164,10 +1180,11 @@ router.post("/rides/:id/counter", async (req, res) => {
   }
 
   if (isFirstBid) {
+    const bidLang = await getUserLanguage(ride.userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: ride.userId,
-      title: "Naya Bid Aaya! 💬",
-      body: `${riderUser.name || "Ek rider"} ne Rs. ${parsedCounter.toFixed(0)} ka bid diya. Dekhein aur choose karein!`,
+      title: t("notifNewBid", bidLang) + " 💬",
+      body: t("notifNewBidBody", bidLang).replace("{name}", riderUser.name || "A rider").replace("{amount}", parsedCounter.toFixed(0)),
       type: "ride", icon: "chatbubble-outline", link: "/ride",
     }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
   }
@@ -1430,10 +1447,11 @@ router.post("/wallet/withdraw", async (req, res) => {
       return balance - amt;
     });
 
+    const withdrawLang = await getUserLanguage(riderId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: riderId,
-      title: "Withdrawal Requested ✅",
-      body: `Rs. ${amt} withdrawal submitted. Admin will process within 24-48 hours.`,
+      title: t("notifWithdrawalPending", withdrawLang) + " ✅",
+      body: t("notifWithdrawalPendingBody", withdrawLang).replace("{amount}", amt.toFixed(0)),
       type: "wallet", icon: "cash-outline",
     }).catch((err: Error) => { console.error("[rider] background op failed:", err.message); });
 
@@ -1566,10 +1584,11 @@ router.post("/wallet/deposit", async (req, res) => {
     paymentMethod,
   });
 
+  const depositNotifLang = await getUserLanguage(riderId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: riderId,
-    title: "Deposit Request Submitted ✅",
-    body: `Rs. ${amt} deposit request mein hai. Admin 24 hours mein verify karke wallet credit karega.`,
+    title: t("notifWalletDeposit", depositNotifLang) + " ✅",
+    body: t("notifWalletDepositBody", depositNotifLang).replace("{amount}", amt.toFixed(0)),
     type: "wallet", icon: "wallet-outline",
   }).catch(e => console.error("deposit notif insert failed:", e));
 
@@ -1844,19 +1863,21 @@ async function handleIgnorePenalty(riderId: string): Promise<{ dailyIgnores: num
       restricted = true;
     }
 
+    const ignorePenaltyLang = await getUserLanguage(riderId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: riderId,
-      title: restricted ? "Account Restricted ⚠️" : "Ignore Penalty ⚠️",
+      title: restricted ? t("notifAccountRestricted", ignorePenaltyLang) + " ⚠️" : t("notifCancelPenalty", ignorePenaltyLang) + " ⚠️",
       body: restricted
-        ? `Aapne aaj ${dailyIgnores} requests ignore ki (limit: ${limit}). Rs. ${penaltyAmt} penalty aur account restrict ho gaya. Support se contact karein.`
-        : `Aapne aaj ${dailyIgnores} requests ignore ki (limit: ${limit}). Rs. ${penaltyAmt} penalty lagai gayi.`,
+        ? t("notifIgnoreRestrictedBody", ignorePenaltyLang).replace("{count}", String(dailyIgnores)).replace("{limit}", String(limit)).replace("{amount}", String(penaltyAmt))
+        : t("notifIgnorePenaltyBody", ignorePenaltyLang).replace("{count}", String(dailyIgnores)).replace("{limit}", String(limit)).replace("{amount}", String(penaltyAmt)),
       type: "system", icon: "alert-circle-outline",
     }).catch(() => {});
   } else if (dailyIgnores === limit) {
+    const ignoreWarnLang = await getUserLanguage(riderId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: riderId,
-      title: "Ignore Warning ⚠️",
-      body: `Aapne aaj ${dailyIgnores}/${limit} requests ignore ki. Agla ignore Rs. ${penaltyAmt} penalty aur account restriction ka sabab ban sakta hai.`,
+      title: t("notifCancelWarning", ignoreWarnLang) + " ⚠️",
+      body: t("notifIgnoreWarningBody", ignoreWarnLang).replace("{count}", String(dailyIgnores)).replace("{limit}", String(limit)).replace("{amount}", String(penaltyAmt)),
       type: "system", icon: "alert-circle-outline",
     }).catch(() => {});
   }

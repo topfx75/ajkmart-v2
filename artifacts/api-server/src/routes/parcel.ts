@@ -5,6 +5,8 @@ import { eq, sql, and, gte, count } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { customerAuth, riderAuth, addSecurityEvent, idorGuard } from "../middleware/security.js";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
+import { t, type TranslationKey } from "@workspace/i18n";
 
 const router: IRouter = Router();
 
@@ -226,10 +228,11 @@ router.post("/", customerAuth, async (req, res) => {
         return newBooking!;
       });
 
+      const pLang1 = await getUserLanguage(userId);
       await db.insert(notificationsTable).values({
         id: generateId(), userId,
-        title: "Parcel Booking Confirmed",
-        body: `Aapka ${parcelType} parcel book ho gaya. Rs. ${totalFare.toFixed(0)} — ${receiverName} tak. ETA: ${estimatedTime}`,
+        title: t("notifParcelBookingConfirmed" as TranslationKey, pLang1),
+        body: t("notifParcelBookingConfirmedBody" as TranslationKey, pLang1).replace("{type}", parcelType).replace("{amount}", totalFare.toFixed(0)).replace("{receiver}", receiverName).replace("{eta}", estimatedTime),
         type: "parcel", icon: "cube-outline", link: `/(tabs)/orders`,
       }).catch(() => {});
 
@@ -250,10 +253,11 @@ router.post("/", customerAuth, async (req, res) => {
     status: "pending", estimatedTime,
   }).returning();
 
+  const pLang2 = await getUserLanguage(userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId,
-    title: "Parcel Booking Confirmed",
-    body: `Aapka ${parcelType} parcel book ho gaya. Rs. ${totalFare.toFixed(0)} — ${receiverName} tak. ETA: ${estimatedTime}`,
+    title: t("notifParcelBookingConfirmed" as TranslationKey, pLang2),
+    body: t("notifParcelBookingConfirmedBody" as TranslationKey, pLang2).replace("{type}", parcelType).replace("{amount}", totalFare.toFixed(0)).replace("{receiver}", receiverName).replace("{eta}", estimatedTime),
     type: "parcel", icon: "cube-outline", link: `/(tabs)/orders`,
   }).catch(() => {});
 
@@ -322,10 +326,11 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       return null;
     });
     if (!cancelledBooking) return;
+    const pRefLang = await getUserLanguage(userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: "Parcel Booking Refunded 💰",
-      body: `Rs. ${refund.toFixed(0)} wapas aapke wallet mein aa gaya hai.`,
+      title: t("notifParcelRefund" as TranslationKey, pRefLang),
+      body: t("notifParcelRefundBody" as TranslationKey, pRefLang).replace("{amount}", refund.toFixed(0)),
       type: "parcel", icon: "wallet-outline",
     }).catch(() => {});
     refundAmount = refund;

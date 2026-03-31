@@ -6,6 +6,9 @@
  * They are converted to E.164 (+92xxxxxxxxx) before sending.
  */
 
+import { t } from "@workspace/i18n";
+import type { Language } from "@workspace/i18n";
+
 function toE164Pakistan(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("92")) return `+${digits}`;
@@ -17,21 +20,21 @@ function applyTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 }
 
+function resolveLanguage(language?: string): Language {
+  const valid: Language[] = ["en", "ur", "roman", "en_roman", "en_ur"];
+  if (language && valid.includes(language as Language)) return language as Language;
+  return "en";
+}
+
 export interface SMSResult {
   sent: boolean;
   provider: string;
   error?: string;
 }
 
-export async function sendOtpSMS(
-  phone: string,
-  otp: string,
-  settings: Record<string, string>
-): Promise<SMSResult> {
+async function dispatchSMS(phone: string, message: string, settings: Record<string, string>): Promise<SMSResult> {
   const integrationOn = settings["integration_sms"] === "on";
   const provider      = settings["sms_provider"] ?? "console";
-  const template      = settings["sms_template_otp"] ?? "Your AJKMart OTP is {otp}. Valid for 5 minutes. Do not share with anyone.";
-  const message       = applyTemplate(template, { otp });
 
   if (!integrationOn || provider === "console") {
     console.log(`[SMS:console] To: ${phone} | ${message}`);
@@ -55,7 +58,7 @@ export async function sendOtpSMS(
       const { default: twilio } = await import("twilio");
       const client = twilio(accountSid, authToken);
       await client.messages.create({ body: message, from, to: e164 });
-      console.log(`[SMS:twilio] Sent OTP to ${e164}`);
+      console.log(`[SMS:twilio] Sent to ${e164}`);
       return { sent: true, provider: "twilio" };
     } catch (err: any) {
       console.error(`[SMS:twilio] Error:`, err.message);
@@ -74,14 +77,12 @@ export async function sendOtpSMS(
     }
 
     try {
-      const mobile = e164.replace("+", "");
-      const url    = `https://api.msg91.com/api/v5/otp?template_id=OTP&mobile=${mobile}&authkey=${authKey}&otp=${otp}&sender=${senderId}`;
-      const resp   = await fetch(url, { method: "POST" });
-      const body   = await resp.json() as any;
-      if (body.type === "success") {
+      const resp = await fetch(`https://api.msg91.com/api/sendhttp.php?country=92&sender=${senderId}&route=4&mobiles=${e164.replace("+", "")}&authkey=${authKey}&sms=${encodeURIComponent(message)}`);
+      const body = await resp.text();
+      if (body.includes("success") || resp.ok) {
         return { sent: true, provider: "msg91" };
       }
-      return { sent: false, provider: "msg91", error: JSON.stringify(body) };
+      return { sent: false, provider: "msg91", error: body };
     } catch (err: any) {
       console.error(`[SMS:msg91] Error:`, err.message);
       return { sent: false, provider: "msg91", error: err.message };
@@ -92,13 +93,29 @@ export async function sendOtpSMS(
   return { sent: false, provider, error: `Unknown provider: ${provider}` };
 }
 
+export async function sendOtpSMS(
+  phone: string,
+  otp: string,
+  settings: Record<string, string>,
+  userLanguage?: string
+): Promise<SMSResult> {
+  const lang = resolveLanguage(userLanguage);
+  const i18nDefault = t("smsOtpText", lang).replace("{otp}", otp);
+  const adminTemplate = settings["sms_template_otp"] ?? i18nDefault;
+  const message = applyTemplate(adminTemplate, { otp });
+  return dispatchSMS(phone, message, settings);
+}
+
 export async function sendOrderSMS(
   phone: string,
   orderId: string,
   status: string,
-  settings: Record<string, string>
+  settings: Record<string, string>,
+  userLanguage?: string
 ): Promise<SMSResult> {
-  const template = settings["sms_template_order"] ?? "Your order #{id} status: {status}. AJKMart";
-  const message  = applyTemplate(template, { id: orderId, status });
-  return sendOtpSMS(phone, message, { ...settings, sms_template_otp: message });
+  const lang = resolveLanguage(userLanguage);
+  const i18nDefault = t("smsOrderText", lang).replace("{id}", orderId).replace("{status}", status);
+  const adminTemplate = settings["sms_template_order"] ?? i18nDefault;
+  const message = applyTemplate(adminTemplate, { id: orderId, status });
+  return dispatchSMS(phone, message, settings);
 }

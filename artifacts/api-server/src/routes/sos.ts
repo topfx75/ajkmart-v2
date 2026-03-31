@@ -4,6 +4,8 @@ import { notificationsTable, usersTable } from "@workspace/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth, riderAuth, verifyUserJwt } from "../middleware/security.js";
+import { t } from "@workspace/i18n";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
 
 const router: IRouter = Router();
 
@@ -27,11 +29,12 @@ router.post("/", async (req, res) => {
   const msgStr      = message ? ` · "${message}"` : "";
 
   const alertId = generateId();
+  const sosLang = await getUserLanguage(userId);
 
   await db.insert(notificationsTable).values({
     id: alertId,
     userId,
-    title: `🆘 SOS Alert — ${user?.name || "Unknown"} (${user?.role || "user"})`,
+    title: `🆘 ${t("sosAlert", sosLang)} — ${user?.name || "Unknown"} (${user?.role || "user"})`,
     body: `Phone: ${user?.phone || "N/A"}${rideStr}${locationStr}${msgStr}`,
     type: "sos",
     icon: "alert-circle-outline",

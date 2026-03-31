@@ -27,7 +27,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
 import { useToast } from "@/context/ToastContext";
-import { tDual, type TranslationKey } from "@workspace/i18n";
+import { tDual, type TranslationKey, type Language, LANGUAGE_OPTIONS } from "@workspace/i18n";
 import Accordion from "@/components/Accordion";
 import { API_BASE as API } from "@/utils/api";
 
@@ -435,6 +435,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
   const { showToast } = useToast();
   const { biometricEnabled, setBiometricEnabled, user, updateUser } = useAuth();
   const { config } = usePlatformConfig();
+  const { language: currentLang, setLanguage, loading: langLoading } = useLanguage();
   const [cfg,     setCfg]     = useState<Record<string, boolean>>({});
   const cfgRef = React.useRef<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -572,6 +573,30 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
         </View>
         {loading ? <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} /> : (
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 40 }}>
+            <Accordion title="🌐 Language" icon="language-outline" iconColor={C.primary} iconBg={C.primarySoft}>
+              <View style={secCard.wrap}>
+                <View style={{ paddingHorizontal: 4, paddingBottom: 4 }}>
+                  <Text style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>Choose your preferred language</Text>
+                  {LANGUAGE_OPTIONS.map((opt) => {
+                    const selected = currentLang === opt.value;
+                    return (
+                      <Pressable
+                        key={opt.value}
+                        onPress={async () => { if (!selected && !langLoading) await setLanguage(opt.value as Language); }}
+                        style={{
+                          flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12,
+                          marginBottom: 4, borderRadius: 10, backgroundColor: selected ? C.primarySoft : C.surfaceSecondary,
+                          borderWidth: 1.5, borderColor: selected ? C.primary : "transparent",
+                        }}
+                      >
+                        <Text style={{ flex: 1, fontSize: 14, fontWeight: selected ? "700" : "400", color: selected ? C.primary : C.text }}>{opt.label}</Text>
+                        {selected && <Ionicons name="checkmark-circle" size={18} color={C.primary} />}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </Accordion>
             <Accordion title="🔔 Notifications" icon="notifications-outline" iconColor={C.accent} iconBg={C.accentSoft} defaultOpen={true} badge="4 toggles" badgeColor={C.textMuted} badgeBg={C.surfaceSecondary}>
               <View style={secCard.wrap}>
                 <ToggleRow k="notifOrders"  label="Order Updates"    sub="Delivery & order status"     icon="bag-outline"           ic={C.primary} ib={C.primarySoft} />

@@ -30,6 +30,8 @@ import {
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
+import { t, type TranslationKey } from "@workspace/i18n";
 import {
   checkAdminIPWhitelist,
   addAuditEntry,
@@ -679,35 +681,37 @@ async function sendUserNotification(userId: string, title: string, body: string,
   }).catch(() => {});
 }
 
-const ORDER_NOTIFICATIONS: Record<string, { title: string; body: string; icon: string }> = {
-  confirmed:         { title: "Order Confirmed! ✅", body: "Your order has been confirmed and is being prepared.", icon: "checkmark-circle-outline" },
-  preparing:         { title: "Order Being Prepared 🍳", body: "The vendor is now preparing your order.", icon: "restaurant-outline" },
-  out_for_delivery:  { title: "On the Way! 🚴", body: "Your order is out for delivery. Track your rider.", icon: "bicycle-outline" },
-  delivered:         { title: "Order Delivered! 🎉", body: "Your order has been delivered. Enjoy!", icon: "bag-check-outline" },
-  cancelled:         { title: "Order Cancelled ❌", body: "Your order has been cancelled by the store.", icon: "close-circle-outline" },
+type NotifKeys = { titleKey: TranslationKey; bodyKey: TranslationKey; icon: string };
+
+const ORDER_NOTIF_KEYS: Record<string, NotifKeys> = {
+  confirmed:        { titleKey: "notifOrderConfirmed",        bodyKey: "notifOrderConfirmedBody",        icon: "checkmark-circle-outline" },
+  preparing:        { titleKey: "notifOrderPreparing",        bodyKey: "notifOrderPreparingBody",        icon: "restaurant-outline" },
+  out_for_delivery: { titleKey: "notifOrderOutForDelivery",   bodyKey: "notifOrderOutForDeliveryBody",   icon: "bicycle-outline" },
+  delivered:        { titleKey: "notifOrderDelivered",        bodyKey: "notifOrderDeliveredBody",        icon: "bag-check-outline" },
+  cancelled:        { titleKey: "notifOrderCancelled",        bodyKey: "notifOrderCancelledBody",        icon: "close-circle-outline" },
 };
 
-const RIDE_NOTIFICATIONS: Record<string, { title: string; body: string; icon: string }> = {
-  accepted:    { title: "Driver Found! 🚗", body: "A driver has accepted your ride. They are on the way.", icon: "car-outline" },
-  arrived:     { title: "Driver Arrived! 📍", body: "Your driver has arrived at the pickup location.", icon: "location-outline" },
-  in_transit:  { title: "Ride Started 🛣️", body: "Your ride is now in progress. Sit back and relax.", icon: "navigate-outline" },
-  completed:   { title: "Ride Completed! ⭐", body: "Your ride has been completed. Thanks for choosing AJKMart!", icon: "star-outline" },
-  cancelled:   { title: "Ride Cancelled ❌", body: "Your ride has been cancelled.", icon: "close-circle-outline" },
+const RIDE_NOTIF_KEYS: Record<string, NotifKeys> = {
+  accepted:   { titleKey: "notifRideAccepted",   bodyKey: "notifRideAcceptedBody",   icon: "car-outline" },
+  arrived:    { titleKey: "notifRideArrived",    bodyKey: "notifRideArrivedBody",    icon: "location-outline" },
+  in_transit: { titleKey: "notifRideInTransit",  bodyKey: "notifRideInTransitBody",  icon: "navigate-outline" },
+  completed:  { titleKey: "notifRideCompleted",  bodyKey: "notifRideCompletedBody",  icon: "star-outline" },
+  cancelled:  { titleKey: "notifRideCancelled",  bodyKey: "notifRideCancelledBody",  icon: "close-circle-outline" },
 };
 
-const PHARMACY_NOTIFICATIONS: Record<string, { title: string; body: string; icon: string }> = {
-  confirmed:        { title: "Pharmacy Order Confirmed ✅", body: "Your medicine order has been confirmed.", icon: "checkmark-circle-outline" },
-  preparing:        { title: "Medicines Being Packed 💊", body: "Your medicines are being prepared for delivery.", icon: "medical-outline" },
-  out_for_delivery: { title: "Medicines On the Way! 🚴", body: "Your medicines are out for delivery.", icon: "bicycle-outline" },
-  delivered:        { title: "Medicines Delivered! 💊", body: "Your pharmacy order has been delivered.", icon: "bag-check-outline" },
-  cancelled:        { title: "Order Cancelled ❌", body: "Your pharmacy order has been cancelled.", icon: "close-circle-outline" },
+const PHARMACY_NOTIF_KEYS: Record<string, NotifKeys> = {
+  confirmed:        { titleKey: "notifPharmacyConfirmed",        bodyKey: "notifPharmacyConfirmedBody",        icon: "checkmark-circle-outline" },
+  preparing:        { titleKey: "notifPharmacyPreparing",        bodyKey: "notifPharmacyPreparingBody",        icon: "medical-outline" },
+  out_for_delivery: { titleKey: "notifPharmacyOutForDelivery",   bodyKey: "notifPharmacyOutForDeliveryBody",   icon: "bicycle-outline" },
+  delivered:        { titleKey: "notifPharmacyDelivered",        bodyKey: "notifPharmacyDeliveredBody",        icon: "bag-check-outline" },
+  cancelled:        { titleKey: "notifPharmacyCancelled",        bodyKey: "notifPharmacyCancelledBody",        icon: "close-circle-outline" },
 };
 
-const PARCEL_NOTIFICATIONS: Record<string, { title: string; body: string; icon: string }> = {
-  accepted:    { title: "Rider Assigned! 📦", body: "A rider has been assigned to deliver your parcel.", icon: "person-outline" },
-  in_transit:  { title: "Parcel In Transit 🚚", body: "Your parcel is on the way to the destination.", icon: "cube-outline" },
-  completed:   { title: "Parcel Delivered! ✅", body: "Your parcel has been delivered successfully.", icon: "checkmark-circle-outline" },
-  cancelled:   { title: "Booking Cancelled ❌", body: "Your parcel booking has been cancelled.", icon: "close-circle-outline" },
+const PARCEL_NOTIF_KEYS: Record<string, NotifKeys> = {
+  accepted:   { titleKey: "notifParcelAccepted",   bodyKey: "notifParcelAcceptedBody",   icon: "person-outline" },
+  in_transit: { titleKey: "notifParcelInTransit",  bodyKey: "notifParcelInTransitBody",  icon: "cube-outline" },
+  completed:  { titleKey: "notifParcelCompleted",  bodyKey: "notifParcelCompletedBody",  icon: "checkmark-circle-outline" },
+  cancelled:  { titleKey: "notifParcelCancelled",  bodyKey: "notifParcelCancelledBody",  icon: "close-circle-outline" },
 };
 
 /* ── Admin login — issues a signed, time-limited JWT (4 hours) ── */
@@ -1054,9 +1058,10 @@ router.patch("/orders/:id/status", async (req, res) => {
     order = updated;
   }
 
-  const notif = ORDER_NOTIFICATIONS[status];
-  if (notif) {
-    await sendUserNotification(order.userId, notif.title, notif.body, "mart", notif.icon);
+  const notifKeys = ORDER_NOTIF_KEYS[status];
+  if (notifKeys) {
+    const orderUserLang = await getUserLanguage(order.userId);
+    await sendUserNotification(order.userId, t(notifKeys.titleKey, orderUserLang), t(notifKeys.bodyKey, orderUserLang), "mart", notifKeys.icon);
   }
 
   // NOTE: Wallet is already debited when order is PLACED (orders.ts).
@@ -1194,9 +1199,10 @@ router.patch("/rides/:id/status", async (req, res) => {
     .returning();
   if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
 
-  const notif = RIDE_NOTIFICATIONS[status];
-  if (notif) {
-    await sendUserNotification(ride.userId, notif.title, notif.body, "ride", notif.icon);
+  const rideNotifKeys = RIDE_NOTIF_KEYS[status];
+  if (rideNotifKeys) {
+    const rideUserLang = await getUserLanguage(ride.userId);
+    await sendUserNotification(ride.userId, t(rideNotifKeys.titleKey, rideUserLang), t(rideNotifKeys.bodyKey, rideUserLang), "ride", rideNotifKeys.icon);
   }
 
   // NOTE: Wallet already debited at ride booking (rides.ts).
@@ -1217,7 +1223,8 @@ router.patch("/rides/:id/status", async (req, res) => {
         amount: String(riderEarning),
         description: `Ride earnings — #${ride.id.slice(-6).toUpperCase()} (${Math.round(riderKeepPct * 100)}%)`,
       });
-      await sendUserNotification(ride.riderId, "Ride Payment Received 💰", `Rs. ${riderEarning} wallet mein add ho gaya!`, "ride", "wallet-outline");
+      const riderLang = await getUserLanguage(ride.riderId);
+      await sendUserNotification(ride.riderId, t("notifRidePaymentReceived", riderLang), t("notifRidePaymentReceivedBody", riderLang).replace("{amount}", String(riderEarning)), "ride", "wallet-outline");
     }
   }
 
@@ -1261,9 +1268,10 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
     .returning();
   if (!order) { res.status(404).json({ error: "Not found" }); return; }
 
-  const notif = PHARMACY_NOTIFICATIONS[status];
-  if (notif) {
-    await sendUserNotification(order.userId, notif.title, notif.body, "pharmacy", notif.icon);
+  const pharmNotifKeys = PHARMACY_NOTIF_KEYS[status];
+  if (pharmNotifKeys) {
+    const pharmUserLang = await getUserLanguage(order.userId);
+    await sendUserNotification(order.userId, t(pharmNotifKeys.titleKey, pharmUserLang), t(pharmNotifKeys.bodyKey, pharmUserLang), "pharmacy", pharmNotifKeys.icon);
   }
 
   // Wallet refund on cancellation (atomic)
@@ -1273,7 +1281,8 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
       await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, order.userId));
       await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Pharmacy Order #${order.id.slice(-6).toUpperCase()} cancelled` });
     }).catch(() => {});
-    await sendUserNotification(order.userId, "Pharmacy Refund 💊💰", `Rs. ${refundAmt} refunded to your wallet.`, "pharmacy", "wallet-outline");
+    const pharmRefundLang = await getUserLanguage(order.userId);
+    await sendUserNotification(order.userId, t("notifPharmacyRefund", pharmRefundLang), t("notifPharmacyRefundBody", pharmRefundLang).replace("{amount}", refundAmt.toFixed(0)), "pharmacy", "wallet-outline");
   }
 
   res.json({ ...order, total: parseFloat(order.total) });
@@ -1306,9 +1315,10 @@ router.patch("/parcel-bookings/:id/status", async (req, res) => {
     .returning();
   if (!booking) { res.status(404).json({ error: "Not found" }); return; }
 
-  const notif = PARCEL_NOTIFICATIONS[status];
-  if (notif) {
-    await sendUserNotification(booking.userId, notif.title, notif.body, "parcel", notif.icon);
+  const parcelNotifKeys = PARCEL_NOTIF_KEYS[status];
+  if (parcelNotifKeys) {
+    const parcelUserLang = await getUserLanguage(booking.userId);
+    await sendUserNotification(booking.userId, t(parcelNotifKeys.titleKey, parcelUserLang), t(parcelNotifKeys.bodyKey, parcelUserLang), "parcel", parcelNotifKeys.icon);
   }
 
   // Wallet refund on cancellation (atomic)
@@ -1318,7 +1328,8 @@ router.patch("/parcel-bookings/:id/status", async (req, res) => {
       await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${refundAmt}`, updatedAt: new Date() }).where(eq(usersTable.id, booking.userId));
       await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: booking.userId, type: "credit", amount: refundAmt.toFixed(2), description: `Refund — Parcel Booking #${booking.id.slice(-6).toUpperCase()} cancelled` });
     }).catch(() => {});
-    await sendUserNotification(booking.userId, "Parcel Refund 📦💰", `Rs. ${refundAmt} refunded to your wallet.`, "parcel", "wallet-outline");
+    const parcelRefundLang = await getUserLanguage(booking.userId);
+    await sendUserNotification(booking.userId, t("notifParcelRefund", parcelRefundLang), t("notifParcelRefundBody", parcelRefundLang).replace("{amount}", refundAmt.toFixed(0)), "parcel", "wallet-outline");
   }
 
   res.json({ ...booking, fare: parseFloat(booking.fare) });
@@ -1368,11 +1379,15 @@ router.patch("/products/:id/approve", async (req, res) => {
   if (product.vendorId && product.vendorId !== "ajkmart_system") {
     const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
     if (vendor) {
+      const vLang = await getUserLanguage(vendor.id);
+      const vBody = note
+        ? t("notifProductApprovedBodyNote", vLang).replace("{name}", product.name).replace("{note}", note)
+        : t("notifProductApprovedBody", vLang).replace("{name}", product.name);
       await db.insert(notificationsTable).values({
         id: generateId(),
         userId: vendor.id,
-        title: "Product Approved ✅",
-        body: `"${product.name}" approve ho gaya aur ab store mein visible hai.${note ? ` Note: ${note}` : ""}`,
+        title: t("notifProductApproved", vLang),
+        body: vBody,
         type: "system",
         icon: "checkmark-circle-outline",
       }).catch(() => {});
@@ -1393,11 +1408,12 @@ router.patch("/products/:id/reject", async (req, res) => {
   if (product.vendorId && product.vendorId !== "ajkmart_system") {
     const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
     if (vendor) {
+      const vLang = await getUserLanguage(vendor.id);
       await db.insert(notificationsTable).values({
         id: generateId(),
         userId: vendor.id,
-        title: "Product Rejected ❌",
-        body: `"${product.name}" reject ho gaya. Wajah: ${reason}`,
+        title: t("notifProductRejected", vLang),
+        body: t("notifProductRejectedBody", vLang).replace("{name}", product.name).replace("{reason}", reason),
         type: "system",
         icon: "close-circle-outline",
       }).catch(() => {});
@@ -1462,17 +1478,25 @@ router.delete("/products/:id", async (req, res) => {
 
 /* ── Broadcast Notification ── */
 router.post("/broadcast", async (req, res) => {
-  const { title, body, type = "system", icon = "notifications-outline" } = req.body;
-  if (!title || !body) { res.status(400).json({ error: "title and body required" }); return; }
+  const { title, body, titleKey, bodyKey, type = "system", icon = "notifications-outline" } = req.body;
+  if (!title && !titleKey) { res.status(400).json({ error: "title or titleKey required" }); return; }
+  if (!body && !bodyKey) { res.status(400).json({ error: "body or bodyKey required" }); return; }
 
   const users = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.isActive, true));
   let sent = 0;
   for (const user of users) {
+    let localTitle = title as string;
+    let localBody = body as string;
+    if (titleKey || bodyKey) {
+      const lang = await getUserLanguage(user.id);
+      if (titleKey) localTitle = t(titleKey as TranslationKey, lang);
+      if (bodyKey) localBody = t(bodyKey as TranslationKey, lang);
+    }
     await db.insert(notificationsTable).values({
       id: generateId(),
       userId: user.id,
-      title,
-      body,
+      title: localTitle,
+      body: localBody,
       type,
       icon,
     }).catch(() => {});
@@ -2307,10 +2331,13 @@ router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
   const ref = refNo ? `paid:${refNo.trim()}` : "paid:manual";
   await db.update(walletTransactionsTable).set({ reference: ref }).where(eq(walletTransactionsTable.id, txId));
   const amt = parseFloat(String(tx.amount));
+  const wdLang = await getUserLanguage(tx.userId);
+  const wdRef = refNo ? ` Reference: ${refNo}` : "";
+  const wdNote = note ? ` Note: ${note}` : "";
   await db.insert(notificationsTable).values({
     id: generateId(), userId: tx.userId,
-    title: "Withdrawal Processed ✅",
-    body: `Rs. ${amt.toFixed(0)} aapke account mein transfer kar diya gaya hai.${refNo ? ` Reference: ${refNo}` : ""}${note ? ` Note: ${note}` : ""}`,
+    title: t("notifWithdrawalApproved" as TranslationKey, wdLang),
+    body: t("notifWithdrawalApprovedBody" as TranslationKey, wdLang).replace("{amount}", amt.toFixed(0)).replace("{ref}", wdRef).replace("{note}", wdNote),
     type: "wallet", icon: "checkmark-circle-outline",
   }).catch(() => {});
   res.json({ success: true, txId, status: "paid", refNo: refNo || "manual" });
@@ -2336,10 +2363,11 @@ router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
     reference: `refund:${txId}`,
     paymentMethod: null,
   });
+  const wdRejLang = await getUserLanguage(tx.userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: tx.userId,
-    title: "Withdrawal Rejected ❌",
-    body: `Rs. ${amt.toFixed(0)} withdrawal reject ho gaya. Reason: ${rejReason}. Raqam wapas wallet mein aa gaya hai.`,
+    title: t("notifWithdrawalRejected" as TranslationKey, wdRejLang),
+    body: t("notifWithdrawalRejectedBody" as TranslationKey, wdRejLang).replace("{amount}", amt.toFixed(0)).replace("{reason}", rejReason),
     type: "wallet", icon: "close-circle-outline",
   }).catch(() => {});
   res.json({ success: true, txId, status: "rejected", reason: rejReason, refunded: amt });
@@ -2355,10 +2383,11 @@ router.patch("/withdrawal-requests/batch-approve", async (req, res) => {
     if (!tx || (tx.reference && tx.reference !== "pending")) continue;
     const refNo = `BATCH-${Date.now()}`;
     await db.update(walletTransactionsTable).set({ reference: refNo }).where(eq(walletTransactionsTable.id, txId));
+    const batchAppLang = await getUserLanguage(tx.userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: tx.userId,
-      title: "Withdrawal Approved ✅",
-      body: `Rs. ${parseFloat(String(tx.amount)).toFixed(0)} withdrawal approve ho gaya. Ref: ${refNo}`,
+      title: t("notifWithdrawalApproved" as TranslationKey, batchAppLang),
+      body: t("notifWithdrawalApprovedBody" as TranslationKey, batchAppLang).replace("{amount}", parseFloat(String(tx.amount)).toFixed(0)).replace("{ref}", ` Ref: ${refNo}`).replace("{note}", ""),
       type: "wallet", icon: "checkmark-circle-outline",
     }).catch(() => {});
     results.push(txId);
@@ -2382,6 +2411,13 @@ router.patch("/withdrawal-requests/batch-reject", async (req, res) => {
       id: generateId(), userId: tx.userId, type: "credit", amount: amt.toFixed(2),
       description: `Withdrawal Refunded — ${rejReason}`, reference: `refund:${txId}`, paymentMethod: null,
     });
+    const batchRejLang = await getUserLanguage(tx.userId);
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: tx.userId,
+      title: t("notifWithdrawalRejected" as TranslationKey, batchRejLang),
+      body: t("notifWithdrawalRejectedBody" as TranslationKey, batchRejLang).replace("{amount}", amt.toFixed(0)).replace("{reason}", rejReason),
+      type: "wallet", icon: "close-circle-outline",
+    }).catch(() => {});
     results.push(txId);
   }
   res.json({ success: true, rejected: results });
@@ -2447,10 +2483,11 @@ router.patch("/deposit-requests/:id/approve", async (req, res) => {
   }
 
   if (!approved) return;
+  const depApprLang = await getUserLanguage(tx.userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: tx.userId,
-    title: "Deposit Credited ✅",
-    body: `Rs. ${amt.toFixed(0)} aapki wallet mein add kar diya gaya hai!${refNo ? ` Ref: ${refNo}` : ""}${note ? ` Note: ${note}` : ""}`,
+    title: t("notifDepositCredited", depApprLang),
+    body: t("notifDepositCreditedBody", depApprLang).replace("{amount}", amt.toFixed(0)),
     type: "wallet", icon: "wallet-outline",
   }).catch(e => console.error("deposit approval notif failed:", e));
   res.json({ success: true, txId, status: "approved", credited: amt });
@@ -2480,10 +2517,11 @@ router.patch("/deposit-requests/:id/reject", async (req, res) => {
   }
 
   const amt = parseFloat(String(tx.amount));
+  const depRejLang = await getUserLanguage(tx.userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: tx.userId,
-    title: "Deposit Rejected ❌",
-    body: `Rs. ${amt.toFixed(0)} deposit request reject ho gayi. Reason: ${rejReason}.`,
+    title: t("notifDepositRejected", depRejLang),
+    body: t("notifDepositRejectedBody", depRejLang).replace("{amount}", amt.toFixed(0)).replace("{reason}", rejReason),
     type: "wallet", icon: "close-circle-outline",
   }).catch(e => console.error("deposit rejection notif failed:", e));
   res.json({ success: true, txId, status: "rejected", reason: rejReason });
@@ -2536,10 +2574,11 @@ router.post("/deposit-requests/bulk-approve", async (req, res) => {
   }
 
   for (const { tx, amt } of preChecked) {
+    const bulkApprLang = await getUserLanguage(tx.userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: tx.userId,
-      title: "Deposit Credited ✅",
-      body: `Rs. ${amt.toFixed(0)} aapki wallet mein add kar diya gaya hai!${refNo ? ` Ref: ${refNo}` : ""}`,
+      title: t("notifDepositCredited", bulkApprLang),
+      body: t("notifDepositCreditedBody", bulkApprLang).replace("{amount}", amt.toFixed(0)),
       type: "wallet", icon: "wallet-outline",
     }).catch(e => console.error("bulk deposit approval notif failed:", e));
   }
@@ -2590,10 +2629,11 @@ router.post("/deposit-requests/bulk-reject", async (req, res) => {
 
   for (const { tx } of preChecked) {
     const amt = parseFloat(String(tx.amount));
+    const bulkRejLang = await getUserLanguage(tx.userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: tx.userId,
-      title: "Deposit Rejected ❌",
-      body: `Rs. ${amt.toFixed(0)} deposit request reject ho gayi. Reason: ${rejReason}.`,
+      title: t("notifDepositRejected", bulkRejLang),
+      body: t("notifDepositRejectedBody", bulkRejLang).replace("{amount}", amt.toFixed(0)).replace("{reason}", rejReason),
       type: "wallet", icon: "close-circle-outline",
     }).catch(e => console.error("bulk deposit rejection notif failed:", e));
   }
@@ -2851,6 +2891,32 @@ router.post("/invalidate-cache", adminAuth, (_req, res) => {
    Sub-admins can set up Google Authenticator / Authy for their account.
    Super admin is not required to use TOTP (secret key is the master).
 ═══════════════════════════════════════════════════════════════ */
+
+/* GET /admin/me/language — get current admin's saved language */
+router.get("/me/language", adminAuth, async (req, res) => {
+  const adminId = req.adminId;
+  if (!adminId) {
+    res.json({ language: null });
+    return;
+  }
+  const [admin] = await db.select({ language: adminAccountsTable.language }).from(adminAccountsTable).where(eq(adminAccountsTable.id, adminId)).limit(1);
+  res.json({ language: admin?.language ?? null });
+});
+
+/* PUT /admin/me/language — save current admin's language preference */
+router.put("/me/language", adminAuth, async (req, res) => {
+  const adminId = req.adminId;
+  if (!adminId) {
+    res.json({ success: false, note: "Super admin language is managed locally" });
+    return;
+  }
+  const { language } = req.body as { language?: string };
+  if (!language) { res.status(400).json({ error: "language required" }); return; }
+  const VALID = new Set(["en", "ur", "roman", "en_roman", "en_ur"]);
+  if (!VALID.has(language)) { res.status(400).json({ error: "Invalid language" }); return; }
+  await db.update(adminAccountsTable).set({ language }).where(eq(adminAccountsTable.id, adminId));
+  res.json({ success: true, language });
+});
 
 /* GET /admin/mfa/status — check if MFA is set up for the current sub-admin */
 router.get("/mfa/status", adminAuth, async (req, res) => {
@@ -3524,10 +3590,11 @@ router.patch("/users/:id/request-correction", async (req, res) => {
     .returning();
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   addAuditEntry({ action: "user_correction_requested", ip: getClientIp(req), adminId: (req as any).adminId, details: `Correction requested for ${user.phone}: ${field}`, result: "success" });
+  const docLang = await getUserLanguage(user.id);
   await db.insert(notificationsTable).values({
     id: generateId(), userId: user.id,
-    title: "Document Correction Required 📄",
-    body: note || `Please re-upload your ${field || "document"} for verification.`,
+    title: t("notifDocumentCorrection", docLang),
+    body: note || t("notifDocumentCorrectionBody", docLang).replace("{field}", field || "document"),
     type: "system", icon: "document-outline",
   }).catch(() => {});
   res.json({ success: true, user: stripUser(user) });
@@ -3543,10 +3610,11 @@ router.patch("/users/:id/waive-debt", async (req, res) => {
   if (debt <= 0) { res.json({ success: true, message: "No debt to waive" }); return; }
   await db.update(usersTable).set({ cancellationDebt: "0", updatedAt: new Date() }).where(eq(usersTable.id, userId));
   addAuditEntry({ action: "debt_waived", ip: getClientIp(req), adminId: (req as any).adminId, details: `Cancelled debt of Rs.${debt.toFixed(0)} for ${user.phone}`, result: "success" });
+  const debtLang = await getUserLanguage(userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId,
-    title: "Cancellation Debt Waived ✅",
-    body: `Your outstanding cancellation fee of Rs. ${debt.toFixed(0)} has been waived by support.`,
+    title: t("notifDebtWaived", debtLang),
+    body: t("notifDebtWaivedBody", debtLang).replace("{amount}", debt.toFixed(0)),
     type: "system", icon: "checkmark-circle-outline",
   }).catch(() => {});
   res.json({ success: true, waived: debt });

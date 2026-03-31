@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [suspendedMessage, setSuspendedMessage] = useState("");
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [twoFactorPending, setTwoFactorPending] = useState<TwoFactorPending | null>(null);
-  const { syncToServer } = useLanguage();
+  const { syncToServer, setAuthToken } = useLanguage();
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearRefreshTimer = () => {
@@ -173,6 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setToken(null);
     setTwoFactorPending(null);
+    setAuthToken(null);
     setAuthTokenGetter(null);
     setRefreshTokenGetter(null);
     setOnTokenRefreshed(null);
@@ -220,7 +221,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const parsedUser = JSON.parse(storedUser);
           setUser(parsedUser);
           setToken(storedToken);
+          setAuthToken(storedToken);
           registerAuth(storedToken, storedRefresh);
+          syncToServer(storedToken).catch(() => {});
         }
       } catch {}
       setIsLoading(false);
@@ -259,6 +262,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(userData);
     setToken(userToken);
     setTwoFactorPending(null);
+    setAuthToken(userToken);
     registerAuth(userToken, refreshToken ?? null);
     syncToServer(userToken).catch(() => {});
     /* Capture customer location on login (foreground only) */

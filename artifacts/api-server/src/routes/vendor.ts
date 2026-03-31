@@ -5,6 +5,8 @@ import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg } from "dri
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { verifyUserJwt, writeAuthAuditLog, getClientIp } from "../middleware/security.js";
+import { t } from "@workspace/i18n";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
 
 const router: IRouter = Router();
 
@@ -212,11 +214,12 @@ router.patch("/orders/:id/status", async (req, res) => {
   }
 
   const orderId = req.params["id"]!;
+  const custLang = await getUserLanguage(order.userId);
   const msgs: Record<string, { title: string; body: string }> = {
-    confirmed: { title: "Order Confirmed! ✅", body: "Your order has been accepted by the store." },
-    preparing: { title: "Being Prepared 🍳",  body: "The store is preparing your order now." },
-    ready:     { title: "Order Ready! 📦",    body: "Your order is ready and waiting for pickup." },
-    cancelled: { title: "Order Cancelled ❌", body: "Your order was cancelled by the store." },
+    confirmed: { title: t("notifOrderConfirmed", custLang) + " ✅", body: t("notifOrderConfirmedBody", custLang) },
+    preparing: { title: t("notifOrderPreparing", custLang) + " 🍳",  body: t("notifOrderPreparingBody", custLang) },
+    ready:     { title: t("notifOrderReady", custLang) + " 📦",    body: t("notifOrderReadyBody", custLang) },
+    cancelled: { title: t("notifOrderCancelled", custLang) + " ❌", body: t("notifOrderCancelledBody", custLang) },
   };
 
   let updated: typeof order;
@@ -247,7 +250,7 @@ router.patch("/orders/:id/status", async (req, res) => {
     });
     if (!txResult) { res.status(409).json({ error: "Order has already been refunded" }); return; }
     updated = txResult;
-    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: "Refund Processed 💰", body: `Rs. ${refundAmt} refunded to your wallet — Order #${orderId.slice(-6).toUpperCase()}`, type: "wallet", icon: "wallet-outline" }).catch(() => {});
+    await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: t("notifRefundProcessed", custLang) + " 💰", body: t("notifRefundProcessedBody", custLang).replace("{amount}", refundAmt.toFixed(0)), type: "wallet", icon: "wallet-outline" }).catch(() => {});
   } else {
     /* Non-wallet or non-cancel: plain status update — vendorId in WHERE closes TOCTOU window */
     const [result] = await db.update(ordersTable)
@@ -488,9 +491,12 @@ router.post("/wallet/withdraw", async (req, res) => {
       return balance - amt;
     });
 
+    const wdLang = await getUserLanguage(vendorId);
     await db.insert(notificationsTable).values({
-      id: generateId(), userId: vendorId, title: "Withdrawal Requested ✅",
-      body: `Rs. ${amt} withdrawal requested. Admin will process within 24-48 hours.`, type: "wallet", icon: "cash-outline",
+      id: generateId(), userId: vendorId,
+      title: t("notifVendorWithdrawal", wdLang),
+      body: t("notifVendorWithdrawalBody", wdLang).replace("{amount}", String(amt)),
+      type: "wallet", icon: "cash-outline",
     }).catch(() => {});
 
     res.json({ success: true, newBalance: parseFloat(result.toFixed(2)), amount: amt });

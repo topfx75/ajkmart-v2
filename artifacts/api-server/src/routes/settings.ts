@@ -4,6 +4,7 @@ import { userSettingsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
+import { getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
 
 const router: IRouter = Router();
 
@@ -11,7 +12,7 @@ router.use(customerAuth);
 
 const VALID_LANGUAGES = ["en", "ur", "roman", "en_roman", "en_ur"] as const;
 
-const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS_BASE = {
   notifOrders: true,
   notifWallet: true,
   notifDeals: true,
@@ -20,7 +21,6 @@ const DEFAULT_SETTINGS = {
   biometric: false,
   twoFactor: false,
   darkMode: false,
-  language: "en" as const,
 };
 
 router.get("/", async (req, res) => {
@@ -28,8 +28,9 @@ router.get("/", async (req, res) => {
 
   let [settings] = await db.select().from(userSettingsTable).where(eq(userSettingsTable.userId, userId)).limit(1);
   if (!settings) {
+    const platformLang = await getPlatformDefaultLanguage();
     const id = generateId();
-    await db.insert(userSettingsTable).values({ id, userId, ...DEFAULT_SETTINGS });
+    await db.insert(userSettingsTable).values({ id, userId, ...DEFAULT_SETTINGS_BASE, language: platformLang });
     [settings] = await db.select().from(userSettingsTable).where(eq(userSettingsTable.userId, userId)).limit(1);
   }
   res.json({ ...settings, updatedAt: settings!.updatedAt.toISOString() });
@@ -45,8 +46,9 @@ router.put("/", async (req, res) => {
 
   let [existing] = await db.select().from(userSettingsTable).where(eq(userSettingsTable.userId, userId)).limit(1);
   if (!existing) {
+    const platformLang = await getPlatformDefaultLanguage();
     const id = generateId();
-    await db.insert(userSettingsTable).values({ id, userId, ...DEFAULT_SETTINGS, ...updates });
+    await db.insert(userSettingsTable).values({ id, userId, ...DEFAULT_SETTINGS_BASE, language: platformLang, ...updates });
   } else {
     await db.update(userSettingsTable).set({ ...updates, updatedAt: new Date() }).where(eq(userSettingsTable.userId, userId));
   }

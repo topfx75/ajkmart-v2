@@ -5,6 +5,8 @@ import { eq, sql, and, gte, count, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { customerAuth, riderAuth, addSecurityEvent, idorGuard } from "../middleware/security.js";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
+import { t, type TranslationKey } from "@workspace/i18n";
 
 const router: IRouter = Router();
 
@@ -318,10 +320,11 @@ router.post("/", customerAuth, async (req, res) => {
         return newOrder!;
       });
 
+      const phLang1 = await getUserLanguage(userId);
       await db.insert(notificationsTable).values({
         id: generateId(), userId,
-        title: "Pharmacy Order Placed",
-        body: `Aapka pharmacy order place ho gaya. Rs. ${total.toFixed(0)} (items + Rs. ${deliveryFee} delivery) — ETA: ${estimatedTime}`,
+        title: t("notifPharmacyOrderPlaced" as TranslationKey, phLang1),
+        body: t("notifPharmacyOrderPlacedBody" as TranslationKey, phLang1).replace("{amount}", `${total.toFixed(0)} (items + Rs. ${deliveryFee} delivery)`).replace("{eta}", estimatedTime),
         type: "pharmacy", icon: "medical-outline", link: `/(tabs)/orders`,
       }).catch(() => {});
 
@@ -341,10 +344,11 @@ router.post("/", customerAuth, async (req, res) => {
     status: "pending", estimatedTime,
   }).returning();
 
+  const phLang2 = await getUserLanguage(userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId,
-    title: "Pharmacy Order Placed",
-    body: `Aapka pharmacy order place ho gaya. Rs. ${total.toFixed(0)} (items + Rs. ${deliveryFee} delivery) — ETA: ${estimatedTime}`,
+    title: t("notifPharmacyOrderPlaced" as TranslationKey, phLang2),
+    body: t("notifPharmacyOrderPlacedBody" as TranslationKey, phLang2).replace("{amount}", `${total.toFixed(0)} (items + Rs. ${deliveryFee} delivery)`).replace("{eta}", estimatedTime),
     type: "pharmacy", icon: "medical-outline", link: `/(tabs)/orders`,
   }).catch(() => {});
 
@@ -410,10 +414,11 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       return null;
     });
     if (!cancelledOrder) return;
+    const phRefLang = await getUserLanguage(userId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId,
-      title: "Pharmacy Order Refunded 💰",
-      body: `Rs. ${refund.toFixed(0)} wapas aapke wallet mein aa gaya hai.`,
+      title: t("notifPharmacyRefund" as TranslationKey, phRefLang),
+      body: t("notifPharmacyRefundBody" as TranslationKey, phRefLang).replace("{amount}", refund.toFixed(0)),
       type: "pharmacy", icon: "wallet-outline",
     }).catch(() => {});
     refundAmount = refund;

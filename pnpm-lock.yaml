@@ -568,6 +568,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/i18n':
+        specifier: workspace:*
+        version: link:../../lib/i18n
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3

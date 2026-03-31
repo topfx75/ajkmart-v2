@@ -11,6 +11,22 @@
 
 const GRAPH_VERSION = "v19.0";
 
+/**
+ * Maps our internal language codes to WhatsApp-supported BCP-47 codes.
+ * WhatsApp templates are pre-approved per language; if the user's language
+ * doesn't have an approved template variant, we fall back to "en".
+ */
+function toWhatsAppLangCode(lang?: string): string {
+  switch (lang) {
+    case "ur":      return "ur";
+    case "roman":
+    case "en_roman":
+    case "en_ur":
+    case "en":
+    default:        return "en";
+  }
+}
+
 function toWhatsAppNumber(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("92")) return digits;
@@ -65,7 +81,8 @@ async function sendTemplate(
 export async function sendWhatsAppOTP(
   phone: string,
   otp: string,
-  settings: Record<string, string>
+  settings: Record<string, string>,
+  userLanguage?: string
 ): Promise<WAResult> {
   if (settings["integration_whatsapp"] !== "on") {
     return { sent: false, error: "WhatsApp integration not enabled" };
@@ -80,18 +97,19 @@ export async function sendWhatsAppOTP(
   }
 
   const to = toWhatsAppNumber(phone);
+  const langCode = toWhatsAppLangCode(userLanguage);
 
   const result = await sendTemplate(
     to,
     templateName,
-    "en",
+    langCode,
     [{ type: "body", parameters: [{ type: "text", text: otp }] }],
     phoneNumberId,
     accessToken
   );
 
   if (result.sent) {
-    console.log(`[WhatsApp] OTP sent to ${to}, messageId: ${result.messageId}`);
+    console.log(`[WhatsApp] OTP sent to ${to}, lang: ${langCode}, messageId: ${result.messageId}`);
   } else {
     console.error(`[WhatsApp] Failed to send OTP:`, result.error);
   }
@@ -103,7 +121,8 @@ export async function sendWhatsAppOrderNotification(
   phone: string,
   orderId: string,
   status: string,
-  settings: Record<string, string>
+  settings: Record<string, string>,
+  userLanguage?: string
 ): Promise<WAResult> {
   if (settings["integration_whatsapp"] !== "on") {
     return { sent: false, error: "WhatsApp integration not enabled" };
@@ -118,11 +137,12 @@ export async function sendWhatsAppOrderNotification(
   }
 
   const to = toWhatsAppNumber(phone);
+  const langCode = toWhatsAppLangCode(userLanguage);
 
   return sendTemplate(
     to,
     templateName,
-    "en",
+    langCode,
     [
       { type: "body", parameters: [
         { type: "text", text: orderId },

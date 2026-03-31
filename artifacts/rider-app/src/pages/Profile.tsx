@@ -925,17 +925,15 @@ export default function Profile() {
                 </div>
                 <span className="text-sm font-semibold text-gray-800">{T("languageLabel")}</span>
               </div>
-              <div className="flex bg-gray-100 rounded-xl p-0.5 gap-0.5">
-                <button
-                  onClick={() => setLanguage("en")}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${language === "en" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
-                  EN
-                </button>
-                <button
-                  onClick={() => setLanguage("ur")}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${language === "ur" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
-                  اردو
-                </button>
+              <div className="flex flex-wrap bg-gray-100 rounded-xl p-0.5 gap-0.5">
+                {(["en","ur","roman","en_roman","en_ur"] as const).map(lang => (
+                  <button
+                    key={lang}
+                    onClick={() => setLanguage(lang)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all ${language === lang ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
+                    {lang === "en" ? "EN" : lang === "ur" ? "اردو" : lang === "roman" ? "Roman" : lang === "en_roman" ? "EN+Ro" : "EN+اردو"}
+                  </button>
+                ))}
               </div>
             </div>
 

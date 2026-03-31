@@ -11,6 +11,7 @@ export const adminAccountsTable = pgTable("admin_accounts", {
   isActive:    boolean("is_active").notNull().default(true),
   totpSecret:  text("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
+  language:    text("language").default("en"),
   lastLoginAt: timestamp("last_login_at"),
   createdAt:   timestamp("created_at").notNull().defaultNow(),
 });

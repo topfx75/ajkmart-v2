@@ -7,6 +7,8 @@ import {
 import { asc, desc, eq, and, sql, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
+import { getUserLanguage } from "../lib/getUserLanguage.js";
+import { t, type TranslationKey } from "@workspace/i18n";
 
 const router: IRouter = Router();
 
@@ -152,10 +154,15 @@ router.post("/subscribe", customerAuth, async (req, res) => {
     .where(eq(schoolRoutesTable.id, routeId));
 
   /* Notification */
+  const schoolLang = await getUserLanguage(userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId,
-    title: "School Shift Subscribe Ho Gaya! 🚌",
-    body: `${studentName} ko ${route.schoolName} ke liye subscribe kar diya gaya. Route: ${route.fromArea} → ${route.toAddress}. Monthly: Rs. ${monthlyAmt.toFixed(0)}`,
+    title: t("notifSchoolSubscribedTitle" as TranslationKey, schoolLang),
+    body: t("notifSchoolSubscribedBody" as TranslationKey, schoolLang)
+      .replace("{student}", studentName)
+      .replace("{school}", route.schoolName)
+      .replace("{route}", `${route.fromArea} → ${route.toAddress}`)
+      .replace("{amount}", monthlyAmt.toFixed(0)),
     type: "ride", icon: "bus-outline",
   }).catch(() => {});
 
