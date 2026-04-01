@@ -4,7 +4,7 @@ import {
   Activity, ShoppingBag, Car, Pill, Package, Shield, UserCog,
   Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
   Download, FileText, CalendarDays, Eye, AlertCircle, MessageSquare,
-  Users as UsersIcon, Loader2,
+  Users as UsersIcon, Loader2, AtSign, Phone, Mail, User as UserIcon,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -247,6 +247,10 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
   const [securityNote,    setSecurityNote]    = useState<string>(user.securityNote || "");
   const [totpEnabled,     setTotpEnabled]     = useState<boolean>(user.totpEnabled || false);
 
+  const [editUsername, setEditUsername] = useState<string>(user.username || "");
+  const [editEmail,   setEditEmail]    = useState<string>(user.email || "");
+  const [editName,    setEditName]     = useState<string>(user.name || "");
+
   const securityMutation = useMutation({
     mutationFn: (body: any) => fetcher(`/users/${user.id}/security`, { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: (_data, vars: any) => {
@@ -288,6 +292,24 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
+
+  const identityMutation = useMutation({
+    mutationFn: (body: any) => fetcher(`/users/${user.id}/identity`, { method: "PATCH", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({ title: "Identity updated", description: "User identity fields saved successfully." });
+    },
+    onError: (e: any) => toast({ title: "Identity update failed", description: e.message, variant: "destructive" }),
+  });
+
+  const handleIdentitySave = () => {
+    const body: Record<string, string> = {};
+    if (editName.trim() !== (user.name || "")) body.name = editName.trim();
+    if (editUsername.trim().toLowerCase() !== (user.username || "")) body.username = editUsername.trim();
+    if (editEmail.trim().toLowerCase() !== (user.email || "")) body.email = editEmail.trim();
+    if (Object.keys(body).length === 0) { toast({ title: "No changes", description: "No identity fields were modified." }); return; }
+    identityMutation.mutate(body);
+  };
 
   const toggleRole = (r: string) => {
     setRoles(prev => {
@@ -337,6 +359,33 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
               <p className="font-semibold text-sm">{user.name || user.phone}</p>
               <p className="text-xs text-muted-foreground">{user.phone} · Wallet: <strong>{formatCurrency(user.walletBalance)}</strong></p>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2"><AtSign className="w-4 h-4 text-[#1A56DB]"/> Identity Fields</h3>
+            <div className="space-y-2">
+              <div className="relative">
+                <UserIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input placeholder="Full name" value={editName} onChange={e => setEditName(e.target.value)} className="h-10 pl-9 rounded-xl" />
+              </div>
+              <div className="relative">
+                <AtSign className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input placeholder="Username (min 3 chars, lowercase)" value={editUsername} onChange={e => setEditUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} className="h-10 pl-9 rounded-xl font-mono" />
+              </div>
+              <div className="relative">
+                <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input placeholder="Email address" type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="h-10 pl-9 rounded-xl" />
+              </div>
+              <div className="relative">
+                <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input value={user.phone || ""} disabled className="h-10 pl-9 rounded-xl bg-muted/50 text-muted-foreground cursor-not-allowed" />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">Primary (read-only)</span>
+              </div>
+            </div>
+            <Button size="sm" onClick={handleIdentitySave} disabled={identityMutation.isPending} className="w-full h-9 rounded-xl bg-[#1A56DB] hover:bg-[#1A56DB]/90 text-white gap-2">
+              {identityMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>}
+              Save Identity
+            </Button>
           </div>
 
           <div className="space-y-2">
@@ -1200,6 +1249,8 @@ export default function Users() {
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-xs text-muted-foreground font-mono">{user.id.slice(-8).toUpperCase()}</p>
+                                {user.username && <span className="flex items-center gap-0.5 text-[10px] font-mono text-violet-600">@{user.username}</span>}
+                                {user.email && <span className="flex items-center gap-0.5 text-[10px] text-blue-600 truncate max-w-[140px]"><Mail className="w-2.5 h-2.5 flex-shrink-0"/>{user.email}</span>}
                                 {user.city && <span className="flex items-center gap-0.5 text-[10px] text-[#1A56DB]"><MapPin className="w-2.5 h-2.5"/>{user.city}</span>}
                                 {userRoles.includes("rider") && user.vehiclePlate && <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-700 px-1.5 rounded">{user.vehiclePlate}</span>}
                                 {userRoles.includes("vendor") && user.businessType && <span className="text-[10px] text-orange-600 capitalize">{user.businessType}</span>}

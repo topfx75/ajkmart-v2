@@ -1838,6 +1838,79 @@ router.patch("/users/:id/security", async (req, res) => {
   res.json({ ...user, walletBalance: parseFloat(String(user.walletBalance)) });
 });
 
+/* ── PATCH /admin/users/:id/identity — Admin update user identity (username, email, name) ── */
+router.patch("/users/:id/identity", async (req, res) => {
+  const userId = req.params["id"]!;
+  const body = req.body as Record<string, unknown>;
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+
+  if (body.username !== undefined) {
+    const raw = String(body.username).toLowerCase().replace(/[^a-z0-9_]/g, "").trim();
+    if (raw && raw.length < 3) { res.status(400).json({ error: "Username must be at least 3 characters" }); return; }
+    if (raw) {
+      const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.username}) = ${raw}`).limit(1);
+      if (existing && existing.id !== userId) {
+        res.status(409).json({ error: "Username already taken by another account" }); return;
+      }
+      updates.username = raw;
+    } else {
+      updates.username = null;
+    }
+  }
+
+  if (body.email !== undefined) {
+    const raw = String(body.email).toLowerCase().trim();
+    if (raw && !raw.includes("@")) { res.status(400).json({ error: "Invalid email format" }); return; }
+    if (raw) {
+      const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.email}) = ${raw}`).limit(1);
+      if (existing && existing.id !== userId) {
+        res.status(409).json({ error: "Email already linked to another account" }); return;
+      }
+      updates.email = raw;
+      updates.emailVerified = false;
+    } else {
+      updates.email = null;
+      updates.emailVerified = false;
+    }
+  }
+
+  if (body.name !== undefined) {
+    const raw = String(body.name).trim();
+    if (raw) updates.name = raw;
+  }
+
+  if (body.phone !== undefined) {
+    const raw = String(body.phone).replace(/[\s\-()]/g, "");
+    if (raw) {
+      const normalized = raw.replace(/^\+?92/, "").replace(/^0/, "");
+      if (!/^3\d{9}$/.test(normalized)) { res.status(400).json({ error: "Invalid phone format" }); return; }
+      const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, normalized)).limit(1);
+      if (existing && existing.id !== userId) {
+        res.status(409).json({ error: "Phone already linked to another account" }); return;
+      }
+      updates.phone = normalized;
+    }
+  }
+
+  if (Object.keys(updates).length <= 1) {
+    res.status(400).json({ error: "No valid fields to update" }); return;
+  }
+
+  const ip = getClientIp(req);
+  const changedFields = Object.keys(updates).filter(k => k !== "updatedAt");
+  addAuditEntry({ action: "admin_identity_update", ip, details: `Admin updated identity for ${userId}: ${changedFields.join(", ")}`, result: "success" });
+
+  const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  revokeAllUserSessions(userId).catch(() => {});
+
+  res.json({ ...stripUser(user), walletBalance: parseFloat(String(user.walletBalance)) });
+});
+
 router.post("/users/:id/reset-otp", async (req, res) => {
   await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, req.params["id"]!));
   res.json({ success: true, message: "OTP cleared — user must re-authenticate" });

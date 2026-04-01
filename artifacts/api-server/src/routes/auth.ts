@@ -748,7 +748,8 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   }
 
   if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended." }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Your account is inactive. Contact support." }); return; }
+  const isPendingEmail = user.approvalStatus === "pending";
+  if (!user.isActive && !isPendingEmail) { res.status(403).json({ error: "Your account is inactive. Contact support." }); return; }
 
   /* Lockout check using email as key */
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
@@ -841,7 +842,8 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
   }
 
   if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
+  const emailIsPending = user.approvalStatus === "pending";
+  if (!user.isActive && !emailIsPending) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
 
   /* Verify OTP — bypass also respects phoneVerifyRequired for consistency */
   const phoneVerifyRequired = settings["security_phone_verify"] === "on";
@@ -922,69 +924,97 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
 });
 
 /* ══════════════════════════════════════════════════════════════
-   POST /auth/login/username
-   Login with username + password. Body: { username, password }
+   POST /auth/login/username   (kept for backward-compat)
+   POST /auth/login            (new unified endpoint)
+   Unified identifier + password login (Binance-style).
+   Accepts phone, email, OR username as `identifier` (or `username`).
+   Body: { identifier, password } OR { username, password }
 ══════════════════════════════════════════════════════════════ */
-router.post("/login/username", verifyCaptcha, async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) { res.status(400).json({ error: "Username and password required" }); return; }
+function detectIdentifierType(raw: string): "phone" | "email" | "username" {
+  if (raw.includes("@")) return "email";
+  const cleaned = raw.replace(/[\s\-()]/g, "");
+  if (/^\+?92\d{10}$/.test(cleaned) || /^0?3\d{9}$/.test(cleaned)) return "phone";
+  if (/^\d{10,}$/.test(cleaned)) return "phone";
+  return "username";
+}
+
+async function findUserByIdentifier(identifier: string) {
+  const clean = identifier.toLowerCase().trim();
+  const idType = detectIdentifierType(clean);
+
+  if (idType === "phone") {
+    const phone = canonicalizePhone(clean);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+    return { user: user ?? null, idType, lookupKey: phone };
+  }
+  if (idType === "email") {
+    const [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${clean}`).limit(1);
+    return { user: user ?? null, idType, lookupKey: clean };
+  }
+  const [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.username}) = ${clean}`).limit(1);
+  return { user: user ?? null, idType, lookupKey: clean };
+}
+
+async function handleUnifiedLogin(req: Request, res: any) {
+  const identifier = (req.body?.identifier || req.body?.username || "").trim();
+  const { password } = req.body;
+  if (!identifier || !password) { res.status(400).json({ error: "Identifier and password required" }); return; }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabled(settings, "auth_username_password_enabled")) {
-    res.status(403).json({ error: "Username/password login is currently disabled." });
+    res.status(403).json({ error: "Password login is currently disabled." });
     return;
   }
 
-  const clean = username.toLowerCase().trim();
+  const { user, idType, lookupKey } = await findUserByIdentifier(identifier);
 
-  /* Lockout check */
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
-  const lockout = checkLockout(clean, maxAttempts, lockoutMinutes);
+
+  const lockoutKey = user ? `uid:${user.id}` : lookupKey;
+
+  const lockout = checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
     res.status(429).json({ error: `Account locked. Try again in ${lockout.minutesLeft} minute(s).` }); return;
   }
 
-  const [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.username}) = ${clean}`).limit(1);
   if (!user || !user.passwordHash) {
-    recordFailedAttempt(clean, maxAttempts, lockoutMinutes);
-    addAuditEntry({ action: "username_login_failed", ip, details: `Username not found or no password: ${clean}`, result: "fail" });
-    res.status(401).json({ error: "Invalid username or password" }); return;
+    recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
+    addAuditEntry({ action: "unified_login_failed", ip, details: `Not found or no password (${idType}): ${lookupKey}`, result: "fail" });
+    res.status(401).json({ error: "Invalid credentials" }); return;
   }
 
   if (!isAuthMethodEnabled(settings, "auth_username_password_enabled", user.role ?? "customer")) {
-    res.status(403).json({ error: "Username/password login is currently disabled for your account type." });
+    res.status(403).json({ error: "Password login is currently disabled for your account type." });
     return;
   }
 
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended." }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account inactive." }); return; }
+  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
+  const isPendingApproval = user.approvalStatus === "pending";
+  if (!user.isActive && !isPendingApproval) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
 
-  /* Verify password */
   const passwordOk = verifyPassword(password, user.passwordHash);
   if (!passwordOk) {
-    const updated = recordFailedAttempt(clean, maxAttempts, lockoutMinutes);
-    addAuditEntry({ action: "username_login_failed", ip, details: `Wrong password for username: ${clean}`, result: "fail" });
+    const updated = recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
+    addAuditEntry({ action: "unified_login_failed", ip, details: `Wrong password (${idType}): ${lookupKey}`, result: "fail" });
     if (updated.lockedUntil) {
       res.status(429).json({ error: `Too many failed attempts. Locked for ${lockoutMinutes} minutes.` });
     } else {
-      res.status(401).json({ error: `Invalid username or password. ${maxAttempts - updated.attempts} attempt(s) remaining.` });
+      res.status(401).json({ error: `Invalid credentials. ${maxAttempts - updated.attempts} attempt(s) remaining.` });
     }
     return;
   }
 
-  /* Check approval */
   if (user.approvalStatus === "rejected") {
     res.status(403).json({ error: "Account rejected. Contact admin.", approvalNote: user.approvalNote }); return;
   }
 
-  resetAttempts(clean);
+  resetAttempts(lockoutKey);
   await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
-  addAuditEntry({ action: "username_login", ip, details: `Username login: ${clean}`, result: "success" });
+  addAuditEntry({ action: "unified_login", ip, details: `Login via ${idType}: ${lookupKey}`, result: "success" });
 
-  /* ── 2FA challenge ── */
   if (user.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
     const deviceFingerprint = req.body.deviceFingerprint ?? "";
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
@@ -993,8 +1023,6 @@ router.post("/login/username", verifyCaptcha, async (req, res) => {
       res.json({ requires2FA: true, tempToken, userId: user.id }); return;
     }
   }
-
-  const isPendingApproval = user.approvalStatus === "pending";
 
   const accessToken = signAccessToken(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? "customer", user.tokenVersion ?? 0);
   const expiresAt   = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -1013,7 +1041,7 @@ router.post("/login/username", verifyCaptcha, async (req, res) => {
   await db.insert(refreshTokensTable).values({ id: generateId(), userId: user.id, tokenHash: refreshHash, expiresAt: refreshExpiresAt });
   db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch(() => {});
 
-  writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { method: "username_password" } });
+  writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { method: `password_${idType}`, identifier: lookupKey } });
 
   res.json({
     token:        accessToken,
@@ -1021,9 +1049,13 @@ router.post("/login/username", verifyCaptcha, async (req, res) => {
     expiresAt,
     sessionDays:  REFRESH_TOKEN_TTL_DAYS,
     pendingApproval: false,
+    identifierType: idType,
     user: { id: user.id, phone: user.phone, name: user.name, email: user.email, username: user.username, role: user.role, roles: user.roles, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"), emailVerified: user.emailVerified ?? false, phoneVerified: user.phoneVerified ?? false },
   });
-});
+}
+
+router.post("/login/username", verifyCaptcha, handleUnifiedLogin);
+router.post("/login", verifyCaptcha, handleUnifiedLogin);
 
 /* ══════════════════════════════════════════════════════════════
    POST /auth/complete-profile

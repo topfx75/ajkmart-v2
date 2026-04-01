@@ -578,9 +578,9 @@ export default function Login() {
 
             {method === "username" && step === "input" && (
               <>
-                <p className="text-sm text-gray-500 mb-4">{T("loginWith")} {T("usernameLabel")}</p>
-                <label className="text-xs font-extrabold text-gray-400 mb-1.5 block uppercase tracking-wider">{T("usernameLabel")}</label>
-                <input type="text" placeholder="your_username" value={username} onChange={e => setUsername(e.target.value.toLowerCase())} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                <p className="text-sm text-gray-500 mb-4">Phone, email, or username</p>
+                <label className="text-xs font-extrabold text-gray-400 mb-1.5 block uppercase tracking-wider">Identifier</label>
+                <input type="text" placeholder="Phone, email, or username" value={username} onChange={e => setUsername(e.target.value.trim())} onKeyDown={e => e.key === "Enter" && handleSubmit()}
                   className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-orange-400 mb-3 transition-all" autoFocus autoCapitalize="none" />
                 <label className="text-xs font-extrabold text-gray-400 mb-1.5 block uppercase tracking-wider">{T("passwordLabel")}</label>
                 <div className="relative mb-4">

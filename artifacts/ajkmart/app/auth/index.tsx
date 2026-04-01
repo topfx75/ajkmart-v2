@@ -276,14 +276,14 @@ export default function AuthScreen() {
 
   const handleUsernameLogin = async () => {
     clearError();
-    if (!username || username.length < 3) { setError("Please enter your username"); return; }
+    if (!username || username.length < 3) { setError("Enter your phone, email, or username"); return; }
     if (!password || password.length < 6) { setError("Please enter your password"); return; }
     setLoading(true);
     try {
       const fingerprint = await getDeviceFingerprint();
-      const res = await authPost("/auth/login/username", { username, password, deviceFingerprint: fingerprint });
+      const res = await authPost("/auth/login", { identifier: username, password, deviceFingerprint: fingerprint });
       await handleLoginResult(res);
-    } catch (e: any) { setError(e.message || "Invalid username or password."); }
+    } catch (e: any) { setError(e.message || "Invalid credentials."); }
     setLoading(false);
   };
 
@@ -697,10 +697,10 @@ export default function AuthScreen() {
           {method === "username" && step === "method" && (
             <>
               <Text style={styles.cardTitle}>{T("loginViaUsername")}</Text>
-              <Text style={styles.cardSubtitle}>{T("enterUsernamePassword")}</Text>
+              <Text style={styles.cardSubtitle}>Phone, email, or username</Text>
               <TextInput style={[styles.input, { marginBottom: 10 }]} value={username}
-                onChangeText={v => { setUsername(v.toLowerCase()); clearError(); }}
-                placeholder="Username" placeholderTextColor={C.textMuted} autoCapitalize="none" />
+                onChangeText={v => { setUsername(v.trim()); clearError(); }}
+                placeholder="Phone, email, or username" placeholderTextColor={C.textMuted} autoCapitalize="none" autoCorrect={false} />
               <View style={styles.pwdWrapper}>
                 <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} value={password}
                   onChangeText={v => { setPassword(v); clearError(); }}

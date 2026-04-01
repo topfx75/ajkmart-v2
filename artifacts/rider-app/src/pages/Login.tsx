@@ -576,8 +576,8 @@ export default function Login() {
           {method === "username" && step === "input" && (
             <>
               <h2 className="text-xl font-bold text-gray-800 mb-1">{T("usernameLogin")}</h2>
-              <p className="text-sm text-gray-500 mb-4">{T("enterUsernamePassword")}</p>
-              <input type="text" placeholder={T("username")} value={username} onChange={e => setUsername(e.target.value.toLowerCase())} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              <p className="text-sm text-gray-500 mb-4">Phone, email, or username</p>
+              <input type="text" placeholder="Phone, email, or username" value={username} onChange={e => setUsername(e.target.value.trim())} onKeyDown={e => e.key === "Enter" && handleSubmit()}
                 className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 mb-3" autoFocus />
               <div className="relative mb-4">
                 <input type={showPwd ? "text" : "password"} placeholder={T("password")} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
