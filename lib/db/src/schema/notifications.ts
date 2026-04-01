@@ -12,11 +12,20 @@ export const notificationsTable = pgTable("notifications", {
   icon: text("icon").default("notifications-outline"),
   link: text("link"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  /* SOS lifecycle fields — only populated for type='sos' rows */
+  sosStatus: text("sos_status").default("pending"),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: text("acknowledged_by"),
+  acknowledgedByName: text("acknowledged_by_name"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  resolvedByName: text("resolved_by_name"),
+  resolutionNotes: text("resolution_notes"),
 }, (t) => [
   index("notifications_user_id_idx").on(t.userId),
-  /* Composite index for the common query pattern: user's unread notifications */
   index("notifications_user_read_idx").on(t.userId, t.isRead),
   index("notifications_created_at_idx").on(t.createdAt),
+  index("notifications_sos_status_idx").on(t.sosStatus),
 ]);
 
 export const insertNotificationSchema = createInsertSchema(notificationsTable).omit({ createdAt: true });

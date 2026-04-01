@@ -522,3 +522,37 @@ export function emitRiderNewRequest(riderId: string, payload: {
   _io.to(`rider:${riderId}`).emit("rider:new-request", payload);
 }
 
+/* ── SOS lifecycle events ── broadcast to all admin-fleet sessions ── */
+
+export type SosAlertPayload = {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  link: string | null | undefined;
+  sosStatus: string;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  acknowledgedByName: string | null;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  resolvedByName: string | null;
+  resolutionNotes: string | null;
+  createdAt: string;
+};
+
+export function emitSosNew(payload: SosAlertPayload) {
+  if (!_io) return;
+  _io.to("admin-fleet").emit("sos:new", payload);
+}
+
+export function emitSosAcknowledged(payload: SosAlertPayload) {
+  if (!_io) return;
+  _io.to("admin-fleet").emit("sos:acknowledged", payload);
+}
+
+export function emitSosResolved(payload: SosAlertPayload) {
+  if (!_io) return;
+  _io.to("admin-fleet").emit("sos:resolved", payload);
+}
+

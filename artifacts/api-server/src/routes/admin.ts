@@ -51,6 +51,7 @@ import {
 } from "../middleware/security.js";
 import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri } from "../services/totp.js";
 import { hashPassword, verifyPassword, hashAdminSecret, verifyAdminSecret } from "../services/password.js";
+import { emitSosNew, emitSosAcknowledged, emitSosResolved } from "../lib/socketio.js";
 
 /* ── Sensitive field stripper — never leak hashes or OTP codes to API responses ── */
 function stripUser(u: Record<string, any>) {
@@ -4785,6 +4786,118 @@ router.post("/vendors/:id/override-suspension", async (req, res) => {
   }).catch(() => {});
 
   res.json({ success: true, user: stripUser(updated as any) });
+});
+
+/* ─── SOS Alert Management ───────────────────────────────────────────── */
+
+function serializeSosAlert(a: any) {
+  const ts = (v: any) => v ? (v instanceof Date ? v.toISOString() : String(v)) : null;
+  return {
+    id:                 a.id,
+    userId:             a.userId,
+    title:              a.title,
+    body:               a.body,
+    link:               a.link,
+    sosStatus:          a.sosStatus ?? "pending",
+    acknowledgedAt:     ts(a.acknowledgedAt),
+    acknowledgedBy:     a.acknowledgedBy ?? null,
+    acknowledgedByName: a.acknowledgedByName ?? a.acknowledgedBy ?? null,
+    resolvedAt:         ts(a.resolvedAt),
+    resolvedBy:         a.resolvedBy ?? null,
+    resolvedByName:     a.resolvedByName ?? a.resolvedBy ?? null,
+    resolutionNotes:    a.resolutionNotes ?? null,
+    createdAt:          ts(a.createdAt) ?? "",
+  };
+}
+
+const ALLOWED_SOS_STATUSES = new Set(["pending", "acknowledged", "resolved"]);
+
+/* GET /admin/sos/alerts?status=pending|acknowledged|resolved&page=1&limit=20 */
+router.get("/sos/alerts", async (req, res) => {
+  const page   = Math.max(1, parseInt(String(req.query["page"]  || "1"),  10));
+  const limit  = Math.min(50, Math.max(1, parseInt(String(req.query["limit"] || "20"), 10)));
+  const offset = (page - 1) * limit;
+  const rawStatus = req.query["status"] as string | undefined;
+  const statusFilter = rawStatus && ALLOWED_SOS_STATUSES.has(rawStatus) ? rawStatus : undefined;
+
+  const baseWhere = eq(notificationsTable.type, "sos");
+  const whereClause = statusFilter
+    ? and(baseWhere, eq(notificationsTable.sosStatus, statusFilter))
+    : baseWhere;
+
+  const [alerts, totalRows, unresolvedRows] = await Promise.all([
+    db.select().from(notificationsTable)
+      .where(whereClause)
+      .orderBy(desc(notificationsTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ id: notificationsTable.id }).from(notificationsTable).where(whereClause).then(r => r.length),
+    /* unresolved = pending + acknowledged (anything not resolved) */
+    db.select({ id: notificationsTable.id }).from(notificationsTable)
+      .where(and(eq(notificationsTable.type, "sos"), ne(notificationsTable.sosStatus, "resolved")))
+      .then(r => r.length),
+  ]);
+
+  res.json({
+    alerts:      alerts.map(serializeSosAlert),
+    total:       totalRows,
+    page,
+    hasMore:     offset + alerts.length < totalRows,
+    activeCount: unresolvedRows,
+  });
+});
+
+/* PATCH /admin/sos/alerts/:id/acknowledge */
+router.patch("/sos/alerts/:id/acknowledge", async (req, res) => {
+  const alertId  = req.params["id"];
+  const adminId  = (req as any).adminId  ?? "admin";
+  const adminName = (req as any).adminName ?? "Admin";
+
+  const [existing] = await db.select().from(notificationsTable)
+    .where(and(eq(notificationsTable.id, alertId), eq(notificationsTable.type, "sos")))
+    .limit(1);
+
+  if (!existing) { res.status(404).json({ error: "SOS alert not found" }); return; }
+  if (existing.sosStatus === "acknowledged") {
+    res.status(409).json({ error: "Alert is already acknowledged", acknowledgedBy: existing.acknowledgedByName ?? existing.acknowledgedBy ?? "another admin" });
+    return;
+  }
+  if (existing.sosStatus === "resolved") { res.status(409).json({ error: "Alert is already resolved" }); return; }
+
+  const now = new Date();
+  await db.update(notificationsTable)
+    .set({ sosStatus: "acknowledged", acknowledgedAt: now, acknowledgedBy: adminId, acknowledgedByName: adminName })
+    .where(eq(notificationsTable.id, alertId));
+
+  const [updatedAck] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, alertId)).limit(1);
+  const fullAckPayload = serializeSosAlert(updatedAck);
+  try { emitSosAcknowledged(fullAckPayload); } catch { /* non-critical */ }
+  res.json({ ok: true, alert: fullAckPayload });
+});
+
+/* PATCH /admin/sos/alerts/:id/resolve */
+router.patch("/sos/alerts/:id/resolve", async (req, res) => {
+  const alertId   = req.params["id"];
+  const adminId   = (req as any).adminId  ?? "admin";
+  const adminName = (req as any).adminName ?? "Admin";
+  const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : null;
+
+  const [existing] = await db.select().from(notificationsTable)
+    .where(and(eq(notificationsTable.id, alertId), eq(notificationsTable.type, "sos")))
+    .limit(1);
+
+  if (!existing) { res.status(404).json({ error: "SOS alert not found" }); return; }
+  if (existing.sosStatus === "resolved") { res.status(409).json({ error: "Alert is already resolved" }); return; }
+
+  const now = new Date();
+  await db.update(notificationsTable)
+    .set({ sosStatus: "resolved", resolvedAt: now, resolvedBy: adminId, resolvedByName: adminName, resolutionNotes: notes || null })
+    .where(eq(notificationsTable.id, alertId));
+
+  const [updatedRes] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, alertId)).limit(1);
+  const fullResPayload = serializeSosAlert(updatedRes);
+  try { emitSosResolved(fullResPayload); } catch { /* non-critical */ }
+  res.json({ ok: true, alert: fullResPayload });
 });
 
 export default router;

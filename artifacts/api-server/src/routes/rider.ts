@@ -2292,17 +2292,25 @@ router.post("/sos", async (req, res) => {
   const alertId = generateId();
   const sosLang = await getUserLanguage(riderId);
 
+  const now       = new Date();
+  const sosTitle  = `🆘 ${t("sosAlert", sosLang)} — ${riderUser.name || "Unknown"} (rider)`;
+  const sosBody   = `Phone: ${riderUser.phone || "N/A"}${rideStr}${locationStr}`;
+  const sosLink   = rideId ? `/rides/${rideId}` : `/users/${riderId}`;
+
   await db.insert(notificationsTable).values({
     id: alertId,
     userId: riderId,
-    title: `🆘 ${t("sosAlert", sosLang)} — ${riderUser.name || "Unknown"} (rider)`,
-    body: `Phone: ${riderUser.phone || "N/A"}${rideStr}${locationStr}`,
+    title: sosTitle,
+    body:  sosBody,
     type: "sos",
     icon: "alert-circle-outline",
-    link: rideId ? `/rides/${rideId}` : `/users/${riderId}`,
+    link: sosLink,
+    sosStatus: "pending",
   });
 
-  const { emitRiderSOS } = await import("../lib/socketio.js");
+  const { emitRiderSOS, emitSosNew } = await import("../lib/socketio.js");
+
+  /* Legacy relay event — keep for backward compat with existing fleet map listener */
   emitRiderSOS({
     userId:    riderId,
     name:      riderUser.name ?? "Rider",
@@ -2310,10 +2318,20 @@ router.post("/sos", async (req, res) => {
     latitude:  validCoords ? parsedLat! : null,
     longitude: validCoords ? parsedLng! : null,
     rideId:    rideId ?? null,
-    sentAt:    new Date().toISOString(),
+    sentAt:    now.toISOString(),
   });
 
-  res.json({ success: true, alertId, sentAt: new Date().toISOString() });
+  /* New lifecycle event — drives admin SOS alert panel and sidebar badge */
+  emitSosNew({
+    id: alertId, userId: riderId,
+    title: sosTitle, body: sosBody, link: sosLink,
+    sosStatus: "pending",
+    acknowledgedAt: null, acknowledgedBy: null, acknowledgedByName: null,
+    resolvedAt: null, resolvedBy: null, resolvedByName: null, resolutionNotes: null,
+    createdAt: now.toISOString(),
+  });
+
+  res.json({ success: true, alertId, sentAt: now.toISOString() });
 });
 
 const osrmQuerySchema = z.object({

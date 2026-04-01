@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard,
@@ -34,10 +34,12 @@ import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey, LANGUAGE_OPTIONS } from "@workspace/i18n";
+import { io, type Socket } from "socket.io-client";
+import { fetcher } from "@/lib/api";
 
 type NavGroup = {
   labelKey: TranslationKey;
-  items: { nameKey: TranslationKey; href: string; icon: any }[];
+  items: { nameKey: TranslationKey; href: string; icon: React.ElementType; sosBadge?: boolean }[];
 };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -98,13 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "navSecurity",
     items: [
       { nameKey: "navSecurityPage",  href: "/security",       icon: Shield },
-      { nameKey: "navSosAlerts",     href: "/sos-alerts",     icon: AlertTriangle },
-    ],
-  },
-  {
-    labelKey: "navReviewsMgmt",
-    items: [
-      { nameKey: "navReviews", href: "/reviews", icon: Star },
+      { nameKey: "navSosAlerts",     href: "/sos-alerts",     icon: AlertTriangle, sosBadge: true },
     ],
   },
   {
@@ -116,7 +112,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-const BOTTOM_NAV: { nameKey: TranslationKey; href: string; icon: any }[] = [
+const BOTTOM_NAV: { nameKey: TranslationKey; href: string; icon: React.ElementType }[] = [
   { nameKey: "navDashboard", href: "/dashboard", icon: LayoutDashboard },
   { nameKey: "navOrders",    href: "/orders",    icon: ShoppingBag },
   { nameKey: "navRides",     href: "/rides",     icon: Car },
@@ -133,6 +129,37 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [langOpen, setLangOpen] = useState(false);
   const { language, setLanguage, loading: langLoading } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+
+  /* ── Live SOS badge count ── */
+  const [sosCount, setSosCount] = useState(0);
+  const socketRef = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    /* Initial fetch of unresolved SOS count (pending + acknowledged) */
+    fetcher("/sos/alerts?limit=1")
+      .then((data: { activeCount?: number }) => { if (typeof data.activeCount === "number") setSosCount(data.activeCount); })
+      .catch(() => {});
+
+    /* Subscribe to real-time SOS events for badge updates */
+    const token = localStorage.getItem("ajkmart_admin_token") ?? "";
+    const socket = io(window.location.origin, {
+      path: "/api/socket.io",
+      query: { rooms: "admin-fleet" },
+      auth: { adminToken: token },
+      extraHeaders: { "x-admin-token": token },
+      transports: ["websocket", "polling"],
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => socket.emit("join", "admin-fleet"));
+
+    /* unresolved = pending + acknowledged; badge stays on acknowledge, drops on resolve */
+    socket.on("sos:new", () => setSosCount(c => c + 1));
+    socket.on("sos:acknowledged", () => { /* unresolved count unchanged — still active */ });
+    socket.on("sos:resolved", () => setSosCount(c => Math.max(0, c - 1)));
+
+    return () => { socket.disconnect(); socketRef.current = null; };
+  }, []);
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
@@ -174,6 +201,24 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <span className="ml-2 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">Admin</span>
       </div>
 
+      {/* Live SOS alert banner */}
+      {sosCount > 0 && (
+        <Link href="/sos-alerts">
+          <div className="mx-3 mt-2 flex items-center gap-2 bg-red-600 text-white rounded-xl px-3 py-2 cursor-pointer hover:bg-red-700 transition-colors">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-pulse" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold leading-tight">
+                {sosCount} Active SOS Alert{sosCount !== 1 ? "s" : ""}
+              </p>
+              <p className="text-[10px] text-red-200 leading-tight">Tap to respond</p>
+            </div>
+            <span className="text-xs font-black bg-white text-red-600 rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
+              {sosCount}
+            </span>
+          </div>
+        </Link>
+      )}
+
       <div className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
         {NAV_GROUPS.map(group => (
           <div key={group.labelKey}>
@@ -182,6 +227,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               {group.items.map((item) => {
                 const active = isActive(item.href);
                 const Icon = item.icon;
+                const showSosBadge = item.sosBadge && sosCount > 0;
                 return (
                   <Link key={item.href} href={item.href}>
                     <div
@@ -193,9 +239,21 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                         }
                       `}
                     >
-                      <Icon className={`w-[18px] h-[18px] mr-3 shrink-0 ${active ? "text-white" : "text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground"}`} />
+                      <div className="relative mr-3 flex-shrink-0">
+                        <Icon className={`w-[18px] h-[18px] ${active ? "text-white" : "text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground"}`} />
+                        {showSosBadge && !active && (
+                          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">
+                            {sosCount > 9 ? "9+" : sosCount}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-sm flex-1">{T(item.nameKey)}</span>
-                      {active && <ChevronRight className="w-4 h-4 text-white/70 ml-1" />}
+                      {showSosBadge && active && (
+                        <span className="text-[10px] font-black bg-white/25 text-white px-1.5 py-0.5 rounded-full">
+                          {sosCount > 9 ? "9+" : sosCount}
+                        </span>
+                      )}
+                      {!showSosBadge && active && <ChevronRight className="w-4 h-4 text-white/70 ml-1" />}
                     </div>
                   </Link>
                 );
@@ -300,6 +358,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               <span className="text-xs font-medium text-muted-foreground">{T("live")}</span>
             </div>
 
+            {/* SOS alert badge in header — mobile */}
+            {sosCount > 0 && (
+              <Link href="/sos-alerts">
+                <div className="flex items-center gap-1.5 bg-red-100 text-red-700 border border-red-200 rounded-xl px-2.5 py-1.5 cursor-pointer hover:bg-red-200 transition-colors">
+                  <AlertTriangle className="w-4 h-4 animate-pulse" />
+                  <span className="text-xs font-bold">{sosCount}</span>
+                </div>
+              </Link>
+            )}
+
             {/* Language Selector — desktop only; on mobile it's in the sidebar menu */}
             <div className="relative hidden sm:block">
               <button
@@ -360,9 +428,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                   <button
                     key="more"
                     onClick={() => setIsMobileMenuOpen(true)}
-                    className="flex-1 flex flex-col items-center justify-center gap-1 transition-colors text-muted-foreground"
+                    className="flex-1 flex flex-col items-center justify-center gap-1 transition-colors text-muted-foreground relative"
                   >
-                    <Menu className="w-5 h-5" />
+                    <div className="relative">
+                      <Menu className="w-5 h-5" />
+                      {sosCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center">
+                          {sosCount > 9 ? "9+" : sosCount}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] font-semibold">{T("navMore")}</span>
                   </button>
                 );

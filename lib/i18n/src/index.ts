@@ -4010,6 +4010,7 @@ const translations = {
     navUserManagement: "User Management",
     navSecurity: "Security",
     navSecurityPage: "Security",
+    navSosAlerts: "SOS Alerts",
     navReviewsMgmt: "Moderation",
     navReviews: "Reviews",
     navDashboard: "Dashboard",
