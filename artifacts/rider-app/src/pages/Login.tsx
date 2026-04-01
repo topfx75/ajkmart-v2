@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 type LoginMethod = "phone" | "email" | "username" | "google" | "facebook" | "magicLink";
-type Step = "input" | "otp" | "pending" | "2fa";
+type Step = "continue" | "input" | "otp" | "pending" | "2fa";
 
 type AuthResponse = {
   token: string; refreshToken?: string;
@@ -65,9 +65,11 @@ export default function Login() {
 
   const defaultMethod = enabledMethods[0] ?? (auth.google ? "google" : auth.facebook ? "facebook" : auth.magicLink ? "magicLink" : "phone");
   const [method, setMethod] = useState<LoginMethod>(defaultMethod);
-  const [step, setStep] = useState<Step>("input");
+  const [step, setStep] = useState<Step>("continue");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [identifier, setIdentifier] = useState("");
 
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
@@ -119,6 +121,76 @@ export default function Login() {
   const [twoFaLoading, setTwoFaLoading] = useState(false);
 
   const clearError = () => setError("");
+
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+  const checkIdentifier = async () => {
+    const id = identifier.trim();
+    if (!id) { setError("Please enter your phone, email, or username"); return; }
+    setLoading(true); clearError();
+    try {
+      const res = await fetch(`${BASE}/api/auth/check-identifier`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: id, role: "rider", deviceId: getDeviceFingerprint() }),
+      });
+      const data = await res.json();
+
+      if (data.action === "blocked" || data.isBanned) {
+        setError("This account has been suspended. Please contact support.");
+        setLoading(false); return;
+      }
+      if (data.action === "locked") {
+        setError(`Account temporarily locked. Please try again in ${data.lockedMinutes} minute(s).`);
+        setLoading(false); return;
+      }
+      if (data.action === "registration_closed") {
+        setError("New registrations are currently closed. Please contact support.");
+        setLoading(false); return;
+      }
+      if (data.action === "register") {
+        setLoading(false);
+        navigate("/register");
+        return;
+      }
+      if (data.action === "force_google" && auth.google) {
+        setMethod("google");
+        setStep("input");
+        setLoading(false); return;
+      }
+      if (data.action === "send_phone_otp") {
+        const normalized = id.replace(/\D/g, "").replace(/^92/, "").replace(/^0/, "");
+        setPhone(normalized);
+        setMethod("phone");
+        setStep("otp");
+        setLoading(true);
+        try {
+          const captchaToken = await getCaptchaToken(auth.captchaEnabled, captchaSiteKey, "login_phone_otp");
+          const r = await api.sendOtp(formatPhoneForApi(normalized), captchaToken);
+          if (import.meta.env.DEV) setDevOtp(r.otp || "");
+          startCooldown(60);
+        } catch (e: unknown) { setError(e instanceof Error ? e.message : "Failed to send OTP"); setStep("input"); }
+        setLoading(false); return;
+      }
+      if (data.action === "send_email_otp") {
+        setEmail(id);
+        setMethod("email");
+        setStep("otp");
+        setLoading(true);
+        try {
+          const captchaToken = await getCaptchaToken(auth.captchaEnabled, captchaSiteKey, "login_email_otp");
+          const r = await api.sendEmailOtp(id, captchaToken);
+          if (import.meta.env.DEV) setEmailDevOtp(r.otp || "");
+          startCooldown(60);
+        } catch (e: unknown) { setError(e instanceof Error ? e.message : "Failed to send OTP"); setStep("input"); }
+        setLoading(false); return;
+      }
+      setMethod("username");
+      setUsername(id);
+      setStep("input");
+    } catch (e) { setError(e instanceof Error ? e.message : "Check failed. Please try again."); }
+    setLoading(false);
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -470,23 +542,57 @@ export default function Login() {
             </div>
           )}
 
+          {step === "continue" && (
+            <>
+              <h2 className="text-xl font-bold text-gray-800 mb-1">Welcome 👋</h2>
+              <p className="text-sm text-gray-500 mb-5">Enter your phone, email, or username to continue</p>
+              <label className="text-xs font-bold text-gray-400 mb-1.5 block uppercase tracking-wider">Phone / Email / Username</label>
+              <input
+                type="text"
+                placeholder="+923001234567 or email or username"
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && checkIdentifier()}
+                className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 transition-all mb-4"
+                autoFocus
+              />
+              {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-600 text-sm font-medium">{error}</p></div>}
+              <button onClick={checkIdentifier} disabled={loading || isLockedOut}
+                className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-sm">
+                {loading ? <><Loader2 size={18} className="animate-spin" /> Checking...</> : "Continue →"}
+              </button>
+              <div className="mt-4 text-center">
+                <Link to="/register" className="text-sm text-gray-500">
+                  New rider?{" "}
+                  <span className="text-gray-900 font-bold hover:underline">Register here</span>
+                </Link>
+              </div>
+            </>
+          )}
+
           {step === "input" && enabledMethods.length > 1 && (
-            <div className="flex gap-1 bg-gray-100 rounded-full p-1 mb-5">
-              {enabledMethods.map(m => (
-                <button
-                  key={m}
-                  onClick={() => selectMethod(m)}
-                  className={`flex-1 py-2 text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1 ${method === m ? "bg-gray-900 text-white shadow-sm" : "text-gray-400"
-                    }`}
-                >
-                  {m === "phone" ? <><Phone size={11} /> {T("phoneLabel")}</> : m === "email" ? <><Mail size={11} /> {T("email")}</> : <><User size={11} /> {T("username")}</>}
-                </button>
-              ))}
-            </div>
+            <>
+              <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
+                className="text-gray-900 text-sm font-semibold mb-4 flex items-center gap-1">
+                <ArrowLeft size={14} /> Change identifier
+              </button>
+              <div className="flex gap-1 bg-gray-100 rounded-full p-1 mb-5">
+                {enabledMethods.map(m => (
+                  <button
+                    key={m}
+                    onClick={() => selectMethod(m)}
+                    className={`flex-1 py-2 text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1 ${method === m ? "bg-gray-900 text-white shadow-sm" : "text-gray-400"
+                      }`}
+                  >
+                    {m === "phone" ? <><Phone size={11} /> {T("phoneLabel")}</> : m === "email" ? <><Mail size={11} /> {T("email")}</> : <><User size={11} /> {T("username")}</>}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           {step === "otp" && (
-            <button onClick={() => { setStep("input"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
+            <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
               className="text-gray-900 text-sm font-semibold mb-4 flex items-center gap-1">
               <ArrowLeft size={14} /> {T("back")}
             </button>
@@ -595,7 +701,7 @@ export default function Login() {
             </div>
           )}
 
-          {error && <p className="text-red-500 text-sm mb-3 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+          {step !== "continue" && error && <p className="text-red-500 text-sm mb-3 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
           {step === "input" && enabledMethods.includes(method as "phone" | "email" | "username") && (
             <button onClick={handleSubmit} disabled={loading || isLockedOut}

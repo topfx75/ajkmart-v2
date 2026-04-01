@@ -35,7 +35,7 @@ if (typeof __DEV__ === "undefined") {
 }
 
 type LoginMethod = "phone" | "email" | "username" | "magic" | "google" | "facebook";
-type Step = "method" | "otp" | "totp" | "pending" | "complete-profile";
+type Step = "continue" | "method" | "otp" | "totp" | "pending" | "complete-profile";
 
 async function authPost(path: string, body: object) {
   const res = await fetch(`${API}${path}`, {
@@ -62,7 +62,8 @@ export default function AuthScreen() {
   const topPad = Math.max(insets.top, 12);
 
   const [method, setMethod] = useState<LoginMethod>("phone");
-  const [step, setStep] = useState<Step>("method");
+  const [step, setStep] = useState<Step>("continue");
+  const [identifier, setIdentifier] = useState("");
 
   useEffect(() => {
     if (twoFactorPending) {
@@ -143,6 +144,73 @@ export default function AuthScreen() {
     });
   };
   const clearError = () => setError("");
+
+  const checkIdentifier = async () => {
+    const id = identifier.trim();
+    if (!id) { setError("Enter your phone, email, or username"); return; }
+    setLoading(true); clearError();
+    try {
+      const deviceId = await getDeviceFingerprint();
+      const res = await authPost("/auth/check-identifier", { identifier: id, role: "customer", deviceId });
+
+      if (res.action === "blocked" || res.isBanned) {
+        setError("This account has been suspended. Please contact support.");
+        setLoading(false); return;
+      }
+      if (res.action === "locked") {
+        setError(`Account locked. Try again in ${res.lockedMinutes} minute(s).`);
+        setLoading(false); return;
+      }
+      if (res.action === "registration_closed") {
+        setError("New registrations are currently closed.");
+        setLoading(false); return;
+      }
+      if (res.action === "register") {
+        router.push("/auth/register");
+        setLoading(false); return;
+      }
+      if (res.action === "force_google" && isMethodEnabled(authCfg.googleEnabled)) {
+        setMethod("google");
+        setStep("method");
+        setLoading(false); return;
+      }
+      if (res.action === "send_phone_otp") {
+        const normalized = id.replace(/\D/g, "").replace(/^92/, "").replace(/^0/, "");
+        setPhone(normalized);
+        setMethod("phone");
+        setLoading(false);
+        const r = await sendOtp({ phone: `0${normalized}` }).catch((e: any) => { setError(e.message || "Failed to send OTP"); return null; });
+        if (r) {
+          if (__DEV__ === true && r.otp) setDevOtp(r.otp);
+          setResendCooldown(60);
+          animateTransition(() => setStep("otp"));
+        }
+        setLoading(false); return;
+      }
+      if (res.action === "send_email_otp") {
+        setEmail(id);
+        setMethod("email");
+        setLoading(false);
+        const r = await authPost("/auth/send-email-otp", { email: id }).catch((e: any) => { setError(e.message || "Failed to send OTP"); return null; });
+        if (r) {
+          if (__DEV__ === true && r.otp) setEmailDevOtp(r.otp);
+          setEmailResendCooldown(60);
+          animateTransition(() => setStep("otp"));
+        }
+        setLoading(false); return;
+      }
+      if (res.action === "send_magic_link" || res.action === "login_password") {
+        setUsername(id);
+        setMethod(res.action === "send_magic_link" ? "magic" : "username");
+        setStep("method");
+        setLoading(false); return;
+      }
+      setUsername(id);
+      setMethod("username");
+      setStep("method");
+    } catch (e: any) { setError(e.message || "Check failed. Please try again."); }
+    setLoading(false);
+  };
 
   const enabledMethods: { key: LoginMethod; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [];
   if (isMethodEnabled(authCfg.phoneOtpEnabled)) enabledMethods.push({ key: "phone", icon: "call-outline", label: T("phone") });
@@ -514,7 +582,7 @@ export default function AuthScreen() {
                 </Text>
               </Pressable>
 
-              <Pressable onPress={() => { setStep("method"); setTotpCode(""); clearError(); }} style={styles.backBtn}>
+              <Pressable onPress={() => { setStep("continue"); setTotpCode(""); clearError(); }} style={styles.backBtn}>
                 <Ionicons name="arrow-back" size={16} color={C.primary} />
                 <Text style={styles.backBtnText}>{T("backToLogin")}</Text>
               </Pressable>
@@ -539,7 +607,7 @@ export default function AuthScreen() {
               <Ionicons name="information-circle-outline" size={16} color={C.textMuted} />
               <Text style={styles.pendingInfoTxt}>{T("approvalTimeframe")}</Text>
             </View>
-            <Pressable style={styles.backBtn} onPress={() => { setStep("method"); setOtp(""); setEmailOtp(""); }}>
+            <Pressable style={styles.backBtn} onPress={() => { setStep("continue"); setOtp(""); setEmailOtp(""); }}>
               <Ionicons name="arrow-back" size={16} color={C.primary} />
               <Text style={styles.backBtnText}>{T("backToLogin")}</Text>
             </Pressable>
@@ -602,7 +670,7 @@ export default function AuthScreen() {
                 if (pendingToken && pendingUser) {
                   await login(pendingUser!, pendingToken, pendingRefreshToken || undefined);
                   router.replace("/(tabs)");
-                } else { setStep("method"); setPendingToken(""); }
+                } else { setStep("continue"); setPendingToken(""); }
               }} style={styles.linkBtn}>
                 <Text style={styles.linkBtnText}>{T("doLater")}</Text>
               </Pressable>
@@ -625,15 +693,52 @@ export default function AuthScreen() {
         </View>
 
         <ScrollView style={styles.cardScroll} contentContainerStyle={styles.cardContent} keyboardShouldPersistTaps="handled">
+          {step === "continue" && (
+            <>
+              <Text style={styles.cardTitle}>Welcome 👋</Text>
+              <Text style={styles.cardSubtitle}>Enter your phone, email, or username</Text>
+              <TextInput
+                style={styles.input}
+                value={identifier}
+                onChangeText={v => { setIdentifier(v); clearError(); }}
+                placeholder="+923001234567, email, or username"
+                placeholderTextColor={C.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="go"
+                onSubmitEditing={checkIdentifier}
+                autoFocus
+              />
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
+                  <Text style={styles.errorTxt}>{error}</Text>
+                </View>
+              ) : null}
+              <Pressable onPress={checkIdentifier} style={[styles.btn, loading && styles.btnDisabled]} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Continue →</Text>}
+              </Pressable>
+              <Pressable onPress={() => router.push("/auth/register")} style={styles.linkBtn}>
+                <Text style={styles.linkBtnText}>New user? Create account</Text>
+              </Pressable>
+            </>
+          )}
+
           {step === "method" && enabledMethods.length > 0 && (
-            <View style={styles.tabs}>
-              {enabledMethods.map(m => (
-                <Pressable key={m.key} onPress={() => selectMethod(m.key)} style={[styles.tab, method === m.key && styles.tabActive]}>
-                  <Ionicons name={m.icon} size={15} color={method === m.key ? C.primary : C.textMuted} />
-                  <Text style={[styles.tabText, method === m.key && styles.tabTextActive]}>{m.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <>
+              <Pressable onPress={() => { setStep("continue"); clearError(); }} style={styles.backBtn}>
+                <Ionicons name="arrow-back" size={16} color={C.primary} />
+                <Text style={styles.backBtnText}>Change identifier</Text>
+              </Pressable>
+              <View style={styles.tabs}>
+                {enabledMethods.map(m => (
+                  <Pressable key={m.key} onPress={() => selectMethod(m.key)} style={[styles.tab, method === m.key && styles.tabActive]}>
+                    <Ionicons name={m.icon} size={15} color={method === m.key ? C.primary : C.textMuted} />
+                    <Text style={[styles.tabText, method === m.key && styles.tabTextActive]}>{m.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
           )}
 
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideXAnim }] }}>
@@ -651,7 +756,7 @@ export default function AuthScreen() {
 
           {method === "phone" && step === "otp" && (
             <>
-              <Pressable onPress={() => { setStep("method"); clearError(); setDevOtp(""); }} style={styles.backBtn}>
+              <Pressable onPress={() => { setStep("continue"); clearError(); setDevOtp(""); }} style={styles.backBtn}>
                 <Ionicons name="arrow-back" size={16} color={C.primary} />
                 <Text style={styles.backBtnText}>{T("changeNumber")}</Text>
               </Pressable>
@@ -686,7 +791,7 @@ export default function AuthScreen() {
 
           {method === "email" && step === "otp" && (
             <>
-              <Pressable onPress={() => { setStep("method"); clearError(); setEmailDevOtp(""); }} style={styles.backBtn}>
+              <Pressable onPress={() => { setStep("continue"); clearError(); setEmailDevOtp(""); }} style={styles.backBtn}>
                 <Ionicons name="arrow-back" size={16} color={C.primary} />
                 <Text style={styles.backBtnText}>{T("changeEmail")}</Text>
               </Pressable>
@@ -729,7 +834,7 @@ export default function AuthScreen() {
             </>
           )}
 
-          {error ? (
+          {error && step !== "continue" ? (
             <View style={styles.errorBox}>
               <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
               <Text style={styles.errorTxt}>{error}</Text>

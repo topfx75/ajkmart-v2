@@ -6,7 +6,7 @@ import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 
 type LoginMethod = "phone" | "email" | "username";
-type Step = "input" | "otp" | "pending" | "register" | "register-otp" | "register-info" | "register-submitted" | "forgot" | "forgot-otp" | "forgot-reset" | "forgot-done";
+type Step = "continue" | "input" | "otp" | "pending" | "register" | "register-otp" | "register-info" | "register-submitted" | "forgot" | "forgot-otp" | "forgot-reset" | "forgot-done";
 
 const STORE_CATS = ["Grocery","Restaurant","Bakery","Pharmacy","Electronics","Clothing","General Store","Fast Food","Fruits & Vegetables","Dairy","Meat & Poultry","Other"];
 const CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Lahore","Other"];
@@ -30,9 +30,11 @@ export default function Login() {
   ];
 
   const [method, setMethod] = useState<LoginMethod>("phone");
-  const [step, setStep]     = useState<Step>("input");
+  const [step, setStep]     = useState<Step>("continue");
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState("");
+
+  const [identifier, setIdentifier] = useState("");
 
   const [phone, setPhone] = useState("");
   const [otp, setOtp]     = useState("");
@@ -64,6 +66,84 @@ export default function Login() {
   const rf = (k: string, v: string) => setRegForm(p => ({ ...p, [k]: v }));
 
   const clearError = () => setError("");
+
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+  const checkIdentifier = async () => {
+    const id = identifier.trim();
+    if (!id) { setError("Please enter your phone, email, or username"); return; }
+    setLoading(true); clearError();
+    try {
+      const res = await fetch(`${BASE}/api/auth/check-identifier`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: id, role: "vendor" }),
+      });
+      const data = await res.json();
+
+      if (data.action === "blocked" || data.isBanned) {
+        setError("This account has been suspended. Please contact support.");
+        setLoading(false); return;
+      }
+      if (data.action === "locked") {
+        setError(`Account temporarily locked. Please try again in ${data.lockedMinutes} minute(s).`);
+        setLoading(false); return;
+      }
+      if (data.action === "registration_closed") {
+        setError("New registrations are currently closed. Please contact support.");
+        setLoading(false); return;
+      }
+      if (data.action === "register") {
+        const looksLikePhone = /^[\d\s\-+()]{7,15}$/.test(id);
+        if (looksLikePhone) setRegPhone(id.replace(/\D/g, "").replace(/^92/, "").replace(/^0/, ""));
+        setStep("register");
+        setLoading(false); return;
+      }
+      if (data.action === "send_phone_otp") {
+        const normalized = id.replace(/\D/g, "").replace(/^92/, "").replace(/^0/, "");
+        setPhone(normalized);
+        setMethod("phone");
+        setLoading(false);
+        setStep("input");
+        setTimeout(() => sendPhoneOtpDirect(normalized), 0);
+        return;
+      }
+      if (data.action === "send_email_otp") {
+        setEmail(id);
+        setMethod("email");
+        setLoading(false);
+        setStep("input");
+        setTimeout(() => sendEmailOtpDirect(id), 0);
+        return;
+      }
+      setMethod("username");
+      setUsername(id);
+      setStep("input");
+    } catch (e) { setError(e instanceof Error ? e.message : "Check failed. Please try again."); }
+    setLoading(false);
+  };
+
+  const sendPhoneOtpDirect = async (ph: string) => {
+    setLoading(true); clearError();
+    try {
+      const res = await api.sendOtp(ph);
+      setDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setStep("otp");
+      startCooldown();
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to send OTP"); }
+    setLoading(false);
+  };
+
+  const sendEmailOtpDirect = async (em: string) => {
+    setLoading(true); clearError();
+    try {
+      const res = await api.sendEmailOtp(em);
+      setEmailDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setStep("otp");
+      startCooldown();
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to send OTP"); }
+    setLoading(false);
+  };
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -247,7 +327,7 @@ export default function Login() {
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-left">
             <p className="text-amber-700 text-xs font-medium">💡 {T("alreadyApproved")}</p>
           </div>
-          <button onClick={() => setStep("input")} className="w-full h-11 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-colors text-sm">
+          <button onClick={() => setStep("continue")} className="w-full h-11 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-colors text-sm">
             ← {T("backToLogin")}
           </button>
         </div>
@@ -272,7 +352,7 @@ export default function Login() {
             <p className="text-blue-600 text-xs">2. You'll be notified once approved</p>
             <p className="text-blue-600 text-xs">3. Login with your phone to start selling</p>
           </div>
-          <button onClick={() => { setStep("input"); setRegPhone(""); setRegOtp(""); setRegDevOtp(""); setRegForm({ storeName:"", storeCategory:"", name:"", cnic:"", address:"", city:"", bankName:"", bankAccount:"", bankAccountTitle:"" }); }}
+          <button onClick={() => { setStep("continue"); setRegPhone(""); setRegOtp(""); setRegDevOtp(""); setRegForm({ storeName:"", storeCategory:"", name:"", cnic:"", address:"", city:"", bankName:"", bankAccount:"", bankAccountTitle:"" }); }}
             className="w-full h-11 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-colors text-sm">
             ← Back to Login
           </button>
@@ -540,21 +620,53 @@ export default function Login() {
           </div>
 
           <div className="bg-white rounded-3xl p-6 shadow-2xl">
+            {step === "continue" && (
+              <>
+                <h2 className="text-xl font-extrabold text-gray-800 mb-1">Welcome Back 👋</h2>
+                <p className="text-sm text-gray-500 mb-5">Enter your phone, email, or username to continue</p>
+                <label className="text-xs font-extrabold text-gray-400 mb-1.5 block uppercase tracking-wider">Phone / Email / Username</label>
+                <input
+                  type="text"
+                  placeholder="+923001234567 or email or username"
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && checkIdentifier()}
+                  className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-orange-400 transition-all mb-4"
+                  autoFocus
+                />
+                {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-600 text-sm font-medium">{error}</p></div>}
+                <button onClick={checkIdentifier} disabled={loading}
+                  className="w-full h-12 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-base">
+                  {loading ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Checking...</> : "Continue →"}
+                </button>
+                <div className="mt-4 text-center">
+                  <p className="text-sm text-gray-400">New vendor?{" "}
+                    <button onClick={() => { clearError(); setStep("register"); }}
+                      className="text-orange-500 font-bold hover:underline">Register your store</button>
+                  </p>
+                </div>
+              </>
+            )}
+
             {step === "input" && (
-              <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5">
-                {(["phone", "email", "username"] as LoginMethod[]).map(m => (
-                  <button key={m} onClick={() => selectMethod(m)}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                      method === m ? "bg-white text-orange-600 shadow-sm" : "text-gray-400"
-                    }`}>
-                    {m === "phone" ? `📱 ${T("phone")}` : m === "email" ? `✉️ ${T("email")}` : `👤 ${T("usernameLabel")}`}
-                  </button>
-                ))}
-              </div>
+              <>
+                <button onClick={() => { setStep("continue"); clearError(); setOtp(""); setEmailOtp(""); setDevOtp(""); setEmailDevOtp(""); }}
+                  className="text-orange-500 text-sm font-bold mb-4 flex items-center gap-1">← Change identifier</button>
+                <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5">
+                  {(["phone", "email", "username"] as LoginMethod[]).map(m => (
+                    <button key={m} onClick={() => selectMethod(m)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                        method === m ? "bg-white text-orange-600 shadow-sm" : "text-gray-400"
+                      }`}>
+                      {m === "phone" ? `📱 ${T("phone")}` : m === "email" ? `✉️ ${T("email")}` : `👤 ${T("usernameLabel")}`}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
             {step === "otp" && (
-              <button onClick={() => { setStep("input"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
+              <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
                 className="text-orange-500 text-sm font-bold mb-4 flex items-center gap-1">← {T("back")}</button>
             )}
 
@@ -672,9 +784,9 @@ export default function Login() {
               </>
             )}
 
-            {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-600 text-sm font-medium">{error}</p></div>}
+            {step !== "continue" && error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-600 text-sm font-medium">{error}</p></div>}
 
-            {step !== "forgot-done" && (
+            {step !== "continue" && step !== "forgot-done" && (
               <button onClick={
                 step === "forgot" ? sendForgotOtp
                 : step === "forgot-otp" ? resetForgotPassword
@@ -703,12 +815,14 @@ export default function Login() {
               </button>
             )}
 
-            <div className="border-t border-gray-100 mt-5 pt-4">
-              <button onClick={() => { setStep("register"); clearError(); }}
-                className="w-full h-11 border-2 border-orange-200 text-orange-600 font-bold rounded-xl transition-all hover:bg-orange-50 text-sm flex items-center justify-center gap-2">
-                🏪 Become a Vendor / Register
-              </button>
-            </div>
+            {step !== "continue" && (
+              <div className="border-t border-gray-100 mt-5 pt-4">
+                <button onClick={() => { setStep("register"); clearError(); }}
+                  className="w-full h-11 border-2 border-orange-200 text-orange-600 font-bold rounded-xl transition-all hover:bg-orange-50 text-sm flex items-center justify-center gap-2">
+                  🏪 Become a Vendor / Register
+                </button>
+              </div>
+            )}
 
             <p className="text-center text-xs text-gray-400 mt-4">{T("onlyVendorsAccess")}</p>
           </div>

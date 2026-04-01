@@ -61,12 +61,147 @@ function canonicalizePhone(raw: string): string {
 
 const router: IRouter = Router();
 
+/* ══════════════════════════════════════════════════════════════
+   POST /auth/check-identifier
+   Unified Auth Gatekeeper — Account Discovery.
+   Step 1 of the smart "Continue" login flow.
+   Body: { identifier: string, role?: string, deviceId?: string }
+   Returns what the client should do next: action + available methods.
+══════════════════════════════════════════════════════════════ */
+router.post("/check-identifier", async (req, res) => {
+  const { identifier, role, deviceId } = req.body ?? {};
+  if (!identifier || typeof identifier !== "string") {
+    res.status(400).json({ error: "identifier is required" });
+    return;
+  }
+
+  const ip          = getClientIp(req);
+  const settings    = await getCachedSettings();
+  const userRole    = (role === "rider" || role === "vendor") ? role : "customer";
+  const registrationOpen = settings["feature_new_users"] !== "off";
+
+  /* ── Normalise identifier — detect phone vs email vs username ── */
+  let user: (typeof usersTable.$inferSelect) | undefined;
+
+  const looksLikePhone = /^[\d\s\-+()]{7,15}$/.test(identifier.trim());
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
+
+  if (looksLikePhone) {
+    const phone = canonicalizePhone(identifier);
+    const rows = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+    user = rows[0];
+  } else if (looksLikeEmail) {
+    const rows = await db.select().from(usersTable).where(eq(usersTable.email, identifier.trim().toLowerCase())).limit(1);
+    user = rows[0];
+  } else {
+    const rows = await db.select().from(usersTable).where(eq(usersTable.username, identifier.trim())).limit(1);
+    user = rows[0];
+  }
+
+  const exists    = !!user;
+  const isNewUser = !exists;
+
+  /* ── If user is banned or locked, surface it early ── */
+  if (user?.isBanned) {
+    addSecurityEvent({ type: "banned_user_identifier_check", ip, userId: user.id, details: `Banned user check: ${identifier}`, severity: "medium" });
+    res.json({ exists: true, isNewUser: false, isBanned: true, action: "blocked", availableMethods: [] });
+    return;
+  }
+
+  const maxAttempts    = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
+  const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
+  const lockoutKey     = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim();
+  const lockout        = checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
+  if (lockout.locked) {
+    res.json({ exists: true, isNewUser: false, isLocked: true, lockedMinutes: lockout.minutesLeft, action: "locked", availableMethods: [] });
+    return;
+  }
+
+  /* ── Device fingerprint abuse check ── */
+  let deviceFlagged = false;
+  const DEVICE_ACCOUNT_THRESHOLD = 5;
+  if (deviceId && isNewUser) {
+    const deviceAccounts = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.deviceId, deviceId))
+      .limit(DEVICE_ACCOUNT_THRESHOLD + 1);
+    if (deviceAccounts.length >= DEVICE_ACCOUNT_THRESHOLD) {
+      deviceFlagged = true;
+      addSecurityEvent({
+        type: "device_multi_account_flag",
+        ip,
+        details: `Device ${deviceId} has ${deviceAccounts.length} accounts — registration flagged`,
+        severity: "high",
+      });
+    }
+  }
+
+  /* ── Build available methods based on admin config + role ── */
+  const googleEnabled   = isAuthMethodEnabled(settings, "auth_google_enabled", userRole);
+  const facebookEnabled = isAuthMethodEnabled(settings, "auth_facebook_enabled", userRole);
+  const phoneOtpEnabled = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", userRole);
+  const emailOtpEnabled = isAuthMethodEnabled(settings, "auth_email_otp_enabled", userRole);
+  const passwordEnabled = isAuthMethodEnabled(settings, "auth_username_password_enabled", userRole);
+  const magicLinkEnabled = isAuthMethodEnabled(settings, "auth_magic_link_enabled", userRole);
+
+  const availableMethods: string[] = [];
+  if (phoneOtpEnabled)  availableMethods.push("phone_otp");
+  if (emailOtpEnabled)  availableMethods.push("email_otp");
+  if (passwordEnabled)  availableMethods.push("password");
+  if (googleEnabled)    availableMethods.push("google");
+  if (facebookEnabled)  availableMethods.push("facebook");
+  if (magicLinkEnabled) availableMethods.push("magic_link");
+
+  /* ── For EXISTING users: determine the best/enforced action ── */
+  let action: string;
+  const hasGoogle   = !!(user?.googleId);
+  const hasFacebook = !!(user?.facebookId);
+
+  if (exists) {
+    if (hasGoogle && googleEnabled) {
+      action = "force_google";
+    } else if (hasFacebook && facebookEnabled && !hasGoogle) {
+      action = "force_facebook";
+    } else if (looksLikePhone && phoneOtpEnabled) {
+      action = "send_phone_otp";
+    } else if (looksLikeEmail && emailOtpEnabled) {
+      action = "send_email_otp";
+    } else if (looksLikeEmail && magicLinkEnabled) {
+      action = "send_magic_link";
+    } else if (passwordEnabled && user?.passwordHash) {
+      action = "login_password";
+    } else if (phoneOtpEnabled) {
+      action = "send_phone_otp";
+    } else {
+      action = "login_password";
+    }
+  } else {
+    action = registrationOpen ? "register" : "registration_closed";
+  }
+
+  res.json({
+    exists,
+    isNewUser,
+    registrationOpen,
+    action,
+    availableMethods,
+    hasGoogle,
+    hasFacebook,
+    requiresPhoneVerification: exists && !user?.phoneVerified,
+    deviceFlagged,
+    isBanned:  false,
+    isLocked:  false,
+  });
+});
+
 /* ─────────────────────────────────────────────────────────────
    POST /auth/send-otp
    Atomically upsert user by phone — one account per number.
 ───────────────────────────────────────────────────────────── */
 router.post("/send-otp", verifyCaptcha, async (req, res) => {
   const rawPhone = req.body?.phone;
+  const deviceId: string | undefined = typeof req.body?.deviceId === "string" ? req.body.deviceId : undefined;
   if (!rawPhone) {
     res.status(400).json({ error: "Phone number is required" });
     return;
@@ -116,6 +251,20 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     return;
   }
 
+  /* ── Method Enforcement (Unified Auth Gatekeeper) ──
+     If this number is linked to a Google account and Google login is enabled,
+     the user MUST log in via Google — not OTP — to prevent account hijacking. ── */
+  const existingGoogleId = existingUser[0]?.googleId;
+  if (existingGoogleId && isAuthMethodEnabled(settings, "auth_google_enabled")) {
+    addSecurityEvent({ type: "otp_blocked_google_account", ip, details: `OTP attempt on Google-linked account: ${phone}`, severity: "low" });
+    res.status(403).json({
+      error: "This account is linked to Google. Please sign in with Google.",
+      useGoogle: true,
+      googleLinked: true,
+    });
+    return;
+  }
+
   /* ── Per-phone OTP resend cooldown (60 s) — prevents SMS bombing ──
      OTP expiry is set to now+10 min; if it's still >9 min away the
      code was issued less than 60 seconds ago — block the resend. ── */
@@ -155,6 +304,7 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
       walletBalance:  "0",
       isActive:       !isNewUser || !requireApproval,
       approvalStatus: newUserApprovalStatus,
+      ...(isNewUser && deviceId ? { deviceId } : {}),
     })
     .onConflictDoUpdate({
       target: usersTable.phone,
