@@ -1271,7 +1271,7 @@ export function RideTracker({
                           ? "Rickshaw"
                           : rideType,
                 },
-                { lbl: "Distance", val: `${ride?.distance} km` },
+                { lbl: "Distance", val: `${parseFloat(ride?.distance ?? 0).toFixed(1)} km` },
                 {
                   lbl: "Payment",
                   val:

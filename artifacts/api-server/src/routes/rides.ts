@@ -764,6 +764,7 @@ router.patch("/:id/customer-counter", customerAuth, requireRideState(["bargainin
 
   const ride = req.ride!;
   const rideId = ride.id;
+  const userId = req.customerId!;
   const { offeredFare: newOffer, note } = parsed.data;
 
   const s = await getPlatformSettings();

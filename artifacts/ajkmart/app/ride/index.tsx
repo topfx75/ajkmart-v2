@@ -44,8 +44,7 @@ function RideScreenInner() {
         return r.json();
       })
       .then(data => {
-        const ride = data.ride || data;
-        setBooked({ id: urlRideId, type: ride.type || "bike" });
+        setBooked({ id: urlRideId, type: data.type || "bike" });
       })
       .catch(() => {
         setRideLoadError(true);

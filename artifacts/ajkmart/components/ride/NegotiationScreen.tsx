@@ -135,8 +135,8 @@ export function NegotiationScreen({
   const minCounterOffer = serverMinOffer
     ? Math.ceil(serverMinOffer)
     : estimatedFare
-      ? Math.ceil(estimatedFare * 0.5)
-      : Math.ceil(offeredFare * 0.5);
+      ? Math.ceil(estimatedFare * 0.7)
+      : Math.ceil(offeredFare * 0.7);
 
   const validateOffer = (val: string): string => {
     const amt = parseFloat(val);
