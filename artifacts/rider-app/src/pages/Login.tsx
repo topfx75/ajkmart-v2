@@ -375,14 +375,13 @@ export default function Login() {
       if (auth.captchaEnabled && !captchaToken) { setError(T("captchaRequired")); setLoading(false); return; }
       const res = await api.sendEmailOtp(email, captchaToken);
       if (import.meta.env.DEV) setEmailDevOtp(res.otp || "");
-      /* Surface delivery channel so rider knows if email actually sent.
-         When SMTP is not configured, backend returns channel: "console" — 
-         show a visible notice so the rider knows to check server logs in dev. */
       if (res.channel === "console") {
         setError("Email OTP could not be sent — email delivery is not configured. Check server logs for the OTP (dev/staging only).");
         setLoading(false);
         return;
       }
+      setOtpChannel("email");
+      setFallbackChannels([]);
       setStep("otp");
       startCooldown(60);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : T("sendOtpFailed")); }
@@ -703,6 +702,9 @@ export default function Login() {
             <>
               <h2 className="text-xl font-bold text-gray-800 mb-1">{T("enterOtp")}</h2>
               <p className="text-sm text-gray-500 mb-1">{email}</p>
+              {otpChannel === "email" && (
+                <span className="text-xs font-semibold text-gray-400 mb-2 block">via ✉️ Email</span>
+              )}
               {import.meta.env.DEV && emailDevOtp && <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-3 text-sm text-gray-700"><strong>{T("devOtp")}:</strong> {emailDevOtp}</div>}
               <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder={T("enterOtpDigits")} value={emailOtp} onChange={e => setEmailOtp(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
                 className="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-2xl font-bold tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-gray-900 mb-3" maxLength={6} autoFocus />

@@ -260,9 +260,10 @@ export default function Login() {
     setLoading(true); clearError();
     try {
       const endpoint = useBackupCode ? "/auth/2fa/backup-verify" : "/auth/2fa/verify";
+      const deviceFingerprint = getDeviceFingerprint();
       const body = useBackupCode
-        ? { tempToken: totpTempToken, backupCode: code }
-        : { tempToken: totpTempToken, totpCode: code };
+        ? { tempToken: totpTempToken, backupCode: code, deviceFingerprint }
+        : { tempToken: totpTempToken, totpCode: code, deviceFingerprint };
       const res = await fetch(`${BASE}/api${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -292,7 +293,7 @@ export default function Login() {
   const verifyPhoneOtp = async () => {
     if (!otp || otp.length < 6) { setError(T("enterOtp")); return; }
     setLoading(true); clearError();
-    try { await doLogin(await api.verifyOtp(phone, otp)); } catch (e) { setError(e instanceof Error ? e.message : "Verification failed"); }
+    try { await doLogin(await api.verifyOtp(phone, otp, getDeviceFingerprint())); } catch (e) { setError(e instanceof Error ? e.message : "Verification failed"); }
     setLoading(false);
   };
 
@@ -302,6 +303,8 @@ export default function Login() {
     try {
       const res = await api.sendEmailOtp(email);
       setEmailDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setOtpChannel("email");
+      setFallbackChannels([]);
       setStep("otp");
       startCooldown();
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to send OTP"); }
@@ -311,7 +314,7 @@ export default function Login() {
   const verifyEmailOtp = async () => {
     if (!emailOtp || emailOtp.length < 6) { setError(T("enterOtp")); return; }
     setLoading(true); clearError();
-    try { await doLogin(await api.verifyEmailOtp(email, emailOtp)); } catch (e) { setError(e instanceof Error ? e.message : "Verification failed"); }
+    try { await doLogin(await api.verifyEmailOtp(email, emailOtp, getDeviceFingerprint())); } catch (e) { setError(e instanceof Error ? e.message : "Verification failed"); }
     setLoading(false);
   };
 
@@ -319,7 +322,7 @@ export default function Login() {
     if (!username || username.length < 3) { setError(T("enterUsername")); return; }
     if (!password || password.length < 6) { setError(T("enterPassword")); return; }
     setLoading(true); clearError();
-    try { await doLogin(await api.loginUsername(username, password)); } catch (e) { setError(e instanceof Error ? e.message : "Login failed"); }
+    try { await doLogin(await api.loginUsername(username, password, getDeviceFingerprint())); } catch (e) { setError(e instanceof Error ? e.message : "Login failed"); }
     setLoading(false);
   };
 
@@ -375,7 +378,7 @@ export default function Login() {
     if (!regOtp || regOtp.length < 6) { setError(T("enterOtp")); return; }
     setLoading(true); clearError();
     try {
-      const res = await api.verifyOtp(regPhone, regOtp);
+      const res = await api.verifyOtp(regPhone, regOtp, getDeviceFingerprint());
       if (res.token) api.storeTokens(res.token, res.refreshToken);
       setStep("register-info");
     } catch (e) { setError(e instanceof Error ? e.message : "Verification failed"); }
@@ -856,6 +859,9 @@ export default function Login() {
               <>
                 <h2 className="text-xl font-extrabold text-gray-800 mb-1">{T("enterEmailOtp")}</h2>
                 <p className="text-sm text-gray-500 mb-1">{T("sentTo_")} <strong className="text-gray-700">{email}</strong></p>
+                {otpChannel === "email" && (
+                  <span className="text-xs font-bold text-gray-400 mb-2 block">via ✉️ Email</span>
+                )}
                 {emailDevOtp && <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 mb-3">
                   <p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">{T("devOtp")}</p>
                   <p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{emailDevOtp}</p>

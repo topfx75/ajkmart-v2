@@ -356,6 +356,8 @@ export default function AuthScreen() {
     try {
       const res = await authPost("/auth/send-email-otp", { email });
       if (__DEV__ === true && res.otp) setEmailDevOtp(res.otp);
+      setOtpChannel("email");
+      setFallbackChannels([]);
       setEmailResendCooldown(60);
       animateTransition(() => setStep("otp"));
     } catch (e: any) { setError(e.message || "Could not send OTP."); }
@@ -833,6 +835,9 @@ export default function AuthScreen() {
               </Pressable>
               <Text style={styles.cardTitle}>{T("enterEmailOtp")}</Text>
               <Text style={styles.cardSubtitle}>{T("otpSentToEmail")} {email}</Text>
+              {otpChannel === "email" ? (
+                <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "Inter_600SemiBold", marginBottom: 8 }}>via Email</Text>
+              ) : null}
               <TextInput style={[styles.input, styles.otpInput, error ? styles.inputError : null]}
                 value={emailOtp} onChangeText={v => { setEmailOtp(v); clearError(); }}
                 placeholder="6-digit OTP" placeholderTextColor={C.textMuted}

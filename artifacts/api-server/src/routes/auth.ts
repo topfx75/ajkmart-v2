@@ -197,7 +197,7 @@ router.post("/check-identifier", async (req, res) => {
   if (smsOn)       otpChannels.push("sms");
   if (emailOn && user?.email) otpChannels.push("email");
 
-  const canMerge = isNewUser && !exists && (looksLikePhone || looksLikeEmail);
+  const canMerge = !exists && (looksLikePhone || looksLikeEmail);
 
   res.json({
     exists,
@@ -216,6 +216,133 @@ router.post("/check-identifier", async (req, res) => {
     otpChannels,
     canMerge,
   });
+});
+
+/* ─────────────────────────────────────────────────────────────
+   POST /auth/send-merge-otp
+   Send OTP for linking a new identifier to the authenticated user.
+   Stores OTP on the authenticated user's record.
+   Body: { identifier }
+───────────────────────────────────────────────────────────── */
+router.post("/send-merge-otp", async (req, res) => {
+  const auth = extractAuthUser(req);
+  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+
+  const { identifier } = req.body;
+  if (!identifier) { res.status(400).json({ error: "Identifier is required" }); return; }
+
+  const ip = getClientIp(req);
+  const settings = await getCachedSettings();
+
+  const looksLikePhone = /^[\d\s\-+()]{7,15}$/.test(identifier.trim());
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
+
+  if (!looksLikePhone && !looksLikeEmail) {
+    res.status(400).json({ error: "Identifier must be a phone number or email address" });
+    return;
+  }
+
+  if (looksLikePhone) {
+    const phone = canonicalizePhone(identifier);
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+    if (existing) { res.status(409).json({ error: "This phone number is already linked to another account" }); return; }
+  } else {
+    const email = identifier.trim().toLowerCase();
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    if (existing) { res.status(409).json({ error: "This email is already linked to another account" }); return; }
+  }
+
+  const otp = generateSecureOtp();
+  const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+  await db.update(usersTable).set({ otpCode: otp, otpExpiry, otpUsed: false, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+
+  if (looksLikePhone) {
+    const phone = canonicalizePhone(identifier);
+    const lang = await getUserLanguage(auth.userId);
+    const whatsappEnabled = settings["integration_whatsapp"] === "on";
+    let sent = false;
+    if (whatsappEnabled) {
+      const waResult = await sendWhatsAppOTP(phone, otp, settings, lang);
+      if (waResult.sent) sent = true;
+    }
+    if (!sent) {
+      const smsResult = await sendOtpSMS(phone, otp, settings, lang);
+      sent = smsResult.sent;
+    }
+    const isDev = process.env.NODE_ENV !== "production";
+    res.json({ message: "OTP sent to phone", ...(isDev ? { otp } : {}) });
+  } else {
+    const email = identifier.trim().toLowerCase();
+    const lang = await getUserLanguage(auth.userId);
+    const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
+    await sendPasswordResetEmail(email, otp, user?.name ?? undefined, lang);
+    const isDev = process.env.NODE_ENV !== "production";
+    res.json({ message: "OTP sent to email", ...(isDev ? { otp } : {}) });
+  }
+
+  writeAuthAuditLog("merge_otp_sent", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { identifier } });
+});
+
+/* ─────────────────────────────────────────────────────────────
+   POST /auth/merge-account
+   Link a new identifier (phone/email) to an authenticated user.
+   Requires: valid JWT + OTP verification for the new identifier.
+   Body: { identifier, otp }
+───────────────────────────────────────────────────────────── */
+router.post("/merge-account", async (req, res) => {
+  const auth = extractAuthUser(req);
+  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+
+  const { identifier, otp } = req.body;
+  if (!identifier || !otp) { res.status(400).json({ error: "Identifier and OTP are required" }); return; }
+
+  const ip = getClientIp(req);
+  const settings = await getCachedSettings();
+
+  const looksLikePhone = /^[\d\s\-+()]{7,15}$/.test(identifier.trim());
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
+
+  if (!looksLikePhone && !looksLikeEmail) {
+    res.status(400).json({ error: "Identifier must be a phone number or email address" });
+    return;
+  }
+
+  const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
+  if (!currentUser) { res.status(404).json({ error: "User not found" }); return; }
+
+  if (looksLikePhone) {
+    const phone = canonicalizePhone(identifier);
+    if (currentUser.phone === phone) { res.status(400).json({ error: "This phone is already linked to your account" }); return; }
+
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+    if (existing) { res.status(409).json({ error: "This phone number is already linked to another account" }); return; }
+
+    if (currentUser.otpCode !== otp || !currentUser.otpExpiry || currentUser.otpExpiry < new Date() || currentUser.otpUsed) {
+      res.status(400).json({ error: "Invalid or expired OTP" });
+      return;
+    }
+
+    await db.update(usersTable).set({ phone, otpUsed: true, phoneVerified: true, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+
+    writeAuthAuditLog("account_merge_phone", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
+    res.json({ success: true, message: "Phone number linked successfully", linked: "phone" });
+  } else {
+    const email = identifier.trim().toLowerCase();
+    if (currentUser.email === email) { res.status(400).json({ error: "This email is already linked to your account" }); return; }
+
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
+    if (existing) { res.status(409).json({ error: "This email is already linked to another account" }); return; }
+
+    if (currentUser.otpCode !== otp || !currentUser.otpExpiry || currentUser.otpExpiry < new Date() || currentUser.otpUsed) {
+      res.status(400).json({ error: "Invalid or expired OTP" });
+      return;
+    }
+
+    await db.update(usersTable).set({ email, otpUsed: true, emailVerified: true, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+
+    writeAuthAuditLog("account_merge_email", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { email } });
+    res.json({ success: true, message: "Email linked successfully", linked: "email" });
+  }
 });
 
 /* ─────────────────────────────────────────────────────────────
@@ -372,7 +499,7 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     for (const ch of availableChannels) { if (ch !== preferredChannel) channelOrder.push(ch); }
   } else {
     if (whatsappEnabled) channelOrder.push("whatsapp");
-    channelOrder.push("sms");
+    if (smsEnabled) channelOrder.push("sms");
     if (emailEnabled && userEmail) channelOrder.push("email");
   }
 

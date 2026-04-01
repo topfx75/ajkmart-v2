@@ -90,10 +90,10 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retry = tr
 export const api = {
   /* Auth */
   sendOtp:      (phone: string, preferredChannel?: string) => apiFetch("/auth/send-otp", { method: "POST", body: JSON.stringify({ phone, ...(preferredChannel ? { preferredChannel } : {}) }) }),
-  verifyOtp:    (phone: string, otp: string) => apiFetch("/auth/verify-otp", { method: "POST", body: JSON.stringify({ phone, otp }) }),
+  verifyOtp:    (phone: string, otp: string, deviceFingerprint?: string) => apiFetch("/auth/verify-otp", { method: "POST", body: JSON.stringify({ phone, otp, ...(deviceFingerprint ? { deviceFingerprint } : {}) }) }),
   sendEmailOtp: (email: string) => apiFetch("/auth/send-email-otp", { method: "POST", body: JSON.stringify({ email }) }),
-  verifyEmailOtp:(email: string, otp: string) => apiFetch("/auth/verify-email-otp", { method: "POST", body: JSON.stringify({ email, otp }) }),
-  loginUsername:(identifier: string, password: string) => apiFetch("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password }) }),
+  verifyEmailOtp:(email: string, otp: string, deviceFingerprint?: string) => apiFetch("/auth/verify-email-otp", { method: "POST", body: JSON.stringify({ email, otp, ...(deviceFingerprint ? { deviceFingerprint } : {}) }) }),
+  loginUsername:(identifier: string, password: string, deviceFingerprint?: string) => apiFetch("/auth/login", { method: "POST", body: JSON.stringify({ identifier, password, ...(deviceFingerprint ? { deviceFingerprint } : {}) }) }),
   forgotPassword:(data: { phone?: string; email?: string; identifier?: string }) => apiFetch("/auth/forgot-password", { method: "POST", body: JSON.stringify(data) }),
   resetPassword:(data: { phone?: string; email?: string; identifier?: string; otp: string; newPassword: string; totpCode?: string }) => apiFetch("/auth/reset-password", { method: "POST", body: JSON.stringify(data) }),
   logout:       (refreshToken?: string) => apiFetch("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }).finally(clearTokens),
