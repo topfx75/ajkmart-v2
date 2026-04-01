@@ -121,7 +121,7 @@ async function riderAuth(req: Request, res: Response, next: NextFunction) {
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ code: "AUTH_REQUIRED", error: "User not found" }); return; }
-  if (user.isBanned) { res.status(403).json({ code: "AUTH_REQUIRED", error: "Account is banned" }); return; }
+  if (user.isBanned) { res.status(401).json({ code: "ACCOUNT_BANNED", error: "Your account has been permanently banned. Please contact support." }); return; }
   if (!user.isActive) {
     res.status(403).json({ code: "AUTH_REQUIRED", error: "Account is inactive" }); return;
   }
@@ -592,7 +592,11 @@ router.post("/orders/:id/accept", async (req, res) => {
   res.json({ ...updated, total: safeNum(updated.total) });
 });
 
-/* ── Cancellation penalty helper ── */
+/* ── Cancellation penalty helper ──
+   Fully atomic: count read, base record, cancel-count increment, optional
+   penalty deduction, and optional restriction are all inside ONE transaction
+   so a partial failure cannot leave the cancel count inflated. Wallet balance
+   is floored at 0 via GREATEST to prevent negative balances. */
 async function handleCancelPenalty(riderId: string): Promise<{ dailyCancels: number; penaltyApplied: number; restricted: boolean }> {
   const s = await getPlatformSettings();
   const limit = parseInt(s["rider_cancel_limit_daily"] ?? "3", 10);
@@ -601,34 +605,38 @@ async function handleCancelPenalty(riderId: string): Promise<{ dailyCancels: num
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  const [countRow] = await db.select({ c: count() })
-    .from(walletTransactionsTable)
-    .where(and(
-      eq(walletTransactionsTable.userId, riderId),
-      eq(walletTransactionsTable.type, "cancel_penalty"),
-      gte(walletTransactionsTable.createdAt, today),
-    ));
-  const dailyCancels = (countRow?.c ?? 0) + 1;
-
   let penaltyApplied = 0;
   let restricted = false;
+  let dailyCancels = 0;
 
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(), userId: riderId, type: "cancel_penalty",
-    amount: "0",
-    description: `Cancellation #${dailyCancels} today`,
-    reference: `cancel:${Date.now()}`,
-  });
+  await db.transaction(async (tx) => {
+    /* Lock-free count read inside transaction for consistency */
+    const [countRow] = await tx.select({ c: count() })
+      .from(walletTransactionsTable)
+      .where(and(
+        eq(walletTransactionsTable.userId, riderId),
+        eq(walletTransactionsTable.type, "cancel_penalty"),
+        gte(walletTransactionsTable.createdAt, today),
+        sql`reference LIKE 'cancel:%'`,
+      ));
+    dailyCancels = (countRow?.c ?? 0) + 1;
 
-  await db.update(usersTable)
-    .set({ cancelCount: sql`cancel_count + 1`, updatedAt: new Date() })
-    .where(eq(usersTable.id, riderId));
+    /* Base cancel event (amount=0) and cancel-count bump — always recorded */
+    await tx.insert(walletTransactionsTable).values({
+      id: generateId(), userId: riderId, type: "cancel_penalty",
+      amount: "0",
+      description: `Cancellation #${dailyCancels} today`,
+      reference: `cancel:${Date.now()}`,
+    });
+    await tx.update(usersTable)
+      .set({ cancelCount: sql`cancel_count + 1`, updatedAt: new Date() })
+      .where(eq(usersTable.id, riderId));
 
-  if (dailyCancels > limit) {
-    penaltyApplied = penaltyAmt;
-    await db.transaction(async (tx) => {
+    if (dailyCancels > limit) {
+      penaltyApplied = penaltyAmt;
+      /* Floor wallet at 0 so balance can never go negative from a penalty */
       await tx.update(usersTable)
-        .set({ walletBalance: sql`wallet_balance - ${penaltyAmt}`, updatedAt: new Date() })
+        .set({ walletBalance: sql`GREATEST(wallet_balance - ${penaltyAmt}, 0)`, updatedAt: new Date() })
         .where(eq(usersTable.id, riderId));
       await tx.insert(walletTransactionsTable).values({
         id: generateId(), userId: riderId, type: "cancel_penalty",
@@ -641,15 +649,18 @@ async function handleCancelPenalty(riderId: string): Promise<{ dailyCancels: num
         amount: penaltyAmt.toFixed(2),
         reason: `Excessive cancellation (${dailyCancels}/${limit} today)`,
       });
-    });
 
-    if (restrictEnabled) {
-      await db.update(usersTable)
-        .set({ isRestricted: true, updatedAt: new Date() })
-        .where(eq(usersTable.id, riderId));
-      restricted = true;
+      if (restrictEnabled) {
+        await tx.update(usersTable)
+          .set({ isRestricted: true, updatedAt: new Date() })
+          .where(eq(usersTable.id, riderId));
+        restricted = true;
+      }
     }
+  });
 
+  /* Notifications are outside the transaction (non-critical, fire-and-forget) */
+  if (dailyCancels > limit) {
     const penaltyLang = await getUserLanguage(riderId);
     await db.insert(notificationsTable).values({
       id: generateId(), userId: riderId,
@@ -723,6 +734,11 @@ router.patch("/orders/:id/status", async (req, res) => {
 
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found or not yours" }); return; }
+
+  /* Proof photo is mandatory for delivery confirmation — prevents fraudulent delivery claims */
+  if (status === "delivered" && !proofPhoto) {
+    res.status(400).json({ error: "Proof of delivery photo is required to mark an order as delivered. Please upload a photo." }); return;
+  }
 
   /* ── Rider Cancel: clear riderId + reset to preparing so another rider can pick it up ── */
   if (status === "cancelled") {
@@ -1737,7 +1753,16 @@ router.patch("/location", async (req, res) => {
   if (accuracy !== undefined) {
     const minAccuracyMeters = parseInt(settings["security_gps_accuracy"] ?? "50", 10);
     if (accuracy > minAccuracyMeters) {
-      console.warn(`[rider/location] Rider ${riderId} GPS accuracy ${accuracy}m exceeds threshold ${minAccuracyMeters}m`);
+      /* Reject low-accuracy pings — cell-tower or Wi-Fi triangulation produces
+         very high accuracy values (100-1000m+) and must not update live locations
+         or be used for proximity checks like "arrived". */
+      res.status(422).json({
+        error: `GPS accuracy (${Math.round(accuracy)}m) exceeds the allowed threshold (${minAccuracyMeters}m). Please move to an open area or enable high-accuracy GPS.`,
+        code: "GPS_ACCURACY_LOW",
+        accuracy,
+        threshold: minAccuracyMeters,
+      });
+      return;
     }
   }
 
@@ -1875,8 +1900,6 @@ router.patch("/location", async (req, res) => {
           eq(ridesTable.status, "accepted"),
           eq(ridesTable.status, "arrived"),
           eq(ridesTable.status, "in_transit"),
-          eq(ridesTable.status, "picked_up"),
-          eq(ridesTable.status, "in_progress"),
         ),
       ))
       .orderBy(desc(ridesTable.updatedAt))
@@ -2046,8 +2069,9 @@ async function handleIgnorePenalty(riderId: string): Promise<{ dailyIgnores: num
 
     if (dailyIgnores > limit) {
       penaltyApplied = penaltyAmt;
+      /* Floor wallet at 0 so balance can never go negative from an ignore penalty */
       await tx.update(usersTable)
-        .set({ walletBalance: sql`wallet_balance - ${penaltyAmt}`, updatedAt: new Date() })
+        .set({ walletBalance: sql`GREATEST(wallet_balance - ${penaltyAmt}, 0)`, updatedAt: new Date() })
         .where(eq(usersTable.id, riderId));
       await tx.insert(walletTransactionsTable).values({
         id: generateId(), userId: riderId, type: "ignore_penalty",

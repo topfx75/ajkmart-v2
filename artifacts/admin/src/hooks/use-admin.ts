@@ -398,7 +398,9 @@ export const useVendorCredit = () => {
 
 /* ── Riders ── */
 export const useRiders = () =>
-  useQuery({ queryKey: ["admin-riders"], queryFn: () => fetcher("/riders"), refetchInterval: REFETCH_INTERVAL });
+  /* staleTime: 0 ensures the wallet balance and rider state shown in modals
+     are always fresh immediately after any mutation invalidates this query. */
+  useQuery({ queryKey: ["admin-riders"], queryFn: () => fetcher("/riders"), refetchInterval: REFETCH_INTERVAL, staleTime: 0 });
 
 export const useUpdateRiderStatus = () => {
   const qc = useQueryClient();

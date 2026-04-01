@@ -140,9 +140,23 @@ function NavButton({ label, lat, lng, address, color = "blue" }: {
   );
 }
 
+const SOS_RESET_MS = 5 * 60 * 1000; /* 5 minutes — allow rider to re-send if still in danger */
+
 function SosButton({ rideId, riderPos }: { rideId?: string | null; riderPos?: { lat: number; lng: number } | null }) {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* Auto-reset the "sent" state after 5 minutes so the rider can re-send
+     SOS if they are still in danger in the same session. */
+  useEffect(() => {
+    if (!sent) return;
+    resetTimerRef.current = setTimeout(() => setSent(false), SOS_RESET_MS);
+    return () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, [sent]);
+
   return (
     <button
       onClick={async () => {

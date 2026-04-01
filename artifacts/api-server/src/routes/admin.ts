@@ -2252,8 +2252,16 @@ router.post("/riders/:id/payout", async (req, res) => {
   if (currentBal < amt) {
     res.status(400).json({ error: `Insufficient wallet balance (Rs. ${currentBal.toFixed(0)})` }); return;
   }
-  const newBal = currentBal - amt;
-  const [updated] = await db.update(usersTable).set({ walletBalance: String(newBal), updatedAt: new Date() }).where(eq(usersTable.id, rider.id)).returning();
+  /* Atomic deduction: WHERE wallet_balance >= amt prevents race condition where
+     two concurrent payout requests both read the same balance and double-deduct. */
+  const [updated] = await db.update(usersTable)
+    .set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() })
+    .where(and(eq(usersTable.id, rider.id), sql`CAST(wallet_balance AS NUMERIC) >= ${amt}`))
+    .returning();
+  if (!updated) {
+    res.status(400).json({ error: "Payout failed: insufficient balance at time of processing (possible concurrent request)." }); return;
+  }
+  const newBal = parseFloat(updated.walletBalance ?? "0");
   await db.insert(walletTransactionsTable).values({
     id: generateId(), userId: rider.id, type: "debit", amount: String(amt),
     description: description || `Rider payout: Rs. ${amt}`, reference: "rider_payout",

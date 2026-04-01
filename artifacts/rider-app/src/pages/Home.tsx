@@ -276,43 +276,6 @@ export default function Home() {
 
   const [socketConnected, setSocketConnected] = useState(true);
 
-  /* ── Socket.io: subscribe to rider:new-request for instant push notification ──
-     When the server dispatches a new order or ride offer to this rider's socket room,
-     we immediately invalidate the requests query — no waiting for the polling interval. */
-  useEffect(() => {
-    let socket: ReturnType<typeof import("socket.io-client")["io"]> | null = null;
-    const token = api.getToken();
-    if (!token) return;
-
-    import("socket.io-client").then(({ io }) => {
-      socket = io(window.location.origin, {
-        path: "/api/socket.io",
-        auth: { token },
-        transports: ["polling", "websocket"],
-        reconnection: true,
-        reconnectionDelay: 3000,
-      });
-
-      socket.on("connect", () => {
-        if (isMountedRef.current) setSocketConnected(true);
-      });
-      socket.on("disconnect", () => {
-        if (isMountedRef.current) setSocketConnected(false);
-      });
-      socket.on("connect_error", () => {
-        if (isMountedRef.current) setSocketConnected(false);
-      });
-
-      socket.on("rider:new-request", () => {
-        qc.invalidateQueries({ queryKey: ["rider-requests"] });
-      });
-    }).catch(() => {});
-
-    return () => {
-      socket?.disconnect();
-    };
-  }, []);
-
   useEffect(() => {
     if (!silenced) return;
     const t = setInterval(() => {
@@ -504,37 +467,61 @@ export default function Home() {
   }, []);
 
   const socketRef = useRef<Socket | null>(null);
+  /* ── Unified Socket.io effect ──
+     Single connection that handles both new-request push notifications AND
+     the online heartbeat, replacing the two previously separate effects.
+     Re-runs when the token changes (covers 15-min token refresh) or when
+     the rider's id/online status changes. */
   useEffect(() => {
-    if (!user?.isOnline || !user?.id) return;
     const token = api.getToken();
-    if (!token) return;
+    if (!token || !user?.id) return;
 
     const socket = io(window.location.origin, {
       path: "/api/socket.io",
       auth: { token },
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 3000,
     });
     socketRef.current = socket;
 
-    const heartbeat = setInterval(() => {
-      if (socket.connected) {
-        socket.emit("rider:heartbeat", {
-          batteryLevel: batteryRef.current,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    }, 30_000);
-
-    socket.on("new:request", () => {
-      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+    socket.on("connect", () => {
+      if (isMountedRef.current) setSocketConnected(true);
+    });
+    socket.on("disconnect", () => {
+      if (isMountedRef.current) setSocketConnected(false);
+    });
+    socket.on("connect_error", () => {
+      if (isMountedRef.current) setSocketConnected(false);
     });
 
+    /* Listen on both event names — server may emit either depending on context */
+    const handleNewRequest = () => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+    };
+    socket.on("rider:new-request", handleNewRequest);
+    socket.on("new:request", handleNewRequest);
+
+    /* Heartbeat only while rider is online */
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    if (user?.isOnline) {
+      heartbeat = setInterval(() => {
+        if (socket.connected) {
+          socket.emit("rider:heartbeat", {
+            batteryLevel: batteryRef.current,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }, 30_000);
+    }
+
     return () => {
-      clearInterval(heartbeat);
+      if (heartbeat) clearInterval(heartbeat);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [user?.isOnline, user?.id]);
+  /* Re-connect when token changes (covers 15-min expiry) or online status changes */
+  }, [user?.id, user?.isOnline, api.getToken()]);
 
   useEffect(() => {
     if (!user?.isOnline || hasActiveTask || !user?.id) return;
@@ -554,14 +541,9 @@ export default function Home() {
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    /* Read battery level if available */
-    let batteryRef: number | undefined;
-    type BatteryManager = { level: number; addEventListener: (event: string, cb: () => void) => void };
-    (navigator as unknown as { getBattery?: () => Promise<BatteryManager> }).getBattery?.()
-      .then(batt => {
-        batteryRef = batt.level;
-        batt.addEventListener("levelchange", () => { batteryRef = batt.level; });
-      }).catch(() => {});
+    /* Battery level is tracked by the outer batteryRef useRef — no need to
+       redeclare here. Using batteryRef.current in the location payload below
+       reads the current value set by the outer battery effect. */
 
     /* Drain offline queue on reconnect */
     const drainQueue = async () => {
@@ -588,12 +570,19 @@ export default function Home() {
         }
 
         if (!isMockGps) {
-          /* Only apply distance/idle throttle for non-spoof pings (spoof pings always get sent) */
+          /* Non-spoof pings are throttled to prevent unnecessary API spam.
+             Logic: send the update if (moved enough) OR (idle keep-alive interval passed).
+             A hard 1-second rate limit prevents GPS burst spam regardless. */
+          const timeSinceLast = now - lastSentTime;
+          if (timeSinceLast < 1000) return; /* hard rate limit */
           if (lastLat !== null && lastLng !== null) {
             const dist = haversineMeters(lastLat, lastLng, latitude, longitude);
-            if (dist < MIN_DISTANCE_METERS && now - lastSentTime < IDLE_INTERVAL_MS * 4) return;
+            /* Skip only when movement is below threshold AND keep-alive hasn't fired */
+            if (dist < MIN_DISTANCE_METERS && timeSinceLast < IDLE_INTERVAL_MS) return;
+          } else {
+            /* No prior location recorded — use idle interval as gate for first ping */
+            if (timeSinceLast < IDLE_INTERVAL_MS) return;
           }
-          if (now - lastSentTime < IDLE_INTERVAL_MS) return;
         }
         lastSentTime = now;
         lastLat = latitude;
@@ -604,7 +593,7 @@ export default function Home() {
           accuracy:     accuracy ?? undefined,
           speed:        speed ?? undefined,
           heading:      heading ?? undefined,
-          batteryLevel: batteryRef,
+          batteryLevel: batteryRef.current,
           mockProvider: isMockGps,
         };
         const queuedPing = {
