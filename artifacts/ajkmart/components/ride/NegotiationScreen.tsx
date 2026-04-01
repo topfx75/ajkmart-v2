@@ -191,7 +191,6 @@ export function NegotiationScreen({
       "accepted",
       "arrived",
       "in_transit",
-      "ongoing",
     ].includes(ride?.status || "");
     setCancelModalTarget({
       id: rideId,

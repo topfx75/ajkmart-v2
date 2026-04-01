@@ -885,21 +885,28 @@ router.get("/:id", async (req, res) => {
   let riderLat: number | null = null;
   let riderLng: number | null = null;
   let riderLocAge: number | null = null;
+  let riderAvgRating: number | null = null;
   const ACTIVE_STATUSES = ["accepted", "arrived", "in_transit"];
-  if (ride.riderId && ACTIVE_STATUSES.includes(ride.status)) {
-    const [loc] = await db
-      .select()
-      .from(liveLocationsTable)
-      .where(eq(liveLocationsTable.userId, ride.riderId))
-      .limit(1);
-    if (loc) {
-      riderLat    = parseFloat(String(loc.latitude));
-      riderLng    = parseFloat(String(loc.longitude));
-      riderLocAge = Math.floor((Date.now() - new Date(loc.updatedAt).getTime()) / 1000);
+  if (ride.riderId) {
+    if (ACTIVE_STATUSES.includes(ride.status)) {
+      const [loc] = await db
+        .select()
+        .from(liveLocationsTable)
+        .where(eq(liveLocationsTable.userId, ride.riderId))
+        .limit(1);
+      if (loc) {
+        riderLat    = parseFloat(String(loc.latitude));
+        riderLng    = parseFloat(String(loc.longitude));
+        riderLocAge = Math.floor((Date.now() - new Date(loc.updatedAt).getTime()) / 1000);
+      }
     }
+    const ratingRows = await db.select({
+      starsAvg: sql<string>`AVG(stars)`,
+    }).from(rideRatingsTable).where(eq(rideRatingsTable.riderId, ride.riderId));
+    riderAvgRating = ratingRows[0]?.starsAvg ? Math.round(parseFloat(ratingRows[0].starsAvg) * 10) / 10 : null;
   }
 
-  res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge });
+  res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge, riderAvgRating });
 });
 
 router.get("/:id/track", async (req, res) => {

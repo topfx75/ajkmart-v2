@@ -143,12 +143,6 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
                   </Text>
                 </View>
               )}
-              {!hasFee && !isWallet && isRide && !riderAssigned && (
-                <View style={cm.infoRow}>
-                  <Ionicons name="checkmark-circle-outline" size={15} color="#059669" />
-                  <Text style={cm.infoTextGreen}>No cancellation fee applies</Text>
-                </View>
-              )}
             </View>
           )}
 

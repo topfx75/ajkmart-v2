@@ -908,7 +908,7 @@ export function RideTracker({
                   lineHeight: 19,
                 }}
               >
-                Rs. {ride?.fare} will be refunded to your wallet.
+                Rs. {Math.round((ride?.fare ?? 0) - appliedFee)} will be refunded to your wallet.
               </Text>
             </View>
           )}
@@ -1070,7 +1070,7 @@ export function RideTracker({
               marginTop: 6,
             }}
           >
-            Rs. {ride?.fare} · {ride?.distance} km
+            Rs. {ride?.fare} · {parseFloat(ride?.distance ?? 0).toFixed(1)} km
           </Text>
         </View>
 
@@ -1867,24 +1867,28 @@ export function RideTracker({
                       marginTop: 5,
                     }}
                   >
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Ionicons
-                        key={s}
-                        name={s <= 4 ? "star" : "star-outline"}
-                        size={11}
-                        color="#F59E0B"
-                      />
-                    ))}
-                    <Text
-                      style={{
-                        fontFamily: "Inter_400Regular",
-                        fontSize: 10,
-                        color: C.textMuted,
-                        marginLeft: 4,
-                      }}
-                    >
-                      4.0
-                    </Text>
+                    {ride?.riderAvgRating != null && (
+                      <>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Ionicons
+                            key={s}
+                            name={s <= Math.round(ride.riderAvgRating) ? "star" : "star-outline"}
+                            size={11}
+                            color="#F59E0B"
+                          />
+                        ))}
+                        <Text
+                          style={{
+                            fontFamily: "Inter_400Regular",
+                            fontSize: 10,
+                            color: C.textMuted,
+                            marginLeft: 4,
+                          }}
+                        >
+                          {ride.riderAvgRating.toFixed(1)}
+                        </Text>
+                      </>
+                    )}
                   </View>
                 </View>
                 <View
@@ -1929,7 +1933,7 @@ export function RideTracker({
               </View>
 
               {(riderLivePos != null || ride.riderLat != null) &&
-                (status === "accepted" || status === "arrived" || status === "in_transit" || status === "picked_up" || status === "in_progress") &&
+                (status === "accepted" || status === "arrived" || status === "in_transit") &&
                 (() => {
                   /* Prefer live socket position, fall back to polling data */
                   const effLat = riderLivePos?.lat ?? ride.riderLat!;
