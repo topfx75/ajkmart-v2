@@ -51,8 +51,8 @@ router.get("/", customerAuth, async (req, res) => {
     .select()
     .from(pharmacyOrdersTable)
     .where(eq(pharmacyOrdersTable.userId, userId))
-    .orderBy(pharmacyOrdersTable.createdAt);
-  res.json({ orders: orders.map(mapOrder).reverse(), total: orders.length });
+    .orderBy(sql`${pharmacyOrdersTable.createdAt} DESC`);
+  res.json({ orders: orders.map(mapOrder), total: orders.length });
 });
 
 router.get("/:id", customerAuth, async (req, res) => {
@@ -450,9 +450,40 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
     return;
   }
 
+  const [existing] = await db
+    .select()
+    .from(pharmacyOrdersTable)
+    .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Pharmacy order not found" });
+    return;
+  }
+  if (existing.riderId && existing.riderId !== req.riderId) {
+    res.status(403).json({ error: "This order is assigned to another rider" });
+    return;
+  }
+
+  const riderId = req.riderId!;
+  const isUnassigned = !existing.riderId;
+
+  if (isUnassigned) {
+    const [order] = await db
+      .update(pharmacyOrdersTable)
+      .set({ status, riderId, updatedAt: new Date() })
+      .where(and(eq(pharmacyOrdersTable.id, String(req.params["id"])), sql`rider_id IS NULL`))
+      .returning();
+    if (!order) {
+      res.status(409).json({ error: "This order has already been accepted by another rider" });
+      return;
+    }
+    res.json(mapOrder(order));
+    return;
+  }
+
   const [order] = await db
     .update(pharmacyOrdersTable)
-    .set({ status, updatedAt: new Date() })
+    .set({ status, riderId, updatedAt: new Date() })
     .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
     .returning();
   if (!order) {

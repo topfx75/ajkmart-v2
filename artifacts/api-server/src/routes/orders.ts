@@ -235,7 +235,13 @@ router.get("/:id", customerAuth, async (req, res) => {
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
   if (idorGuard(res, order.userId, userId)) return;
-  res.json(mapOrder(order));
+  const s = await getCachedSettings();
+  const orderItems = (order.items ?? []) as { price: number; quantity: number }[];
+  const itemsTotal = orderItems.reduce((sum, it) => sum + (Number(it.price) * Number(it.quantity)), 0);
+  const deliveryFee = calcDeliveryFee(s, order.type, itemsTotal);
+  const gstAmount   = calcGst(s, itemsTotal);
+  const codFee      = calcCodFee(s, order.paymentMethod, itemsTotal + deliveryFee + gstAmount);
+  res.json(mapOrder(order, deliveryFee, gstAmount, codFee));
 });
 
 /* ── GET /orders/:id/track — Live rider location for active food/mart orders ── */

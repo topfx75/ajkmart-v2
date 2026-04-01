@@ -1250,7 +1250,7 @@ async function runDispatchCycle() {
         const currentRound = Math.floor(elapsedSec / DISPATCH_ROUND_INTERVAL_SEC);
         const loopCount = ride.dispatchLoopCount ?? 0;
 
-        if (currentRound >= MAX_DISPATCH_ROUNDS && loopCount >= MAX_DISPATCH_ROUNDS) {
+        if (currentRound >= MAX_DISPATCH_ROUNDS) {
           await db.transaction(async (tx) => {
             const [upd] = await tx.update(ridesTable)
               .set({ status: "no_riders", updatedAt: new Date() })

@@ -363,13 +363,29 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
     res.status(403).json({ error: "This parcel is assigned to another rider" }); return;
   }
 
-  const [updated] = await db
-    .update(parcelBookingsTable)
-    .set({ status, riderId, updatedAt: new Date() })
-    .where(eq(parcelBookingsTable.id, String(req.params["id"])))
-    .returning();
-
-  res.json(mapBooking(updated!));
+  if (status === "picked_up" && isUnassigned) {
+    const [updated] = await db
+      .update(parcelBookingsTable)
+      .set({ status, riderId, updatedAt: new Date() })
+      .where(and(eq(parcelBookingsTable.id, String(req.params["id"])), sql`rider_id IS NULL`))
+      .returning();
+    if (!updated) {
+      res.status(409).json({ error: "This parcel has already been accepted by another rider" });
+      return;
+    }
+    res.json(mapBooking(updated));
+  } else {
+    const [updated] = await db
+      .update(parcelBookingsTable)
+      .set({ status, riderId, updatedAt: new Date() })
+      .where(eq(parcelBookingsTable.id, String(req.params["id"])))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Parcel booking not found" });
+      return;
+    }
+    res.json(mapBooking(updated));
+  }
 });
 
 export default router;

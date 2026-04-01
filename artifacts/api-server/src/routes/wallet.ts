@@ -55,7 +55,7 @@ router.get("/", customerAuth, async (req, res) => {
     .select()
     .from(walletTransactionsTable)
     .where(eq(walletTransactionsTable.userId, userId))
-    .orderBy(walletTransactionsTable.createdAt);
+    .orderBy(desc(walletTransactionsTable.createdAt));
 
   res.json({
     balance: parseFloat(user.walletBalance ?? "0"),

@@ -110,7 +110,9 @@ export function RideTracker({
     const socketIoPath = "/api/socket.io";
 
     let socket: import("socket.io-client").Socket | null = null;
+    let unmounted = false;
     import("socket.io-client").then(({ io }) => {
+      if (unmounted) return;
       socket = io(socketUrl, {
         path: socketIoPath,
         query: { rooms: `ride:${rideId}` },
@@ -119,13 +121,13 @@ export function RideTracker({
         transports: ["polling", "websocket"],
       });
       socketRef.current = socket;
-      socket.on("connect", () => socket.emit("join", `ride:${rideId}`));
       socket.on("rider:location", (payload: { latitude: number; longitude: number }) => {
         setRiderLivePos({ lat: payload.latitude, lng: payload.longitude });
       });
     });
 
     return () => {
+      unmounted = true;
       if (socket) socket.disconnect();
       socketRef.current = null;
     };
@@ -1070,7 +1072,7 @@ export function RideTracker({
               marginTop: 6,
             }}
           >
-            Rs. {ride?.fare} · {parseFloat(ride?.distance ?? 0).toFixed(1)} km
+            Rs. {ride?.fare} · {parseFloat(ride?.distance ?? "0").toFixed(1)} km
           </Text>
         </View>
 
@@ -1271,7 +1273,7 @@ export function RideTracker({
                           ? "Rickshaw"
                           : rideType,
                 },
-                { lbl: "Distance", val: `${parseFloat(ride?.distance ?? 0).toFixed(1)} km` },
+                { lbl: "Distance", val: `${parseFloat(ride?.distance ?? "0").toFixed(1)} km` },
                 {
                   lbl: "Payment",
                   val:

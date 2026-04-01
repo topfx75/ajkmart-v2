@@ -305,17 +305,6 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       });
     });
 
-    /* Rider heartbeat: broadcast battery level to admin-fleet */
-    socket.on("rider:heartbeat", (payload: { batteryLevel?: number; timestamp?: string }) => {
-      if (!userToken) return;
-      const hbPay = verifyUserJwt(userToken);
-      if (!hbPay?.userId || hbPay.role !== "rider") return;
-      _io!.to("admin-fleet").emit("rider:heartbeat", {
-        userId: hbPay.userId,
-        batteryLevel: typeof payload?.batteryLevel === "number" ? payload.batteryLevel : null,
-        timestamp: payload?.timestamp ?? new Date().toISOString(),
-      });
-    });
 
     /* Join event: client can request additional rooms after connect */
     socket.on("join", (room: string) => {

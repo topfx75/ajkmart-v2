@@ -116,6 +116,7 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
             if (!mountedRef.current) return;
             setRide(data);
             if (data?.status === "completed" || data?.status === "cancelled") {
+              reader.releaseLock();
               return;
             }
           } catch {}

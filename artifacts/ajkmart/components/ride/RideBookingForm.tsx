@@ -1742,7 +1742,7 @@ export function RideBookingForm({ onBooked }: RideBookingFormProps) {
             const insufficient =
               isWallet &&
               estimate &&
-              (user?.walletBalance ?? 0) < estimate.fare;
+              (user?.walletBalance ?? 0) < (offeredFare ? parseFloat(offeredFare) : estimate.fare);
             const pmLabel = pm.label || pm.name || pmId;
             const pmIcon: string = isCash ? "cash-outline" : isWallet ? "wallet-outline" : isJazzcash ? "phone-portrait-outline" : isEasypaisa ? "phone-portrait-outline" : "card-outline";
             const pmColor = isCash ? C.success : isWallet ? C.primary : isJazzcash ? "#E53E3E" : isEasypaisa ? "#38A169" : C.primary;
