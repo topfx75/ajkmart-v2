@@ -16,7 +16,7 @@ import * as Font from "expo-font";
 import * as Linking from "expo-linking";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -45,30 +45,21 @@ const queryClient = new QueryClient({
   },
 });
 
-/* ── Auth Guard ──────────────────────────────────────────────
-   Watches the auth state inside the router context and
-   redirects immediately whenever user logs out.
-   This is the canonical Expo Router pattern for auth.
-──────────────────────────────────────────────────────────── */
 function AuthGuard() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
 
   useEffect(() => {
-    if (isLoading) return; // wait until auth is fully resolved
-
+    if (isLoading) return;
     const inAuthGroup = segments[0] === "auth";
     const inRootIndex = (segments as string[]).length === 0;
 
     if (!user && !inAuthGroup) {
-      // User logged out or not authenticated → send to auth
       router.replace("/auth");
     } else if (user && (inAuthGroup || inRootIndex)) {
-      // User authenticated but on auth/root screen → send to app
       router.replace("/(tabs)");
     }
-    // Otherwise stay where we are (user on tabs, stays on tabs)
-  }, [user, isLoading]); // intentionally NOT including segments to avoid loop
+  }, [user, isLoading]);
 
   return null;
 }
@@ -217,84 +208,85 @@ export default function RootLayout() {
 
   useEffect(() => {
     let cancelled = false;
-    let cleanupFontHandler: (() => void) | null = null;
+    let webFontErrorCleanup: (() => void) | null = null;
 
-    const loadFonts = async () => {
-      const coreFonts = {
+    if (Platform.OS === "web") {
+      const suppressFontRejection = (e: PromiseRejectionEvent) => {
+        const msg = String(e.reason?.message || e.reason || "").toLowerCase();
+        const stack = String(e.reason?.stack || "").toLowerCase();
+        const isFontError =
+          msg.includes("fontfaceobserver") ||
+          msg.includes("fontface") ||
+          msg.includes("is not loaded after waiting") ||
+          (msg.includes("timeout") && (msg.includes("font") || msg.includes("nastaliq"))) ||
+          stack.includes("fontfaceobserver") ||
+          msg.includes("noto") ||
+          msg.includes("nastaliq");
+        if (isFontError) e.preventDefault();
+      };
+      window.addEventListener("unhandledrejection", suppressFontRejection);
+      webFontErrorCleanup = () => window.removeEventListener("unhandledrejection", suppressFontRejection);
+    }
+
+    const loadAllFonts = async () => {
+      const allFonts = {
         Inter_400Regular,
         Inter_500Medium,
         Inter_600SemiBold,
         Inter_700Bold,
-      };
-
-      if (Platform.OS === "web") {
-        const suppressFontRejection = (e: PromiseRejectionEvent) => {
-          const msg = String(e.reason?.message || e.reason || "").toLowerCase();
-          const stack = String(e.reason?.stack || "").toLowerCase();
-          const isFontError =
-            msg.includes("fontfaceobserver") ||
-            msg.includes("fontface") ||
-            msg.includes("is not loaded after waiting") ||
-            (msg.includes("timeout") && (msg.includes("font") || msg.includes("nastaliq"))) ||
-            stack.includes("fontfaceobserver");
-          if (isFontError) {
-            e.preventDefault();
-          }
-        };
-        window.addEventListener("unhandledrejection", suppressFontRejection);
-        cleanupFontHandler = () => {
-          window.removeEventListener("unhandledrejection", suppressFontRejection);
-        };
-      }
-
-      try {
-        await Font.loadAsync(coreFonts);
-      } catch {
-      }
-
-      if (!cancelled) {
-        setReady(true);
-        SplashScreen.hideAsync();
-      }
-
-      const urduFonts = {
         NotoNastaliqUrdu_400Regular,
         NotoNastaliqUrdu_500Medium,
         NotoNastaliqUrdu_600SemiBold,
         NotoNastaliqUrdu_700Bold,
       };
 
-      if (Platform.OS === "web") {
-        try {
+      try {
+        if (Platform.OS === "web") {
           await Promise.race([
-            Font.loadAsync(urduFonts),
-            new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+            Font.loadAsync(allFonts),
+            new Promise<void>((resolve) => setTimeout(resolve, 8000)),
           ]);
-        } catch {
+        } else {
+          await Font.loadAsync(allFonts);
         }
-        setTimeout(() => {
-          cleanupFontHandler?.();
-          cleanupFontHandler = null;
-        }, 15000);
-      } else {
-        try {
-          await Font.loadAsync(urduFonts);
-        } catch {
+      } catch {
+      }
+
+      if (!cancelled) {
+        setReady(true);
+        SplashScreen.hideAsync().catch(() => {});
+
+        if (Platform.OS === "web") {
+          setTimeout(() => {
+            webFontErrorCleanup?.();
+            webFontErrorCleanup = null;
+          }, 5000);
         }
       }
     };
 
-    loadFonts();
+    loadAllFonts();
+
     return () => {
       cancelled = true;
-      cleanupFontHandler?.();
-      cleanupFontHandler = null;
+      webFontErrorCleanup?.();
+      webFontErrorCleanup = null;
     };
   }, []);
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#1A56DB", alignItems: "center", justifyContent: "center" }}>
+      <View style={{ flex: 1, backgroundColor: "#0047B3", alignItems: "center", justifyContent: "center", gap: 20 }}>
+        <View style={{
+          width: 72,
+          height: 72,
+          borderRadius: 20,
+          backgroundColor: "rgba(255,255,255,0.15)",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Text style={{ fontSize: 36 }}>🛒</Text>
+        </View>
         <ActivityIndicator size="large" color="#ffffff" />
       </View>
     );

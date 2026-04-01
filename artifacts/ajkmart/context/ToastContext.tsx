@@ -91,11 +91,11 @@ const ts = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
     elevation: 10,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 12px rgba(0,0,0,0.25)" },
+      default: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12 },
+    }),
   },
   bannerTxt: {
     flex: 1,

@@ -612,18 +612,27 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   <Text style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>Choose your preferred language</Text>
                   {LANGUAGE_OPTIONS.map((opt) => {
                     const selected = currentLang === opt.value;
+                    const isUrduOpt = opt.value === "ur" || opt.value === "en_ur";
                     return (
                       <Pressable
                         key={opt.value}
                         onPress={async () => { if (!selected && !langLoading) await setLanguage(opt.value as Language); }}
                         style={{
-                          flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 12,
-                          marginBottom: 4, borderRadius: 10, backgroundColor: selected ? C.primarySoft : C.surfaceSecondary,
-                          borderWidth: 1.5, borderColor: selected ? C.primary : "transparent",
+                          flexDirection: "row", alignItems: "center", paddingVertical: 12, paddingHorizontal: 14,
+                          marginBottom: 6, borderRadius: 12, backgroundColor: selected ? C.primarySoft : C.surfaceSecondary,
+                          borderWidth: 1.5, borderColor: selected ? C.primary : C.borderLight,
                         }}
                       >
-                        <Text style={{ flex: 1, fontSize: 14, fontWeight: selected ? "700" : "400", color: selected ? C.primary : C.text }}>{opt.label}</Text>
-                        {selected && <Ionicons name="checkmark-circle" size={18} color={C.primary} />}
+                        <Text style={{
+                          flex: 1, fontSize: 15,
+                          fontFamily: selected
+                            ? (isUrduOpt ? "NotoNastaliqUrdu_700Bold" : "Inter_700Bold")
+                            : (isUrduOpt ? "NotoNastaliqUrdu_400Regular" : "Inter_400Regular"),
+                          color: selected ? C.primary : C.text,
+                          writingDirection: isUrduOpt ? "rtl" : "ltr",
+                          lineHeight: isUrduOpt ? 30 : 20,
+                        }}>{opt.label}</Text>
+                        {selected && <Ionicons name="checkmark-circle" size={20} color={C.primary} />}
                       </Pressable>
                     );
                   })}

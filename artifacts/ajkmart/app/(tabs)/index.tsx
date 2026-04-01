@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 
-import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
+import Colors, { spacing, radii, shadows, typography, getFontFamily } from "@/constants/colors";
 import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -794,6 +794,10 @@ export default function HomeScreen() {
 
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
+  const ff = getFontFamily(language);
+  const urduText = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.regular, lineHeight: 30 } : base;
+  const urduBold = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.bold, lineHeight: 44 } : base;
+  const urduMedium = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.medium, lineHeight: 26 } : base;
 
   useEffect(() => {
     Animated.timing(hdOp, {
@@ -844,12 +848,12 @@ export default function HomeScreen() {
         >
           <View style={styles.hdrRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.greeting}>
+              <Text style={urduText(styles.greeting)}>
                 {user?.name
                   ? `${T("salam")}, ${user.name.split(" ")[0]}`
                   : `${T("salam")}!`}
               </Text>
-              <Text style={styles.hdrTitle}>{T("whatDoYouWant")}</Text>
+              <Text style={urduBold(styles.hdrTitle)}>{T("whatDoYouWant")}</Text>
               <View style={styles.locRow}>
                 <Ionicons
                   name="location"
@@ -883,7 +887,7 @@ export default function HomeScreen() {
             <View style={styles.searchIcon}>
               <Ionicons name="search" size={16} color={C.primary} />
             </View>
-            <Text style={styles.searchTxt}>{T("search")}</Text>
+            <Text style={urduText(styles.searchTxt)}>{T("search")}</Text>
             <View style={styles.searchFilter}>
               <Ionicons name="options-outline" size={16} color={C.textMuted} />
             </View>

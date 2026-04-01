@@ -52,9 +52,47 @@ export const typography = {
   otp: { fontFamily: "Inter_700Bold", fontSize: 24, lineHeight: 30 },
 } as const;
 
+export function getTypography(language: string) {
+  const isUrdu = language === "ur" || language === "en_ur";
+
+  const regular = isUrdu ? "NotoNastaliqUrdu_400Regular" : "Inter_400Regular";
+  const medium = isUrdu ? "NotoNastaliqUrdu_500Medium" : "Inter_500Medium";
+  const semiBold = isUrdu ? "NotoNastaliqUrdu_600SemiBold" : "Inter_600SemiBold";
+  const bold = isUrdu ? "NotoNastaliqUrdu_700Bold" : "Inter_700Bold";
+
+  return {
+    h1: { fontFamily: bold, fontSize: 28, lineHeight: isUrdu ? 48 : 34 },
+    h2: { fontFamily: bold, fontSize: 22, lineHeight: isUrdu ? 40 : 28 },
+    h3: { fontFamily: bold, fontSize: 18, lineHeight: isUrdu ? 34 : 24 },
+    subtitle: { fontFamily: semiBold, fontSize: 16, lineHeight: isUrdu ? 30 : 22 },
+    body: { fontFamily: regular, fontSize: 14, lineHeight: isUrdu ? 30 : 20 },
+    bodyMedium: { fontFamily: medium, fontSize: 14, lineHeight: isUrdu ? 30 : 20 },
+    bodySemiBold: { fontFamily: semiBold, fontSize: 14, lineHeight: isUrdu ? 30 : 20 },
+    caption: { fontFamily: regular, fontSize: 12, lineHeight: isUrdu ? 24 : 16 },
+    captionMedium: { fontFamily: medium, fontSize: 12, lineHeight: isUrdu ? 24 : 16 },
+    small: { fontFamily: regular, fontSize: 11, lineHeight: isUrdu ? 22 : 14 },
+    smallMedium: { fontFamily: medium, fontSize: 11, lineHeight: isUrdu ? 22 : 14 },
+    button: { fontFamily: semiBold, fontSize: 15, lineHeight: isUrdu ? 28 : 20 },
+    buttonSmall: { fontFamily: semiBold, fontSize: 13, lineHeight: isUrdu ? 26 : 18 },
+    tabLabel: { fontFamily: medium, fontSize: 11, lineHeight: isUrdu ? 22 : 14 },
+    otp: { fontFamily: bold, fontSize: 24, lineHeight: isUrdu ? 44 : 30 },
+  };
+}
+
+export function getFontFamily(language: string) {
+  const isUrdu = language === "ur" || language === "en_ur";
+  return {
+    regular: isUrdu ? "NotoNastaliqUrdu_400Regular" : "Inter_400Regular",
+    medium: isUrdu ? "NotoNastaliqUrdu_500Medium" : "Inter_500Medium",
+    semiBold: isUrdu ? "NotoNastaliqUrdu_600SemiBold" : "Inter_600SemiBold",
+    bold: isUrdu ? "NotoNastaliqUrdu_700Bold" : "Inter_700Bold",
+    isUrdu,
+  };
+}
+
 const _mkShadow = (yOff: number, blur: number, opacity: number, elev: number) =>
   Platform.OS === "web"
-    ? { boxShadow: `0 ${yOff}px ${blur}px rgba(15,23,42,${opacity})`, elevation: elev }
+    ? { boxShadow: `0 ${yOff}px ${blur}px rgba(15,23,42,${opacity})` }
     : { shadowColor: "#0F172A", shadowOffset: { width: 0, height: yOff }, shadowOpacity: opacity, shadowRadius: blur, elevation: elev };
 
 export const shadows = {
