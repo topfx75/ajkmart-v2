@@ -7,7 +7,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,6 +24,7 @@ import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey, type Language } from "@workspace/i18n";
 import { useGetOrders } from "@workspace/api-client-react";
+import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
 import { API_BASE } from "@/utils/api";
@@ -784,7 +784,7 @@ export default function OrdersScreen() {
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
-  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [reviewTarget, setReviewTarget] = useState<any>(null);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
@@ -1023,9 +1023,8 @@ export default function OrdersScreen() {
   }, [user?.id, fetchRides, fetchPharmacy, fetchParcel, pollInterval]);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
     await Promise.all([fetchServerTime(), refetchOrders(), fetchRides(), fetchPharmacy(), fetchParcel()]);
-    setRefreshing(false);
+    setLastRefreshed(new Date());
   }, [fetchServerTime, refetchOrders, fetchRides, fetchPharmacy, fetchParcel]);
 
   const rawOrders = [...(ordersData?.orders || [])].reverse();
@@ -1179,9 +1178,10 @@ export default function OrdersScreen() {
     const showParcelErr = parcelError && parcelData === null && ["all", "parcel"].includes(activeTab);
 
     return (
-      <ScrollView
+      <SmartRefresh
+        onRefresh={onRefresh}
+        lastUpdated={lastRefreshed}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />}
         contentContainerStyle={styles.scroll}
       >
         {showRidesErr && (
@@ -1236,7 +1236,7 @@ export default function OrdersScreen() {
           </>
         )}
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
-      </ScrollView>
+      </SmartRefresh>
     );
   };
 

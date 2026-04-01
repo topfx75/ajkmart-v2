@@ -28,6 +28,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
 import { useToast } from "@/context/ToastContext";
 import { tDual, type TranslationKey, type Language, LANGUAGE_OPTIONS } from "@workspace/i18n";
+import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import Accordion from "@/components/Accordion";
 import { API_BASE as API } from "@/utils/api";
 
@@ -1119,7 +1120,7 @@ export default function ProfileScreen() {
   const [showNotifs,  setShowNotifs]  = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showAddrs,   setShowAddrs]   = useState(false);
-  const [refreshing,  setRefreshing]  = useState(false);
+  const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
   const [unread,      setUnread]      = useState(0);
   const [stats,       setStats]       = useState({ orders: 0, rides: 0, spent: 0 });
   const [statsLoading,setStatsLoading]= useState(true);
@@ -1197,9 +1198,9 @@ export default function ProfileScreen() {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true); setStatsLoading(true);
+    setStatsLoading(true);
     await fetchAll();
-    setRefreshing(false);
+    setLastRefreshed(new Date());
   }, [fetchAll]);
 
   const doSignOut = async () => {
@@ -1244,9 +1245,10 @@ export default function ProfileScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <ScrollView
+      <SmartRefresh
+        onRefresh={onRefresh}
+        lastUpdated={lastRefreshed}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />}
       >
         <LinearGradient colors={role.colors} start={{ x:0,y:0 }} end={{ x:1,y:1 }} style={[ph.card, { paddingTop: topPad + spacing.lg }]}>
           <View style={[ph.blob, { width:180, height:180, top:-50, right:-40 }]} />
@@ -1503,7 +1505,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
-      </ScrollView>
+      </SmartRefresh>
 
       <EditProfileModal visible={showEdit} onClose={() => setShowEdit(false)} />
       <NotificationsModal visible={showNotifs} userId={user?.id || ""} token={token ?? undefined} onClose={count => { setUnread(count); setShowNotifs(false); }} />

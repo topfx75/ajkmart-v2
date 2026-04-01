@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +26,7 @@ import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual } from "@workspace/i18n";
+import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { useGetWallet } from "@workspace/api-client-react";
 import { API_BASE as API } from "@/utils/api";
 
@@ -745,7 +745,7 @@ export default function WalletScreen() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showSend,     setShowSend]     = useState(false);
   const [showQR,       setShowQR]       = useState(false);
-  const [refreshing,  setRefreshing]  = useState(false);
+  const [lastRefreshed,  setLastRefreshed]  = useState<Date | null>(null);
   const [txFilter,    setTxFilter]    = useState<TxFilter>("all");
 
   const [sendPhone,   setSendPhone]   = useState("");
@@ -812,13 +812,12 @@ export default function WalletScreen() {
   }, [token]);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
     if (token) {
       try {
         const r = await fetch(`${API}/wallet`, { headers: { Authorization: `Bearer ${token}` } });
         if (r.status === 403) {
           const d = await r.json().catch(() => ({}));
-          if (d.error === "wallet_frozen") { setWalletFrozen(true); setRefreshing(false); return; }
+          if (d.error === "wallet_frozen") { setWalletFrozen(true); return; }
         } else { setWalletFrozen(false); }
       } catch (err) {
         console.warn("[Wallet] Status check failed:", err instanceof Error ? err.message : String(err));
@@ -829,7 +828,7 @@ export default function WalletScreen() {
       updateUser({ walletBalance: res.data.balance });
       setSocketBalance(null);
     }
-    setRefreshing(false);
+    setLastRefreshed(new Date());
   }, [refetch, updateUser, token]);
 
   useEffect(() => {
@@ -928,9 +927,10 @@ export default function WalletScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
-      <ScrollView
+      <SmartRefresh
+        onRefresh={onRefresh}
+        lastUpdated={lastRefreshed}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />}
       >
         <View style={{ backgroundColor: "#fff", paddingTop: topPad + 20, paddingHorizontal: 20, paddingBottom: 28, borderBottomWidth: 1, borderBottomColor: C.border }}>
           {walletError && !data && !walletFrozen && (
@@ -1090,7 +1090,7 @@ export default function WalletScreen() {
         </View>
 
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
-      </ScrollView>
+      </SmartRefresh>
 
       {showDeposit && (
         <DepositModal

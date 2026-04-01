@@ -11,7 +11,6 @@ import {
   NativeSyntheticEvent,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 
 import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
+import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -760,14 +760,13 @@ export default function HomeScreen() {
   const topPad = Math.max(insets.top, 12);
   const TAB_H = Platform.OS === "web" ? 72 : 49;
   const hdOp = useRef(new Animated.Value(0)).current;
-  const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   const { config: platformConfig, loading: configLoading, refresh: refreshConfig } = usePlatformConfig();
 
   const handleHomeRefresh = useCallback(async () => {
-    setHomeRefreshing(true);
     try { await refreshConfig(); } catch (err) { console.warn("[Home] Config refresh failed:", err instanceof Error ? err.message : String(err)); }
-    setHomeRefreshing(false);
+    setLastRefreshed(new Date());
   }, [refreshConfig]);
   const features = platformConfig.features;
   const appName = platformConfig.platform.appName;
@@ -892,10 +891,11 @@ export default function HomeScreen() {
         </LinearGradient>
       </Animated.View>
 
-      <ScrollView
+      <SmartRefresh
+        onRefresh={handleHomeRefresh}
+        lastUpdated={lastRefreshed}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={homeRefreshing} onRefresh={handleHomeRefresh} tintColor={C.primary} />}
       >
         {user?.role === "rider" && <RiderOnlineBanner />}
 
@@ -1040,7 +1040,7 @@ export default function HomeScreen() {
         )}
 
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
-      </ScrollView>
+      </SmartRefresh>
     </View>
   );
 }
