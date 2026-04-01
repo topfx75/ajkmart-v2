@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 
 export const usersTable = pgTable("users", {
   id:              text("id").primaryKey(),
-  phone:           text("phone").notNull().unique(),
+  phone:           text("phone").unique(),
   name:            text("name"),
   email:           text("email").unique(),
   role:            text("role").notNull().default("customer"),
@@ -78,6 +78,9 @@ export const usersTable = pgTable("users", {
   ignoreCount:     integer("ignore_count").notNull().default(0),
   isRestricted:    boolean("is_restricted").notNull().default(false),
   cancellationDebt: decimal("cancellation_debt", { precision: 10, scale: 2 }).notNull().default("0"),
+  /* ── Merge OTP fields (separate from login OTP to avoid race conditions) ── */
+  mergeOtpCode:    text("merge_otp_code"),
+  mergeOtpExpiry:  timestamp("merge_otp_expiry"),
   /* ── Pending merge identifier — binds merge-OTP to a specific identifier ── */
   pendingMergeIdentifier: text("pending_merge_identifier"),
   /* ── Device fingerprinting — for multi-account abuse detection ── */

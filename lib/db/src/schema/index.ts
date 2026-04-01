@@ -27,3 +27,4 @@ export * from "./rider_penalties";
 export * from "./ride_ratings";
 export * from "./ride_notified_riders";
 export * from "./location_logs";
+export * from "./rate_limits";

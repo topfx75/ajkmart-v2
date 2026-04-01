@@ -2,8 +2,8 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, refreshTokensTable, authAuditLogTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { usersTable, refreshTokensTable, authAuditLogTable, rateLimitsTable } from "@workspace/db/schema";
+import { eq, and, lt, gt, like, sql } from "drizzle-orm";
 import { getPlatformSettings } from "../routes/admin.js";
 import { generateId } from "../lib/id.js";
 
@@ -113,11 +113,90 @@ async function isVpnOrProxy(ip: string): Promise<boolean> {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   IN-MEMORY STORES
+   BLOCKED-IP CACHE  (backed by rate_limits DB table)
 ══════════════════════════════════════════════════════════════ */
-const ipRateStore = new Map<string, { count: number; windowStart: number }>();
-export const blockedIPs = new Set<string>();
-export const loginAttempts = new Map<string, { attempts: number; lockedUntil: number | null }>();
+const blockedIPsCache = new Set<string>();
+
+async function loadBlockedIPs() {
+  try {
+    const rows = await db.select({ key: rateLimitsTable.key })
+      .from(rateLimitsTable)
+      .where(like(rateLimitsTable.key, "blocked_ip:%"));
+    for (const row of rows) blockedIPsCache.add(row.key.replace("blocked_ip:", ""));
+  } catch {}
+}
+loadBlockedIPs().catch(() => {});
+
+export async function blockIP(ip: string) {
+  blockedIPsCache.add(ip);
+  try {
+    await db.insert(rateLimitsTable).values({
+      key: `blocked_ip:${ip}`,
+      attempts: 0,
+      windowStart: new Date(),
+      updatedAt: new Date(),
+    }).onConflictDoNothing();
+  } catch {}
+}
+
+export async function unblockIP(ip: string) {
+  blockedIPsCache.delete(ip);
+  try {
+    await db.delete(rateLimitsTable).where(eq(rateLimitsTable.key, `blocked_ip:${ip}`));
+  } catch {}
+}
+
+export async function isIPBlocked(ip: string): Promise<boolean> {
+  if (blockedIPsCache.has(ip)) return true;
+  try {
+    const [row] = await db.select({ key: rateLimitsTable.key }).from(rateLimitsTable)
+      .where(eq(rateLimitsTable.key, `blocked_ip:${ip}`)).limit(1);
+    if (row) {
+      blockedIPsCache.add(ip);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+export async function getBlockedIPList(): Promise<string[]> {
+  try {
+    const rows = await db.select({ key: rateLimitsTable.key })
+      .from(rateLimitsTable)
+      .where(like(rateLimitsTable.key, "blocked_ip:%"));
+    const ips = rows.map(r => r.key.replace("blocked_ip:", ""));
+    for (const ip of ips) blockedIPsCache.add(ip);
+    return ips;
+  } catch {
+    return Array.from(blockedIPsCache);
+  }
+}
+
+export async function getActiveLockouts(): Promise<Array<{ key: string; attempts: number; lockedUntil: string | null; minutesLeft: number | null }>> {
+  try {
+    const now = new Date();
+    const rows = await db.select().from(rateLimitsTable)
+      .where(and(
+        gt(rateLimitsTable.attempts, 0),
+      ));
+    return rows
+      .filter(r => !r.key.startsWith("blocked_ip:") && !r.key.startsWith("check-avail:") && !r.key.startsWith("ip_rate:"))
+      .map(r => {
+        const lockedUntilMs = r.lockedUntil?.getTime() ?? null;
+        const minutesLeft = lockedUntilMs && lockedUntilMs > now.getTime()
+          ? Math.ceil((lockedUntilMs - now.getTime()) / 60000)
+          : null;
+        return {
+          key: r.key,
+          attempts: r.attempts,
+          lockedUntil: r.lockedUntil ? r.lockedUntil.toISOString() : null,
+          minutesLeft,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
 
 export interface AuditEntry {
   timestamp: string;
@@ -357,45 +436,127 @@ export function verifyAdminJwt(token: string): AdminJwtPayload | null {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   LOGIN LOCKOUT HELPERS
+   LOGIN LOCKOUT HELPERS  (DB-backed — survives restarts)
 ══════════════════════════════════════════════════════════════ */
-export function checkLockout(
-  phone: string,
+export async function checkLockout(
+  key: string,
   maxAttempts: number,
   lockoutMinutes: number
-): { locked: boolean; minutesLeft?: number; attempts?: number } {
-  const record = loginAttempts.get(phone);
-  if (!record) return { locked: false, attempts: 0 };
+): Promise<{ locked: boolean; minutesLeft?: number; attempts?: number }> {
+  try {
+    const [record] = await db.select().from(rateLimitsTable).where(eq(rateLimitsTable.key, key)).limit(1);
+    if (!record) return { locked: false, attempts: 0 };
 
-  if (record.lockedUntil) {
-    const now = Date.now();
-    if (now < record.lockedUntil) {
-      const minutesLeft = Math.ceil((record.lockedUntil - now) / 60000);
-      return { locked: true, minutesLeft, attempts: record.attempts };
+    if (record.lockedUntil) {
+      const now = Date.now();
+      const lockedUntilMs = record.lockedUntil.getTime();
+      if (now < lockedUntilMs) {
+        const minutesLeft = Math.ceil((lockedUntilMs - now) / 60000);
+        return { locked: true, minutesLeft, attempts: record.attempts };
+      }
+      await db.delete(rateLimitsTable).where(eq(rateLimitsTable.key, key));
+      return { locked: false, attempts: 0 };
     }
-    loginAttempts.delete(phone);
+
+    return { locked: false, attempts: record.attempts };
+  } catch {
     return { locked: false, attempts: 0 };
   }
-
-  return { locked: false, attempts: record.attempts };
 }
 
-export function recordFailedAttempt(phone: string, maxAttempts: number, lockoutMinutes: number) {
-  const record = loginAttempts.get(phone) || { attempts: 0, lockedUntil: null };
-  record.attempts += 1;
-  if (record.attempts >= maxAttempts) {
-    record.lockedUntil = Date.now() + lockoutMinutes * 60 * 1000;
+export async function recordFailedAttempt(key: string, maxAttempts: number, lockoutMinutes: number) {
+  try {
+    const now = new Date();
+    const lockedUntil = new Date(Date.now() + lockoutMinutes * 60 * 1000);
+
+    const [existing] = await db.select().from(rateLimitsTable).where(eq(rateLimitsTable.key, key)).limit(1);
+    if (!existing) {
+      const newAttempts = 1;
+      await db.insert(rateLimitsTable).values({
+        key,
+        attempts: newAttempts,
+        lockedUntil: newAttempts >= maxAttempts ? lockedUntil : null,
+        windowStart: now,
+        updatedAt: now,
+      });
+      return { attempts: newAttempts, lockedUntil: newAttempts >= maxAttempts ? lockedUntil.getTime() : null };
+    }
+
+    const newAttempts = existing.attempts + 1;
+    await db.update(rateLimitsTable).set({
+      attempts: newAttempts,
+      lockedUntil: newAttempts >= maxAttempts ? lockedUntil : null,
+      updatedAt: now,
+    }).where(eq(rateLimitsTable.key, key));
+
+    return { attempts: newAttempts, lockedUntil: newAttempts >= maxAttempts ? lockedUntil.getTime() : null };
+  } catch {
+    return { attempts: 0, lockedUntil: null };
   }
-  loginAttempts.set(phone, record);
-  return record;
 }
 
-export function resetAttempts(phone: string) {
-  loginAttempts.delete(phone);
+export async function resetAttempts(key: string) {
+  try {
+    await db.delete(rateLimitsTable).where(eq(rateLimitsTable.key, key));
+  } catch {}
 }
 
-export function unlockPhone(phone: string) {
-  loginAttempts.delete(phone);
+export async function unlockPhone(phone: string) {
+  await resetAttempts(phone);
+}
+
+export async function cleanupExpiredRateLimits() {
+  try {
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+    await db.delete(rateLimitsTable).where(
+      and(
+        lt(rateLimitsTable.updatedAt, cutoff),
+        sql`${rateLimitsTable.key} NOT LIKE 'blocked_ip:%'`
+      )
+    );
+  } catch {}
+}
+setInterval(() => { cleanupExpiredRateLimits().catch(() => {}); }, 15 * 60 * 1000);
+
+/* ══════════════════════════════════════════════════════════════
+   CHECK-AVAILABLE RATE LIMITER  (DB-authoritative)
+══════════════════════════════════════════════════════════════ */
+export async function checkAvailableRateLimit(ip: string, maxRequests: number, windowMinutes: number): Promise<{ limited: boolean; minutesLeft?: number }> {
+  const result = await dbRateIncrement(`check-avail:${ip}`, windowMinutes);
+  if (result.count > maxRequests) {
+    const minutesLeft = Math.ceil((result.windowStartMs + windowMinutes * 60_000 - Date.now()) / 60_000);
+    return { limited: true, minutesLeft };
+  }
+  return { limited: false };
+}
+
+async function dbRateIncrement(key: string, windowMinutes: number): Promise<{ count: number; windowStartMs: number }> {
+  const now = new Date();
+  const windowMs = windowMinutes * 60_000;
+  try {
+    const [existing] = await db.select().from(rateLimitsTable).where(eq(rateLimitsTable.key, key)).limit(1);
+    if (!existing || now.getTime() - existing.windowStart.getTime() > windowMs) {
+      await db.insert(rateLimitsTable).values({
+        key,
+        attempts: 1,
+        windowStart: now,
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: rateLimitsTable.key,
+        set: { attempts: 1, windowStart: now, updatedAt: now },
+      });
+      return { count: 1, windowStartMs: now.getTime() };
+    }
+
+    const newCount = existing.attempts + 1;
+    await db.update(rateLimitsTable).set({
+      attempts: newCount,
+      updatedAt: now,
+    }).where(eq(rateLimitsTable.key, key));
+    return { count: newCount, windowStartMs: existing.windowStart.getTime() };
+  } catch {
+    return { count: 0, windowStartMs: now.getTime() };
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -445,7 +606,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
 
   if (req.url === "/" || req.url.endsWith("/health")) { next(); return; }
 
-  if (blockedIPs.has(ip)) {
+  if (await isIPBlocked(ip)) {
     addSecurityEvent({ type: "blocked_ip_access", ip, details: `Blocked IP attempted access to ${req.url}`, severity: "high" });
     res.status(403).json({ error: "Access denied. Your IP address has been blocked due to suspicious activity." });
     return;
@@ -456,7 +617,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
   if (settings["security_block_tor"] === "on") {
     const isTor = await isTorExitNode(ip);
     if (isTor) {
-      blockedIPs.add(ip);
+      blockIP(ip);
       addSecurityEvent({ type: "tor_access_blocked", ip, details: `TOR exit node blocked from ${req.url}`, severity: "high" });
       addAuditEntry({ action: "tor_block", ip, details: `Blocked TOR exit node IP`, result: "warn" });
       res.status(403).json({ error: "Access via TOR is not permitted." });
@@ -486,26 +647,21 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
   const burst = parseInt(settings["security_rate_burst"] ?? "20", 10);
   const hardLimit = limitPerMin + burst;
 
-  const now = Date.now();
-  const windowMs = 60_000;
-  const key = `${ip}:${roleKey}`;
-  const entry = ipRateStore.get(key);
+  const key = `ip_rate:${ip}:${roleKey}`;
+  const rateResult = await dbRateIncrement(key, 1);
 
-  if (!entry || now - entry.windowStart > windowMs) {
-    ipRateStore.set(key, { count: 1, windowStart: now });
-  } else {
-    entry.count++;
-
-    if (settings["security_auto_block_ip"] === "on" && entry.count > hardLimit * 3) {
-      blockedIPs.add(ip);
-      addAuditEntry({ action: "auto_block_ip", ip, details: `Auto-blocked: ${entry.count} req/min far exceeds limit of ${hardLimit}`, result: "warn" });
-      addSecurityEvent({ type: "ip_auto_blocked", ip, details: `Auto-blocked after ${entry.count} requests in 1 minute`, severity: "critical" });
+  if (rateResult.count > 1) {
+    if (settings["security_auto_block_ip"] === "on" && rateResult.count > hardLimit * 3) {
+      blockIP(ip);
+      addAuditEntry({ action: "auto_block_ip", ip, details: `Auto-blocked: ${rateResult.count} req/min far exceeds limit of ${hardLimit}`, result: "warn" });
+      addSecurityEvent({ type: "ip_auto_blocked", ip, details: `Auto-blocked after ${rateResult.count} requests in 1 minute`, severity: "critical" });
       res.status(403).json({ error: "Your IP has been automatically blocked due to excessive requests." });
       return;
     }
 
-    if (entry.count > hardLimit) {
-      const retryAfter = Math.ceil((entry.windowStart + windowMs - now) / 1000);
+    if (rateResult.count > hardLimit) {
+      const now = Date.now();
+      const retryAfter = Math.ceil((rateResult.windowStartMs + 60_000 - now) / 1000);
       res.setHeader("Retry-After", retryAfter.toString());
       res.status(429).json({ error: "Too many requests. Please slow down.", retryAfter });
       return;

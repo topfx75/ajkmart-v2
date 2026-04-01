@@ -26,6 +26,7 @@ import {
   writeAuthAuditLog,
   REFRESH_TOKEN_TTL_DAYS,
   verifyCaptcha,
+  checkAvailableRateLimit,
 } from "../middleware/security.js";
 import { sendOtpSMS } from "../services/sms.js";
 import { sendWhatsAppOTP } from "../services/whatsapp.js";
@@ -35,6 +36,10 @@ import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri,
 import { sendVerificationEmail, sendPasswordResetEmail, sendMagicLinkEmail } from "../services/email.js";
 import { getUserLanguage, getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
+
+function hashOtp(otp: string): string {
+  return createHash("sha256").update(otp).digest("hex");
+}
 
 function generateVerificationToken(): string {
   return randomBytes(32).toString("hex");
@@ -111,7 +116,7 @@ router.post("/check-identifier", async (req, res) => {
   const maxAttempts    = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
   const lockoutKey     = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim();
-  const lockout        = checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
+  const lockout        = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
     res.json({ exists: true, isNewUser: false, isLocked: true, lockedMinutes: lockout.minutesLeft, action: "locked", availableMethods: [] });
     return;
@@ -255,7 +260,7 @@ router.post("/send-merge-otp", async (req, res) => {
   const otp = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
   const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
-  await db.update(usersTable).set({ otpCode: otp, otpExpiry, otpUsed: false, pendingMergeIdentifier: normalizedIdentifier, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+  await db.update(usersTable).set({ mergeOtpCode: hashOtp(otp), mergeOtpExpiry: otpExpiry, pendingMergeIdentifier: normalizedIdentifier, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
   if (looksLikePhone) {
     const phone = canonicalizePhone(identifier);
@@ -313,7 +318,7 @@ router.post("/merge-account", async (req, res) => {
 
   const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
 
-  if (currentUser.otpCode !== otp || !currentUser.otpExpiry || currentUser.otpExpiry < new Date() || currentUser.otpUsed) {
+  if (currentUser.mergeOtpCode !== hashOtp(otp) || !currentUser.mergeOtpExpiry || currentUser.mergeOtpExpiry < new Date()) {
     res.status(400).json({ error: "Invalid or expired OTP" });
     return;
   }
@@ -330,7 +335,7 @@ router.post("/merge-account", async (req, res) => {
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
     if (existing) { res.status(409).json({ error: "This phone number is already linked to another account" }); return; }
 
-    await db.update(usersTable).set({ phone, otpUsed: true, phoneVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+    await db.update(usersTable).set({ phone, mergeOtpCode: null, mergeOtpExpiry: null, phoneVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
     writeAuthAuditLog("account_merge_phone", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
     res.json({ success: true, message: "Phone number linked successfully", linked: "phone" });
@@ -341,7 +346,7 @@ router.post("/merge-account", async (req, res) => {
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
     if (existing) { res.status(409).json({ error: "This email is already linked to another account" }); return; }
 
-    await db.update(usersTable).set({ email, otpUsed: true, emailVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+    await db.update(usersTable).set({ email, mergeOtpCode: null, mergeOtpExpiry: null, emailVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
     writeAuthAuditLog("account_merge_email", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { email } });
     res.json({ success: true, message: "Email linked successfully", linked: "email" });
@@ -394,7 +399,7 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
   /* ── Check lockout before generating new OTP ── */
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
-  const lockoutStatus = checkLockout(phone, maxAttempts, lockoutMinutes);
+  const lockoutStatus = await checkLockout(phone, maxAttempts, lockoutMinutes);
   if (lockoutStatus.locked) {
     addSecurityEvent({ type: "locked_account_otp_request", ip, details: `OTP request for locked phone: ${phone}`, severity: "medium" });
     res.status(429).json({
@@ -456,7 +461,7 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     .values({
       id:             generateId(),
       phone,
-      otpCode:        otp,
+      otpCode:        hashOtp(otp),
       otpExpiry,
       otpUsed:        false,
       role:           "customer",
@@ -469,7 +474,7 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     .onConflictDoUpdate({
       target: usersTable.phone,
       set: {
-        otpCode:   otp,
+        otpCode:   hashOtp(otp),
         otpExpiry,
         otpUsed:   false,
         updatedAt: new Date(),
@@ -570,7 +575,7 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"]    ?? "30", 10);
 
   /* ── Lockout check ── */
-  const lockoutStatus = checkLockout(phone, maxAttempts, lockoutMinutes);
+  const lockoutStatus = await checkLockout(phone, maxAttempts, lockoutMinutes);
   if (lockoutStatus.locked) {
     addAuditEntry({ action: "verify_otp_lockout", ip, details: `Locked account OTP attempt: ${phone}`, result: "fail" });
     res.status(429).json({
@@ -644,7 +649,7 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
         .set({ otpCode: null, otpExpiry: null, otpUsed: true, phoneVerified: true, lastLoginAt: now })
         .where(and(
           eq(usersTable.phone, phone),
-          eq(usersTable.otpCode, otp),
+          eq(usersTable.otpCode, hashOtp(otp)),
           eq(usersTable.otpUsed, false),
           sql`otp_expiry > now()`,
         ))
@@ -695,7 +700,7 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
         writeAuthAuditLog("otp_expired", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
         res.status(401).json({ error: "OTP expired. Please request a new one." });
       } else {
-        const updated = recordFailedAttempt(phone, maxAttempts, lockoutMinutes);
+        const updated = await recordFailedAttempt(phone, maxAttempts, lockoutMinutes);
         const remaining = maxAttempts - updated.attempts;
         addAuditEntry({ action: "verify_otp_failed", ip, details: `Wrong OTP for phone: ${phone}, attempt ${updated.attempts}/${maxAttempts}`, result: "fail" });
         writeAuthAuditLog("otp_failed", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
@@ -718,7 +723,7 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
       .where(eq(usersTable.phone, phone));
   }
 
-  resetAttempts(phone);
+  await resetAttempts(phone);
 
   /* ── Re-fetch user to get latest data (wallet balance, name, etc.) ── */
   const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
@@ -746,7 +751,7 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
     const deviceFingerprint = req.body.deviceFingerprint ?? "";
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
     if (!isDeviceTrusted(u, deviceFingerprint, trustedDays)) {
-      const tempToken = sign2faChallengeToken(u.id, phone, u.role ?? "customer", u.roles ?? u.role ?? "customer", "phone_otp");
+      const tempToken = sign2faChallengeToken(u.id, u.phone ?? "", u.role ?? "customer", u.roles ?? u.role ?? "customer", "phone_otp");
       res.json({ requires2FA: true, tempToken, userId: u.id }); return;
     }
   }
@@ -917,6 +922,10 @@ router.post("/validate-token", async (req, res) => {
     if (user.isBanned) { res.status(403).json({ valid: false, error: "Account suspended" }); return; }
     if (!user.isActive){ res.status(403).json({ valid: false, error: "Account inactive" }); return; }
 
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
+      res.status(401).json({ valid: false, error: "Token revoked" }); return;
+    }
+
     const expiresAt = payload.exp ? new Date(payload.exp * 1000).toISOString() : null;
     res.json({ valid: true, expiresAt, userId: user.id, role: user.role });
   } catch {
@@ -1010,7 +1019,7 @@ router.post("/refresh", async (req, res) => {
   /* Rotate: revoke old token and issue a new one */
   await revokeRefreshToken(tokenHash);
 
-  const newAccessToken = signAccessToken(user.id, user.phone, user.role ?? "customer", user.roles ?? user.role ?? "customer", user.tokenVersion ?? 0);
+  const newAccessToken = signAccessToken(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? user.role ?? "customer", user.tokenVersion ?? 0);
   const { raw: newRefreshRaw, hash: newRefreshHash } = generateRefreshToken();
   const newRefreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
@@ -1074,12 +1083,10 @@ router.post("/check-available", async (req, res) => {
   /* ── IP-based rate limit: max 20 checks per 10 minutes per IP ──
      Prevents scraping the entire user registry via phone/email/username probing. */
   const ip = getClientIp(req);
-  const rlKey = `ip:check-available:${ip}`;
-  const rlStatus = checkLockout(rlKey, 20, 10);
-  if (rlStatus.locked) {
-    res.status(429).json({ error: `Too many requests. Try again in ${rlStatus.minutesLeft} minute(s).` }); return;
+  const rlCheck = await checkAvailableRateLimit(ip, 20, 10);
+  if (rlCheck.limited) {
+    res.status(429).json({ error: `Too many requests. Try again in ${rlCheck.minutesLeft} minute(s).` }); return;
   }
-  recordFailedAttempt(rlKey, 20, 10);
 
   const { phone, email, username } = req.body;
   const result: Record<string, { available: boolean; message: string }> = {};
@@ -1148,7 +1155,7 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   /* Lockout check using email as key */
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
-  const lockout = checkLockout(normalized, maxAttempts, lockoutMinutes);
+  const lockout = await checkLockout(normalized, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
     res.status(429).json({ error: `Too many attempts. Try again in ${lockout.minutesLeft} minute(s).` }); return;
   }
@@ -1172,7 +1179,7 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   const expiry = new Date(Date.now() + 10 * 60 * 1000);
 
   await db.update(usersTable)
-    .set({ emailOtpCode: otp, emailOtpExpiry: expiry, updatedAt: new Date() })
+    .set({ emailOtpCode: hashOtp(otp), emailOtpExpiry: expiry, updatedAt: new Date() })
     .where(eq(usersTable.id, user.id));
 
   const isDev = process.env.NODE_ENV !== "production";
@@ -1222,7 +1229,7 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
 
-  const lockout = checkLockout(normalized, maxAttempts, lockoutMinutes);
+  const lockout = await checkLockout(normalized, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
     res.status(429).json({ error: `Account locked. Try again in ${lockout.minutesLeft} minute(s).` }); return;
   }
@@ -1254,8 +1261,8 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
     res.status(401).json({ error: "OTP expired. Please request a new one." }); return;
   }
 
-  if (!otpBypass && user.emailOtpCode !== otp) {
-    const updated = recordFailedAttempt(normalized, maxAttempts, lockoutMinutes);
+  if (!otpBypass && user.emailOtpCode !== hashOtp(otp)) {
+    const updated = await recordFailedAttempt(normalized, maxAttempts, lockoutMinutes);
     const remaining = maxAttempts - updated.attempts;
     addAuditEntry({ action: "email_otp_failed", ip, details: `Wrong email OTP for: ${normalized}`, result: "fail" });
     if (updated.lockedUntil) {
@@ -1276,7 +1283,7 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
     .set({ emailOtpCode: null, emailOtpExpiry: null, emailVerified: true, lastLoginAt: new Date(), updatedAt: new Date() })
     .where(eq(usersTable.id, user.id));
 
-  resetAttempts(normalized);
+  await resetAttempts(normalized);
 
   addAuditEntry({ action: "email_login", ip, details: `Email OTP login for: ${normalized}`, result: "success" });
 
@@ -1285,7 +1292,7 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
     const deviceFingerprint = req.body.deviceFingerprint ?? "";
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
     if (!isDeviceTrusted(user, deviceFingerprint, trustedDays)) {
-      const tempToken = sign2faChallengeToken(user.id, user.phone ?? normalized, user.role ?? "customer", user.roles ?? "customer", "email_otp");
+      const tempToken = sign2faChallengeToken(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? "customer", "email_otp");
       res.json({ requires2FA: true, tempToken, userId: user.id }); return;
     }
   }
@@ -1293,7 +1300,7 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
   const isPendingApproval = user.approvalStatus === "pending";
 
   /* Issue short-lived access token + refresh token (consistent with OTP flow) */
-  const accessToken = signAccessToken(user.id, user.phone ?? normalized, user.role ?? "customer", user.roles ?? "customer", user.tokenVersion ?? 0);
+  const accessToken = signAccessToken(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? "customer", user.tokenVersion ?? 0);
   const expiresAt   = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
   if (isPendingApproval) {
@@ -1374,13 +1381,13 @@ async function handleUnifiedLogin(req: Request, res: any) {
 
   const lockoutKey = user ? `uid:${user.id}` : lookupKey;
 
-  const lockout = checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
+  const lockout = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
     res.status(429).json({ error: `Account locked. Try again in ${lockout.minutesLeft} minute(s).` }); return;
   }
 
   if (!user || !user.passwordHash) {
-    recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
+    await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
     addAuditEntry({ action: "unified_login_failed", ip, details: `Not found or no password (${idType}): ${lookupKey}`, result: "fail" });
     res.status(401).json({ error: "Invalid credentials" }); return;
   }
@@ -1396,7 +1403,7 @@ async function handleUnifiedLogin(req: Request, res: any) {
 
   const passwordOk = verifyPassword(password, user.passwordHash);
   if (!passwordOk) {
-    const updated = recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
+    const updated = await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
     addAuditEntry({ action: "unified_login_failed", ip, details: `Wrong password (${idType}): ${lookupKey}`, result: "fail" });
     if (updated.lockedUntil) {
       res.status(429).json({ error: `Too many failed attempts. Locked for ${lockoutMinutes} minutes.` });
@@ -1410,7 +1417,7 @@ async function handleUnifiedLogin(req: Request, res: any) {
     res.status(403).json({ error: "Account rejected. Contact admin.", approvalNote: user.approvalNote }); return;
   }
 
-  resetAttempts(lockoutKey);
+  await resetAttempts(lockoutKey);
   await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
   addAuditEntry({ action: "unified_login", ip, details: `Login via ${idType}: ${lookupKey}`, result: "success" });
 
@@ -1615,7 +1622,8 @@ function isAuthMethodEnabled(settings: Record<string, string>, key: string, role
   try {
     const parsed = JSON.parse(val) as Record<string, string>;
     if (role && parsed[role]) return parsed[role] === "on";
-    return Object.values(parsed).some(v => v === "on");
+    if (!role) return false;
+    return false;
   } catch {
     return val === "on";
   }
@@ -1627,7 +1635,8 @@ function isAuthMethodEnabledStrict(settings: Record<string, string>, newKey: str
     try {
       const parsed = JSON.parse(newVal) as Record<string, string>;
       if (role && role in parsed) return parsed[role] === "on";
-      return Object.values(parsed).some(v => v === "on");
+      if (!role) return false;
+      return false;
     } catch {
       return newVal === "on";
     }
@@ -1639,14 +1648,6 @@ function isAuthMethodEnabledStrict(settings: Record<string, string>, newKey: str
 
 const CNIC_REGEX = /^\d{5}-\d{7}-\d{1}$/;
 const PHONE_REGEX = /^03\d{2}-\d{7}$/;
-const PASSWORD_RULES = {
-  validate(pw: string): { ok: boolean; message: string } {
-    if (pw.length < 8) return { ok: false, message: "Password must be at least 8 characters" };
-    if (!/[A-Z]/.test(pw)) return { ok: false, message: "Password must contain at least 1 uppercase letter" };
-    if (!/[0-9]/.test(pw)) return { ok: false, message: "Password must contain at least 1 number" };
-    return { ok: true, message: "ok" };
-  },
-};
 
 router.post("/register", verifyCaptcha, async (req, res) => {
   const { phone, password, name, role, cnic, nationalId, email, username,
@@ -1681,7 +1682,7 @@ router.post("/register", verifyCaptcha, async (req, res) => {
     res.status(400).json({ error: "Password is required" });
     return;
   }
-  const pwCheck = PASSWORD_RULES.validate(password);
+  const pwCheck = validatePasswordStrength(password);
   if (!pwCheck.ok) {
     res.status(400).json({ error: pwCheck.message });
     return;
@@ -1750,7 +1751,7 @@ router.post("/register", verifyCaptcha, async (req, res) => {
     role: userRole,
     roles: userRole,
     passwordHash: hashPassword(password),
-    otpCode: otp,
+    otpCode: hashOtp(otp),
     otpExpiry,
     otpUsed: false,
     walletBalance: "0",
@@ -1864,7 +1865,7 @@ router.post("/forgot-password", verifyCaptcha, async (req, res) => {
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
   const lockoutKey = `reset:${user.id}`;
-  const lockout = checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
+  const lockout = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
     res.status(429).json({ error: `Too many attempts. Try again in ${lockout.minutesLeft} minute(s).` });
     return;
@@ -1877,7 +1878,7 @@ router.post("/forgot-password", verifyCaptcha, async (req, res) => {
 
   if (phone) {
     await db.update(usersTable)
-      .set({ otpCode: otp, otpExpiry, otpUsed: false, updatedAt: new Date() })
+      .set({ otpCode: hashOtp(otp), otpExpiry, otpUsed: false, updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
     const targetPhone = canonicalizePhone(phone);
@@ -1887,7 +1888,7 @@ router.post("/forgot-password", verifyCaptcha, async (req, res) => {
     }
   } else {
     await db.update(usersTable)
-      .set({ emailOtpCode: otp, emailOtpExpiry: otpExpiry, updatedAt: new Date() })
+      .set({ emailOtpCode: hashOtp(otp), emailOtpExpiry: otpExpiry, updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
     await sendPasswordResetEmail(email, otp, user.name ?? undefined, forgotLang);
@@ -1933,7 +1934,7 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
     return;
   }
 
-  const pwCheck = PASSWORD_RULES.validate(newPassword);
+  const pwCheck = validatePasswordStrength(newPassword);
   if (!pwCheck.ok) {
     res.status(400).json({ error: pwCheck.message });
     return;
@@ -1971,7 +1972,7 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
   const lockoutKey = `reset:${user.id}`;
-  const lockout = checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
+  const lockout = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
     res.status(429).json({ error: `Too many attempts. Try again in ${lockout.minutesLeft} minute(s).` });
     return;
@@ -1979,13 +1980,13 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
 
   let otpValid = false;
   if (phone) {
-    otpValid = user.otpCode === otp && !user.otpUsed && user.otpExpiry != null && new Date() < user.otpExpiry;
+    otpValid = user.otpCode === hashOtp(otp) && !user.otpUsed && user.otpExpiry != null && new Date() < user.otpExpiry;
   } else {
-    otpValid = user.emailOtpCode === otp && user.emailOtpExpiry != null && new Date() < user.emailOtpExpiry;
+    otpValid = user.emailOtpCode === hashOtp(otp) && user.emailOtpExpiry != null && new Date() < user.emailOtpExpiry;
   }
 
   if (!otpValid) {
-    recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
+    await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
     addAuditEntry({ action: "reset_password_failed", ip, details: `Invalid OTP for password reset: ${user.id}`, result: "fail" });
     res.status(401).json({ error: "Invalid or expired OTP" });
     return;
@@ -2007,7 +2008,7 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
     const { verifyTotpCode } = await import("../services/password.js");
     const decryptedSecret = decryptTotpSecret(user.totpSecret);
     if (!verifyTotpCode(decryptedSecret, totpCode)) {
-      recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
+      await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
       addAuditEntry({ action: "reset_password_2fa_failed", ip, details: `Invalid TOTP for password reset: ${user.id}`, result: "fail" });
       res.status(401).json({ error: "Invalid two-factor authentication code" });
       return;
@@ -2025,7 +2026,7 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
     updatedAt: new Date(),
   }).where(eq(usersTable.id, user.id));
 
-  resetAttempts(lockoutKey);
+  await resetAttempts(lockoutKey);
 
   writeAuthAuditLog("password_reset", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
 
@@ -2058,7 +2059,7 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
     return;
   }
 
-  const pwCheck = PASSWORD_RULES.validate(password);
+  const pwCheck = validatePasswordStrength(password);
   if (!pwCheck.ok) {
     res.status(400).json({ error: pwCheck.message });
     return;
@@ -2162,7 +2163,7 @@ router.get("/verify-email", async (req, res) => {
   const normalizedEmail = decodeURIComponent(email).toLowerCase().trim();
   const verifyKey = `email_verify:${normalizedEmail}`;
 
-  const lockout = checkLockout(verifyKey, 5, 15);
+  const lockout = await checkLockout(verifyKey, 5, 15);
   if (lockout.locked) {
     res.status(429).json({ error: `Too many verification attempts. Try again in ${lockout.minutesLeft} minute(s).` });
     return;
@@ -2171,7 +2172,7 @@ router.get("/verify-email", async (req, res) => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
 
   if (!user) {
-    recordFailedAttempt(verifyKey, 5, 15);
+    await recordFailedAttempt(verifyKey, 5, 15);
     res.status(400).json({ error: "Invalid or expired verification link" });
     return;
   }
@@ -2188,7 +2189,7 @@ router.get("/verify-email", async (req, res) => {
 
   const incomingHash = hashVerificationToken(decodeURIComponent(token));
   if (!user.emailOtpCode || user.emailOtpCode !== incomingHash) {
-    recordFailedAttempt(verifyKey, 5, 15);
+    await recordFailedAttempt(verifyKey, 5, 15);
     addAuditEntry({ action: "email_verify_failed", ip, details: `Invalid verification token for ${normalizedEmail}`, result: "fail" });
     res.status(401).json({ error: "Invalid or expired verification link" });
     return;
@@ -2201,7 +2202,7 @@ router.get("/verify-email", async (req, res) => {
     updatedAt: new Date(),
   }).where(eq(usersTable.id, user.id));
 
-  resetAttempts(verifyKey);
+  await resetAttempts(verifyKey);
   writeAuthAuditLog("email_verified", { userId: user.id, ip });
 
   res.json({ message: "Email verified successfully. You can now log in." });
@@ -2319,9 +2320,8 @@ router.post("/social/google", async (req, res) => {
     }
     const requireApproval = settings["user_require_approval"] === "on";
     const id = generateId();
-    const phone = `google_${googleId}`;
     [user] = await db.insert(usersTable).values({
-      id, phone, name, email, avatar, googleId,
+      id, name, email, avatar, googleId,
       role: "customer", roles: "customer", walletBalance: "0",
       emailVerified: !!email,
       isActive: !requireApproval, approvalStatus: requireApproval ? "pending" : "approved",
@@ -2400,9 +2400,8 @@ router.post("/social/facebook", async (req, res) => {
     }
     const requireApproval = settings["user_require_approval"] === "on";
     const id = generateId();
-    const phone = `facebook_${facebookId}`;
     [user] = await db.insert(usersTable).values({
-      id, phone, name, email, avatar, facebookId,
+      id, name, email, avatar, facebookId,
       role: "customer", roles: "customer", walletBalance: "0",
       emailVerified: !!email,
       isActive: !requireApproval, approvalStatus: requireApproval ? "pending" : "approved",

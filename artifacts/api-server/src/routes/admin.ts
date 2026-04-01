@@ -39,8 +39,11 @@ import {
   getClientIp,
   auditLog,
   securityEvents,
-  blockedIPs,
-  loginAttempts,
+  blockIP,
+  unblockIP,
+  isIPBlocked,
+  getBlockedIPList,
+  getActiveLockouts,
   unlockPhone,
   invalidateSettingsCache,
   signAdminJwt,
@@ -2930,19 +2933,20 @@ router.get("/security-events", adminAuth, (req, res) => {
 });
 
 /* ── GET /admin/blocked-ips — list all blocked IPs ── */
-router.get("/blocked-ips", adminAuth, (_req, res) => {
+router.get("/blocked-ips", adminAuth, async (_req, res) => {
+  const blocked = await getBlockedIPList();
   res.json({
-    blocked: Array.from(blockedIPs),
-    total: blockedIPs.size,
+    blocked,
+    total: blocked.length,
   });
 });
 
 /* ── POST /admin/blocked-ips — block an IP ── */
-router.post("/blocked-ips", adminAuth, (req, res) => {
+router.post("/blocked-ips", adminAuth, async (req, res) => {
   const { ip, reason } = req.body as { ip: string; reason?: string };
   if (!ip) { res.status(400).json({ error: "ip required" }); return; }
 
-  blockedIPs.add(ip.trim());
+  await blockIP(ip.trim());
   addAuditEntry({
     action: "manual_block_ip",
     ip: getClientIp(req),
@@ -2951,14 +2955,15 @@ router.post("/blocked-ips", adminAuth, (req, res) => {
     result: "success",
   });
   addSecurityEvent({ type: "ip_manually_blocked", ip, details: `Admin manually blocked IP: ${ip}. Reason: ${reason || "none"}`, severity: "high" });
-  res.json({ success: true, blocked: ip, totalBlocked: blockedIPs.size });
+  const blocked = await getBlockedIPList();
+  res.json({ success: true, blocked: ip, totalBlocked: blocked.length });
 });
 
 /* ── DELETE /admin/blocked-ips/:ip — unblock an IP ── */
-router.delete("/blocked-ips/:ip", adminAuth, (req, res) => {
+router.delete("/blocked-ips/:ip", adminAuth, async (req, res) => {
   const ip = decodeURIComponent(String(req.params["ip"]));
-  const wasBlocked = blockedIPs.has(ip);
-  blockedIPs.delete(ip);
+  const wasBlocked = await isIPBlocked(ip);
+  await unblockIP(ip);
   addAuditEntry({
     action: "unblock_ip",
     ip: getClientIp(req),
@@ -2970,32 +2975,23 @@ router.delete("/blocked-ips/:ip", adminAuth, (req, res) => {
 });
 
 /* ── GET /admin/login-lockouts — view locked accounts ── */
-router.get("/login-lockouts", adminAuth, (_req, res) => {
-  const now = Date.now();
-  const lockouts: Array<{ phone: string; attempts: number; lockedUntil: string | null; minutesLeft: number | null }> = [];
-
-  for (const [phone, record] of loginAttempts.entries()) {
-    const minutesLeft = record.lockedUntil
-      ? Math.max(0, Math.ceil((record.lockedUntil - now) / 60000))
-      : null;
-    lockouts.push({
-      phone,
-      attempts: record.attempts,
-      lockedUntil: record.lockedUntil ? new Date(record.lockedUntil).toISOString() : null,
-      minutesLeft,
-    });
-  }
-
+router.get("/login-lockouts", adminAuth, async (_req, res) => {
+  const lockouts = await getActiveLockouts();
   res.json({
-    lockouts: lockouts.filter(l => l.lockedUntil !== null || l.attempts > 0),
+    lockouts: lockouts.map(l => ({
+      phone: l.key,
+      attempts: l.attempts,
+      lockedUntil: l.lockedUntil,
+      minutesLeft: l.minutesLeft,
+    })),
     total: lockouts.length,
   });
 });
 
 /* ── DELETE /admin/login-lockouts/:phone — unlock a phone ── */
-router.delete("/login-lockouts/:phone", adminAuth, (req, res) => {
+router.delete("/login-lockouts/:phone", adminAuth, async (req, res) => {
   const phone = decodeURIComponent(String(req.params["phone"]));
-  unlockPhone(phone);
+  await unlockPhone(phone);
   addAuditEntry({
     action: "admin_unlock_phone",
     ip: getClientIp(req),
@@ -3011,8 +3007,10 @@ router.get("/security-dashboard", adminAuth, async (_req, res) => {
   const settings = await getPlatformSettings();
   const now = Date.now();
 
-  const activeBlocks = blockedIPs.size;
-  const activeLockouts = Array.from(loginAttempts.values()).filter(r => r.lockedUntil && r.lockedUntil > now).length;
+  const blockedList = await getBlockedIPList();
+  const activeBlocks = blockedList.length;
+  const lockoutList = await getActiveLockouts();
+  const activeLockouts = lockoutList.filter(r => r.minutesLeft !== null && r.minutesLeft > 0).length;
   const recentCritical = securityEvents.filter(e => e.severity === "critical" && new Date(e.timestamp).getTime() > now - 24 * 60 * 60 * 1000).length;
   const recentHigh     = securityEvents.filter(e => e.severity === "high"     && new Date(e.timestamp).getTime() > now - 24 * 60 * 60 * 1000).length;
 
