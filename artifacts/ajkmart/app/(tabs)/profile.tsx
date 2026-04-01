@@ -181,7 +181,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
           <Text style={sheet.sub}>Update your information</Text>
 
           <View style={{ alignSelf: "center", alignItems: "center", marginBottom: spacing.lg, gap: 8 }}>
-            <Pressable onPress={pickAvatar} disabled={avatarUploading} style={{ position: "relative" }}>
+            <Pressable onPress={pickAvatar} disabled={avatarUploading} style={{ position: "relative" }} accessibilityRole="button" accessibilityLabel="Change profile photo">
               <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: avatarError ? C.danger : C.primary, overflow: "hidden" }}>
                 {avatarUploading
                   ? <ActivityIndicator color={C.primary} />
@@ -196,7 +196,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               </View>
             </Pressable>
             {avatarError && pendingAsset && (
-              <Pressable onPress={() => uploadAvatar(pendingAsset)} disabled={avatarUploading} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#FEE2E2", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: "#FCA5A5" }}>
+              <Pressable onPress={() => uploadAvatar(pendingAsset)} disabled={avatarUploading} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#FEE2E2", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: "#FCA5A5" }} accessibilityRole="button" accessibilityLabel="Retry avatar upload">
                 <Ionicons name="refresh-outline" size={13} color={C.danger} />
                 <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: C.danger }}>Retry Upload</Text>
               </Pressable>
@@ -272,7 +272,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               <View style={{ flexDirection: "row", gap: 6, alignItems: "center", paddingRight: 12, paddingLeft: 8, height: 52 }}>
                 {cityList.map(c => (
                   <Pressable key={c} onPress={() => setCity(c)}
-                    style={[chip.base, city === c && chip.active]}>
+                    style={[chip.base, city === c && chip.active]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: city === c }}>
                     <Text style={[chip.text, city === c && chip.textActive]}>{c}</Text>
                   </Pressable>
                 ))}
@@ -288,10 +288,10 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
           ) : null}
 
           <View style={{ flexDirection: "row", gap: 10, marginTop: spacing.lg }}>
-            <Pressable onPress={onClose} style={btnStyles.cancel}>
+            <Pressable onPress={onClose} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={btnStyles.cancelTxt}>Cancel</Text>
             </Pressable>
-            <Pressable onPress={save} disabled={saving} style={[btnStyles.save, saving && { opacity: 0.7 }]}>
+            <Pressable onPress={save} disabled={saving} style={[btnStyles.save, saving && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Save changes" accessibilityState={{ disabled: saving }}>
               {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={btnStyles.saveTxt}>Save Changes</Text>}
             </Pressable>
           </View>
@@ -381,11 +381,11 @@ function NotificationsModal({ visible, userId, token, onClose }: {
           </View>
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
             {unread > 0 && (
-              <Pressable onPress={markAll} disabled={marking} style={modalHdr.action}>
+              <Pressable onPress={markAll} disabled={marking} style={modalHdr.action} accessibilityRole="button" accessibilityLabel="Mark all as read">
                 {marking ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={modalHdr.actionTxt}>Mark all as read</Text>}
               </Pressable>
             )}
-            <Pressable onPress={() => onClose(unread)} style={modalHdr.close}>
+            <Pressable onPress={() => onClose(unread)} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close notifications">
               <Ionicons name="close" size={20} color={C.text} />
             </Pressable>
           </View>
@@ -412,7 +412,7 @@ function NotificationsModal({ visible, userId, token, onClose }: {
             {notifs.map(n => {
               const [icon, color, bg] = typeMap[n.type] || typeMap.system!;
               return (
-                <Pressable key={n.id} onPress={() => handleNotifPress(n)} style={[notifItem.wrap, !n.isRead && notifItem.unread]}>
+                <Pressable key={n.id} onPress={() => handleNotifPress(n)} style={[notifItem.wrap, !n.isRead && notifItem.unread]} accessibilityRole="button" accessibilityLabel={`${n.title}, ${n.body}${!n.isRead ? ", unread" : ""}`}>
                   <View style={[notifItem.icon, { backgroundColor: bg }]}>
                     <Ionicons name={icon} size={19} color={color} />
                     {!n.isRead && <View style={notifItem.dot} />}
@@ -422,7 +422,7 @@ function NotificationsModal({ visible, userId, token, onClose }: {
                     <Text style={notifItem.body} numberOfLines={2}>{n.body}</Text>
                     <Text style={notifItem.time}>{relativeTime(n.createdAt)}</Text>
                   </View>
-                  <Pressable onPress={() => del(n.id)} style={notifItem.del}>
+                  <Pressable onPress={() => del(n.id)} style={notifItem.del} accessibilityRole="button" accessibilityLabel="Delete notification">
                     <Ionicons name="close" size={13} color={C.textMuted} />
                   </Pressable>
                 </Pressable>
@@ -696,14 +696,14 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
       <View style={{ flex: 1, backgroundColor: C.surface }}>
         <View style={modalHdr.wrap}>
           <Text style={modalHdr.title}>Privacy & Security</Text>
-          <Pressable onPress={onClose} style={modalHdr.close}><Ionicons name="close" size={20} color={C.text} /></Pressable>
+          <Pressable onPress={onClose} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close privacy settings"><Ionicons name="close" size={20} color={C.text} /></Pressable>
         </View>
         {loading ? <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} /> : loadError ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xxl }}>
             <Ionicons name="cloud-offline-outline" size={48} color={C.textMuted} />
             <Text style={{ ...typography.h3, color: C.text }}>Could not load settings</Text>
             <Text style={{ ...typography.caption, color: C.textMuted, textAlign: "center" }}>Check your connection and try again</Text>
-            <Pressable onPress={loadSettings} style={[primaryBtn.base, { paddingHorizontal: spacing.xxl }]}>
+            <Pressable onPress={loadSettings} style={[primaryBtn.base, { paddingHorizontal: spacing.xxl }]} accessibilityRole="button" accessibilityLabel="Retry loading settings">
               <Text style={primaryBtn.txt}>Retry</Text>
             </Pressable>
           </View>
@@ -725,6 +725,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                           marginBottom: 6, borderRadius: 12, backgroundColor: selected ? C.primarySoft : C.surfaceSecondary,
                           borderWidth: 1.5, borderColor: selected ? C.primary : C.borderLight,
                         }}
+                        accessibilityRole="radio" accessibilityLabel={opt.label} accessibilityState={{ selected }}
                       >
                         <Text style={{
                           flex: 1, fontSize: 15,
@@ -770,7 +771,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   </View>
                 )}
                 {is2FAEnabled && (
-                  <Pressable onPress={handle2FAToggle} style={privRow.wrap}>
+                  <Pressable onPress={handle2FAToggle} style={privRow.wrap} accessibilityRole="button" accessibilityLabel={`Two-factor authentication, ${user?.totpEnabled ? "enabled, tap to disable" : "tap to enable"}`}>
                     <View style={[privRow.icon, { backgroundColor: C.successSoft }]}><Ionicons name="shield-outline" size={17} color={C.success} /></View>
                     <View style={{ flex: 1 }}>
                       <Text style={privRow.label}>Two-Factor Auth</Text>
@@ -841,6 +842,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                     );
                   }}
                   style={[privRow.wrap, { borderBottomWidth: 0, opacity: (exportingData || exportCooldown > 0) ? 0.5 : 1 }]}
+                  accessibilityRole="button" accessibilityLabel={exportingData ? "Exporting data" : exportCooldown > 0 ? `Export available in ${exportCooldown} seconds` : "Download my data"}
                 >
                   <View style={[privRow.icon, { backgroundColor: C.surfaceSecondary }]}>
                     {exportingData
@@ -860,7 +862,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
           <View style={{ flex: 1, backgroundColor: C.surface }}>
             <View style={modalHdr.wrap}>
               <Text style={modalHdr.title}>{backupCodes.length > 0 ? "Backup Codes" : "Setup 2FA"}</Text>
-              <Pressable onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }} style={modalHdr.close}>
+              <Pressable onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close 2FA setup">
                 <Ionicons name="close" size={20} color={C.text} />
               </Pressable>
             </View>
@@ -882,6 +884,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   <Pressable
                     onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }}
                     style={[primaryBtn.base, { marginTop: spacing.sm }]}
+                    accessibilityRole="button" accessibilityLabel="Done, I've saved my backup codes"
                   >
                     <Text style={primaryBtn.txt}>Done — I've saved my codes</Text>
                   </Pressable>
@@ -920,7 +923,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                     </View>
                   ) : null}
                   <Pressable onPress={handleVerify2FASetup} disabled={twoFALoading}
-                    style={[primaryBtn.base, twoFALoading && { opacity: 0.7 }]}>
+                    style={[primaryBtn.base, twoFALoading && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Verify and enable 2FA" accessibilityState={{ disabled: twoFALoading }}>
                     {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={primaryBtn.txt}>Verify & Enable</Text>}
                   </Pressable>
                 </>
@@ -947,11 +950,11 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                 </View>
               ) : null}
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable onPress={() => { setShowDisable2FA(false); setDisableCode(""); setDisableTwoFAError(""); }} style={btnStyles.cancel}>
+                <Pressable onPress={() => { setShowDisable2FA(false); setDisableCode(""); setDisableTwoFAError(""); }} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
                   <Text style={btnStyles.cancelTxt}>Cancel</Text>
                 </Pressable>
                 <Pressable onPress={handleDisable2FA} disabled={twoFALoading}
-                  style={[btnStyles.save, { backgroundColor: C.danger }, twoFALoading && { opacity: 0.7 }]}>
+                  style={[btnStyles.save, { backgroundColor: C.danger }, twoFALoading && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Disable two-factor authentication" accessibilityState={{ disabled: twoFALoading }}>
                   {twoFALoading ? <ActivityIndicator color="#fff" /> : <Text style={btnStyles.saveTxt}>Disable</Text>}
                 </Pressable>
               </View>
@@ -967,6 +970,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   );
                 }}
                 style={{ marginTop: spacing.lg, alignItems: "center" }}
+                accessibilityRole="button" accessibilityLabel="Lost access to authenticator app, contact support"
               >
                 <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.primary }}>
                   Lost access to authenticator app?
@@ -1082,11 +1086,11 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
         <View style={modalHdr.wrap}>
           <Text style={modalHdr.title}>Saved Addresses</Text>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            <Pressable onPress={() => setShowAdd(v => !v)} style={addrHdr.addBtn}>
+            <Pressable onPress={() => setShowAdd(v => !v)} style={addrHdr.addBtn} accessibilityRole="button" accessibilityLabel={showAdd ? "Cancel adding address" : "Add new address"}>
               <Ionicons name={showAdd ? "close" : "add"} size={17} color="#fff" />
               <Text style={addrHdr.addBtnTxt}>{showAdd ? "Cancel" : "Add New"}</Text>
             </Pressable>
-            <Pressable onPress={onClose} style={modalHdr.close}><Ionicons name="close" size={20} color={C.text} /></Pressable>
+            <Pressable onPress={onClose} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close addresses"><Ionicons name="close" size={20} color={C.text} /></Pressable>
           </View>
         </View>
 
@@ -1094,7 +1098,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
           <View style={addrAdd.panel}>
             <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
               {LABEL_OPTS.map(o => (
-                <Pressable key={o.label} onPress={() => setLabel(o.label)} style={[chip.base, label === o.label && { backgroundColor: o.bg, borderColor: o.color }]}>
+                <Pressable key={o.label} onPress={() => setLabel(o.label)} style={[chip.base, label === o.label && { backgroundColor: o.bg, borderColor: o.color }]} accessibilityRole="radio" accessibilityLabel={o.label} accessibilityState={{ selected: label === o.label }}>
                   <Ionicons name={o.icon} size={13} color={label === o.label ? o.color : C.textMuted} />
                   <Text style={[chip.text, label === o.label && { color: o.color }]}>{o.label}</Text>
                 </Pressable>
@@ -1106,13 +1110,13 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
               <View style={{ flexDirection: "row", gap: 6 }}>
                 {AJK_CITIES.map(c => (
-                  <Pressable key={c} onPress={() => setCity(c)} style={[chip.base, city === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]}>
+                  <Pressable key={c} onPress={() => setCity(c)} style={[chip.base, city === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: city === c }}>
                     <Text style={[chip.text, city === c && { color: C.primary }]}>{c}</Text>
                   </Pressable>
                 ))}
               </View>
             </ScrollView>
-            <Pressable onPress={add} disabled={saving} style={[primaryBtn.base, saving && { opacity: 0.7 }]}>
+            <Pressable onPress={add} disabled={saving} style={[primaryBtn.base, saving && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Save address" accessibilityState={{ disabled: saving }}>
               {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={primaryBtn.txt}>Save Address</Text>}
             </Pressable>
           </View>
@@ -1123,7 +1127,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
             <Text style={{ fontSize: 52 }}>📍</Text>
             <Text style={empty.title}>No addresses</Text>
             <Text style={empty.sub}>Save your home or office address</Text>
-            <Pressable onPress={() => setShowAdd(true)} style={[primaryBtn.base, { flexDirection: "row", gap: 6, marginTop: spacing.md, alignSelf: "center", width: "auto", paddingHorizontal: spacing.xl }]}>
+            <Pressable onPress={() => setShowAdd(true)} style={[primaryBtn.base, { flexDirection: "row", gap: 6, marginTop: spacing.md, alignSelf: "center", width: "auto", paddingHorizontal: spacing.xl }]} accessibilityRole="button" accessibilityLabel="Add address">
               <Ionicons name="add" size={16} color="#fff" />
               <Text style={primaryBtn.txt}>Add Address</Text>
             </Pressable>
@@ -1140,7 +1144,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
                         <View style={{ flexDirection: "row", gap: 6 }}>
                           {LABEL_OPTS.map(o => (
-                            <Pressable key={o.label} onPress={() => setEditLabel(o.label)} style={[chip.base, editLabel === o.label && { backgroundColor: o.bg, borderColor: o.color }]}>
+                            <Pressable key={o.label} onPress={() => setEditLabel(o.label)} style={[chip.base, editLabel === o.label && { backgroundColor: o.bg, borderColor: o.color }]} accessibilityRole="radio" accessibilityLabel={o.label} accessibilityState={{ selected: editLabel === o.label }}>
                               <Ionicons name={o.icon} size={13} color={editLabel === o.label ? o.color : C.textMuted} />
                               <Text style={[chip.text, editLabel === o.label && { color: o.color }]}>{o.label}</Text>
                             </Pressable>
@@ -1153,17 +1157,17 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
                         <View style={{ flexDirection: "row", gap: 6 }}>
                           {AJK_CITIES.map(c => (
-                            <Pressable key={c} onPress={() => setEditCity(c)} style={[chip.base, editCity === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]}>
+                            <Pressable key={c} onPress={() => setEditCity(c)} style={[chip.base, editCity === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: editCity === c }}>
                               <Text style={[chip.text, editCity === c && { color: C.primary }]}>{c}</Text>
                             </Pressable>
                           ))}
                         </View>
                       </ScrollView>
                       <View style={{ flexDirection: "row", gap: 8 }}>
-                        <Pressable onPress={saveEdit} disabled={editSaving} style={[primaryBtn.base, { flex: 1, opacity: editSaving ? 0.7 : 1 }]}>
+                        <Pressable onPress={saveEdit} disabled={editSaving} style={[primaryBtn.base, { flex: 1, opacity: editSaving ? 0.7 : 1 }]} accessibilityRole="button" accessibilityLabel="Save address changes" accessibilityState={{ disabled: editSaving }}>
                           {editSaving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={primaryBtn.txt}>Save Changes</Text>}
                         </Pressable>
-                        <Pressable onPress={cancelEdit} style={[primaryBtn.base, { backgroundColor: C.surfaceSecondary, paddingHorizontal: spacing.md, width: "auto" }]}>
+                        <Pressable onPress={cancelEdit} style={[primaryBtn.base, { backgroundColor: C.surfaceSecondary, paddingHorizontal: spacing.md, width: "auto" }]} accessibilityRole="button" accessibilityLabel="Cancel editing">
                           <Text style={[primaryBtn.txt, { color: C.textSecondary }]}>Cancel</Text>
                         </Pressable>
                       </View>
@@ -1182,11 +1186,11 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                         <Text style={addrItem.city}>{a.city}, AJK</Text>
                       </View>
                       <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-                        <Pressable onPress={() => startEdit(a)} style={addrItem.delBtn}>
+                        <Pressable onPress={() => startEdit(a)} style={addrItem.delBtn} accessibilityRole="button" accessibilityLabel={`Edit ${a.label} address`}>
                           <Ionicons name="pencil-outline" size={16} color={C.primary} />
                         </Pressable>
                         {!a.isDefault && (
-                          <Pressable onPress={() => setDefault(a.id)} disabled={settingDefault === a.id} style={addrItem.setDefBtn}>
+                          <Pressable onPress={() => setDefault(a.id)} disabled={settingDefault === a.id} style={addrItem.setDefBtn} accessibilityRole="button" accessibilityLabel={`Set ${a.label} as default`}>
                             {settingDefault === a.id
                               ? <ActivityIndicator size="small" color={C.primary} />
                               : <Text style={addrItem.setDefTxt}>Set Default</Text>}
@@ -1194,15 +1198,15 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                         )}
                         {deleteConfirmId === a.id ? (
                           <View style={{ flexDirection: "row", gap: 6 }}>
-                            <Pressable onPress={() => del(a.id)} style={[addrItem.delBtn, { backgroundColor: C.dangerSoft, paddingHorizontal: 8 }]}>
+                            <Pressable onPress={() => del(a.id)} style={[addrItem.delBtn, { backgroundColor: C.dangerSoft, paddingHorizontal: 8 }]} accessibilityRole="button" accessibilityLabel="Confirm delete address">
                               <Text style={{ ...typography.smallMedium, color: C.danger }}>Yes</Text>
                             </Pressable>
-                            <Pressable onPress={() => setDeleteConfirmId(null)} style={[addrItem.delBtn, { backgroundColor: C.surfaceSecondary, paddingHorizontal: 8 }]}>
+                            <Pressable onPress={() => setDeleteConfirmId(null)} style={[addrItem.delBtn, { backgroundColor: C.surfaceSecondary, paddingHorizontal: 8 }]} accessibilityRole="button" accessibilityLabel="Cancel delete">
                               <Text style={{ ...typography.smallMedium, color: C.textMuted }}>No</Text>
                             </Pressable>
                           </View>
                         ) : (
-                          <Pressable onPress={() => setDeleteConfirmId(a.id)} style={addrItem.delBtn}>
+                          <Pressable onPress={() => setDeleteConfirmId(a.id)} style={addrItem.delBtn} accessibilityRole="button" accessibilityLabel={`Delete ${a.label} address`}>
                             <Ionicons name="trash-outline" size={16} color={C.danger} />
                           </Pressable>
                         )}
@@ -1343,7 +1347,7 @@ export default function ProfileScreen() {
     icon: keyof typeof Ionicons.glyphMap; label: string; sub?: string; onPress: () => void;
     iconColor?: string; iconBg?: string; right?: React.ReactNode; danger?: boolean; badge?: number;
   }) => (
-    <Pressable onPress={onPress} style={({ pressed }) => [row.wrap, pressed && { opacity: 0.65 }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [row.wrap, pressed && { opacity: 0.65 }]} accessibilityRole="button" accessibilityLabel={`${label}${sub ? `, ${sub}` : ""}${badge && badge > 0 ? `, ${badge} new` : ""}`}>
       <View style={[row.icon, { backgroundColor: iconBg }]}>
         <Ionicons name={icon} size={18} color={iconColor} />
       </View>
@@ -1384,7 +1388,7 @@ export default function ProfileScreen() {
                 <Text style={ph.roleTxt}>{role.label}</Text>
               </View>
             </View>
-            <Pressable onPress={() => setShowEdit(true)} style={ph.editBtn}>
+            <Pressable onPress={() => setShowEdit(true)} style={ph.editBtn} accessibilityRole="button" accessibilityLabel="Edit profile">
               <Ionicons name="pencil" size={16} color="#fff" />
             </Pressable>
           </View>
@@ -1393,7 +1397,7 @@ export default function ProfileScreen() {
             {statsLoading ? (
               <ActivityIndicator color="rgba(255,255,255,0.8)" />
             ) : statsError ? (
-              <Pressable onPress={() => { setStatsLoading(true); setStatsError(false); fetchAll(); }} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Pressable onPress={() => { setStatsLoading(true); setStatsError(false); fetchAll(); }} style={{ flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button" accessibilityLabel="Could not load stats, tap to retry">
                 <Ionicons name="refresh-outline" size={16} color="rgba(255,255,255,0.8)" />
                 <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.8)" }}>Could not load stats — tap to retry</Text>
               </Pressable>
@@ -1418,7 +1422,7 @@ export default function ProfileScreen() {
           </View>
         </LinearGradient>
 
-        <Pressable onPress={() => router.push("/(tabs)/wallet")} style={wb.wrap}>
+        <Pressable onPress={() => router.push("/(tabs)/wallet")} style={wb.wrap} accessibilityRole="button" accessibilityLabel={`${platformCfg.appName} wallet, Rs. ${(user?.walletBalance || 0).toLocaleString()}, tap to manage`}>
           <LinearGradient colors={[C.primaryDark, C.primary]} style={wb.grad}>
             <Ionicons name="wallet" size={18} color="#fff" />
           </LinearGradient>
@@ -1601,16 +1605,16 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable onPress={() => setShowSignOutConfirm(false)} style={btnStyles.cancel}>
+                <Pressable onPress={() => setShowSignOutConfirm(false)} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel={T("cancelNo")}>
                   <Text style={btnStyles.cancelTxt}>{T("cancelNo")}</Text>
                 </Pressable>
-                <Pressable onPress={doSignOut} disabled={signingOut} style={[btnStyles.save, { backgroundColor: C.danger }, signingOut && { opacity: 0.7 }]}>
+                <Pressable onPress={doSignOut} disabled={signingOut} style={[btnStyles.save, { backgroundColor: C.danger }, signingOut && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={T("signOutYes")}>
                   {signingOut ? <ActivityIndicator color="#fff" size="small" /> : <Text style={btnStyles.saveTxt}>{T("signOutYes")}</Text>}
                 </Pressable>
               </View>
             </View>
           ) : (
-            <Pressable onPress={() => setShowSignOutConfirm(true)} style={signOut.btn}>
+            <Pressable onPress={() => setShowSignOutConfirm(true)} style={signOut.btn} accessibilityRole="button" accessibilityLabel={T("signOutLabel")}>
               <Ionicons name="log-out-outline" size={20} color={C.danger} />
               <Text style={signOut.txt}>{T("signOutLabel")}</Text>
             </Pressable>

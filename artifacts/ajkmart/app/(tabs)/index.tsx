@@ -35,6 +35,12 @@ import {
   getActiveQuickActions,
   type ServiceDefinition,
 } from "@/constants/serviceRegistry";
+import {
+  AnimatedPressable,
+  SectionHeader,
+  SkeletonBlock,
+  EmptyState,
+} from "@/components/user-shared";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
@@ -60,7 +66,7 @@ function ActiveTrackerStrip({ userId, position, tabBarHeight = 0 }: { userId: st
   const { config: pCfg } = usePlatformConfig();
   const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-  const { data: ordersData, isLoading: ordersLoading, isError: ordersError, refetch: refetchOrders } = useQuery({
+  const { data: ordersData, isLoading: ordersLoading, isError: ordersError } = useQuery({
     queryKey: ["home-active-orders", userId],
     queryFn: async () => {
       const r = await fetch(`${API_BASE}/orders?status=active`, { headers: authHdrs });
@@ -72,7 +78,7 @@ function ActiveTrackerStrip({ userId, position, tabBarHeight = 0 }: { userId: st
     staleTime: 4000,
   });
 
-  const { data: ridesData, isLoading: ridesLoading, isError: ridesError, refetch: refetchRides } = useQuery({
+  const { data: ridesData, isLoading: ridesLoading, isError: ridesError } = useQuery({
     queryKey: ["home-active-rides", userId],
     queryFn: async () => {
       const r = await fetch(`${API_BASE}/rides?status=active`, { headers: authHdrs });
@@ -87,204 +93,84 @@ function ActiveTrackerStrip({ userId, position, tabBarHeight = 0 }: { userId: st
   if (!pCfg.content.trackerBannerEnabled) return null;
 
   const isLoading = ordersLoading || ridesLoading;
-  const hasError = ordersError || ridesError;
-
   const bottomStyle = position === "bottom" ? [styles.trackerWrapBottom, { marginBottom: tabBarHeight + 8 }] : undefined;
 
   if (isLoading) {
     return (
       <View style={[styles.trackerWrap, bottomStyle]}>
-        <View style={[styles.trackerCard, { backgroundColor: "#E2E8F0", opacity: 0.7, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 }]}>
-          <View style={{ width: 100, height: 12, borderRadius: 6, backgroundColor: "#CBD5E1" }} />
+        <View style={styles.trackerSkeleton}>
+          <SkeletonBlock w={100} h={12} r={6} />
         </View>
       </View>
     );
   }
 
-  if (hasError) {
-    return (
-      <View style={[styles.trackerWrap, bottomStyle]}>
-        <View style={[styles.trackerCard, { backgroundColor: "#FEF3C7", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 }]}>
-          <Ionicons name="warning-outline" size={14} color="#D97706" />
-          <Text style={{ flex: 1, fontSize: 12, fontFamily: "Inter_500Medium", color: "#92400E" }}>Could not load active orders</Text>
-          <Pressable onPress={() => { refetchOrders(); refetchRides(); }} style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: "#D97706", borderRadius: 8 }}>
-            <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#fff" }}>Retry</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
+  if (ordersError || ridesError) return null;
+
+  const activeOrders = Array.isArray(ordersData) ? ordersData.filter((o: any) => !["delivered", "cancelled"].includes(o.status)) : [];
+  const activeRides = Array.isArray(ridesData) ? ridesData.filter((r: any) => !["completed", "cancelled"].includes(r.status)) : [];
+  const total = activeOrders.length + activeRides.length;
+  if (total === 0) return null;
+
+  const items: { label: string; route: string; c1: string; c2: string }[] = [];
+  if (activeOrders.length > 0) {
+    items.push({
+      label: `${activeOrders.length} active order${activeOrders.length > 1 ? "s" : ""}`,
+      route: activeOrders[0]?.id ? `/order?orderId=${activeOrders[0].id}` : "/(tabs)/orders",
+      c1: "#D97706", c2: "#F59E0B",
+    });
   }
-
-  const activeOrders = (ordersData?.orders || []).filter((o: any) =>
-    !["delivered", "cancelled"].includes(o.status)
-  );
-  const activeRides = (ridesData?.rides || []).filter((r: any) =>
-    !["completed", "cancelled"].includes(r.status)
-  );
-  const totalActive = activeOrders.length + activeRides.length;
-
-  if (totalActive === 0) return null;
-
-  const hasRide = activeRides.length > 0;
-  const hasOrder = activeOrders.length > 0;
-
-  let label = "";
-  let icon: keyof typeof Ionicons.glyphMap = "timer-outline";
-  let c1 = C.success;
-  let c2 = "#00E6A0";
-
-  if (hasRide && hasOrder) {
-    label = `${activeRides.length} active ride \u2022 ${activeOrders.length} active order`;
-    icon = "car-outline";
-    c1 = C.primary;
-    c2 = C.primaryLight;
-  } else if (hasRide) {
-    const r = activeRides[0];
-    const statusMap: Record<string, string> = {
-      searching: "Finding your rider...",
-      accepted: "Rider is on the way",
-      arrived: "Rider has arrived!",
-      in_transit: "Trip in progress",
-    };
-    label = statusMap[r.status] || "Ride is active";
-    icon = "car-outline";
-  } else {
-    const o = activeOrders[0];
-    const statusMap: Record<string, string> = {
-      pending: "Order received, being confirmed",
-      confirmed: "Order confirmed! Being prepared",
-      preparing: "Your food is being prepared",
-      out_for_delivery: "Order is on its way!",
-      ready: "Order ready for pickup",
-    };
-    label = statusMap[o.status] || `${activeOrders.length} active order`;
-    icon =
-      o.type === "ride"
-        ? "car-outline"
-        : o.type === "food"
-        ? "restaurant-outline"
-        : "storefront-outline";
-    c1 = C.primary;
-    c2 = C.primaryLight;
+  if (activeRides.length > 0) {
+    items.push({
+      label: `${activeRides.length} active ride${activeRides.length > 1 ? "s" : ""}`,
+      route: activeRides[0]?.id ? `/ride?rideId=${activeRides[0].id}` : "/(tabs)/orders",
+      c1: "#059669", c2: "#10B981",
+    });
   }
-
-  const isBottom = (position || pCfg.content.trackerBannerPosition) === "bottom";
-
-  const handleTrackPress = () => {
-    // Rides take priority (more time-sensitive); otherwise pick the first active order.
-    if (activeRides.length > 0) {
-      router.push(`/ride?rideId=${activeRides[0].id}`);
-    } else if (activeOrders.length > 0) {
-      router.push(`/order?orderId=${activeOrders[0].id}`);
-    } else {
-      router.push("/(tabs)/orders");
-    }
-  };
 
   return (
-    <Pressable
-      onPress={handleTrackPress}
-      style={[styles.trackerWrap, bottomStyle]}
-    >
-      <LinearGradient
-        colors={[c1, c2]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.trackerCard}
-      >
-        <View style={styles.trackerPulse}>
-          <View style={styles.trackerDot} />
-        </View>
-        <Ionicons name={icon} size={16} color="#fff" />
-        <Text style={styles.trackerTxt} numberOfLines={1}>
-          {label}
-        </Text>
-        <View style={styles.trackerCta}>
-          <Text style={styles.trackerCtaTxt}>Track</Text>
-          <Ionicons name="arrow-forward" size={12} color={c1} />
-        </View>
-      </LinearGradient>
-    </Pressable>
+    <View style={[styles.trackerWrap, bottomStyle]}>
+      {items.map((item, i) => (
+        <Pressable
+          key={i}
+          onPress={() => router.push(item.route as Href)}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.label}. Tap to track`}
+        >
+          <LinearGradient
+            colors={[item.c1, item.c2]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.trackerCard}
+          >
+            <View style={styles.trackerPulse}>
+              <View style={styles.trackerDot} />
+            </View>
+            <Text style={styles.trackerTxt} numberOfLines={1}>{item.label}</Text>
+            <View style={styles.trackerCta}>
+              <Text style={styles.trackerCtaTxt}>Track</Text>
+              <Ionicons name="arrow-forward" size={12} color={item.c1} />
+            </View>
+          </LinearGradient>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
-function Tap({
-  children,
-  onPress,
-  style,
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  onPress: () => void;
-  style?: any;
-  delay?: number;
-}) {
-  const sc = useRef(new Animated.Value(0.94)).current;
-  const op = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(sc, {
-        toValue: 1,
-        useNativeDriver: true,
-        delay,
-        tension: 50,
-        friction: 7,
-      }),
-      Animated.timing(op, {
-        toValue: 1,
-        duration: 350,
-        delay,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
-
-  const onIn = () =>
-    Animated.spring(sc, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
-  const onOut = () => {
-    Animated.spring(sc, { toValue: 1, useNativeDriver: true, speed: 35 }).start();
-  };
-
-  return (
-    <Animated.View style={[{ opacity: op, transform: [{ scale: sc }] }, style]}>
-      <Pressable onPressIn={onIn} onPressOut={onOut} onPress={onPress} style={{ flex: 1 }}>
-        {children}
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-function ServiceHero({
-  service,
-  appName = "AJKMart",
-}: {
-  service: ServiceDefinition;
-  appName?: string;
-}) {
+function ServiceHero({ service, appName = "AJKMart" }: { service: ServiceDefinition; appName?: string }) {
   const hero = service.heroConfig;
   const displayTitle = service.key === "mart" ? appName : hero.title;
   return (
-    <Tap onPress={() => safeNavigate(String(service.route))} style={styles.heroWrap} delay={80}>
-      <LinearGradient
-        colors={hero.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.heroCard}
-      >
-        <View
-          style={[
-            styles.blob,
-            { width: 200, height: 200, top: -60, right: -40, opacity: 0.08 },
-          ]}
-        />
-        <View
-          style={[
-            styles.blob,
-            { width: 80, height: 80, bottom: 10, right: 80, opacity: 0.06 },
-          ]}
-        />
-
+    <AnimatedPressable
+      onPress={() => safeNavigate(String(service.route))}
+      style={styles.heroWrap}
+      delay={80}
+      accessibilityLabel={`${displayTitle}. ${hero.subtitle}`}
+    >
+      <LinearGradient colors={hero.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCard}>
+        <View style={[styles.blob, { width: 200, height: 200, top: -60, right: -40, opacity: 0.08 }]} />
+        <View style={[styles.blob, { width: 80, height: 80, bottom: 10, right: 80, opacity: 0.06 }]} />
         <View style={styles.heroL}>
           <View style={styles.heroBadge}>
             <Ionicons name={hero.badgeIcon} size={11} color="#fff" />
@@ -305,70 +191,32 @@ function ServiceHero({
             <Ionicons name="arrow-forward" size={13} color={C.primary} />
           </View>
         </View>
-
         <View style={styles.heroR}>
           <View style={styles.heroRing}>
             <Ionicons name={service.iconFocused} size={44} color="#fff" />
           </View>
         </View>
       </LinearGradient>
-    </Tap>
+    </AnimatedPressable>
   );
 }
 
-function SvcCard({
-  service,
-  delay,
-  fullWidth,
-  T,
-}: {
-  service: ServiceDefinition;
-  delay: number;
-  fullWidth?: boolean;
-  T: (key: Parameters<typeof tDual>[0]) => string;
-}) {
-  const labelMap: Record<string, Parameters<typeof tDual>[0]> = {
-    food: "foodDelivery",
-    rides: "bikeCarRide",
-    pharmacy: "pharmacy",
-    parcel: "parcel",
-  };
-  const subMap: Record<string, Parameters<typeof tDual>[0]> = {
-    food: "restaurantsNearYou",
-    rides: "safeBooking",
-    pharmacy: "medicinesDelivered",
-    parcel: "parcelsAnywhere",
-  };
-
+function SvcCard({ service, delay, fullWidth, T }: { service: ServiceDefinition; delay: number; fullWidth?: boolean; T: (key: Parameters<typeof tDual>[0]) => string }) {
+  const labelMap: Record<string, Parameters<typeof tDual>[0]> = { food: "foodDelivery", rides: "bikeCarRide", pharmacy: "pharmacy", parcel: "parcel" };
+  const subMap: Record<string, Parameters<typeof tDual>[0]> = { food: "restaurantsNearYou", rides: "safeBooking", pharmacy: "medicinesDelivered", parcel: "parcelsAnywhere" };
   const title = labelMap[service.key] ? T(labelMap[service.key]) : service.label;
   const sub = subMap[service.key] ? T(subMap[service.key]) : service.description;
   const tag = service.key === "rides" ? T("instantLabel") : service.tag;
 
   return (
-    <Tap
+    <AnimatedPressable
       onPress={() => safeNavigate(String(service.route))}
       style={[styles.svcWrap, fullWidth ? { width: "100%" } : { width: HALF_W }]}
       delay={delay}
+      accessibilityLabel={`${title}. ${sub}`}
     >
-      <LinearGradient
-        colors={service.cardGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.svcCard}
-      >
-        <View
-          style={[
-            styles.blob,
-            {
-              width: 110,
-              height: 110,
-              top: -30,
-              right: -30,
-              opacity: 0.1,
-              backgroundColor: "#fff",
-            },
-          ]}
-        />
+      <LinearGradient colors={service.cardGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.svcCard}>
+        <View style={[styles.blob, { width: 110, height: 110, top: -30, right: -30, opacity: 0.1, backgroundColor: "#fff" }]} />
         <LinearGradient colors={service.iconGradient} style={styles.svcIcon}>
           <Ionicons name={service.iconFocused} size={24} color="#fff" />
         </LinearGradient>
@@ -379,40 +227,23 @@ function SvcCard({
           <Text style={[styles.svcTagTxt, { color: service.tagColor }]}>{tag}</Text>
         </View>
       </LinearGradient>
-    </Tap>
+    </AnimatedPressable>
   );
 }
 
-function SingleServiceHero({
-  service,
-  appName,
-}: {
-  service: ServiceDefinition;
-  appName: string;
-}) {
+function SingleServiceHero({ service, appName }: { service: ServiceDefinition; appName: string }) {
   const hero = service.heroConfig;
   const displayTitle = service.key === "mart" ? appName : hero.title;
   return (
-    <Tap onPress={() => safeNavigate(String(service.route))} style={styles.singleHeroWrap} delay={80}>
-      <LinearGradient
-        colors={hero.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.singleHeroCard}
-      >
-        <View
-          style={[
-            styles.blob,
-            { width: 280, height: 280, top: -80, right: -60, opacity: 0.08 },
-          ]}
-        />
-        <View
-          style={[
-            styles.blob,
-            { width: 120, height: 120, bottom: 20, left: -30, opacity: 0.06 },
-          ]}
-        />
-
+    <AnimatedPressable
+      onPress={() => safeNavigate(String(service.route))}
+      style={styles.singleHeroWrap}
+      delay={80}
+      accessibilityLabel={`${displayTitle}. ${hero.subtitle}`}
+    >
+      <LinearGradient colors={hero.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.singleHeroCard}>
+        <View style={[styles.blob, { width: 280, height: 280, top: -80, right: -60, opacity: 0.08 }]} />
+        <View style={[styles.blob, { width: 120, height: 120, bottom: 20, left: -30, opacity: 0.06 }]} />
         <View style={styles.singleHeroContent}>
           <View style={styles.singleHeroIconWrap}>
             <Ionicons name={service.iconFocused} size={64} color="#fff" />
@@ -437,31 +268,10 @@ function SingleServiceHero({
           </View>
         </View>
       </LinearGradient>
-    </Tap>
+    </AnimatedPressable>
   );
 }
 
-function NoServicesState({ onRefresh }: { onRefresh?: () => void }) {
-  return (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIcon}>
-        <Ionicons name="storefront-outline" size={48} color={C.textMuted} />
-      </View>
-      <Text style={styles.emptyTitle}>No Services Available</Text>
-      <Text style={styles.emptySub}>
-        No services are currently available.{"\n"}Please check back later!
-      </Text>
-      {onRefresh && (
-        <Pressable onPress={onRefresh} style={styles.refreshBtn}>
-          <Ionicons name="refresh-outline" size={16} color={C.primary} />
-          <Text style={styles.refreshBtnTxt}>Refresh</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
-/* ── Rider: Go Online / Go Offline banner ── */
 function RiderOnlineBanner() {
   const { isOnline, toggleOnline, lastPosition, locationPermission } = useRiderLocation();
   const [toggling, setToggling] = useState(false);
@@ -471,17 +281,9 @@ function RiderOnlineBanner() {
     try {
       const result = await toggleOnline();
       if (result === "permission_denied") {
-        Alert.alert(
-          "GPS Permission Required",
-          "Please allow location access to go online and receive ride requests. Go to your phone Settings → Apps → AJKMart → Permissions → Location → Allow all the time.",
-          [{ text: "OK" }],
-        );
+        Alert.alert("GPS Permission Required", "Please allow location access to go online and receive ride requests. Go to your phone Settings → Apps → AJKMart → Permissions → Location → Allow all the time.", [{ text: "OK" }]);
       } else if (result === "tracking_failed") {
-        Alert.alert(
-          "GPS Failed to Start",
-          "Location tracking could not be started. Please make sure GPS is enabled in your device settings and try again. If the problem persists, restart the app.",
-          [{ text: "OK" }],
-        );
+        Alert.alert("GPS Failed to Start", "Location tracking could not be started. Please make sure GPS is enabled in your device settings and try again.", [{ text: "OK" }]);
       }
     } finally {
       setToggling(false);
@@ -489,41 +291,40 @@ function RiderOnlineBanner() {
   };
 
   return (
-    <View style={riderStyles.container}>
+    <View style={riderS.container}>
       <LinearGradient
         colors={isOnline ? ["#065F46", "#059669"] : ["#1E3A5F", "#1A56DB"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={riderStyles.card}
+        style={riderS.card}
       >
-        <View style={riderStyles.row}>
-          <View style={riderStyles.statusSection}>
-            <View style={[riderStyles.dot, { backgroundColor: isOnline ? "#6EE7B7" : "#93C5FD" }]} />
+        <View style={riderS.row}>
+          <View style={riderS.statusSection}>
+            <View style={[riderS.dot, { backgroundColor: isOnline ? "#6EE7B7" : "#93C5FD" }]} />
             <View>
-              <Text style={riderStyles.statusLabel}>
-                {isOnline ? "You are Online" : "You are Offline"}
-              </Text>
-              <Text style={riderStyles.statusSub}>
+              <Text style={riderS.statusLabel}>{isOnline ? "You are Online" : "You are Offline"}</Text>
+              <Text style={riderS.statusSub}>
                 {isOnline
-                  ? lastPosition
-                    ? `GPS: ${lastPosition.lat.toFixed(4)}, ${lastPosition.lng.toFixed(4)}`
-                    : "Acquiring GPS…"
+                  ? lastPosition ? `GPS: ${lastPosition.lat.toFixed(4)}, ${lastPosition.lng.toFixed(4)}` : "Acquiring GPS…"
                   : "Go online to receive ride requests"}
               </Text>
               {locationPermission === "denied" && (
-                <Text style={riderStyles.permDenied}>Location permission denied</Text>
+                <Text style={riderS.permDenied}>Location permission denied</Text>
               )}
             </View>
           </View>
           <Pressable
             onPress={handleToggle}
             disabled={toggling}
-            style={[riderStyles.toggleBtn, isOnline ? riderStyles.toggleOff : riderStyles.toggleOn]}
+            style={[riderS.toggleBtn, isOnline ? riderS.toggleOff : riderS.toggleOn]}
+            accessibilityRole="button"
+            accessibilityLabel={isOnline ? "Go offline" : "Go online"}
+            accessibilityState={{ disabled: toggling }}
           >
             {toggling ? (
               <Ionicons name="sync" size={14} color="#fff" />
             ) : (
-              <Text style={riderStyles.toggleTxt}>{isOnline ? "Go Offline" : "Go Online"}</Text>
+              <Text style={riderS.toggleTxt}>{isOnline ? "Go Offline" : "Go Online"}</Text>
             )}
           </Pressable>
         </View>
@@ -532,7 +333,7 @@ function RiderOnlineBanner() {
   );
 }
 
-const riderStyles = StyleSheet.create({
+const riderS = StyleSheet.create({
   container: { marginHorizontal: spacing.lg, marginTop: spacing.md, marginBottom: spacing.xs },
   card: { borderRadius: radii.xl, padding: 14, ...shadows.md },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
@@ -547,29 +348,11 @@ const riderStyles = StyleSheet.create({
   toggleTxt: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" },
 });
 
-function WalletStrip({
-  balance,
-  onPress,
-  appName = "AJKMart",
-}: {
-  balance: number;
-  onPress: () => void;
-  appName?: string;
-}) {
+function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: number; onPress: () => void; appName?: string }) {
   return (
-    <Tap onPress={onPress} style={styles.walletWrap} delay={310}>
-      <LinearGradient
-        colors={[C.primaryDark, C.primary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.walletCard}
-      >
-        <View
-          style={[
-            styles.blob,
-            { width: 140, height: 140, top: -45, right: 50, opacity: 0.08 },
-          ]}
-        />
+    <AnimatedPressable onPress={onPress} style={styles.walletWrap} delay={310} accessibilityLabel={`${appName} Wallet. Balance: Rs. ${balance.toLocaleString()}. Tap to open`}>
+      <LinearGradient colors={[C.primaryDark, C.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.walletCard}>
+        <View style={[styles.blob, { width: 140, height: 140, top: -45, right: 50, opacity: 0.08 }]} />
         <View style={styles.walletL}>
           <View style={styles.walletIcon}>
             <Ionicons name="wallet" size={20} color="#fff" />
@@ -584,46 +367,24 @@ function WalletStrip({
           <Text style={styles.walletTopUpTxt}>Top Up</Text>
         </View>
       </LinearGradient>
-    </Tap>
+    </AnimatedPressable>
   );
 }
 
-function Pill({
-  icon,
-  label,
-  color,
-  bg,
-  onPress,
-  delay,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  color: string;
-  bg: string;
-  onPress: () => void;
-  delay: number;
+function QuickActionPill({ icon, label, color, bg, onPress, delay }: {
+  icon: keyof typeof Ionicons.glyphMap; label: string; color: string; bg: string; onPress: () => void; delay: number;
 }) {
   const op = useRef(new Animated.Value(0)).current;
   const ty = useRef(new Animated.Value(16)).current;
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(op, {
-        toValue: 1,
-        duration: 300,
-        delay,
-        useNativeDriver: true,
-      }),
-      Animated.timing(ty, {
-        toValue: 0,
-        duration: 300,
-        delay,
-        useNativeDriver: true,
-      }),
+      Animated.timing(op, { toValue: 1, duration: 300, delay, useNativeDriver: true }),
+      Animated.timing(ty, { toValue: 0, duration: 300, delay, useNativeDriver: true }),
     ]).start();
   }, []);
   return (
     <Animated.View style={{ opacity: op, transform: [{ translateY: ty }] }}>
-      <Pressable onPress={onPress} style={styles.pill}>
+      <Pressable onPress={onPress} style={styles.pill} accessibilityRole="button" accessibilityLabel={label}>
         <View style={[styles.pillIcon, { backgroundColor: bg }]}>
           <Ionicons name={icon} size={20} color={color} />
         </View>
@@ -633,11 +394,7 @@ function Pill({
   );
 }
 
-function BannerCarousel({
-  features,
-}: {
-  features: Record<string, boolean>;
-}) {
+function BannerCarousel({ features }: { features: Record<string, boolean> }) {
   const banners = getActiveBanners(features);
   const scrollRef = useRef<ScrollView>(null);
   const [active, setActive] = useState(0);
@@ -680,32 +437,14 @@ function BannerCarousel({
         snapToAlignment="start"
         contentContainerStyle={{ paddingHorizontal: 0 }}
         style={{ width: BANNER_W }}
+        accessibilityRole="adjustable"
+        accessibilityLabel={`Promotional banners. ${banners.length} items`}
       >
         {banners.map((b, i) => (
-          <Pressable
-            key={i}
-            onPress={() => router.push(b.route as Href)}
-            style={{ width: BANNER_W }}
-          >
-            <LinearGradient
-              colors={[b.c1, b.c2]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.bannerCard}
-            >
-              <View
-                style={[
-                  styles.blob,
-                  { width: 130, height: 130, top: -30, right: 60, opacity: 0.12 },
-                ]}
-              />
-              <View
-                style={[
-                  styles.blob,
-                  { width: 70, height: 70, bottom: -10, right: 10, opacity: 0.08 },
-                ]}
-              />
-
+          <Pressable key={i} onPress={() => router.push(b.route as Href)} style={{ width: BANNER_W }} accessibilityRole="button" accessibilityLabel={`${b.title}. ${b.desc}`}>
+            <LinearGradient colors={[b.c1, b.c2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bannerCard}>
+              <View style={[styles.blob, { width: 130, height: 130, top: -30, right: 60, opacity: 0.12 }]} />
+              <View style={[styles.blob, { width: 70, height: 70, bottom: -10, right: 10, opacity: 0.08 }]} />
               <View style={{ flex: 1 }}>
                 <View style={styles.bannerTagRow}>
                   <View style={styles.bannerTagChip}>
@@ -719,36 +458,41 @@ function BannerCarousel({
                   <Ionicons name="arrow-forward" size={13} color="#fff" />
                 </View>
               </View>
-
               <View style={styles.bannerIconWrap}>
-                <Ionicons
-                  name={b.icon}
-                  size={56}
-                  color="rgba(255,255,255,0.15)"
-                />
+                <Ionicons name={b.icon} size={56} color="rgba(255,255,255,0.15)" />
               </View>
             </LinearGradient>
           </Pressable>
         ))}
       </ScrollView>
-
       {banners.length > 1 && (
         <View style={styles.dotsRow}>
           {banners.map((_, i) => (
             <Pressable
               key={i}
-              onPress={() => {
-                setActive(i);
-                scrollRef.current?.scrollTo({
-                  x: i * BANNER_W,
-                  animated: true,
-                });
-              }}
+              onPress={() => { setActive(i); scrollRef.current?.scrollTo({ x: i * BANNER_W, animated: true }); }}
               style={[styles.dot, active === i && styles.dotActive]}
+              accessibilityRole="button"
+              accessibilityLabel={`Banner ${i + 1} of ${banners.length}`}
+              accessibilityState={{ selected: active === i }}
             />
           ))}
         </View>
       )}
+    </View>
+  );
+}
+
+function HomeSkeleton() {
+  return (
+    <View style={{ paddingHorizontal: H_PAD, gap: spacing.md, marginTop: spacing.md }}>
+      <SkeletonBlock w="100%" h={165} r={radii.xxl} />
+      <View style={{ flexDirection: "row", gap: spacing.md }}>
+        <SkeletonBlock w={HALF_W} h={178} r={radii.xl} />
+        <SkeletonBlock w={HALF_W} h={178} r={radii.xl} />
+      </View>
+      <SkeletonBlock w="100%" h={60} r={radii.xl} />
+      <SkeletonBlock w="100%" h={135} r={radii.xl} />
     </View>
   );
 }
@@ -768,6 +512,7 @@ export default function HomeScreen() {
     try { await refreshConfig(); } catch (err) { console.warn("[Home] Config refresh failed:", err instanceof Error ? err.message : String(err)); }
     setLastRefreshed(new Date());
   }, [refreshConfig]);
+
   const features = platformConfig.features;
   const appName = platformConfig.platform.appName;
   const contentBanner = platformConfig.content.banner;
@@ -776,20 +521,13 @@ export default function HomeScreen() {
 
   const announceKey = React.useMemo(() => {
     if (!announcement) return "";
-    const hash = Array.from(announcement).reduce(
-      (h, c) => (((h * 31) | 0) + c.charCodeAt(0)) >>> 0, 0
-    ).toString(36);
+    const hash = Array.from(announcement).reduce((h, c) => (((h * 31) | 0) + c.charCodeAt(0)) >>> 0, 0).toString(36);
     return `announce_dismissed_${hash}`;
   }, [announcement]);
 
   useEffect(() => {
-    if (!announcement) {
-      setAnnounceDismissed(false);
-      return;
-    }
-    AsyncStorage.getItem(announceKey).then(val => {
-      setAnnounceDismissed(val === "1");
-    }).catch(() => { setAnnounceDismissed(false); });
+    if (!announcement) { setAnnounceDismissed(false); return; }
+    AsyncStorage.getItem(announceKey).then(val => { setAnnounceDismissed(val === "1"); }).catch(() => { setAnnounceDismissed(false); });
   }, [announcement, announceKey]);
 
   const { language } = useLanguage();
@@ -797,14 +535,9 @@ export default function HomeScreen() {
   const ff = getFontFamily(language);
   const urduText = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.regular, lineHeight: 30 } : base;
   const urduBold = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.bold, lineHeight: 44 } : base;
-  const urduMedium = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.medium, lineHeight: 26 } : base;
 
   useEffect(() => {
-    Animated.timing(hdOp, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(hdOp, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, []);
 
   const activeServices = getActiveServices(features);
@@ -812,23 +545,21 @@ export default function HomeScreen() {
   const noServicesActive = activeServices.length === 0;
 
   return (
-    <View style={[styles.root, { backgroundColor: C.background }]}>
+    <View style={styles.root}>
       {announcement && !announceDismissed && (
-        <View style={styles.announceBar}>
+        <View style={styles.announceBar} accessibilityRole="alert">
           <View style={styles.announceIcon}>
             <Ionicons name="megaphone" size={12} color="#fff" />
           </View>
-          <Text style={styles.announceTxt} numberOfLines={1}>
-            {announcement}
-          </Text>
+          <Text style={styles.announceTxt} numberOfLines={1}>{announcement}</Text>
           <Pressable
             onPress={() => {
               setAnnounceDismissed(true);
-              if (announceKey) {
-                AsyncStorage.setItem(announceKey, "1").catch(() => {});
-              }
+              if (announceKey) AsyncStorage.setItem(announceKey, "1").catch(() => {});
             }}
             style={styles.announceClose}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss announcement"
           >
             <Ionicons name="close" size={16} color="rgba(255,255,255,0.8)" />
           </Pressable>
@@ -849,41 +580,25 @@ export default function HomeScreen() {
           <View style={styles.hdrRow}>
             <View style={{ flex: 1 }}>
               <Text style={urduText(styles.greeting)}>
-                {user?.name
-                  ? `${T("salam")}, ${user.name.split(" ")[0]}`
-                  : `${T("salam")}!`}
+                {user?.name ? `${T("salam")}, ${user.name.split(" ")[0]}` : `${T("salam")}!`}
               </Text>
-              <Text style={urduBold(styles.hdrTitle)}>{T("whatDoYouWant")}</Text>
+              <Text style={urduBold(styles.hdrTitle)} accessibilityRole="header">{T("whatDoYouWant")}</Text>
               <View style={styles.locRow}>
-                <Ionicons
-                  name="location"
-                  size={12}
-                  color="rgba(255,255,255,0.7)"
-                />
-                <Text style={styles.locTxt}>
-                  {platformConfig.platform.businessAddress}
-                </Text>
+                <Ionicons name="location" size={12} color="rgba(255,255,255,0.7)" />
+                <Text style={styles.locTxt}>{platformConfig.platform.businessAddress}</Text>
               </View>
             </View>
-            <Pressable
-              onPress={() => router.push("/cart")}
-              style={styles.cartBtn}
-            >
+            <Pressable onPress={() => router.push("/cart")} style={styles.cartBtn} accessibilityRole="button" accessibilityLabel={`Shopping cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}>
               <Ionicons name="bag-outline" size={20} color="#fff" />
               {itemCount > 0 && (
                 <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeTxt}>
-                    {itemCount > 9 ? "9+" : itemCount}
-                  </Text>
+                  <Text style={styles.cartBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
                 </View>
               )}
             </Pressable>
           </View>
 
-          <Pressable
-            onPress={() => router.push("/search")}
-            style={styles.searchBar}
-          >
+          <Pressable onPress={() => router.push("/search")} style={styles.searchBar} accessibilityRole="search" accessibilityLabel="Search products and services">
             <View style={styles.searchIcon}>
               <Ionicons name="search" size={16} color={C.primary} />
             </View>
@@ -903,56 +618,36 @@ export default function HomeScreen() {
       >
         {user?.role === "rider" && <RiderOnlineBanner />}
 
-        <View style={styles.secRow}>
-          <Text style={styles.secTitle}>{T("ourServices")}</Text>
-          <Text style={styles.secSub}>{T("allInOne")}</Text>
-        </View>
+        <SectionHeader title={T("ourServices")} subtitle={T("allInOne")} />
 
         {contentBanner ? (
           <View style={styles.announceBanner}>
             <Ionicons name="megaphone-outline" size={14} color={C.primary} />
-            <Text style={styles.announceBannerTxt} numberOfLines={1}>
-              {contentBanner}
-            </Text>
+            <Text style={styles.announceBannerTxt} numberOfLines={1}>{contentBanner}</Text>
           </View>
         ) : null}
 
         {configLoading ? (
-          <View style={{ paddingHorizontal: 16, gap: 12, marginTop: 8 }}>
-            {[1, 2, 3].map(i => (
-              <View key={i} style={{ height: i === 1 ? 160 : 110, borderRadius: 20, backgroundColor: C.surfaceSecondary, opacity: 0.6 }} />
-            ))}
-          </View>
+          <HomeSkeleton />
         ) : noServicesActive ? (
-          <NoServicesState onRefresh={refreshConfig} />
+          <EmptyState
+            icon="storefront-outline"
+            title="No Services Available"
+            subtitle={"No services are currently available.\nPlease check back later!"}
+            actionLabel="Refresh"
+            onAction={refreshConfig}
+          />
         ) : (
           <>
             {activeServices.length === 1 ? (
               <View style={styles.grid}>
-                <SingleServiceHero
-                  service={activeServices[0]}
-                  appName={appName}
-                />
-                {features.wallet && (
-                  <WalletStrip
-                    balance={user?.walletBalance || 0}
-                    onPress={() => router.push("/(tabs)/wallet")}
-                    appName={appName}
-                  />
-                )}
+                <SingleServiceHero service={activeServices[0]} appName={appName} />
+                {features.wallet && <WalletStrip balance={user?.walletBalance || 0} onPress={() => router.push("/(tabs)/wallet")} appName={appName} />}
               </View>
             ) : activeServices.length === 2 ? (
               <View style={styles.grid}>
-                {activeServices.map((svc) => (
-                  <ServiceHero key={svc.key} service={svc} appName={appName} />
-                ))}
-                {features.wallet && (
-                  <WalletStrip
-                    balance={user?.walletBalance || 0}
-                    onPress={() => router.push("/(tabs)/wallet")}
-                    appName={appName}
-                  />
-                )}
+                {activeServices.map((svc) => (<ServiceHero key={svc.key} service={svc} appName={appName} />))}
+                {features.wallet && <WalletStrip balance={user?.walletBalance || 0} onPress={() => router.push("/(tabs)/wallet")} appName={appName} />}
               </View>
             ) : (
               <View style={styles.grid}>
@@ -960,11 +655,7 @@ export default function HomeScreen() {
                   const elements: React.ReactNode[] = [];
                   const first = activeServices[0];
                   const rest = activeServices.slice(1);
-
-                  elements.push(
-                    <ServiceHero key={first.key} service={first} appName={appName} />
-                  );
-
+                  elements.push(<ServiceHero key={first.key} service={first} appName={appName} />);
                   for (let i = 0; i < rest.length; i += 2) {
                     const pair = rest.slice(i, i + 2);
                     if (pair.length === 2) {
@@ -975,51 +666,21 @@ export default function HomeScreen() {
                         </View>
                       );
                     } else {
-                      elements.push(
-                        <SvcCard
-                          key={`single-${i}`}
-                          service={pair[0]}
-                          delay={160 + i * 40}
-                          fullWidth
-                          T={T}
-                        />
-                      );
+                      elements.push(<SvcCard key={`single-${i}`} service={pair[0]} delay={160 + i * 40} fullWidth T={T} />);
                     }
                   }
-
                   return elements;
                 })()}
-
-                {features.wallet && (
-                  <WalletStrip
-                    balance={user?.walletBalance || 0}
-                    onPress={() => router.push("/(tabs)/wallet")}
-                    appName={appName}
-                  />
-                )}
+                {features.wallet && <WalletStrip balance={user?.walletBalance || 0} onPress={() => router.push("/(tabs)/wallet")} appName={appName} />}
               </View>
             )}
 
             {quickActions.length > 0 && (
               <>
-                <View style={styles.secRow}>
-                  <Text style={styles.secTitle}>{T("quickAccess")}</Text>
-                </View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.pillsRow}
-                >
+                <SectionHeader title={T("quickAccess")} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsRow}>
                   {quickActions.map((q, i) => (
-                    <Pill
-                      key={`${q.label}-${i}`}
-                      icon={q.icon}
-                      label={q.label}
-                      color={q.color}
-                      bg={q.bg}
-                      onPress={() => router.push(q.route as Href)}
-                      delay={70 + i * 50}
-                    />
+                    <QuickActionPill key={`${q.label}-${i}`} icon={q.icon} label={q.label} color={q.color} bg={q.bg} onPress={() => router.push(q.route as Href)} delay={70 + i * 50} />
                   ))}
                 </ScrollView>
               </>
@@ -1027,10 +688,7 @@ export default function HomeScreen() {
 
             {platformConfig.content.showBanner && (
               <>
-                <View style={styles.secRow}>
-                  <Text style={styles.secTitle}>{T("todaysDeals")}</Text>
-                  <Text style={styles.secSub}>{T("autoSlidesLabel")}</Text>
-                </View>
+                <SectionHeader title={T("todaysDeals")} subtitle={T("autoSlidesLabel")} />
                 <View style={styles.carouselWrap}>
                   <BannerCarousel features={features} />
                 </View>
@@ -1050,10 +708,20 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: C.background },
 
-  trackerWrap: { marginHorizontal: H_PAD, marginTop: spacing.sm },
+  trackerWrap: { marginHorizontal: H_PAD, marginTop: spacing.sm, gap: spacing.sm },
   trackerWrapBottom: { marginTop: spacing.md, marginBottom: spacing.sm },
+  trackerSkeleton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: "#E2E8F0",
+    opacity: 0.7,
+  },
   trackerCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -1070,17 +738,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  trackerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#fff",
-  },
-  trackerTxt: {
-    flex: 1,
-    ...typography.captionMedium,
-    color: "#fff",
-  },
+  trackerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#fff" },
+  trackerTxt: { flex: 1, ...typography.captionMedium, color: "#fff" },
   trackerCta: {
     flexDirection: "row",
     alignItems: "center",
@@ -1090,32 +749,14 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: radii.full,
   },
-  trackerCtaTxt: {
-    ...typography.smallMedium,
-    color: C.primary,
-  },
+  trackerCtaTxt: { ...typography.smallMedium, color: C.primary },
 
   header: { paddingHorizontal: H_PAD, paddingBottom: spacing.lg },
-  hdrRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: spacing.lg,
-  },
-  greeting: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: 2,
-  },
-  hdrTitle: {
-    ...typography.h2,
-    color: "#fff",
-    marginBottom: Platform.OS === "web" ? 2 : 5,
-  },
+  hdrRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: spacing.lg },
+  greeting: { ...typography.caption, color: "rgba(255,255,255,0.8)", marginBottom: 2 },
+  hdrTitle: { ...typography.h2, color: "#fff", marginBottom: Platform.OS === "web" ? 2 : 5 },
   locRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  locTxt: {
-    ...typography.small,
-    color: "rgba(255,255,255,0.7)",
-  },
+  locTxt: { ...typography.small, color: "rgba(255,255,255,0.7)" },
   cartBtn: {
     width: 44,
     height: 44,
@@ -1140,11 +781,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#fff",
   },
-  cartBadgeTxt: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 9,
-    color: "#fff",
-  },
+  cartBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 9, color: "#fff" },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1163,11 +800,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  searchTxt: {
-    flex: 1,
-    ...typography.body,
-    color: C.textMuted,
-  },
+  searchTxt: { flex: 1, ...typography.body, color: C.textMuted },
   searchFilter: {
     width: 32,
     height: 32,
@@ -1193,14 +826,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  announceTxt: {
-    flex: 1,
-    ...typography.captionMedium,
-    color: "#fff",
-  },
-  announceClose: {
-    padding: 4,
-  },
+  announceTxt: { flex: 1, ...typography.captionMedium, color: "#fff" },
+  announceClose: { padding: 4 },
 
   announceBanner: {
     flexDirection: "row",
@@ -1215,25 +842,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#B3D4FF",
   },
-  announceBannerTxt: {
-    flex: 1,
-    ...typography.captionMedium,
-    color: C.primary,
-  },
-
-  secRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    paddingHorizontal: H_PAD,
-    marginTop: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  secTitle: { ...typography.h3, color: C.text },
-  secSub: { ...typography.caption, color: C.textMuted },
+  announceBannerTxt: { flex: 1, ...typography.captionMedium, color: C.primary },
 
   scroll: { paddingBottom: 0 },
-
   grid: { paddingHorizontal: H_PAD, gap: spacing.md },
   halfRow: { flexDirection: "row", gap: spacing.md },
 
@@ -1258,23 +869,11 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
   },
   heroBadgeTxt: { ...typography.smallMedium, color: "#fff" },
-  heroTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 28,
-    color: "#fff",
-    lineHeight: 32,
-  },
-  heroSub: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.85)",
-    lineHeight: 17,
-  },
+  heroTitle: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#fff", lineHeight: 32 },
+  heroSub: { ...typography.caption, color: "rgba(255,255,255,0.85)", lineHeight: 17 },
   heroStats: { flexDirection: "row", gap: 14, marginTop: 2 },
   heroStat: { flexDirection: "row", alignItems: "center", gap: 4 },
-  heroStatTxt: {
-    ...typography.small,
-    color: "rgba(255,255,255,0.85)",
-  },
+  heroStatTxt: { ...typography.small, color: "rgba(255,255,255,0.85)" },
   heroBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1286,10 +885,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     marginTop: 4,
   },
-  heroBtnTxt: {
-    ...typography.buttonSmall,
-    color: C.primary,
-  },
+  heroBtnTxt: { ...typography.buttonSmall, color: C.primary },
   heroR: { alignItems: "center", marginLeft: 10 },
   heroRing: {
     width: 78,
@@ -1311,10 +907,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     justifyContent: "center",
   },
-  singleHeroContent: {
-    alignItems: "center",
-    gap: 10,
-  },
+  singleHeroContent: { alignItems: "center", gap: 10 },
   singleHeroIconWrap: {
     width: 110,
     height: 110,
@@ -1326,23 +919,9 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.2)",
     marginBottom: 8,
   },
-  singleHeroTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 34,
-    color: "#fff",
-    textAlign: "center",
-  },
-  singleHeroSub: {
-    ...typography.body,
-    color: "rgba(255,255,255,0.85)",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  singleHeroStats: {
-    flexDirection: "row",
-    gap: 20,
-    marginTop: 4,
-  },
+  singleHeroTitle: { fontFamily: "Inter_700Bold", fontSize: 34, color: "#fff", textAlign: "center" },
+  singleHeroSub: { ...typography.body, color: "rgba(255,255,255,0.85)", textAlign: "center", lineHeight: 22 },
+  singleHeroStats: { flexDirection: "row", gap: 20, marginTop: 4 },
   singleHeroStat: {
     flexDirection: "row",
     alignItems: "center",
@@ -1352,10 +931,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: radii.full,
   },
-  singleHeroStatTxt: {
-    ...typography.captionMedium,
-    color: "rgba(255,255,255,0.9)",
-  },
+  singleHeroStatTxt: { ...typography.captionMedium, color: "rgba(255,255,255,0.9)" },
   singleHeroCta: {
     flexDirection: "row",
     alignItems: "center",
@@ -1366,27 +942,11 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     marginTop: 8,
   },
-  singleHeroCtaTxt: {
-    ...typography.button,
-    color: C.primary,
-  },
+  singleHeroCtaTxt: { ...typography.button, color: C.primary },
 
   svcWrap: { borderRadius: radii.xl, overflow: "hidden", height: 178 },
-  svcCard: {
-    flex: 1,
-    borderRadius: radii.xl,
-    padding: spacing.lg,
-    overflow: "hidden",
-    gap: 5,
-  },
-  svcIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
+  svcCard: { flex: 1, borderRadius: radii.xl, padding: spacing.lg, overflow: "hidden", gap: 5 },
+  svcIcon: { width: 48, height: 48, borderRadius: radii.lg, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   svcTitle: { ...typography.subtitle, lineHeight: 21 },
   svcSub: { ...typography.small, lineHeight: 15, flex: 1 },
   svcTag: {
@@ -1419,16 +979,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  walletLbl: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: 2,
-  },
-  walletBal: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 20,
-    color: "#fff",
-  },
+  walletLbl: { ...typography.caption, color: "rgba(255,255,255,0.8)", marginBottom: 2 },
+  walletBal: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff" },
   walletTopUp: {
     flexDirection: "row",
     alignItems: "center",
@@ -1442,18 +994,8 @@ const styles = StyleSheet.create({
 
   pillsRow: { paddingHorizontal: H_PAD, gap: spacing.md },
   pill: { alignItems: "center", gap: 7, width: 68 },
-  pillIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.xl,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pillLbl: {
-    ...typography.smallMedium,
-    color: C.textSecondary,
-    textAlign: "center",
-  },
+  pillIcon: { width: 56, height: 56, borderRadius: radii.xl, alignItems: "center", justifyContent: "center" },
+  pillLbl: { ...typography.smallMedium, color: C.textSecondary, textAlign: "center" },
 
   carouselWrap: { paddingHorizontal: H_PAD, overflow: "hidden" },
 
@@ -1474,18 +1016,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
   },
   bannerTagTxt: { ...typography.smallMedium, color: "#fff" },
-  bannerTitle: {
-    fontFamily: "Inter_700Bold",
-    fontSize: 19,
-    color: "#fff",
-    marginBottom: 5,
-  },
-  bannerDesc: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.9)",
-    lineHeight: 17,
-    marginBottom: spacing.md,
-  },
+  bannerTitle: { fontFamily: "Inter_700Bold", fontSize: 19, color: "#fff", marginBottom: 5 },
+  bannerDesc: { ...typography.caption, color: "rgba(255,255,255,0.9)", lineHeight: 17, marginBottom: spacing.md },
   bannerCta: {
     flexDirection: "row",
     alignItems: "center",
@@ -1499,53 +1031,9 @@ const styles = StyleSheet.create({
   bannerCtaTxt: { ...typography.captionMedium, color: "#fff" },
   bannerIconWrap: { marginLeft: spacing.sm },
 
-  dotsRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: spacing.md,
-  },
+  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: spacing.md },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.border },
   dotActive: { width: 22, borderRadius: 3, backgroundColor: C.primary },
-
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-    paddingHorizontal: 32,
-  },
-  emptyIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: C.surfaceSecondary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  emptyTitle: { ...typography.h3, color: C.text, marginBottom: 10, textAlign: "center" },
-  emptySub: {
-    ...typography.body,
-    color: C.textMuted,
-    textAlign: "center",
-    lineHeight: 21,
-  },
-  refreshBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: radii.lg,
-    backgroundColor: C.primarySoft,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  refreshBtnTxt: {
-    ...typography.captionMedium,
-    color: C.primary,
-  },
 
   blob: { position: "absolute", borderRadius: 999, backgroundColor: "#fff" },
 });

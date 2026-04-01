@@ -28,6 +28,12 @@ import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
 import { API_BASE } from "@/utils/api";
+import {
+  SkeletonBlock,
+  SkeletonRows,
+  EmptyState,
+  FilterChip,
+} from "@/components/user-shared";
 
 const C = Colors.light;
 
@@ -110,7 +116,12 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
   };
 
   return (
-    <Pressable onPress={handleCardPress} style={styles.card}>
+    <Pressable
+      onPress={handleCardPress}
+      style={styles.card}
+      accessibilityRole="button"
+      accessibilityLabel={`${isFood ? T("food") : T("mart")} order ${order.id.slice(-8).toUpperCase()}, ${T(cfg.labelKey)}, Rs. ${order.total?.toLocaleString()}`}
+    >
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: isFood ? "#FEF3C7" : "#EFF6FF" }]}>
           <Ionicons
@@ -180,14 +191,14 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       )}
 
       {canCancel && (
-        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)}>
+        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)} accessibilityRole="button" accessibilityLabel={`${T("cancelOrder")}, ${cancelMinsLeft} minutes left`}>
           <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
           <Text style={styles.cancelBtnText}>{T("cancelOrder")} ({cancelMinsLeft}m left)</Text>
         </Pressable>
       )}
 
       {canRate && (
-        <Pressable style={styles.rateBtn} onPress={() => onRate(order)}>
+        <Pressable style={styles.rateBtn} onPress={() => onRate(order)} accessibilityRole="button" accessibilityLabel={T("rateOrder")}>
           <Ionicons name="star-outline" size={14} color="#F59E0B" />
           <Text style={styles.rateBtnText}>{T("rateOrder")}</Text>
         </Pressable>
@@ -201,14 +212,14 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       )}
 
       {isDelivered && order.paymentMethod !== "cash" && order.paymentMethod !== "cod" && !order.refundStatus && (
-        <Pressable style={styles.refundRequestBtn} onPress={() => router.push(`/order?orderId=${order.id}&action=refund`)}>
+        <Pressable style={styles.refundRequestBtn} onPress={() => router.push(`/order?orderId=${order.id}&action=refund`)} accessibilityRole="button" accessibilityLabel="Request refund for this order">
           <Ionicons name="return-down-back-outline" size={14} color="#7C3AED" />
           <Text style={styles.refundRequestBtnText}>{T("requestRefund") || "Request Refund"}</Text>
         </Pressable>
       )}
 
       {(isDelivered || isCancelled) && onReorder && order.items?.length > 0 && (
-        <Pressable style={styles.reorderBtn} onPress={() => onReorder(order)}>
+        <Pressable style={styles.reorderBtn} onPress={() => onReorder(order)} accessibilityRole="button" accessibilityLabel="Reorder these items">
           <Ionicons name="refresh-outline" size={14} color={C.primary} />
           <Text style={styles.reorderBtnText}>Reorder</Text>
         </Pressable>
@@ -258,7 +269,12 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
   };
 
   return (
-    <Pressable onPress={handleCardPress} style={styles.card}>
+    <Pressable
+      onPress={handleCardPress}
+      style={styles.card}
+      accessibilityRole="button"
+      accessibilityLabel={`${ride.type || "car"} ride ${ride.id.slice(-8).toUpperCase()}, ${T(cfg.labelKey)}, Rs. ${(ride.fare != null ? Number(ride.fare) : 0).toLocaleString()}`}
+    >
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#ECFDF5" }]}>
           <Ionicons
@@ -315,7 +331,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
             {ride.riderPhone && <Text style={styles.riderPhone}>{ride.riderPhone}</Text>}
           </View>
           {ride.riderPhone && (
-            <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)} style={styles.callBtn}>
+            <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)} style={styles.callBtn} accessibilityRole="button" accessibilityLabel={`Call rider ${ride.riderName}`}>
               <Ionicons name="call-outline" size={16} color="#fff" />
             </Pressable>
           )}
@@ -362,7 +378,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
       )}
 
       {canCancel && (
-        <Pressable style={styles.cancelBtn} onPress={() => onCancel(ride)}>
+        <Pressable style={styles.cancelBtn} onPress={() => onCancel(ride)} accessibilityRole="button" accessibilityLabel={["accepted", "arrived"].includes(ride.status) ? T("cancelRideFee") : T("cancelRide")}>
           <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
           <Text style={styles.cancelBtnText}>
             {["accepted", "arrived"].includes(ride.status) ? T("cancelRideFee") : T("cancelRide")}
@@ -371,7 +387,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
       )}
 
       {reviews && isCompleted && !ride._reviewed && (
-        <Pressable style={styles.rateBtn} onPress={() => onRate({ ...ride, _type: "ride" })}>
+        <Pressable style={styles.rateBtn} onPress={() => onRate({ ...ride, _type: "ride" })} accessibilityRole="button" accessibilityLabel="Rate this ride">
           <Ionicons name="star-outline" size={14} color="#F59E0B" />
           <Text style={styles.rateBtnText}>Rate this ride</Text>
         </Pressable>
@@ -447,7 +463,12 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
   const cancelMinsLeft = Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
 
   return (
-    <Pressable style={styles.card} onPress={() => router.push({ pathname: "/order", params: { orderId: order.id, type: "pharmacy" } })}>
+    <Pressable
+      style={styles.card}
+      onPress={() => router.push({ pathname: "/order", params: { orderId: order.id, type: "pharmacy" } })}
+      accessibilityRole="button"
+      accessibilityLabel={`Pharmacy order ${order.id.slice(-8).toUpperCase()}, ${T(cfg.labelKey)}, Rs. ${(order.total != null ? Number(order.total) : 0).toLocaleString()}`}
+    >
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#F3E8FF" }]}>
           <Ionicons name="medical-outline" size={13} color="#7C3AED" />
@@ -497,14 +518,14 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
       </View>
 
       {canCancel && (
-        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)}>
+        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)} accessibilityRole="button" accessibilityLabel={`${T("cancelOrder")}, ${cancelMinsLeft} minutes left`}>
           <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
           <Text style={styles.cancelBtnText}>{T("cancelOrder")} ({cancelMinsLeft}m left)</Text>
         </Pressable>
       )}
 
       {reviews && isDelivered && !order._reviewed && (
-        <Pressable style={styles.rateBtn} onPress={() => onRate({ ...order, _type: "pharmacy" })}>
+        <Pressable style={styles.rateBtn} onPress={() => onRate({ ...order, _type: "pharmacy" })} accessibilityRole="button" accessibilityLabel={T("rateOrder")}>
           <Ionicons name="star-outline" size={14} color="#F59E0B" />
           <Text style={styles.rateBtnText}>{T("rateOrder")}</Text>
         </Pressable>
@@ -534,7 +555,12 @@ function ParcelCard({ booking }: { booking: any }) {
   };
 
   return (
-    <Pressable onPress={handleCardPress} style={styles.card}>
+    <Pressable
+      onPress={handleCardPress}
+      style={styles.card}
+      accessibilityRole="button"
+      accessibilityLabel={`Parcel ${parcelLabel} ${booking.id.slice(-8).toUpperCase()}, ${T(cfg.labelKey)}`}
+    >
       <View style={styles.cardTop}>
         <View style={[styles.chip, { backgroundColor: "#FEF3C7" }]}>
           <Ionicons name="cube-outline" size={13} color="#D97706" />
@@ -599,9 +625,9 @@ function ParcelCard({ booking }: { booking: any }) {
 
 function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginVertical: 8 }}>
+    <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginVertical: 8 }} accessibilityRole="adjustable" accessibilityLabel={`Rating: ${value} of 5 stars`}>
       {[1, 2, 3, 4, 5].map(s => (
-        <Pressable key={s} onPress={() => onChange(s)} hitSlop={10}>
+        <Pressable key={s} onPress={() => onChange(s)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`${s} star${s > 1 ? "s" : ""}`} accessibilityState={{ selected: s <= value }}>
           <Ionicons
             name={s <= value ? "star" : "star-outline"}
             size={36}
@@ -1222,21 +1248,21 @@ export default function OrdersScreen() {
         contentContainerStyle={styles.scroll}
       >
         {showRidesErr && (
-          <Pressable onPress={fetchRides} style={styles.sectionErrBanner}>
+          <Pressable onPress={fetchRides} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load ride orders, tap to retry">
             <Ionicons name="car-outline" size={15} color="#B91C1C" />
             <Text style={styles.sectionErrTxt}>Could not load ride orders</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
           </Pressable>
         )}
         {showPharmErr && (
-          <Pressable onPress={fetchPharmacy} style={styles.sectionErrBanner}>
+          <Pressable onPress={fetchPharmacy} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load pharmacy orders, tap to retry">
             <Ionicons name="medical-outline" size={15} color="#B91C1C" />
             <Text style={styles.sectionErrTxt}>Could not load pharmacy orders</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
           </Pressable>
         )}
         {showParcelErr && (
-          <Pressable onPress={fetchParcel} style={styles.sectionErrBanner}>
+          <Pressable onPress={fetchParcel} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load parcel bookings, tap to retry">
             <Ionicons name="cube-outline" size={15} color="#B91C1C" />
             <Text style={styles.sectionErrTxt}>Could not load parcel bookings</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
@@ -1263,6 +1289,8 @@ export default function OrdersScreen() {
               <Pressable
                 onPress={() => setHistoryLimit(l => l + 5)}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: "#F1F5F9", borderRadius: 16, marginTop: 4, borderWidth: 1, borderColor: C.border }}
+                accessibilityRole="button"
+                accessibilityLabel={`Load more, ${anyPast - historyLimit} remaining`}
               >
                 <Ionicons name="chevron-down" size={16} color={C.primary} />
                 <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.primary }}>
@@ -1308,6 +1336,9 @@ export default function OrdersScreen() {
                 key={tab.key}
                 onPress={() => setActiveTab(tab.key)}
                 style={[styles.tab, isActive && styles.tabActive]}
+                accessibilityRole="tab"
+                accessibilityLabel={`${T(tab.labelKey)}${count > 0 ? `, ${count}` : ""}`}
+                accessibilityState={{ selected: isActive }}
               >
                 <Ionicons
                   name={tab.icon as any}
