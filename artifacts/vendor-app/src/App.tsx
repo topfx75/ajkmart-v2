@@ -108,7 +108,6 @@ function AppRoutes() {
                 <Route path="/reviews" component={Reviews} />
                 <Route path="/store" component={Store} />
                 <Route path="/notifications" component={Notifications} />
-                <Route path="/reviews" component={Reviews} />
                 <Route path="/profile" component={Profile} />
                 <Route>
                   <div className="flex items-center justify-center h-64">

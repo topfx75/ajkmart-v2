@@ -70,6 +70,7 @@ export default function Login() {
                   value={secret}
                   onChange={(e) => setSecret(e.target.value)}
                   className="pl-11 h-14 rounded-xl border-2 bg-background/50 focus:bg-background transition-colors text-lg"
+                  autoComplete="current-password"
                   autoFocus
                 />
               </div>
@@ -93,7 +94,7 @@ export default function Login() {
         </div>
         
         <p className="text-center text-sm text-muted-foreground mt-8">
-          AJKMart Super App © {new Date().getFullYear()}
+          AJKMart Admin © {new Date().getFullYear()}
         </p>
       </div>
     </div>
