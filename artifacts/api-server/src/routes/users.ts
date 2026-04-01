@@ -192,6 +192,25 @@ router.put("/profile", async (req, res) => {
   if (cnic    !== undefined) updates.cnic    = String(cnic).replace(/[-\s]/g, "").trim();
   if (city    !== undefined) updates.city    = String(city).trim();
   if (address !== undefined) updates.address = String(address).trim();
+
+  const [current] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!current) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const hasName = updates.name ?? current.name;
+  const hasEmail = updates.email ?? current.email;
+  const hasAddress = updates.address ?? current.address;
+  const hasCity = updates.city ?? current.city;
+  const hasCnic = updates.cnic ?? current.cnic;
+  const hasPassword = current.passwordHash;
+  const filledCount = [hasName, hasEmail, hasAddress, hasCity, hasCnic, hasPassword].filter(Boolean).length;
+  let newLevel = "bronze";
+  if (filledCount >= 5 && hasCnic) newLevel = "gold";
+  else if (filledCount >= 3) newLevel = "silver";
+  updates.accountLevel = newLevel;
+
   await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
@@ -203,12 +222,16 @@ router.put("/profile", async (req, res) => {
     phone: user.phone,
     name: user.name,
     email: user.email,
+    username: user.username,
     role: user.role,
     avatar: user.avatar,
     walletBalance: parseFloat(user.walletBalance ?? "0"),
     cnic: user.cnic,
     city: user.city,
+    area: user.area,
     address: user.address,
+    accountLevel: user.accountLevel,
+    kycStatus: user.kycStatus,
     createdAt: user.createdAt.toISOString(),
   });
 });

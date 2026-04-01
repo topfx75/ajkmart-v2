@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -80,7 +80,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [usernameStatus, setUsernameStatus] = useState<"" | "checking" | "available" | "taken">("");
-  const [usernameTimer, setUsernameTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const usernameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [city, setCity] = useState("");
   const [citySearch, setCitySearch] = useState("");
@@ -116,9 +116,9 @@ export default function RegisterScreen() {
     setUsername(clean);
     clearError();
     setUsernameStatus("");
-    if (usernameTimer) clearTimeout(usernameTimer);
+    if (usernameTimerRef.current) clearTimeout(usernameTimerRef.current);
     if (clean.length >= 3) {
-      const t = setTimeout(async () => {
+      usernameTimerRef.current = setTimeout(async () => {
         setUsernameStatus("checking");
         try {
           const res = await fetch(`${API}/auth/check-available`, {
@@ -136,11 +136,20 @@ export default function RegisterScreen() {
           setUsernameStatus("");
         }
       }, 500);
-      setUsernameTimer(t);
     }
   };
 
-  const filteredCities = PAKISTAN_CITIES.filter(c =>
+  const cityList: string[] = React.useMemo(() => {
+    const raw: any = (config as any).cities ?? (config as any).platform?.cities;
+    if (Array.isArray(raw) && raw.length > 0) return raw;
+    if (typeof raw === "string" && raw.trim()) {
+      const parsed = raw.split(",").map((c: string) => c.trim()).filter(Boolean);
+      if (parsed.length > 0) return parsed;
+    }
+    return PAKISTAN_CITIES;
+  }, [config]);
+
+  const filteredCities = cityList.filter(c =>
     c.toLowerCase().includes(citySearch.toLowerCase())
   );
 
@@ -165,7 +174,7 @@ export default function RegisterScreen() {
         });
         if (geo) {
           if (geo.city) {
-            const matchedCity = PAKISTAN_CITIES.find(
+            const matchedCity = cityList.find(
               c => c.toLowerCase() === geo.city!.toLowerCase()
             );
             if (matchedCity) setCity(matchedCity);
@@ -300,6 +309,7 @@ export default function RegisterScreen() {
     if (!username || username.length < 3) { setError("Username is required (at least 3 characters)"); return; }
     if (usernameStatus === "taken") { setError("This username is already taken. Please choose another."); return; }
     if (usernameStatus === "checking") { setError("Please wait — checking username availability"); return; }
+    if (usernameStatus !== "available") { setError("Please wait for username availability check to complete"); return; }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError("Please enter a valid email address");
       return;

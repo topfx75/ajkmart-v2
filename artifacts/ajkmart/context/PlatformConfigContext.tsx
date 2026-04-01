@@ -158,6 +158,10 @@ export interface PlatformConfig {
     googleClientId: string;
     facebookAppId: string;
   };
+  language: {
+    defaultLanguage: string;
+    enabledLanguages: string[];
+  };
 }
 
 const DEFAULT: PlatformConfig = {
