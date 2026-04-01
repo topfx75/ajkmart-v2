@@ -230,14 +230,16 @@ router.patch("/online", async (req, res) => {
      the first GPS ping. Falls back gracefully if no prior location exists. */
   if (isOnline) {
     try {
+      const STALE_SEED_MS = 30 * 60 * 1000;
       const [lastLog] = await db
-        .select({ latitude: locationLogsTable.latitude, longitude: locationLogsTable.longitude })
+        .select({ latitude: locationLogsTable.latitude, longitude: locationLogsTable.longitude, createdAt: locationLogsTable.createdAt })
         .from(locationLogsTable)
         .where(and(eq(locationLogsTable.userId, riderId), eq(locationLogsTable.role, "rider")))
         .orderBy(desc(locationLogsTable.createdAt))
         .limit(1);
       const now = new Date();
-      if (lastLog) {
+      const isStale = lastLog?.createdAt && (now.getTime() - new Date(lastLog.createdAt).getTime()) > STALE_SEED_MS;
+      if (lastLog && !isStale) {
         await db.insert(liveLocationsTable).values({
           userId: riderId,
           latitude: lastLog.latitude,
@@ -410,6 +412,9 @@ router.get("/requests", async (req, res) => {
   const avgSpeed = parseFloat(s["dispatch_avg_speed_kmh"] ?? "25");
   const radiusKm = parseFloat(s["dispatch_min_radius_km"] ?? "5");
 
+  const riderUser = req.riderUser! as Record<string, unknown>;
+  const riderVehicle = (String(riderUser.vehicleType ?? "")).trim().toLowerCase();
+
   const [orders, rides, myBids, riderLoc] = await Promise.all([
     db.select().from(ordersTable)
       .where(or(eq(ordersTable.status, "confirmed"), eq(ordersTable.status, "preparing")))
@@ -454,6 +459,10 @@ router.get("/requests", async (req, res) => {
       };
     })
     .filter(r => {
+      if (riderVehicle && r.type) {
+        const rideType = String(r.type).toLowerCase();
+        if (rideType !== riderVehicle && rideType !== "any") return false;
+      }
       if (r.riderDistanceKm === null) return true;
       return r.riderDistanceKm <= radiusKm;
     })
@@ -576,7 +585,7 @@ router.post("/orders/:id/accept", async (req, res) => {
   // Atomic accept: only succeeds if riderId is still NULL in DB
   const [updated] = await db
     .update(ordersTable)
-    .set({ riderId, status: "out_for_delivery", updatedAt: new Date() })
+    .set({ riderId, riderName: String(riderUser.name || "Rider"), riderPhone: riderUser.phone ? String(riderUser.phone) : null, status: "out_for_delivery", updatedAt: new Date() })
     .where(and(eq(ordersTable.id, orderId), isNull(ordersTable.riderId)))
     .returning();
 
@@ -1100,16 +1109,16 @@ router.patch("/rides/:id/status", async (req, res) => {
     const s = await getPlatformSettings();
     const proximityM = parseFloat(s["dispatch_ride_start_proximity_m"] ?? "500");
 
-    /* Prefer server-stored live location (trusted) over client-supplied coords */
+    /* Use ONLY server-stored live location (trusted) for proximity verification.
+       Client-supplied lat/lng is NOT used — it can be spoofed.
+       Reject stale locations older than 2 minutes to prevent false proximity matches. */
+    const PROXIMITY_STALE_MS = 2 * 60 * 1000;
     let riderLat: number | undefined;
     let riderLng: number | undefined;
     const [storedLoc] = await db.select().from(liveLocationsTable).where(eq(liveLocationsTable.userId, riderId)).limit(1);
-    if (storedLoc) {
+    if (storedLoc && storedLoc.updatedAt && (Date.now() - new Date(storedLoc.updatedAt).getTime()) < PROXIMITY_STALE_MS) {
       riderLat = parseFloat(storedLoc.latitude);
       riderLng = parseFloat(storedLoc.longitude);
-    } else if (lat != null && lng != null) {
-      riderLat = lat;
-      riderLng = lng;
     }
 
     if (riderLat == null || riderLng == null) {

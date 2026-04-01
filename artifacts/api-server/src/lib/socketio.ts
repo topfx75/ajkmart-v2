@@ -4,7 +4,7 @@ import { logger } from "./logger.js";
 import { verifyUserJwt, verifyAdminJwt } from "../middleware/security.js";
 import { db } from "@workspace/db";
 import { ridesTable, ordersTable, parcelBookingsTable, pharmacyOrdersTable, liveLocationsTable } from "@workspace/db/schema";
-import { eq, or, and } from "drizzle-orm";
+import { eq, or, and, sql } from "drizzle-orm";
 
 /* ── Server-side GPS broadcast throttle: max 1 emit per rider per 1500ms ── */
 const RIDER_LOC_THROTTLE_MS = 1500;
@@ -377,15 +377,23 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
         if (key.startsWith(prefix)) _pendingRideJoins.delete(key);
       }
 
-      /* Clean up stale live_locations row for riders on disconnect */
       const disconnectToken = getTokenFromHandshake(headers, auth);
       if (disconnectToken) {
         const disconnectPayload = verifyUserJwt(disconnectToken);
         if (disconnectPayload?.userId && disconnectPayload.role === "rider") {
           const riderId = disconnectPayload.userId;
-          db.delete(liveLocationsTable)
-            .where(eq(liveLocationsTable.userId, riderId))
-            .catch((err) => logger.warn({ err, riderId }, "Failed to clean up stale live_location on disconnect"));
+          const deleteWithRetry = (attempt: number) => {
+            db.delete(liveLocationsTable)
+              .where(eq(liveLocationsTable.userId, riderId))
+              .catch((err) => {
+                if (attempt < 3) {
+                  setTimeout(() => deleteWithRetry(attempt + 1), 1000 * attempt);
+                } else {
+                  logger.warn({ err, riderId }, "Failed to clean up stale live_location on disconnect after retries");
+                }
+              });
+          };
+          deleteWithRetry(1);
           _riderLocLastEmit.delete(riderId);
         }
       }
@@ -393,6 +401,18 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       logger.debug({ socketId: socket.id }, "Socket disconnected");
     });
   });
+
+  const STALE_LOC_TTL_MS = 5 * 60 * 1000;
+  setInterval(() => {
+    db.delete(liveLocationsTable)
+      .where(sql`${liveLocationsTable.updatedAt} < NOW() - INTERVAL '5 minutes'`)
+      .then((result) => {
+        if (result.rowCount && result.rowCount > 0) {
+          logger.info({ cleaned: result.rowCount }, "Cleaned stale live_locations");
+        }
+      })
+      .catch((err) => logger.warn({ err }, "Stale live_locations cleanup failed"));
+  }, STALE_LOC_TTL_MS);
 
   logger.info("Socket.io initialized");
   return _io;

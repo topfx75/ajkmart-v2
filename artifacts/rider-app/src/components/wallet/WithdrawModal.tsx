@@ -90,7 +90,7 @@ export default function WithdrawModal({
       const m = selectedMethod!;
       return api.withdrawWallet({
         amount: Number(amount),
-        bankName: m.id === "bank" ? bankName : m.label,
+        bankName: m.id === "bank" ? bankName : m.id,
         accountNumber: acNo, accountTitle: acName,
         paymentMethod: m.id, note,
       });

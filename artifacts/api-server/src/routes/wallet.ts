@@ -149,12 +149,13 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const normalizedTxId = transactionId.trim().toUpperCase().replace(/\s+/g, "");
   if (!normalizedTxId) { res.status(400).json({ error: "transactionId cannot be empty" }); return; }
 
-  const txidTag = `txid:${normalizedTxId}`;
+  const txidSuffix = `:txid:${normalizedTxId}`;
   const existingDeposit = await db.select({ id: walletTransactionsTable.id })
     .from(walletTransactionsTable)
     .where(and(
       eq(walletTransactionsTable.type, "deposit"),
-      sql`${walletTransactionsTable.reference} LIKE ${'%' + txidTag}`,
+      sql`${walletTransactionsTable.reference} LIKE ${'%' + txidSuffix}`,
+      sql`RIGHT(${walletTransactionsTable.reference}, ${txidSuffix.length}) = ${txidSuffix}`,
     ))
     .limit(1);
 

@@ -13,6 +13,8 @@ export const ordersTable = pgTable("orders", {
   deliveryAddress: text("delivery_address"),
   paymentMethod: text("payment_method").notNull(),
   riderId: text("rider_id"),
+  riderName: text("rider_name"),
+  riderPhone: text("rider_phone"),
   vendorId: text("vendor_id"),
   estimatedTime: text("estimated_time"),
   proofPhotoUrl: text("proof_photo_url"),

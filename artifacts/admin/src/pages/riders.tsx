@@ -82,7 +82,7 @@ function RiderWalletModal({ rider, onClose }: { rider: any; onClose: () => void 
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancel</Button>
             <Button onClick={handleSubmit}
-              disabled={payoutMutation.isPending || bonusMutation.isPending || !amount}
+              disabled={payoutMutation.isPending || bonusMutation.isPending || !amount || (mode === "payout" && rider.walletBalance < Number(amount || 0) && Number(amount) > 0)}
               className={`flex-1 rounded-xl text-white ${mode === "payout" ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"}`}>
               {(payoutMutation.isPending || bonusMutation.isPending) ? "Processing..." : mode === "payout" ? "Process Payout" : "Add Bonus"}
             </Button>

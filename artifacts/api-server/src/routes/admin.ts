@@ -2275,16 +2275,34 @@ router.post("/riders/:id/bonus", async (req, res) => {
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     res.status(400).json({ error: "Valid amount required" }); return;
   }
-  const [rider] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
-  if (!rider) { res.status(404).json({ error: "Rider not found" }); return; }
+  const riderId = req.params["id"]!;
   const amt = Number(amount);
-  const newBal = parseFloat(rider.walletBalance ?? "0") + amt;
-  const [updated] = await db.update(usersTable).set({ walletBalance: String(newBal), updatedAt: new Date() }).where(eq(usersTable.id, rider.id)).returning();
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(), userId: rider.id, type: "credit", amount: String(amt),
-    description: description || `Admin bonus: Rs. ${amt}`, reference: "rider_bonus",
-  });
-  await sendUserNotification(rider.id, "Bonus Received! 🎉", `Rs. ${amt} bonus has been added to your wallet.`, "system", "gift-outline");
+  const txId = generateId();
+
+  let updated: typeof usersTable.$inferSelect | undefined;
+  let newBal = 0;
+  try {
+    await db.transaction(async (tx) => {
+      const [rider] = await tx.select().from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
+      if (!rider) throw new Error("NOT_FOUND");
+      await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${amt}`, updatedAt: new Date() })
+        .where(eq(usersTable.id, riderId));
+      await tx.insert(walletTransactionsTable).values({
+        id: txId, userId: riderId, type: "credit", amount: String(amt),
+        description: description || `Admin bonus: Rs. ${amt}`, reference: "rider_bonus",
+      });
+      const [refreshed] = await tx.select().from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
+      updated = refreshed;
+      newBal = parseFloat(refreshed?.walletBalance ?? "0");
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "NOT_FOUND") {
+      res.status(404).json({ error: "Rider not found" }); return;
+    }
+    throw err;
+  }
+  await sendUserNotification(riderId, "Bonus Received! 🎉", `Rs. ${amt} bonus has been added to your wallet.`, "system", "gift-outline");
   res.json({ success: true, amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
 });
 
@@ -2476,13 +2494,26 @@ router.patch("/deposit-requests/:id/approve", async (req, res) => {
   const { refNo, note } = req.body;
   const txId = req.params["id"]!;
 
-  /* First, verify it exists and is the right type */
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
   if (!tx) { res.status(404).json({ error: "Deposit not found" }); return; }
   if (tx.type !== "deposit") { res.status(400).json({ error: "Not a deposit record" }); return; }
 
   const amt = parseFloat(String(tx.amount));
   const txidSuffix = (tx.reference && tx.reference.includes("txid:")) ? `:${tx.reference.split("txid:").pop()}` : "";
+
+  if (txidSuffix) {
+    const dupes = await db.select({ id: walletTransactionsTable.id })
+      .from(walletTransactionsTable)
+      .where(and(
+        eq(walletTransactionsTable.type, "deposit"),
+        sql`${walletTransactionsTable.reference} LIKE ${'%approved%' + txidSuffix}`,
+        sql`RIGHT(${walletTransactionsTable.reference}, ${txidSuffix.length}) = ${txidSuffix}`,
+      ))
+      .limit(1);
+    if (dupes.length > 0) {
+      res.status(409).json({ error: "A deposit with this Transaction ID has already been approved" }); return;
+    }
+  }
   const approvedRef = refNo ? `approved:${refNo.trim()}${txidSuffix}` : `approved:manual${txidSuffix}`;
 
   /* Fully atomic: conditional state-transition + wallet credit in ONE transaction.
@@ -3675,18 +3706,20 @@ router.patch("/users/bulk-ban", async (req, res) => {
 /* ── PATCH /admin/orders/:id/assign-rider — manually assign a rider to an order ── */
 router.patch("/orders/:id/assign-rider", async (req, res) => {
   const { riderId } = req.body as { riderId?: string };
+  let riderName: string | null = null;
+  let riderPhone: string | null = null;
+  if (riderId) {
+    const [rider] = await db.select({ name: usersTable.name, phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, riderId));
+    riderName = rider?.name ?? null;
+    riderPhone = rider?.phone ?? null;
+  }
   const [order] = await db.update(ordersTable)
-    .set({ riderId: riderId || null, updatedAt: new Date() })
+    .set({ riderId: riderId || null, riderName, riderPhone, updatedAt: new Date() })
     .where(eq(ordersTable.id, req.params["id"]!))
     .returning();
   if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  let riderName: string | null = null;
-  if (riderId) {
-    const [rider] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, riderId));
-    riderName = rider?.name ?? null;
-  }
   addAuditEntry({ action: "order_rider_assigned", ip: getClientIp(req), adminId: (req as any).adminId, details: `Rider ${riderName ?? riderId ?? "unassigned"} assigned to order ${req.params["id"]}`, result: "success" });
-  res.json({ success: true, order: { ...order, total: parseFloat(String(order.total)), riderName } });
+  res.json({ success: true, order: { ...order, total: parseFloat(String(order.total)), riderName, riderPhone } });
 });
 
 /* ── PATCH /admin/vendors/:id/commission — set per-vendor commission override ── */

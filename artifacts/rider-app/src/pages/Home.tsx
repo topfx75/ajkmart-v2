@@ -4,12 +4,12 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
+import { useSocket } from "../lib/socket";
 import { tDual } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { playRequestSound, unlockAudio, silenceFor, isSilenced, unsilence, getSilenceRemaining, getSilenceMode, setSilenceMode } from "../lib/notificationSound";
 import { logRideEvent } from "../lib/rideUtils";
-import { io, type Socket } from "socket.io-client";
-import { enqueue, dequeueAll, clearQueue } from "../lib/gpsQueue";
+import { enqueue } from "../lib/gpsQueue";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -68,18 +68,24 @@ function RequestAge({ createdAt }: { createdAt: string }) {
 /* Countdown ring shown on request cards — counts down from ACCEPT_TIMEOUT_SEC.
    After timeout the request fades out naturally (it disappears from the server query). */
 const ACCEPT_TIMEOUT_SEC = 90;
-function AcceptCountdown({ createdAt }: { createdAt: string }) {
+function AcceptCountdown({ createdAt, onExpired }: { createdAt: string; onExpired?: () => void }) {
   const [secs, setSecs] = useState(() => {
     const elapsed = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
     return Math.max(0, ACCEPT_TIMEOUT_SEC - elapsed);
   });
+  const expiredRef = useRef(false);
   useEffect(() => {
     const id = setInterval(() => {
       const elapsed = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
-      setSecs(Math.max(0, ACCEPT_TIMEOUT_SEC - elapsed));
+      const remaining = Math.max(0, ACCEPT_TIMEOUT_SEC - elapsed);
+      setSecs(remaining);
+      if (remaining === 0 && !expiredRef.current) {
+        expiredRef.current = true;
+        onExpired?.();
+      }
     }, 1000);
     return () => clearInterval(id);
-  }, [createdAt]);
+  }, [createdAt, onExpired]);
   const pct = secs / ACCEPT_TIMEOUT_SEC;
   const r = 14, stroke = 3;
   const circ = 2 * Math.PI * r;
@@ -109,7 +115,7 @@ function OrderTypeIcon({ type }: { type: string }) {
 }
 
 function buildMapsDeepLink(lat: number | null | undefined, lng: number | null | undefined, address?: string | null): string {
-  if (lat != null && lng != null) {
+  if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
     const ua = navigator.userAgent || "";
     if (/iPhone|iPad|iPod/i.test(ua)) return `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
     if (/Android/i.test(ua))          return `geo:${lat},${lng}?q=${lat},${lng}`;
@@ -274,7 +280,7 @@ export default function Home() {
     };
   }, []);
 
-  const [socketConnected, setSocketConnected] = useState(true);
+  const { socket: sharedSocket, connected: socketConnected } = useSocket();
 
   useEffect(() => {
     if (!silenced) return;
@@ -466,66 +472,21 @@ export default function Home() {
     }
   }, []);
 
-  const socketRef = useRef<Socket | null>(null);
-  /* ── Unified Socket.io effect ──
-     Single connection that handles both new-request push notifications AND
-     the online heartbeat, replacing the two previously separate effects.
-     Re-runs when the token changes (covers 15-min token refresh) or when
-     the rider's id/online status changes. */
+  const socketRef = useRef(sharedSocket);
+  socketRef.current = sharedSocket;
+
   useEffect(() => {
-    const token = api.getToken();
-    if (!token || !user?.id) return;
-
-    const socket = io(window.location.origin, {
-      path: "/api/socket.io",
-      auth: { token },
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionDelay: 3000,
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      if (isMountedRef.current) setSocketConnected(true);
-    });
-    socket.on("disconnect", () => {
-      if (isMountedRef.current) setSocketConnected(false);
-    });
-    socket.on("connect_error", () => {
-      if (isMountedRef.current) setSocketConnected(false);
-    });
-
-    /* Listen on both event names — server may emit either depending on context */
+    if (!sharedSocket) return;
     const handleNewRequest = () => {
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
     };
-    socket.on("rider:new-request", handleNewRequest);
-    socket.on("new:request", handleNewRequest);
-
-    /* Heartbeat only while rider is online */
-    let heartbeat: ReturnType<typeof setInterval> | null = null;
-    if (user?.isOnline) {
-      heartbeat = setInterval(() => {
-        if (socket.connected) {
-          socket.emit("rider:heartbeat", {
-            batteryLevel: batteryRef.current,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }, 30_000);
-    }
-
+    sharedSocket.on("rider:new-request", handleNewRequest);
+    sharedSocket.on("new:request", handleNewRequest);
     return () => {
-      if (heartbeat) clearInterval(heartbeat);
-      socket.disconnect();
-      socketRef.current = null;
+      sharedSocket.off("rider:new-request", handleNewRequest);
+      sharedSocket.off("new:request", handleNewRequest);
     };
-  /* Re-connect when user identity or online status changes.
-     Token rotation is handled transparently by apiFetch (auto-refresh),
-     so including api.getToken() as a dep is an anti-pattern — calling a
-     function in a dep array captures the value at render but never drives
-     re-renders itself, causing stale closures after a silent token refresh. */
-  }, [user?.id, user?.isOnline]);
+  }, [sharedSocket]);
 
   useEffect(() => {
     if (!user?.isOnline || hasActiveTask || !user?.id) return;
@@ -548,18 +509,6 @@ export default function Home() {
     /* Battery level is tracked by the outer batteryRef useRef — no need to
        redeclare here. Using batteryRef.current in the location payload below
        reads the current value set by the outer battery effect. */
-
-    /* Drain offline queue on reconnect */
-    const drainQueue = async () => {
-      try {
-        const pings = await dequeueAll();
-        if (!pings.length) return;
-        await api.batchLocation(pings);
-        await clearQueue(pings.map(p => p.id));
-      } catch {}
-    };
-
-    drainQueue();
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -614,7 +563,6 @@ export default function Home() {
 
         api.updateLocation(locationData).then(() => {
           if (gpsWarningRef.current) setGpsWarningWithRef(null);
-          drainQueue();
         }).catch((err: Error) => {
           const msg = err.message || "";
           const isSpoofError = msg.toLowerCase().includes("spoof") || msg.toLowerCase().includes("mock");
@@ -633,13 +581,8 @@ export default function Home() {
       { enableHighAccuracy: true, maximumAge: 10_000, timeout: 30_000 },
     );
 
-    /* Online event: drain the queue when connectivity is restored */
-    const handleOnline = () => drainQueue();
-    window.addEventListener("online", handleOnline);
-
     return () => {
       navigator.geolocation.clearWatch(watchId);
-      window.removeEventListener("online", handleOnline);
     };
   }, [user?.isOnline, hasActiveTask, user?.id]);
 
@@ -1127,11 +1070,12 @@ export default function Home() {
 
                   {orders.map((o: any) => {
                     const earnings = getDeliveryEarn(o.type);
+                    const isExpired = (Date.now() - new Date(o.createdAt).getTime()) / 1000 >= ACCEPT_TIMEOUT_SEC;
                     return (
                     <div key={o.id} className="p-4 animate-[slideUp_0.3s_ease-out] border-b border-gray-50 last:border-0">
                       {/* Header row */}
                       <div className="flex items-start gap-3">
-                        <AcceptCountdown createdAt={o.createdAt} />
+                        <AcceptCountdown createdAt={o.createdAt} onExpired={() => dismiss(o.id)} />
                         <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center flex-shrink-0 shadow-sm">
                           <OrderTypeIcon type={o.type}/>
                         </div>
@@ -1203,7 +1147,7 @@ export default function Home() {
                           <X size={16}/>
                         </button>
                         <button onClick={() => acceptOrderMut.mutate(o.id)}
-                          disabled={acceptOrderMut.isPending || acceptRideMut.isPending}
+                          disabled={isExpired || acceptOrderMut.isPending || acceptRideMut.isPending}
                           className="flex-1 bg-gray-900 hover:bg-gray-800 text-white font-extrabold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm">
                           <CheckCircle size={15}/>
                           {acceptOrderMut.isPending ? T("accepting") : T("acceptOrder")}
@@ -1218,6 +1162,7 @@ export default function Home() {
                     const isDispatched = r.dispatchedRiderId === user?.id;
                     const offeredFare  = r.offeredFare  ?? r.fare;
                     const effectiveFare = isBargain ? offeredFare : r.fare;
+                    const rideExpired = (Date.now() - new Date(r.createdAt).getTime()) / 1000 >= ACCEPT_TIMEOUT_SEC;
                     const earnings     = effectiveFare * (config.finance.riderEarningPct / 100);
                     const mapsUrl = buildMapsDeepLink(r.dropLat, r.dropLng, r.dropAddress || r.pickupAddress);
                     const svcName = SVC_NAMES[r.type] ?? r.type?.replace(/_/g, " ") ?? "Ride";
@@ -1227,7 +1172,7 @@ export default function Home() {
                     return (
                       <div key={r.id} className={`p-4 animate-[slideUp_0.3s_ease-out] ${isDispatched ? "border-l-4 border-blue-500 bg-gradient-to-r from-blue-50/50 to-white" : isBargain ? "border-l-4 border-orange-400 bg-gradient-to-r from-orange-50/50 to-white" : "hover:bg-gray-50/50"} transition-colors`}>
                         <div className="flex items-start gap-3">
-                          <AcceptCountdown createdAt={r.createdAt} />
+                          <AcceptCountdown createdAt={r.createdAt} onExpired={() => dismiss(r.id)} />
                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm border ${isDispatched ? "bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200" : isBargain ? "bg-gradient-to-br from-orange-50 to-amber-50 border-orange-200" : "bg-gradient-to-br from-green-50 to-emerald-50 border-green-100"}`}>
                             {isBargain ? <MessageSquare size={20} className="text-orange-500"/> : <RideTypeIcon type={r.type}/>}
                           </div>
@@ -1345,7 +1290,7 @@ export default function Home() {
                               </button>
                             )}
                             <button onClick={() => acceptRideMut.mutate(r.id)}
-                              disabled={acceptRideMut.isPending || acceptOrderMut.isPending || ignoreRideMut.isPending || !!user?.isRestricted}
+                              disabled={rideExpired || acceptRideMut.isPending || acceptOrderMut.isPending || ignoreRideMut.isPending || !!user?.isRestricted}
                               className="flex-1 bg-gray-900 hover:bg-gray-800 text-white font-extrabold py-2.5 rounded-xl text-sm disabled:opacity-60 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm">
                               <CheckCircle size={15}/>
                               {acceptRideMut.isPending ? T("accepting") : T("acceptRide")}

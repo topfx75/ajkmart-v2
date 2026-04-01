@@ -304,7 +304,7 @@ export default function Wallet() {
   const codVerified   = codData?.totalVerified  ?? 0;
   const codOrderCount = codData?.codOrderCount  ?? 0;
   const codRemittances: WalletTx[] = codData?.remittances ?? [];
-  const codPending    = codRemittances.filter(r => r.reference === "pending");
+  const codPending    = codRemittances.filter(r => !r.reference || r.reference === "pending" || r.reference === null);
 
   const filtered = useMemo(() => {
     if (filter === "all") return transactions;

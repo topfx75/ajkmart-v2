@@ -11,9 +11,9 @@ import { useState, useRef, useEffect } from "react";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useAuth } from "../lib/auth";
 import { useLanguage } from "../lib/useLanguage";
+import { useSocket } from "../lib/socket";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { io } from "socket.io-client";
-import { enqueue, dequeueAll, clearQueue } from "../lib/gpsQueue";
+import { enqueue } from "../lib/gpsQueue";
 
 function SkeletonBlock({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded-xl ${className || ""}`} />;
@@ -106,6 +106,7 @@ function ElapsedBadge({ startIso }: { startIso?: string | null }) {
 }
 
 function buildMapsDeepLink(lat: number, lng: number): string {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "#";
   const ua = navigator.userAgent || "";
   const isIOS = /iPhone|iPad|iPod/i.test(ua);
   if (isIOS) {
@@ -121,12 +122,13 @@ function buildMapsDeepLink(lat: number, lng: number): string {
 function NavButton({ label, lat, lng, address, color = "blue" }: {
   label: string; lat?: number | null; lng?: number | null; address?: string | null; color?: "blue" | "green" | "orange";
 }) {
-  const href = lat != null && lng != null
-    ? buildMapsDeepLink(lat, lng)
+  const validCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+  const href = validCoords
+    ? buildMapsDeepLink(lat!, lng!)
     : address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
     : null;
-  if (!href) return null;
+  if (!href || href === "#") return null;
   const styles = {
     blue:   "from-blue-500 to-indigo-600 shadow-blue-200",
     green:  "from-green-500 to-emerald-600 shadow-green-200",
@@ -145,10 +147,9 @@ const SOS_RESET_MS = 5 * 60 * 1000; /* 5 minutes — allow rider to re-send if s
 function SosButton({ rideId, riderPos }: { rideId?: string | null; riderPos?: { lat: number; lng: number } | null }) {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [noLocWarning, setNoLocWarning] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* Auto-reset the "sent" state after 5 minutes so the rider can re-send
-     SOS if they are still in danger in the same session. */
   useEffect(() => {
     if (!sent) return;
     resetTimerRef.current = setTimeout(() => setSent(false), SOS_RESET_MS);
@@ -157,13 +158,44 @@ function SosButton({ rideId, riderPos }: { rideId?: string | null; riderPos?: { 
     };
   }, [sent]);
 
+  const fireSos = async (lat?: number, lng?: number) => {
+    const hasCoords = lat != null && lng != null &&
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      !(Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001);
+    await apiFetch("/rider/sos", {
+      method: "POST",
+      body: JSON.stringify({
+        rideId: rideId ?? null,
+        ...(hasCoords ? { latitude: lat, longitude: lng } : {}),
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    setSent(true);
+    setNoLocWarning(false);
+  };
+
   return (
+    <>
+    {noLocWarning && (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-2 text-xs text-yellow-800 font-medium">
+        <p className="font-bold mb-1">Location unavailable</p>
+        <p>Your GPS position could not be determined. SOS will be sent without location — admin will contact you by phone.</p>
+        <div className="flex gap-2 mt-2">
+          <button onClick={async () => { setLoading(true); try { await fireSos(); } catch { alert("SOS failed — call emergency contacts directly"); } setLoading(false); }}
+            disabled={loading} className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-60">
+            Send SOS anyway
+          </button>
+          <button onClick={() => setNoLocWarning(false)} className="bg-gray-200 text-gray-600 text-xs font-bold px-3 py-1.5 rounded-lg">
+            Cancel
+          </button>
+        </div>
+      </div>
+    )}
     <button
       onClick={async () => {
         if (sent || loading) return;
         setLoading(true);
         try {
-          /* Get current GPS pos; fall back to riderPos from watch */
           let lat = riderPos?.lat;
           let lng = riderPos?.lng;
           if (!lat || !lng) {
@@ -173,35 +205,28 @@ function SosButton({ rideId, riderPos }: { rideId?: string | null; riderPos?: { 
               });
               lat = pos.coords.latitude;
               lng = pos.coords.longitude;
-            } catch { /* use riderPos as-is */ }
+            } catch {}
           }
-          /* Reject null-island coordinates (0,0) — unknown position is better than false emergency coords */
-          if (!lat || !lng || (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001)) {
-            /* Still fire SOS even without coordinates — admin can call rider by phone */
-            await apiFetch("/rider/sos", {
-              method: "POST",
-              body: JSON.stringify({ rideId: rideId ?? null }),
-              headers: { "Content-Type": "application/json" },
-            });
-          } else {
-            await apiFetch("/rider/sos", {
-              method: "POST",
-              body: JSON.stringify({ rideId: rideId ?? null, latitude: lat, longitude: lng }),
-              headers: { "Content-Type": "application/json" },
-            });
+          const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) &&
+            !(Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001);
+          if (!hasCoords) {
+            setNoLocWarning(true);
+            setLoading(false);
+            return;
           }
-          setSent(true);
+          await fireSos(lat!, lng!);
         } catch {
           alert("SOS request failed — please call emergency contacts directly");
         }
         setLoading(false);
       }}
-      disabled={sent || loading}
+      disabled={sent || loading || noLocWarning}
       className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all ${sent ? "bg-gray-200 text-gray-500 cursor-default" : "bg-red-600 text-white hover:bg-red-700 active:scale-[0.98]"}`}
     >
       <AlertTriangle size={15} />
       {loading ? "Sending..." : sent ? "SOS Sent ✓" : "SOS — Emergency"}
     </button>
+    </>
   );
 }
 
@@ -474,44 +499,26 @@ export default function Active() {
   const [adminMessages, setAdminMessages]          = useState<Array<{ text: string; ts: string }>>([]);
   const [showAdminChat, setShowAdminChat]          = useState(false);
   const [chatReply, setChatReply]                  = useState("");
-  const socketRef                                  = useRef<ReturnType<typeof io> | null>(null);
+  const { socket: sharedSocket } = useSocket();
+  const socketRef = useRef(sharedSocket);
+  socketRef.current = sharedSocket;
 
-  /* isMountedRef prevents state updates (setRiderPos, setGpsWarning, etc.) from firing
-     after the Active component unmounts — e.g. when a rider navigates away while the
-     geolocation watchPosition callback is still in-flight. Without this guard,
-     React would log "Can't perform a state update on an unmounted component". */
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
 
-  /* Socket.io: connect to receive admin:chat messages and send rider:chat replies.
-     Depend on user?.id so the socket is torn down and reconnected (with the fresh
-     token) whenever the session changes — e.g. after a token rotation or logout. */
   useEffect(() => {
-    /* Read the token fresh at effect-run time, not at mount time, so that a
-       rotated access-token is always used for the (re-)connection handshake.
-       Uses api.getToken() to include legacy migration logic (rider_token key). */
-    const token = api.getToken();
-    if (!token || !user?.id) return;
-    const socket = io(window.location.origin, {
-      path: "/api/socket.io",
-      auth: { token },
-      extraHeaders: { Authorization: `Bearer ${token}` },
-      transports: ["polling", "websocket"],
-    });
-    socketRef.current = socket;
-    socket.on("admin:chat", (msg: { message: string; sentAt: string; from: "admin" }) => {
+    if (!sharedSocket) return;
+    const handler = (msg: { message: string; sentAt: string; from: "admin" }) => {
       if (!isMountedRef.current) return;
       setAdminMessages(prev => [...prev, { text: msg.message, ts: msg.sentAt }]);
       setShowAdminChat(true);
-    });
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
     };
-  }, [user?.id]);
+    sharedSocket.on("admin:chat", handler);
+    return () => { sharedSocket.off("admin:chat", handler); };
+  }, [sharedSocket]);
 
   type QueuedUpdate = { kind: "location" | "status"; run: () => Promise<unknown> };
   const pendingUpdatesRef                          = useRef<QueuedUpdate[]>([]);
@@ -554,17 +561,6 @@ export default function Active() {
         pendingUpdatesRef.current.push(item);
       }));
       refetchRef.current?.();
-      /* Drain IndexedDB GPS queue on reconnect — clear successfully submitted pings */
-      dequeueAll().then(pings => {
-        if (pings.length > 0) {
-          const ids = pings.map(p => p.id);
-          api.batchLocation(pings).then(() => {
-            clearQueue(ids).catch(() => {});
-          }).catch(() => {
-            /* Keep pings in queue on failure so they retry next reconnect */
-          });
-        }
-      }).catch(() => {});
     };
     window.addEventListener("offline", goOffline);
     window.addEventListener("online", goOnline);
@@ -710,14 +706,38 @@ export default function Active() {
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      showToast("Photo is too large — maximum 5MB allowed. Please take a smaller photo.", true);
-      if (e.target) e.target.value = "";
-      return;
-    }
     setProofFileName(file.name);
+    const compressImage = (dataUrl: string, maxWidth: number, quality: number): Promise<string> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxWidth / img.width);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(dataUrl); return; }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      });
+    };
     const reader = new FileReader();
-    reader.onload = (ev) => { setProofPhoto(ev.target?.result as string); };
+    reader.onload = async (ev) => {
+      const raw = ev.target?.result as string;
+      if (!raw) return;
+      const compressed = await compressImage(raw, 1280, 0.7);
+      const sizeBytes = Math.round((compressed.length - (compressed.indexOf(",") + 1)) * 0.75);
+      if (sizeBytes > 5 * 1024 * 1024) {
+        showToast("Photo is still too large after compression. Please take a smaller photo.", true);
+        setProofFileName("");
+        if (e.target) e.target.value = "";
+        return;
+      }
+      setProofPhoto(compressed);
+    };
     reader.onerror = () => { setProofFileName(""); };
     reader.readAsDataURL(file);
   };

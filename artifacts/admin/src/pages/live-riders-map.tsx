@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLiveRiders, usePlatformSettings, useRiderRoute, useCustomerLocations } from "@/hooks/use-admin";
 import { MapPin, RefreshCw, Users, Navigation, Route, Clock, Eye, EyeOff, AlertTriangle, MessageSquare, BarChart2, Activity, TrendingUp, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -210,17 +210,32 @@ function FitBoundsOnLoad({
 }) {
   const map = useMap();
   const fittedRef = useRef(false);
+  const prevHashRef = useRef("");
+
+  const points = useMemo(() => [
+    ...riders.filter(r => r.lat !== 0 || r.lng !== 0).map(r => [r.lat, r.lng] as [number, number]),
+    ...customers.filter(c => c.lat !== 0 || c.lng !== 0).map(c => [c.lat, c.lng] as [number, number]),
+  ], [riders, customers]);
+
+  const pointsHash = useMemo(() => {
+    if (points.length === 0) return "";
+    const minLat = Math.min(...points.map(p => p[0]));
+    const maxLat = Math.max(...points.map(p => p[0]));
+    const minLng = Math.min(...points.map(p => p[1]));
+    const maxLng = Math.max(...points.map(p => p[1]));
+    return `${points.length}:${minLat.toFixed(3)}:${maxLat.toFixed(3)}:${minLng.toFixed(3)}:${maxLng.toFixed(3)}`;
+  }, [points]);
 
   useEffect(() => {
-    if (fittedRef.current) return;
-    const points = [
-      ...riders.filter(r => r.lat !== 0 || r.lng !== 0).map(r => [r.lat, r.lng] as [number, number]),
-      ...customers.filter(c => c.lat !== 0 || c.lng !== 0).map(c => [c.lat, c.lng] as [number, number]),
-    ];
     if (points.length === 0) {
-      map.setView([defaultLat, defaultLng], 12);
+      if (!fittedRef.current) {
+        map.setView([defaultLat, defaultLng], 12);
+        fittedRef.current = true;
+      }
       return;
     }
+    if (fittedRef.current && pointsHash === prevHashRef.current) return;
+    prevHashRef.current = pointsHash;
     fittedRef.current = true;
     if (points.length === 1) {
       map.setView(points[0]!, 14);
@@ -228,7 +243,7 @@ function FitBoundsOnLoad({
       const bounds = L.latLngBounds(points);
       map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
     }
-  }, [riders.length, customers.length]);
+  }, [pointsHash]);
 
   return null;
 }
