@@ -268,6 +268,9 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
   const isExplicitlyDev = nodeEnv === "development" || nodeEnv === "test";
   const phoneVerifyRequired = settings["security_phone_verify"] === "on";
   const otpBypass = isExplicitlyDev && settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
+  if (otpBypass) {
+    console.warn("[SECURITY] OTP bypass is ENABLED for phone verify-otp. This must NOT be used in production.");
+  }
 
   /* ── Atomic OTP consumption via a single conditional UPDATE ──
      The WHERE clause combines: correct code + not-yet-used + not-expired.
@@ -845,9 +848,14 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
   const emailIsPending = user.approvalStatus === "pending";
   if (!user.isActive && !emailIsPending) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
 
-  /* Verify OTP — bypass also respects phoneVerifyRequired for consistency */
+  /* Verify OTP — bypass only allowed in development/test, respects phoneVerifyRequired */
   const phoneVerifyRequired = settings["security_phone_verify"] === "on";
-  const otpBypass = settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
+  const emailNodeEnv = process.env.NODE_ENV;
+  const emailIsExplicitlyDev = emailNodeEnv === "development" || emailNodeEnv === "test";
+  const otpBypass = emailIsExplicitlyDev && settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
+  if (otpBypass) {
+    console.warn("[SECURITY] OTP bypass is ENABLED for email verify-otp. This must NOT be used in production.");
+  }
 
   /* Check expiry FIRST — prevents timing oracle (attacker learning that an
      expired OTP was correct by observing which error branch fires). */

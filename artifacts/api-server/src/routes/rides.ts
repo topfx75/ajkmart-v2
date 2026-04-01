@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { timingSafeEqual } from "crypto";
 import { db } from "@workspace/db";
 import {
   liveLocationsTable, notificationsTable, rideBidsTable,
@@ -10,7 +9,7 @@ import {
 import { and, asc, eq, ne, sql, or, isNull, gte, count } from "drizzle-orm";
 import { z } from "zod";
 import { generateId } from "../lib/id.js";
-import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings } from "./admin.js";
+import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings, adminAuth } from "./admin.js";
 import { customerAuth, riderAuth, verifyUserJwt } from "../middleware/security.js";
 import { loadRide, requireRideState, requireRideOwner } from "../middleware/ride-guards.js";
 import { getIO } from "../lib/socketio.js";
@@ -1039,15 +1038,7 @@ router.post("/:id/event-log", riderAuth, loadRide(), requireRideOwner("riderId")
   res.json({ success: true, id });
 });
 
-router.get("/:id/event-logs", async (req, res) => {
-  const adminSecret = process.env.ADMIN_SECRET;
-  const provided    = req.headers["x-admin-secret"] as string | undefined;
-  const isValid = adminSecret && provided &&
-    provided.length === adminSecret.length &&
-    timingSafeEqual(Buffer.from(provided), Buffer.from(adminSecret));
-  if (!isValid) {
-    res.status(401).json({ error: "Admin authentication required" }); return;
-  }
+router.get("/:id/event-logs", adminAuth, async (req, res) => {
   const logs = await db.select().from(rideEventLogsTable)
     .where(eq(rideEventLogsTable.rideId, String(req.params["id"])))
     .orderBy(asc(rideEventLogsTable.createdAt));

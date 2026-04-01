@@ -4,11 +4,9 @@ import { notificationsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
+import { adminAuth } from "./admin.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
-
-/* ── internal-only admin secret (set via ADMIN_SECRET env) ── */
-const INTERNAL_SECRET = process.env["ADMIN_SECRET"] || "ajkmart-admin-secret-CHANGE-IN-PRODUCTION";
 
 const router: IRouter = Router();
 
@@ -40,13 +38,8 @@ router.get("/", customerAuth, async (req, res) => {
   });
 });
 
-/* POST /notifications — internal server-to-server use only; requires x-admin-secret header */
-router.post("/", async (req, res) => {
-  const incomingSecret = req.headers["x-admin-secret"] as string | undefined;
-  if (!incomingSecret || incomingSecret !== INTERNAL_SECRET) {
-    res.status(401).json({ error: "Unauthorized. Admin secret required for internal notifications." });
-    return;
-  }
+/* POST /notifications — admin-only; uses centralized adminAuth middleware */
+router.post("/", adminAuth, async (req, res) => {
   const { userId, title, body, type, icon, link } = req.body;
   if (!userId || !title || !body) { res.status(400).json({ error: "userId, title, body required" }); return; }
   const id = generateId();

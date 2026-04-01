@@ -1,21 +1,13 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { productsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
-
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "ajkmart-admin-2025";
+import { adminAuth } from "./admin.js";
 
 const router: IRouter = Router();
 
-router.use((req: Request, res: Response, next: NextFunction) => {
-  const secret = String(req.headers["x-admin-secret"] || "");
-  if (secret !== ADMIN_SECRET) {
-    res.status(401).json({ error: "Admin authentication required." });
-    return;
-  }
-  next();
-});
+router.use(adminAuth);
 
 const MART_PRODUCTS = [
   { name: "Basmati Rice 5kg",        price: 980,  originalPrice: 1200, category: "fruits",    unit: "5kg bag",    inStock: true,  description: "Premium long-grain basmati rice" },

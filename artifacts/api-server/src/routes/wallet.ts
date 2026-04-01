@@ -64,7 +64,7 @@ router.get("/", customerAuth, async (req, res) => {
 });
 
 /* ── POST /wallet/topup — ADMIN ONLY ────────────────────────────────────────
-   Restricted to admin panel. Requires admin JWT or x-admin-secret header.
+   Restricted to admin panel. Uses centralized adminAuth middleware.
    Body: { userId, amount, method? }
    Customers cannot self-credit — all credits must go through payment verification.
 ─────────────────────────────────────────────────────────────────────────── */

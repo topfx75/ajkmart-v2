@@ -39,7 +39,8 @@ export function hashAdminSecret(secret: string): string {
   return bcrypt.hashSync(secret, BCRYPT_ROUNDS);
 }
 
-/** Verify a sub-admin secret against a bcrypt or legacy scrypt hash */
+/** Verify a sub-admin secret against a bcrypt or legacy scrypt hash.
+ *  Plaintext fallback is intentionally removed — all admin secrets must be hashed. */
 export function verifyAdminSecret(secret: string, stored: string): boolean {
   if (stored.startsWith(BCRYPT_PREFIX)) {
     return bcrypt.compareSync(secret, stored);
@@ -47,7 +48,7 @@ export function verifyAdminSecret(secret: string, stored: string): boolean {
   if (stored.includes(":")) {
     return verifyPassword(secret, stored);
   }
-  return secret === stored;
+  return false;
 }
 
 /** Cryptographically secure 6-digit OTP — never use Math.random() for auth codes */

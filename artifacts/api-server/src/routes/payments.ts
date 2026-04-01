@@ -11,7 +11,7 @@ import crypto from "crypto";
 import { db } from "@workspace/db";
 import { ordersTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { getPlatformSettings } from "./admin.js";
+import { getPlatformSettings, adminAuth } from "./admin.js";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 
@@ -214,13 +214,7 @@ router.get("/methods", async (req, res) => {
 //  GET /api/payments/test-connection/:gateway
 //  Admin only — validates credentials and generates test hash
 // ═══════════════════════════════════════════════════════════════════════════════
-router.get("/test-connection/:gateway", async (req, res) => {
-  const adminSecret = String(req.headers["x-admin-secret"] ?? "");
-  const requiredSecret = process.env.ADMIN_SECRET;
-  if (!requiredSecret || adminSecret !== requiredSecret) {
-    res.status(403).json({ error: "Forbidden" }); return;
-  }
-
+router.get("/test-connection/:gateway", adminAuth, async (req, res) => {
   const s = await getPlatformSettings();
   const gw = req.params["gateway"];
 
@@ -484,32 +478,19 @@ router.post("/initiate", customerAuth, async (req, res) => {
 //  Manual payment verification — admin confirms a manual transfer
 //  Body: { orderId, gateway, transactionId, amount }
 // ═══════════════════════════════════════════════════════════════════════════════
-router.post("/verify-manual", async (req, res) => {
-  const adminSecret = String(req.headers["x-admin-secret"] ?? "");
-  const requiredSecretV = process.env.ADMIN_SECRET;
-  if (!requiredSecretV || adminSecret !== requiredSecretV) {
-    res.status(403).json({ error: "Forbidden — admin secret required" }); return;
-  }
+router.post("/verify-manual", adminAuth, async (req, res) => {
   const { orderId, gateway, transactionId } = req.body;
   if (!orderId) { res.status(400).json({ error: "orderId required" }); return; }
   await confirmOrder(orderId);
   res.json({ success: true, orderId, gateway, transactionId, message: "Manual payment verified — order confirmed ✅" });
 });
 
-const _ADMIN_SECRET = process.env["ADMIN_SECRET"] || "";
-
 // ═══════════════════════════════════════════════════════════════════════════════
 //  GET /api/payments/simulate/:gateway/:txnRef/:orderId
 //  Sandbox simulation — marks order confirmed (ONLY in sandbox/dev mode)
-//  Requires x-admin-secret header to prevent abuse.
+//  Uses centralized adminAuth middleware.
 // ═══════════════════════════════════════════════════════════════════════════════
-// With orderId — confirms the order
-router.get("/simulate/:gateway/:txnRef/:orderId", async (req, res) => {
-  const secret = req.headers["x-admin-secret"] as string | undefined;
-  if (!secret || secret !== _ADMIN_SECRET) {
-    res.status(401).json({ error: "Admin secret required to simulate payments" }); return;
-  }
-
+router.get("/simulate/:gateway/:txnRef/:orderId", adminAuth, async (req, res) => {
   const s = await getPlatformSettings();
   const gw = req.params["gateway"];
   const orderId = req.params["orderId"]!;
@@ -524,13 +505,7 @@ router.get("/simulate/:gateway/:txnRef/:orderId", async (req, res) => {
   res.json({ status: "success", txnRef: req.params["txnRef"], orderId, gateway: gw, message: "Sandbox payment simulated ✅ — Order confirmed" });
 });
 
-// Without orderId — just simulate success response
-router.get("/simulate/:gateway/:txnRef", async (req, res) => {
-  const secret = req.headers["x-admin-secret"] as string | undefined;
-  if (!secret || secret !== _ADMIN_SECRET) {
-    res.status(401).json({ error: "Admin secret required to simulate payments" }); return;
-  }
-
+router.get("/simulate/:gateway/:txnRef", adminAuth, async (req, res) => {
   const s = await getPlatformSettings();
   const gw = req.params["gateway"];
   const mode = gw === "jazzcash" ? (s["jazzcash_mode"] ?? "sandbox") : (s["easypaisa_mode"] ?? "sandbox");
