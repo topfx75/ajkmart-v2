@@ -244,12 +244,11 @@ function Tap({
     Animated.spring(sc, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
   const onOut = () => {
     Animated.spring(sc, { toValue: 1, useNativeDriver: true, speed: 35 }).start();
-    onPress();
   };
 
   return (
     <Animated.View style={[{ opacity: op, transform: [{ scale: sc }] }, style]}>
-      <Pressable onPressIn={onIn} onPressOut={onOut} style={{ flex: 1 }}>
+      <Pressable onPressIn={onIn} onPressOut={onOut} onPress={onPress} style={{ flex: 1 }}>
         {children}
       </Pressable>
     </Animated.View>

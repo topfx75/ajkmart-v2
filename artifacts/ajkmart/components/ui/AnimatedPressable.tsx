@@ -41,12 +41,11 @@ export function AnimatedPressable({
     Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
   const onPressOut = () => {
     Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 35 }).start();
-    if (!disabled) onPress();
   };
 
   return (
     <Animated.View style={[{ opacity, transform: [{ scale }] }, style]}>
-      <Pressable onPressIn={onPressIn} onPressOut={onPressOut} style={{ flex: 1 }} disabled={disabled}>
+      <Pressable onPressIn={onPressIn} onPressOut={onPressOut} onPress={disabled ? undefined : onPress} style={{ flex: 1 }} disabled={disabled}>
         {children}
       </Pressable>
     </Animated.View>
