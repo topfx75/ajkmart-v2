@@ -12,11 +12,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
+import { spacing, radii, shadows, typography } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
-import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
-import { tDual, type TranslationKey } from "@workspace/i18n";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
 
 import {
@@ -45,8 +43,6 @@ function formatCnic(raw: string): string {
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
-  const { language } = useLanguage();
-  const T = (key: TranslationKey) => tDual(key, language);
   const { config } = usePlatformConfig();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -59,7 +55,6 @@ export default function RegisterScreen() {
   const [devOtp, setDevOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [userId, setUserId] = useState("");
 
   const [authToken, setAuthToken] = useState("");
   const [authRefreshToken, setAuthRefreshToken] = useState("");
@@ -94,24 +89,46 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       if (!otpSent) {
-        const regRes = await fetch(`${API}/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: normalizedPhone }),
-        });
-        const regData = await regRes.json();
-        if (!regRes.ok) {
-          if (regRes.status === 409) {
-            setError("An account already exists with this number. Please log in.");
-          } else {
-            setError(regData.error || "Registration failed. Please try again.");
+        let checkData: any;
+        try {
+          const checkRes = await fetch(`${API}/auth/check-identifier`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ identifier: `0${normalizedPhone}`, role: "customer" }),
+          });
+          checkData = await checkRes.json();
+          if (!checkRes.ok) {
+            setError(checkData?.error || "Could not verify phone number. Please try again.");
+            setLoading(false);
+            return;
           }
+        } catch {
+          setError("Network error. Please check your connection and try again.");
           setLoading(false);
           return;
         }
-        if (regData.userId) setUserId(regData.userId);
-      /* FIX 13: Mark as registered immediately so retries skip re-registration */
-      setOtpSent(true);
+        const action = checkData?.action;
+        if (action === "registration_closed") {
+          setError("New registrations are currently closed. Please try again later.");
+          setLoading(false);
+          return;
+        }
+        if (action === "blocked") {
+          setError("This phone number has been suspended. Please contact support.");
+          setLoading(false);
+          return;
+        }
+        if (action === "locked") {
+          const mins = checkData?.lockedMinutes ?? "";
+          setError(`Too many attempts. Please try again${mins ? ` in ${mins} minute(s)` : " later"}.`);
+          setLoading(false);
+          return;
+        }
+        if (action && action !== "register") {
+          setError("An account already exists with this number. Please log in.");
+          setLoading(false);
+          return;
+        }
       }
 
       const sendOtpRes = await fetch(`${API}/auth/send-otp`, {
@@ -149,7 +166,6 @@ export default function RegisterScreen() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Invalid OTP."); setLoading(false); return; }
-      if (data.user?.id) setUserId(data.user.id);
       if (data.token) {
         setAuthToken(data.token);
         try {
@@ -167,20 +183,19 @@ export default function RegisterScreen() {
   const handleStep2 = () => {
     clearError();
     if (!name.trim() || name.trim().length < 2) { setError("Please enter your name (at least 2 characters)"); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Please enter a valid email address");
+      return;
+    }
     if (cnic && !/^\d{5}-\d{7}-\d{1}$/.test(cnic)) { setError("CNIC format: XXXXX-XXXXXXX-X"); return; }
     setStep(3);
   };
 
   const handleStep3 = async () => {
     clearError();
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError("Please enter a valid email address");
-      return;
-    }
     if (!password || password.length < 8) { setError("Password must be at least 8 characters"); return; }
     if (!/[A-Z]/.test(password)) { setError("Password must contain at least 1 uppercase letter"); return; }
     if (!/[0-9]/.test(password)) { setError("Password must contain at least 1 number"); return; }
-    /* FIX 12: Require password confirmation to prevent typos */
     if (password !== confirmPassword) { setError("Passwords do not match"); return; }
     if (!termsAccepted) { setError("Please accept the Terms & Conditions"); return; }
 
@@ -261,6 +276,15 @@ export default function RegisterScreen() {
 
   const stepLabels = ["Verify", "Details", "Security", "Done"];
 
+  const handleBack = () => {
+    clearError();
+    if (step <= 2) {
+      router.back();
+    } else {
+      setStep((step - 1) as RegStep);
+    }
+  };
+
   if (step === 4) {
     return (
       <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
@@ -298,9 +322,9 @@ export default function RegisterScreen() {
       <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
         <View style={[s.topSection, { paddingTop: topPad + 16 }]}>
           <Pressable
-            onPress={() => step === 1 ? router.back() : setStep((step - 1) as RegStep)}
+            onPress={handleBack}
             style={s.backBtn}
-            accessibilityLabel={step === 1 ? "Go back" : "Previous step"}
+            accessibilityLabel={step <= 2 ? "Go back" : "Previous step"}
             accessibilityRole="button"
           >
             <Ionicons name="arrow-back" size={20} color="#fff" />
@@ -353,7 +377,7 @@ export default function RegisterScreen() {
                     onComplete={() => handleVerifyOtp()}
                   />
 
-                  <DevOtpBanner otp={__DEV__ ? devOtp : ""} />
+                  <DevOtpBanner otp={__DEV__ === true ? devOtp : ""} />
 
                   <Pressable
                     onPress={handleSendOtp}
@@ -389,6 +413,7 @@ export default function RegisterScreen() {
                 placeholder="email@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                error={!!error && !!email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
               />
               <View>
                 <Text style={s.fieldLabel}>CNIC / National ID</Text>
@@ -419,7 +444,6 @@ export default function RegisterScreen() {
               />
               <PasswordStrengthBar password={password} />
 
-              {/* FIX 12: Confirm password field to catch typos */}
               <InputField
                 label="Confirm Password *"
                 value={confirmPassword}
