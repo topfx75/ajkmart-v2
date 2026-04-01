@@ -1,9 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
-  ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
   Platform,
@@ -15,7 +14,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 import * as Linking from "expo-linking";
 
 import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
@@ -24,10 +22,22 @@ import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
 import { useToast } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { sendOtp, verifyOtp } from "@workspace/api-client-react";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
 
-const C = Colors.light;
+import {
+  OtpDigitInput,
+  AuthButton,
+  AlertBox,
+  PhoneInput,
+  InputField,
+  ChannelBadge,
+  FallbackChannelButtons,
+  DevOtpBanner,
+  Divider,
+  SocialButton,
+  authColors as C,
+} from "@/components/auth-shared";
+
 const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
 
 if (typeof __DEV__ === "undefined") {
@@ -48,10 +58,12 @@ async function authPost(path: string, body: object) {
   return data;
 }
 
-
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
-  const { login, setTwoFactorPending, twoFactorPending, completeTwoFactorLogin, biometricEnabled, attemptBiometricLogin } = useAuth();
+  const {
+    login, setTwoFactorPending, twoFactorPending,
+    completeTwoFactorLogin, biometricEnabled, attemptBiometricLogin,
+  } = useAuth();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const { config: platformCfg } = usePlatformConfig();
@@ -65,14 +77,6 @@ export default function AuthScreen() {
   const [step, setStep] = useState<Step>("continue");
   const [identifier, setIdentifier] = useState("");
 
-  useEffect(() => {
-    if (twoFactorPending) {
-      setTotpTempToken(twoFactorPending.tempToken);
-      setTotpUserId(twoFactorPending.userId);
-      setStep("totp");
-      setTwoFactorPending(null);
-    }
-  }, [twoFactorPending]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [biometricLoading, setBiometricLoading] = useState(false);
@@ -108,25 +112,35 @@ export default function AuthScreen() {
   const [totpCode, setTotpCode] = useState("");
   const [totpUserId, setTotpUserId] = useState("");
   const [trustDevice, setTrustDevice] = useState(false);
+  const [useBackup, setUseBackup] = useState(false);
+  const [backupCode, setBackupCode] = useState("");
 
   const [resendCooldown, setResendCooldown] = useState(0);
   const [emailResendCooldown, setEmailResendCooldown] = useState(0);
 
-  const [useBackup, setUseBackup] = useState(false);
-  const [backupCode, setBackupCode] = useState("");
-
   const loginResultRef = useRef<((res: any) => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    if (twoFactorPending) {
+      setTotpTempToken(twoFactorPending.tempToken);
+      setTotpUserId(twoFactorPending.userId);
+      setStep("totp");
+      setTwoFactorPending(null);
+    }
+  }, [twoFactorPending]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const t = setTimeout(() => setResendCooldown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [resendCooldown]);
+
   useEffect(() => {
     if (emailResendCooldown <= 0) return;
     const t = setTimeout(() => setEmailResendCooldown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [emailResendCooldown]);
+
   useEffect(() => {
     if (magicCooldown <= 0) return;
     const t = setTimeout(() => setMagicCooldown(c => c - 1), 1000);
@@ -135,7 +149,7 @@ export default function AuthScreen() {
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideXAnim = useRef(new Animated.Value(0)).current;
-  const animateTransition = (cb: () => void) => {
+  const animateTransition = useCallback((cb: () => void) => {
     Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }).start(() => {
       cb();
       slideXAnim.setValue(30);
@@ -144,102 +158,30 @@ export default function AuthScreen() {
         Animated.timing(slideXAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]).start();
     });
-  };
+  }, []);
+
   const clearError = () => setError("");
 
-  const checkIdentifier = async () => {
-    const id = identifier.trim();
-    if (!id) { setError("Enter your phone, email, or username"); return; }
-    setLoading(true); clearError();
+  const getDeviceFingerprint = async (): Promise<string> => {
     try {
-      const deviceId = await getDeviceFingerprint();
-      const res = await authPost("/auth/check-identifier", { identifier: id, role: "customer", deviceId });
-
-      if (res.action === "blocked" || res.isBanned) {
-        setError("This account has been suspended. Please contact support.");
-        setLoading(false); return;
-      }
-      if (res.action === "locked") {
-        setError(`Account locked. Try again in ${res.lockedMinutes} minute(s).`);
-        setLoading(false); return;
-      }
-      if (res.action === "registration_closed") {
-        setError("New registrations are currently closed.");
-        setLoading(false); return;
-      }
-      if (res.action === "no_method") {
-        setError("No login methods are currently available. Please contact support.");
-        setLoading(false); return;
-      }
-      if (res.action === "register") {
-        router.push("/auth/register");
-        setLoading(false); return;
-      }
-      if (res.action === "force_google") {
-        if (isMethodEnabled(authCfg.googleEnabled)) {
-          setMethod("google");
-          setStep("method");
-        } else {
-          setError("This account is linked to Google. Please sign in with Google.");
-        }
-        setLoading(false); return;
-      }
-      if (res.action === "force_facebook") {
-        setError("This account is linked to Facebook. Please sign in with Facebook.");
-        setLoading(false); return;
-      }
-      if (res.action === "send_phone_otp") {
-        const normalized = id.replace(/\D/g, "").replace(/^92/, "").replace(/^0/, "");
-        setPhone(normalized);
-        setMethod("phone");
-        setLoading(false);
-        const r = await authPost("/auth/send-otp", { phone: `0${normalized}` }).catch((e: any) => { setError(e.message || "Failed to send OTP"); return null; });
-        if (r) {
-          if (__DEV__ === true && r.otp) setDevOtp(r.otp);
-          setOtpChannel(r.channel || "sms");
-          setFallbackChannels(r.fallbackChannels || []);
-          setResendCooldown(60);
-          animateTransition(() => setStep("otp"));
-        }
-        setLoading(false); return;
-      }
-      if (res.action === "send_email_otp") {
-        setEmail(id);
-        setMethod("email");
-        setLoading(false);
-        const r = await authPost("/auth/send-email-otp", { email: id }).catch((e: any) => { setError(e.message || "Failed to send OTP"); return null; });
-        if (r) {
-          if (__DEV__ === true && r.otp) setEmailDevOtp(r.otp);
-          setOtpChannel("email");
-          setFallbackChannels([]);
-          setEmailResendCooldown(60);
-          animateTransition(() => setStep("otp"));
-        }
-        setLoading(false); return;
-      }
-      if (res.action === "send_magic_link" || res.action === "login_password") {
-        setUsername(id);
-        setMethod(res.action === "send_magic_link" ? "magic" : "username");
-        setStep("method");
-        setLoading(false); return;
-      }
-      setUsername(id);
-      setMethod("username");
-      setStep("method");
-    } catch (e: any) { setError(e.message || "Check failed. Please try again."); }
-    setLoading(false);
+      const SecureStore = await import("expo-secure-store");
+      const existing = await SecureStore.getItemAsync("device_fingerprint");
+      if (existing) return existing;
+      const Device = await import("expo-device");
+      const parts = [
+        Platform.OS,
+        Device.osName ?? Platform.OS,
+        Device.osVersion ?? "",
+        Device.modelName ?? Device.modelId ?? "",
+        Device.deviceName ?? "",
+      ];
+      const fp = parts.filter(Boolean).join("_").replace(/\s+/g, "-").slice(0, 128);
+      await SecureStore.setItemAsync("device_fingerprint", fp);
+      return fp;
+    } catch {
+      return `${Platform.OS}_${Platform.Version}_unknown`;
+    }
   };
-
-  const enabledMethods: { key: LoginMethod; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [];
-  if (isMethodEnabled(authCfg.phoneOtpEnabled)) enabledMethods.push({ key: "phone", icon: "call-outline", label: T("phone") });
-  if (isMethodEnabled(authCfg.emailOtpEnabled)) enabledMethods.push({ key: "email", icon: "mail-outline", label: T("email") });
-  if (isMethodEnabled(authCfg.usernamePasswordEnabled)) enabledMethods.push({ key: "username", icon: "person-outline", label: T("username") });
-
-  const socialMethods: { key: LoginMethod; icon: keyof typeof Ionicons.glyphMap; label: string; color: string }[] = [];
-  if (isMethodEnabled(authCfg.googleEnabled)) socialMethods.push({ key: "google", icon: "logo-google", label: "Google", color: "#EA4335" });
-  if (isMethodEnabled(authCfg.facebookEnabled)) socialMethods.push({ key: "facebook", icon: "logo-facebook", label: "Facebook", color: "#1877F2" });
-  const showMagicLink = isMethodEnabled(authCfg.magicLinkEnabled);
-  const showBiometric = isMethodEnabled(authCfg.biometricEnabled) && biometricEnabled;
 
   const handleLoginResult = async (res: any) => {
     if (res.requires2FA) {
@@ -249,12 +191,16 @@ export default function AuthScreen() {
       return;
     }
     if (res.pendingApproval) {
-      setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setPendingUser(res.user);
+      setPendingToken(res.token);
+      setPendingRefreshToken(res.refreshToken);
+      setPendingUser(res.user);
       setStep("pending");
       return;
     }
     if (res.user && !res.user.name) {
-      setPendingToken(res.token); setPendingRefreshToken(res.refreshToken); setPendingUser(res.user);
+      setPendingToken(res.token);
+      setPendingRefreshToken(res.refreshToken);
+      setPendingUser(res.user);
       setStep("complete-profile");
       return;
     }
@@ -279,33 +225,130 @@ export default function AuthScreen() {
           setError(e.message || "Magic link verification failed.");
         }
         setLoading(false);
-      } catch { /* ignore malformed URLs */ }
+      } catch {}
     };
     const subscription = Linking.addEventListener("url", handleUrl);
     Linking.getInitialURL().then(url => { if (url) handleUrl({ url }); }).catch(() => {});
     return () => subscription.remove();
   }, []);
 
-  const getDeviceFingerprint = async (): Promise<string> => {
+  const checkIdentifier = async () => {
+    const id = identifier.trim();
+    if (!id) { setError("Enter your phone, email, or username"); return; }
+    setLoading(true);
+    clearError();
     try {
-      const SecureStore = await import("expo-secure-store");
-      const existing = await SecureStore.getItemAsync("device_fingerprint");
-      if (existing) return existing;
-      const Device = await import("expo-device");
-      const parts = [
-        Platform.OS,
-        Device.osName ?? Platform.OS,
-        Device.osVersion ?? "",
-        Device.modelName ?? Device.modelId ?? "",
-        Device.deviceName ?? "",
-      ];
-      const fp = parts.filter(Boolean).join("_").replace(/\s+/g, "-").slice(0, 128);
-      await SecureStore.setItemAsync("device_fingerprint", fp);
-      return fp;
-    } catch {
-      return `${Platform.OS}_${Platform.Version}_unknown`;
+      const deviceId = await getDeviceFingerprint();
+      const res = await authPost("/auth/check-identifier", { identifier: id, role: "customer", deviceId });
+
+      if (res.action === "blocked" || res.isBanned) {
+        setError("This account has been suspended. Please contact support.");
+        setLoading(false);
+        return;
+      }
+      if (res.action === "locked") {
+        setError(`Account locked. Try again in ${res.lockedMinutes} minute(s).`);
+        setLoading(false);
+        return;
+      }
+      if (res.action === "registration_closed") {
+        setError("New registrations are currently closed.");
+        setLoading(false);
+        return;
+      }
+      if (res.action === "no_method") {
+        setError("No login methods are currently available. Please contact support.");
+        setLoading(false);
+        return;
+      }
+      if (res.action === "register") {
+        router.push("/auth/register");
+        setLoading(false);
+        return;
+      }
+      if (res.action === "force_google") {
+        if (isMethodEnabled(authCfg.googleEnabled)) {
+          setMethod("google");
+          setStep("method");
+        } else {
+          setError("This account is linked to Google. Please sign in with Google.");
+        }
+        setLoading(false);
+        return;
+      }
+      if (res.action === "force_facebook") {
+        if (isMethodEnabled(authCfg.facebookEnabled)) {
+          setMethod("facebook");
+          setStep("method");
+        } else {
+          setError("This account is linked to Facebook. Please sign in with Facebook.");
+        }
+        setLoading(false);
+        return;
+      }
+      if (res.action === "send_phone_otp") {
+        const normalized = id.replace(/\D/g, "").replace(/^92/, "").replace(/^0/, "");
+        setPhone(normalized);
+        setMethod("phone");
+        setLoading(false);
+        const r = await authPost("/auth/send-otp", { phone: `0${normalized}` }).catch((e: any) => {
+          setError(e.message || "Failed to send OTP");
+          return null;
+        });
+        if (r) {
+          if (__DEV__ === true && r.otp) setDevOtp(r.otp);
+          setOtpChannel(r.channel || "sms");
+          setFallbackChannels(r.fallbackChannels || []);
+          setResendCooldown(60);
+          animateTransition(() => setStep("otp"));
+        }
+        setLoading(false);
+        return;
+      }
+      if (res.action === "send_email_otp") {
+        setEmail(id);
+        setMethod("email");
+        setLoading(false);
+        const r = await authPost("/auth/send-email-otp", { email: id }).catch((e: any) => {
+          setError(e.message || "Failed to send OTP");
+          return null;
+        });
+        if (r) {
+          if (__DEV__ === true && r.otp) setEmailDevOtp(r.otp);
+          setOtpChannel("email");
+          setFallbackChannels([]);
+          setEmailResendCooldown(60);
+          animateTransition(() => setStep("otp"));
+        }
+        setLoading(false);
+        return;
+      }
+      if (res.action === "send_magic_link" || res.action === "login_password") {
+        setUsername(id);
+        setMethod(res.action === "send_magic_link" ? "magic" : "username");
+        setStep("method");
+        setLoading(false);
+        return;
+      }
+      setUsername(id);
+      setMethod("username");
+      setStep("method");
+    } catch (e: any) {
+      setError(e.message || "Check failed. Please try again.");
     }
+    setLoading(false);
   };
+
+  const enabledMethods: { key: LoginMethod; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [];
+  if (isMethodEnabled(authCfg.phoneOtpEnabled)) enabledMethods.push({ key: "phone", icon: "call-outline", label: T("phone") });
+  if (isMethodEnabled(authCfg.emailOtpEnabled)) enabledMethods.push({ key: "email", icon: "mail-outline", label: T("email") });
+  if (isMethodEnabled(authCfg.usernamePasswordEnabled)) enabledMethods.push({ key: "username", icon: "person-outline", label: T("username") });
+
+  const socialMethods: { key: LoginMethod; icon: keyof typeof Ionicons.glyphMap; label: string; color: string }[] = [];
+  if (isMethodEnabled(authCfg.googleEnabled)) socialMethods.push({ key: "google", icon: "logo-google", label: "Google", color: "#EA4335" });
+  if (isMethodEnabled(authCfg.facebookEnabled)) socialMethods.push({ key: "facebook", icon: "logo-facebook", label: "Facebook", color: "#1877F2" });
+  const showMagicLink = isMethodEnabled(authCfg.magicLinkEnabled);
+  const showBiometric = isMethodEnabled(authCfg.biometricEnabled) && biometricEnabled;
 
   const handleSendPhoneOtp = async (preferredChannel?: string) => {
     clearError();
@@ -395,7 +438,6 @@ export default function AuthScreen() {
     try {
       const redirectUri = Linking.createURL("auth/callback");
       const WebBrowser = await import("expo-web-browser");
-
       const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
       const fbAppId = process.env.EXPO_PUBLIC_FB_APP_ID;
 
@@ -408,7 +450,11 @@ export default function AuthScreen() {
         const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(googleClientId)}&response_type=id_token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=openid%20email%20profile&nonce=${Date.now()}`;
         const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
         if (result.type === "success" && result.url) {
-          const params = new URL(result.url).hash.slice(1).split("&").reduce<Record<string, string>>((a, p) => { const [k, v] = p.split("="); a[k!] = decodeURIComponent(v!); return a; }, {});
+          const params = new URL(result.url).hash.slice(1).split("&").reduce<Record<string, string>>((a, p) => {
+            const [k, v] = p.split("=");
+            a[k!] = decodeURIComponent(v!);
+            return a;
+          }, {});
           if (params.id_token) {
             const data = await authPost("/auth/social/google", { idToken: params.id_token });
             await handleLoginResult(data);
@@ -425,7 +471,11 @@ export default function AuthScreen() {
         const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${encodeURIComponent(fbAppId)}&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=public_profile,email`;
         const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
         if (result.type === "success" && result.url) {
-          const params = new URL(result.url).hash.slice(1).split("&").reduce<Record<string, string>>((a, p) => { const [k, v] = p.split("="); a[k!] = decodeURIComponent(v!); return a; }, {});
+          const params = new URL(result.url).hash.slice(1).split("&").reduce<Record<string, string>>((a, p) => {
+            const [k, v] = p.split("=");
+            a[k!] = decodeURIComponent(v!);
+            return a;
+          }, {});
           if (params.access_token) {
             const data = await authPost("/auth/social/facebook", { accessToken: params.access_token });
             await handleLoginResult(data);
@@ -482,12 +532,10 @@ export default function AuthScreen() {
         try {
           await fetch(`${API}/auth/2fa/trust-device`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${res.token}` },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${res.token}` },
             body: JSON.stringify({ deviceFingerprint: fingerprint }),
           });
-        } catch (trustErr: any) {
-          console.warn("Trust device failed:", trustErr.message);
-        }
+        } catch {}
       }
       await completeTwoFactorLogin(res.user as AppUser, res.token, res.refreshToken);
       router.replace("/(tabs)");
@@ -495,14 +543,11 @@ export default function AuthScreen() {
     setLoading(false);
   };
 
-  const handleTotpBackup = async (backupCode: string) => {
+  const handleTotpBackup = async (code: string) => {
     clearError();
     setLoading(true);
     try {
-      const res = await authPost("/auth/2fa/recovery", {
-        tempToken: totpTempToken,
-        backupCode,
-      });
+      const res = await authPost("/auth/2fa/recovery", { tempToken: totpTempToken, backupCode: code });
       await completeTwoFactorLogin(res.user as AppUser, res.token, res.refreshToken);
       router.replace("/(tabs)");
     } catch (e: any) { setError(e.message || "Invalid backup code."); }
@@ -516,7 +561,7 @@ export default function AuthScreen() {
     try {
       const res = await fetch(`${API}/auth/complete-profile`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${pendingToken}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${pendingToken}` },
         body: JSON.stringify({
           name: profileName.trim(),
           ...(profileEmail && { email: profileEmail }),
@@ -538,7 +583,8 @@ export default function AuthScreen() {
   const selectMethod = (m: LoginMethod) => {
     if (m === method) return;
     animateTransition(() => {
-      setMethod(m); clearError();
+      setMethod(m);
+      clearError();
       setOtp(""); setEmailOtp(""); setDevOtp(""); setEmailDevOtp("");
       setMagicSent(false);
     });
@@ -546,69 +592,75 @@ export default function AuthScreen() {
 
   if (step === "totp") {
     return (
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.gradient}>
-          <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-            <View style={[styles.topSection, { paddingTop: topPad + 24 }]}>
-              <View style={styles.logo}><Ionicons name="shield-checkmark" size={36} color={C.primary} /></View>
-              <Text style={styles.appName}>Two-Factor Auth</Text>
-              <Text style={styles.tagline}>{useBackup ? "Enter a backup code" : "Enter code from authenticator app"}</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+        <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.flex}>
+          <ScrollView contentContainerStyle={styles.scrollGrow} keyboardShouldPersistTaps="handled">
+            <View style={[styles.topSection, { paddingTop: topPad + 32 }]}>
+              <View style={styles.heroIcon}>
+                <Ionicons name="shield-checkmark" size={36} color={C.primary} />
+              </View>
+              <Text style={styles.heroTitle}>Two-Factor Auth</Text>
+              <Text style={styles.heroSubtitle}>
+                {useBackup ? "Enter one of your backup codes" : "Enter code from your authenticator app"}
+              </Text>
             </View>
+
             <View style={styles.card}>
               {!useBackup ? (
-                <TextInput
-                  style={[styles.input, styles.otpInput]}
+                <OtpDigitInput
                   value={totpCode}
                   onChangeText={v => { setTotpCode(v); clearError(); }}
-                  placeholder="6-digit code"
-                  placeholderTextColor={C.textMuted}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  autoFocus
+                  hasError={!!error}
+                  onComplete={() => handleTotpVerify()}
                 />
               ) : (
-                <TextInput
-                  style={[styles.input, { marginBottom: 12 }]}
+                <InputField
                   value={backupCode}
                   onChangeText={v => { setBackupCode(v); clearError(); }}
                   placeholder="Enter backup code"
-                  placeholderTextColor={C.textMuted}
                   autoCapitalize="none"
                   autoFocus
                 />
               )}
 
-              <Pressable onPress={() => setTrustDevice(!trustDevice)} style={styles.trustRow}>
+              <Pressable
+                onPress={() => setTrustDevice(!trustDevice)}
+                style={styles.trustRow}
+                accessibilityLabel="Trust this device for 30 days"
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: trustDevice }}
+              >
                 <View style={[styles.checkbox, trustDevice && styles.checkboxChecked]}>
                   {trustDevice && <Ionicons name="checkmark" size={13} color="#fff" />}
                 </View>
-                <Text style={styles.trustTxt}>Trust this device for 30 days</Text>
+                <Text style={styles.trustText}>Trust this device for 30 days</Text>
               </Pressable>
 
-              {error ? (
-                <View style={styles.errorBox}>
-                  <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
-                  <Text style={styles.errorTxt}>{error}</Text>
-                </View>
-              ) : null}
+              {error ? <AlertBox type="error" message={error} /> : null}
+
+              <AuthButton
+                label="Verify"
+                onPress={useBackup ? () => handleTotpBackup(backupCode) : handleTotpVerify}
+                loading={loading}
+              />
 
               <Pressable
-                onPress={useBackup ? () => handleTotpBackup(backupCode) : handleTotpVerify}
-                style={[styles.btn, loading && styles.btnDisabled]}
-                disabled={loading}
+                onPress={() => { setUseBackup(!useBackup); setBackupCode(""); setTotpCode(""); clearError(); }}
+                style={styles.linkBtn}
+                accessibilityRole="button"
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Verify</Text>}
-              </Pressable>
-
-              <Pressable onPress={() => { setUseBackup(!useBackup); setBackupCode(""); setTotpCode(""); clearError(); }} style={styles.linkBtn}>
                 <Text style={styles.linkBtnText}>
-                  {useBackup ? "Use authenticator app" : "Use a backup code"}
+                  {useBackup ? "Use authenticator app instead" : "Lost your device? Use backup code"}
                 </Text>
               </Pressable>
 
-              <Pressable onPress={() => { setStep("continue"); setTotpCode(""); clearError(); }} style={styles.backBtn}>
+              <Pressable
+                onPress={() => { setStep("continue"); setTotpCode(""); clearError(); }}
+                style={styles.backRow}
+                accessibilityRole="button"
+              >
                 <Ionicons name="arrow-back" size={16} color={C.primary} />
-                <Text style={styles.backBtnText}>{T("backToLogin")}</Text>
+                <Text style={styles.backRowText}>{T("backToLogin")}</Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -619,21 +671,25 @@ export default function AuthScreen() {
 
   if (step === "pending") {
     return (
-      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.gradient}>
-        <View style={[styles.centerContainer, { paddingTop: topPad + 40 }]}>
+      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.flex}>
+        <View style={[styles.centeredContainer, { paddingTop: topPad + 40 }]}>
           <View style={styles.pendingCard}>
-            <View style={styles.pendingIcon}>
+            <View style={styles.pendingIconWrap}>
               <Ionicons name="time-outline" size={48} color={C.accent} />
             </View>
             <Text style={styles.pendingTitle}>{T("approvalWaiting")}</Text>
             <Text style={styles.pendingSubtitle}>{T("approvalMsg")}</Text>
-            <View style={styles.pendingInfo}>
+            <View style={styles.pendingInfoRow}>
               <Ionicons name="information-circle-outline" size={16} color={C.textMuted} />
-              <Text style={styles.pendingInfoTxt}>{T("approvalTimeframe")}</Text>
+              <Text style={styles.pendingInfoText}>{T("approvalTimeframe")}</Text>
             </View>
-            <Pressable style={styles.backBtn} onPress={() => { setStep("continue"); setOtp(""); setEmailOtp(""); }}>
+            <Pressable
+              style={styles.backRow}
+              onPress={() => { setStep("continue"); setOtp(""); setEmailOtp(""); }}
+              accessibilityRole="button"
+            >
               <Ionicons name="arrow-back" size={16} color={C.primary} />
-              <Text style={styles.backBtnText}>{T("backToLogin")}</Text>
+              <Text style={styles.backRowText}>{T("backToLogin")}</Text>
             </Pressable>
           </View>
         </View>
@@ -643,59 +699,65 @@ export default function AuthScreen() {
 
   if (step === "complete-profile") {
     return (
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.gradient}>
-          <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-            <View style={[styles.topSection, { paddingTop: topPad + 24 }]}>
-              <View style={styles.logo}><Ionicons name="person" size={36} color={C.primary} /></View>
-              <Text style={styles.appName}>{T("completeProfileLabel")}</Text>
-              <Text style={styles.tagline}>{T("almostDone")}</Text>
-            </View>
-            <View style={styles.card}>
-              <Text style={styles.fieldLabel}>{T("yourNameRequired")}</Text>
-              <TextInput
-                style={[styles.input2, error && profileName.trim().length < 2 && styles.inputError]}
-                value={profileName} onChangeText={v => { setProfileName(v); clearError(); }}
-                placeholder="Enter your full name" placeholderTextColor={C.textMuted} autoFocus
-              />
-              <Text style={styles.fieldLabel}>{T("emailOptional")}</Text>
-              <TextInput
-                style={styles.input2} value={profileEmail} onChangeText={v => { setProfileEmail(v); clearError(); }}
-                placeholder="email@example.com" placeholderTextColor={C.textMuted}
-                keyboardType="email-address" autoCapitalize="none"
-              />
-              <Text style={styles.fieldLabel}>{T("usernameOptional")}</Text>
-              <TextInput
-                style={styles.input2} value={profileUsername}
-                onChangeText={v => { setProfileUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, "")); clearError(); }}
-                placeholder="e.g. ali_ahmed123" placeholderTextColor={C.textMuted} autoCapitalize="none"
-              />
-              <Text style={styles.fieldLabel}>{T("passwordOptional")}</Text>
-              <View style={styles.pwdWrapper}>
-                <TextInput
-                  style={[styles.input2, { flex: 1, marginBottom: 0 }]}
-                  value={profilePassword} onChangeText={v => { setProfilePassword(v); clearError(); }}
-                  placeholder="Min 8 characters" placeholderTextColor={C.textMuted} secureTextEntry={!showProfilePwd}
-                />
-                <Pressable onPress={() => setShowProfilePwd(v => !v)} style={styles.eyeBtn}>
-                  <Ionicons name={showProfilePwd ? "eye-off-outline" : "eye-outline"} size={20} color={C.textMuted} />
-                </Pressable>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+        <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.flex}>
+          <ScrollView contentContainerStyle={styles.scrollGrow} keyboardShouldPersistTaps="handled">
+            <View style={[styles.topSection, { paddingTop: topPad + 32 }]}>
+              <View style={styles.heroIcon}>
+                <Ionicons name="person" size={36} color={C.primary} />
               </View>
-              {error ? (
-                <View style={styles.errorBox}>
-                  <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
-                  <Text style={styles.errorTxt}>{error}</Text>
-                </View>
-              ) : null}
-              <Pressable onPress={handleCompleteProfile} style={[styles.btn, loading && styles.btnDisabled]} disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{T("saveAndContinue")}</Text>}
-              </Pressable>
-              <Pressable onPress={async () => {
-                if (pendingToken && pendingUser) {
-                  await login(pendingUser!, pendingToken, pendingRefreshToken || undefined);
-                  router.replace("/(tabs)");
-                } else { setStep("continue"); setPendingToken(""); }
-              }} style={styles.linkBtn}>
+              <Text style={styles.heroTitle}>{T("completeProfileLabel")}</Text>
+              <Text style={styles.heroSubtitle}>{T("almostDone")}</Text>
+            </View>
+
+            <View style={styles.card}>
+              <InputField
+                label={T("yourNameRequired")}
+                value={profileName}
+                onChangeText={v => { setProfileName(v); clearError(); }}
+                placeholder="Enter your full name"
+                autoFocus
+                error={!!error && profileName.trim().length < 2}
+              />
+              <InputField
+                label={T("emailOptional")}
+                value={profileEmail}
+                onChangeText={v => { setProfileEmail(v); clearError(); }}
+                placeholder="email@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <InputField
+                label={T("usernameOptional")}
+                value={profileUsername}
+                onChangeText={v => { setProfileUsername(v.toLowerCase().replace(/[^a-z0-9_]/g, "")); clearError(); }}
+                placeholder="e.g. ali_ahmed123"
+                autoCapitalize="none"
+              />
+              <InputField
+                label={T("passwordOptional")}
+                value={profilePassword}
+                onChangeText={v => { setProfilePassword(v); clearError(); }}
+                placeholder="Min 8 characters"
+                secureTextEntry={!showProfilePwd}
+                rightIcon={showProfilePwd ? "eye-off-outline" : "eye-outline"}
+                onRightIconPress={() => setShowProfilePwd(v => !v)}
+              />
+
+              {error ? <AlertBox type="error" message={error} /> : null}
+
+              <AuthButton label={T("saveAndContinue")} onPress={handleCompleteProfile} loading={loading} />
+
+              <Pressable
+                onPress={async () => {
+                  if (pendingToken && pendingUser) {
+                    await login(pendingUser, pendingToken, pendingRefreshToken || undefined);
+                    router.replace("/(tabs)");
+                  } else { setStep("continue"); setPendingToken(""); }
+                }}
+                style={styles.linkBtn}
+                accessibilityRole="button"
+              >
                 <Text style={styles.linkBtnText}>{T("doLater")}</Text>
               </Pressable>
             </View>
@@ -706,57 +768,77 @@ export default function AuthScreen() {
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} start={{ x: 0, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.gradient}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
+      <LinearGradient
+        colors={[C.primaryDark, C.primary, C.primaryLight]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={styles.flex}
+      >
         <View style={[styles.topSection, { paddingTop: topPad + 32 }]}>
-          <View style={styles.logoContainer}>
-            <View style={styles.logo}><Ionicons name="cart" size={38} color={C.primary} /></View>
+          <View style={styles.logoWrap}>
+            <View style={styles.logo}>
+              <Ionicons name="cart" size={38} color={C.primary} />
+            </View>
           </View>
-          <Text style={styles.appName}>{appName}</Text>
-          <Text style={styles.tagline}>{appTagline}</Text>
+          <Text style={styles.heroTitle}>{appName}</Text>
+          <Text style={styles.heroSubtitle}>{appTagline}</Text>
         </View>
 
         <ScrollView style={styles.cardScroll} contentContainerStyle={styles.cardContent} keyboardShouldPersistTaps="handled">
           {step === "continue" && (
             <>
-              <Text style={styles.cardTitle}>Welcome 👋</Text>
-              <Text style={styles.cardSubtitle}>Enter your phone, email, or username</Text>
-              <TextInput
-                style={styles.input}
+              <Text style={styles.sectionTitle} accessibilityRole="header">Welcome</Text>
+              <Text style={styles.sectionSubtitle}>Enter your phone, email, or username to continue</Text>
+              <InputField
                 value={identifier}
                 onChangeText={v => { setIdentifier(v); clearError(); }}
                 placeholder="+923001234567, email, or username"
-                placeholderTextColor={C.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="go"
                 onSubmitEditing={checkIdentifier}
                 autoFocus
               />
-              {error ? (
-                <View style={styles.errorBox}>
-                  <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
-                  <Text style={styles.errorTxt}>{error}</Text>
-                </View>
-              ) : null}
-              <Pressable onPress={checkIdentifier} style={[styles.btn, loading && styles.btnDisabled]} disabled={loading}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Continue →</Text>}
-              </Pressable>
-              <Pressable onPress={() => router.push("/auth/register")} style={styles.linkBtn}>
-                <Text style={styles.linkBtnText}>New user? Create account</Text>
+
+              {error ? <AlertBox type="error" message={error} /> : null}
+
+              <AuthButton label="Continue" onPress={checkIdentifier} loading={loading} icon="arrow-forward" />
+
+              <Pressable
+                onPress={() => router.push("/auth/register")}
+                style={styles.linkBtn}
+                accessibilityLabel="Create a new account"
+                accessibilityRole="link"
+              >
+                <Text style={styles.linkBtnText}>
+                  New user? <Text style={{ fontFamily: "Inter_700Bold" }}>Create account</Text>
+                </Text>
               </Pressable>
             </>
           )}
 
           {step === "method" && enabledMethods.length > 0 && (
             <>
-              <Pressable onPress={() => { setStep("continue"); clearError(); }} style={styles.backBtn}>
+              <Pressable
+                onPress={() => { setStep("continue"); clearError(); }}
+                style={styles.backRow}
+                accessibilityRole="button"
+              >
                 <Ionicons name="arrow-back" size={16} color={C.primary} />
-                <Text style={styles.backBtnText}>Change identifier</Text>
+                <Text style={styles.backRowText}>Change identifier</Text>
               </Pressable>
-              <View style={styles.tabs}>
+
+              <View style={styles.tabs} accessibilityRole="tablist">
                 {enabledMethods.map(m => (
-                  <Pressable key={m.key} onPress={() => selectMethod(m.key)} style={[styles.tab, method === m.key && styles.tabActive]}>
+                  <Pressable
+                    key={m.key}
+                    onPress={() => selectMethod(m.key)}
+                    style={[styles.tab, method === m.key && styles.tabActive]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: method === m.key }}
+                    accessibilityLabel={m.label}
+                  >
                     <Ionicons name={m.icon} size={15} color={method === m.key ? C.primary : C.textMuted} />
                     <Text style={[styles.tabText, method === m.key && styles.tabTextActive]}>{m.label}</Text>
                   </Pressable>
@@ -766,229 +848,244 @@ export default function AuthScreen() {
           )}
 
           <Animated.View style={{ opacity: fadeAnim, transform: [{ translateX: slideXAnim }] }}>
-          {method === "phone" && step === "method" && (
-            <>
-              <Text style={styles.cardTitle}>{T("phoneNumber")}</Text>
-              <Text style={styles.cardSubtitle}>{T("verificationCodeSent")}</Text>
-              <View style={styles.inputWrapper}>
-                <View style={styles.countryCode}><Text style={styles.countryCodeText}>+92</Text></View>
-                <TextInput style={styles.phoneInput} value={phone} onChangeText={v => { setPhone(v); clearError(); }}
-                  placeholder="3XX XXX XXXX" placeholderTextColor={C.textMuted} keyboardType="phone-pad" maxLength={11} />
-              </View>
-            </>
-          )}
+            {method === "phone" && step === "method" && (
+              <>
+                <Text style={styles.sectionTitle}>{T("phoneNumber")}</Text>
+                <Text style={styles.sectionSubtitle}>{T("verificationCodeSent")}</Text>
+                <PhoneInput
+                  value={phone}
+                  onChangeText={v => { setPhone(v); clearError(); }}
+                />
+              </>
+            )}
 
-          {method === "phone" && step === "otp" && (
-            <>
-              <Pressable onPress={() => { setStep("continue"); clearError(); setDevOtp(""); }} style={styles.backBtn}>
-                <Ionicons name="arrow-back" size={16} color={C.primary} />
-                <Text style={styles.backBtnText}>{T("changeNumber")}</Text>
-              </Pressable>
-              <Text style={styles.cardTitle}>{T("enterOtp")}</Text>
-              <Text style={styles.cardSubtitle}>{T("otpSentToPhone")}{phone}</Text>
-              {otpChannel ? (
-                <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                  <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "Inter_600SemiBold" }}>
-                    via {otpChannel === "whatsapp" ? "WhatsApp" : otpChannel === "email" ? "Email" : "SMS"}
-                  </Text>
-                  {fallbackChannels.map(ch => (
-                    <Pressable key={ch} onPress={() => { if (resendCooldown <= 0) handleSendPhoneOtp(ch); }} disabled={resendCooldown > 0}>
-                      <Text style={{ fontSize: 12, color: resendCooldown > 0 ? C.textMuted : C.primary, fontFamily: "Inter_700Bold" }}>
-                        Send via {ch === "whatsapp" ? "WhatsApp" : ch === "email" ? "Email" : "SMS"}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-              <TextInput style={[styles.input, styles.otpInput, error ? styles.inputError : null]}
-                value={otp} onChangeText={v => { setOtp(v); clearError(); }}
-                placeholder="6-digit OTP" placeholderTextColor={C.textMuted}
-                keyboardType="number-pad" maxLength={6} autoFocus />
-              {__DEV__ === true && devOtp ? (
-                <View style={styles.devOtpBox}>
-                  <Ionicons name="key-outline" size={14} color={C.success} />
-                  <Text style={styles.devOtpTxt}>Dev OTP: <Text style={{ fontFamily: "Inter_700Bold", letterSpacing: 4 }}>{devOtp}</Text></Text>
-                </View>
-              ) : null}
-              <Pressable onPress={() => handleSendPhoneOtp()} style={[styles.resendBtn, resendCooldown > 0 && { opacity: 0.4 }]} disabled={resendCooldown > 0}>
-                <Text style={styles.resendText}>{resendCooldown > 0 ? `${T("otpResendIn")} (${resendCooldown}s)` : T("otpResend")}</Text>
-              </Pressable>
-            </>
-          )}
-
-          {method === "email" && step === "method" && (
-            <>
-              <Text style={styles.cardTitle}>{T("emailAddress")}</Text>
-              <Text style={styles.cardSubtitle}>{T("enterRegisteredEmail")}</Text>
-              <TextInput style={[styles.input, { marginBottom: 8 }]} value={email}
-                onChangeText={v => { setEmail(v); clearError(); }}
-                placeholder="your@email.com" placeholderTextColor={C.textMuted}
-                keyboardType="email-address" autoCapitalize="none" />
-            </>
-          )}
-
-          {method === "email" && step === "otp" && (
-            <>
-              <Pressable onPress={() => { setStep("continue"); clearError(); setEmailDevOtp(""); }} style={styles.backBtn}>
-                <Ionicons name="arrow-back" size={16} color={C.primary} />
-                <Text style={styles.backBtnText}>{T("changeEmail")}</Text>
-              </Pressable>
-              <Text style={styles.cardTitle}>{T("enterEmailOtp")}</Text>
-              <Text style={styles.cardSubtitle}>{T("otpSentToEmail")} {email}</Text>
-              {otpChannel === "email" ? (
-                <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "Inter_600SemiBold", marginBottom: 8 }}>via Email</Text>
-              ) : null}
-              <TextInput style={[styles.input, styles.otpInput, error ? styles.inputError : null]}
-                value={emailOtp} onChangeText={v => { setEmailOtp(v); clearError(); }}
-                placeholder="6-digit OTP" placeholderTextColor={C.textMuted}
-                keyboardType="number-pad" maxLength={6} autoFocus />
-              {__DEV__ === true && emailDevOtp ? (
-                <View style={styles.devOtpBox}>
-                  <Ionicons name="key-outline" size={14} color={C.success} />
-                  <Text style={styles.devOtpTxt}>Dev OTP: <Text style={{ fontFamily: "Inter_700Bold", letterSpacing: 4 }}>{emailDevOtp}</Text></Text>
-                </View>
-              ) : null}
-              <Pressable onPress={handleSendEmailOtp} style={[styles.resendBtn, emailResendCooldown > 0 && { opacity: 0.4 }]} disabled={emailResendCooldown > 0}>
-                <Text style={styles.resendText}>{emailResendCooldown > 0 ? `${T("otpResendIn")} (${emailResendCooldown}s)` : T("otpResend")}</Text>
-              </Pressable>
-            </>
-          )}
-
-          {method === "username" && step === "method" && (
-            <>
-              <Text style={styles.cardTitle}>{T("loginViaUsername")}</Text>
-              <Text style={styles.cardSubtitle}>Phone, email, or username</Text>
-              <TextInput style={[styles.input, { marginBottom: 10 }]} value={username}
-                onChangeText={v => { setUsername(v.trim()); clearError(); }}
-                placeholder="Phone, email, or username" placeholderTextColor={C.textMuted} autoCapitalize="none" autoCorrect={false} />
-              <View style={styles.pwdWrapper}>
-                <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} value={password}
-                  onChangeText={v => { setPassword(v); clearError(); }}
-                  placeholder="Password" placeholderTextColor={C.textMuted} secureTextEntry={!showPwd} />
-                <Pressable onPress={() => setShowPwd(v => !v)} style={styles.eyeBtn}>
-                  <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color={C.textMuted} />
+            {method === "phone" && step === "otp" && (
+              <>
+                <Pressable
+                  onPress={() => { setStep("continue"); clearError(); setDevOtp(""); setOtp(""); }}
+                  style={styles.backRow}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="arrow-back" size={16} color={C.primary} />
+                  <Text style={styles.backRowText}>{T("changeNumber")}</Text>
                 </Pressable>
-              </View>
-              <Pressable onPress={() => router.push("/auth/forgot-password")} style={{ alignSelf: "flex-end", marginBottom: 8, marginTop: 4 }}>
-                <Text style={styles.linkBtnText}>Forgot Password?</Text>
-              </Pressable>
-            </>
-          )}
+                <Text style={styles.sectionTitle}>{T("enterOtp")}</Text>
+                <Text style={styles.sectionSubtitle}>{T("otpSentToPhone")} +92 {phone}</Text>
 
-          {error && step !== "continue" ? (
-            <View style={styles.errorBox}>
-              <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
-              <Text style={styles.errorTxt}>{error}</Text>
-            </View>
-          ) : null}
+                {otpChannel ? <ChannelBadge channel={otpChannel} /> : null}
+                <FallbackChannelButtons
+                  channels={fallbackChannels}
+                  disabled={resendCooldown > 0}
+                  onSelect={ch => handleSendPhoneOtp(ch)}
+                />
 
-          {step === "method" && (
-            <>
-              <Pressable
-                onPress={
-                  method === "phone" ? handleSendPhoneOtp
-                    : method === "email" ? handleSendEmailOtp
-                    : handleUsernameLogin
-                }
-                style={[styles.btn, loading && styles.btnDisabled]}
-                disabled={loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : (
-                  <Text style={styles.btnText}>
-                    {method === "phone" || method === "email" ? T("sendOtpBtn") : T("loginBtn")}
+                <OtpDigitInput
+                  value={otp}
+                  onChangeText={v => { setOtp(v); clearError(); }}
+                  hasError={!!error}
+                  onComplete={() => handleVerifyPhoneOtp()}
+                />
+
+                <DevOtpBanner otp={__DEV__ === true ? devOtp : ""} />
+
+                <Pressable
+                  onPress={() => handleSendPhoneOtp()}
+                  style={[styles.resendBtn, resendCooldown > 0 && styles.resendDisabled]}
+                  disabled={resendCooldown > 0}
+                  accessibilityLabel={resendCooldown > 0 ? `Resend in ${resendCooldown} seconds` : "Resend OTP"}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="refresh-outline" size={16} color={resendCooldown > 0 ? C.textMuted : C.primary} />
+                  <Text style={[styles.resendText, resendCooldown > 0 && { color: C.textMuted }]}>
+                    {resendCooldown > 0 ? `${T("otpResendIn")} (${resendCooldown}s)` : T("otpResend")}
                   </Text>
-                )}
-              </Pressable>
+                </Pressable>
+              </>
+            )}
 
-              {(socialMethods.length > 0 || showMagicLink || showBiometric) && (
-                <>
-                  <View style={styles.divider}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>OR</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
+            {method === "email" && step === "method" && (
+              <>
+                <Text style={styles.sectionTitle}>{T("emailAddress")}</Text>
+                <Text style={styles.sectionSubtitle}>{T("enterRegisteredEmail")}</Text>
+                <InputField
+                  value={email}
+                  onChangeText={v => { setEmail(v); clearError(); }}
+                  placeholder="your@email.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </>
+            )}
 
-                  {showBiometric && (
-                    <Pressable onPress={handleBiometricLogin} style={styles.socialBtn} disabled={biometricLoading}>
-                      {biometricLoading ? <ActivityIndicator color={C.primary} size="small" /> : (
-                        <>
-                          <Ionicons name="finger-print" size={22} color={C.primary} />
-                          <Text style={styles.socialBtnText}>Login with Biometrics</Text>
-                        </>
-                      )}
-                    </Pressable>
-                  )}
+            {method === "email" && step === "otp" && (
+              <>
+                <Pressable
+                  onPress={() => { setStep("continue"); clearError(); setEmailDevOtp(""); setEmailOtp(""); }}
+                  style={styles.backRow}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="arrow-back" size={16} color={C.primary} />
+                  <Text style={styles.backRowText}>{T("changeEmail")}</Text>
+                </Pressable>
+                <Text style={styles.sectionTitle}>{T("enterEmailOtp")}</Text>
+                <Text style={styles.sectionSubtitle}>{T("otpSentToEmail")} {email}</Text>
 
-                  {socialMethods.map(sm => {
-                    const isConfigured = sm.key === "google"
-                      ? !!process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID
-                      : !!process.env.EXPO_PUBLIC_FB_APP_ID;
-                    return (
-                      <Pressable
-                        key={sm.key}
-                        onPress={() => isConfigured ? handleSocialLogin(sm.key as "google" | "facebook") : undefined}
-                        style={[styles.socialBtn, !isConfigured && { opacity: 0.45 }]}
-                        disabled={!isConfigured}
-                      >
-                        <Ionicons name={sm.icon} size={20} color={isConfigured ? sm.color : C.textMuted} />
-                        <Text style={[styles.socialBtnText, !isConfigured && { color: C.textMuted }]}>
-                          {isConfigured ? `Continue with ${sm.label}` : `${sm.label} (Not Available)`}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                {otpChannel === "email" ? <ChannelBadge channel="email" /> : null}
 
-                  {showMagicLink && (
-                    <>
-                      {!magicSent ? (
-                        <View style={{ marginTop: 4 }}>
-                          <TextInput
-                            style={[styles.input, { marginBottom: 8 }]}
-                            value={magicEmail}
-                            onChangeText={setMagicEmail}
-                            placeholder="Email for magic link"
-                            placeholderTextColor={C.textMuted}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
+                <OtpDigitInput
+                  value={emailOtp}
+                  onChangeText={v => { setEmailOtp(v); clearError(); }}
+                  hasError={!!error}
+                  onComplete={() => handleVerifyEmailOtp()}
+                />
+
+                <DevOtpBanner otp={__DEV__ === true ? emailDevOtp : ""} />
+
+                <Pressable
+                  onPress={handleSendEmailOtp}
+                  style={[styles.resendBtn, emailResendCooldown > 0 && styles.resendDisabled]}
+                  disabled={emailResendCooldown > 0}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="refresh-outline" size={16} color={emailResendCooldown > 0 ? C.textMuted : C.primary} />
+                  <Text style={[styles.resendText, emailResendCooldown > 0 && { color: C.textMuted }]}>
+                    {emailResendCooldown > 0 ? `${T("otpResendIn")} (${emailResendCooldown}s)` : T("otpResend")}
+                  </Text>
+                </Pressable>
+              </>
+            )}
+
+            {method === "username" && step === "method" && (
+              <>
+                <Text style={styles.sectionTitle}>{T("loginViaUsername")}</Text>
+                <Text style={styles.sectionSubtitle}>Phone, email, or username</Text>
+                <InputField
+                  value={username}
+                  onChangeText={v => { setUsername(v.trim()); clearError(); }}
+                  placeholder="Phone, email, or username"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <InputField
+                  value={password}
+                  onChangeText={v => { setPassword(v); clearError(); }}
+                  placeholder="Password"
+                  secureTextEntry={!showPwd}
+                  rightIcon={showPwd ? "eye-off-outline" : "eye-outline"}
+                  onRightIconPress={() => setShowPwd(v => !v)}
+                />
+                <Pressable
+                  onPress={() => router.push("/auth/forgot-password")}
+                  style={styles.forgotBtn}
+                  accessibilityLabel="Forgot Password"
+                  accessibilityRole="link"
+                >
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </Pressable>
+              </>
+            )}
+
+            {error && step !== "continue" ? <AlertBox type="error" message={error} /> : null}
+
+            {step === "method" && (
+              <>
+                <AuthButton
+                  label={method === "phone" || method === "email" ? T("sendOtpBtn") : T("loginBtn")}
+                  onPress={
+                    method === "phone" ? () => handleSendPhoneOtp()
+                      : method === "email" ? handleSendEmailOtp
+                      : handleUsernameLogin
+                  }
+                  loading={loading}
+                />
+
+                {(socialMethods.length > 0 || showMagicLink || showBiometric) && (
+                  <>
+                    <Divider />
+
+                    {showBiometric && (
+                      <SocialButton
+                        provider="Biometrics"
+                        label="Login with Biometrics"
+                        icon="finger-print"
+                        color={C.primary}
+                        onPress={handleBiometricLogin}
+                        loading={biometricLoading}
+                      />
+                    )}
+
+                    {socialMethods.map(sm => {
+                      const isConfigured = sm.key === "google"
+                        ? !!process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID
+                        : !!process.env.EXPO_PUBLIC_FB_APP_ID;
+                      return (
+                        <SocialButton
+                          key={sm.key}
+                          provider={sm.label}
+                          label={isConfigured ? `Continue with ${sm.label}` : `${sm.label} (Not Available)`}
+                          icon={sm.icon}
+                          color={sm.color}
+                          onPress={() => handleSocialLogin(sm.key as "google" | "facebook")}
+                          disabled={!isConfigured}
+                        />
+                      );
+                    })}
+
+                    {showMagicLink && (
+                      <>
+                        {!magicSent ? (
+                          <View style={{ marginTop: 4 }}>
+                            <InputField
+                              value={magicEmail}
+                              onChangeText={setMagicEmail}
+                              placeholder="Email for magic link"
+                              keyboardType="email-address"
+                              autoCapitalize="none"
+                            />
+                            <SocialButton
+                              provider="Magic Link"
+                              label="Send Magic Link"
+                              icon="link"
+                              color={C.info}
+                              onPress={handleMagicLink}
+                            />
+                          </View>
+                        ) : (
+                          <AlertBox
+                            type="success"
+                            message={`Magic link sent! Check your email.${magicCooldown > 0 ? ` Resend in ${magicCooldown}s` : ""}`}
+                            icon="checkmark-circle"
                           />
-                          <Pressable onPress={handleMagicLink} style={styles.socialBtn}>
-                            <Ionicons name="link" size={20} color={C.info} />
-                            <Text style={styles.socialBtnText}>Send Magic Link</Text>
-                          </Pressable>
-                        </View>
-                      ) : (
-                        <View style={styles.magicSentBox}>
-                          <Ionicons name="checkmark-circle" size={20} color={C.success} />
-                          <Text style={styles.magicSentText}>Magic link sent! Check your email.</Text>
-                          {magicCooldown > 0 && <Text style={styles.magicCooldown}>Resend in {magicCooldown}s</Text>}
-                        </View>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
 
-              <Pressable onPress={() => router.push("/auth/register")} style={{ alignItems: "center", marginTop: 20 }}>
-                <Text style={{ ...typography.bodyMedium, color: C.primary }}>
-                  Don't have an account? <Text style={{ fontFamily: "Inter_700Bold" }}>Register</Text>
-                </Text>
-              </Pressable>
-            </>
-          )}
+                <Pressable
+                  onPress={() => router.push("/auth/register")}
+                  style={[styles.linkBtn, { marginTop: spacing.xl }]}
+                  accessibilityLabel="Create a new account"
+                  accessibilityRole="link"
+                >
+                  <Text style={styles.linkBtnText}>
+                    Don't have an account? <Text style={{ fontFamily: "Inter_700Bold" }}>Register</Text>
+                  </Text>
+                </Pressable>
+              </>
+            )}
 
-          {step === "otp" && (
-            <Pressable
-              onPress={method === "phone" ? handleVerifyPhoneOtp : handleVerifyEmailOtp}
-              style={[styles.btn, loading && styles.btnDisabled]}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{T("verifyAndContinueBtn")}</Text>}
-            </Pressable>
-          )}
+            {step === "otp" && (
+              <AuthButton
+                label={T("verifyAndContinueBtn")}
+                onPress={method === "phone" ? handleVerifyPhoneOtp : handleVerifyEmailOtp}
+                loading={loading}
+              />
+            )}
           </Animated.View>
         </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <Text style={styles.footerText}>{T("termsAgreement")}</Text>
         </View>
       </LinearGradient>
@@ -997,22 +1094,38 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
-  topSection: { alignItems: "center", paddingBottom: spacing.xxxl },
-  centerContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xxl },
-  logoContainer: { marginBottom: spacing.lg },
-  logo: { width: 76, height: 76, borderRadius: radii.xxl, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", ...shadows.lg, marginBottom: 14 },
-  appName: { fontFamily: "Inter_700Bold", fontSize: 32, color: "#fff", marginBottom: 6 },
-  tagline: { ...typography.body, color: "rgba(255,255,255,0.85)" },
+  flex: { flex: 1 },
+  scrollGrow: { flexGrow: 1 },
 
-  cardScroll: { backgroundColor: C.surface, borderTopLeftRadius: radii.xxl + 4, borderTopRightRadius: radii.xxl + 4, flex: 1 },
+  topSection: { alignItems: "center", paddingBottom: spacing.xxxl },
+  logoWrap: { marginBottom: spacing.lg },
+  logo: {
+    width: 76, height: 76, borderRadius: radii.xxl,
+    backgroundColor: "#fff", alignItems: "center", justifyContent: "center",
+    ...shadows.lg,
+  },
+  heroIcon: {
+    width: 76, height: 76, borderRadius: radii.xxl,
+    backgroundColor: "#fff", alignItems: "center", justifyContent: "center",
+    ...shadows.lg, marginBottom: 14,
+  },
+  heroTitle: { fontFamily: "Inter_700Bold", fontSize: 30, color: "#fff", marginBottom: 6, textAlign: "center" },
+  heroSubtitle: { ...typography.body, color: "rgba(255,255,255,0.85)", textAlign: "center", paddingHorizontal: spacing.xl },
+
+  cardScroll: { backgroundColor: C.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, flex: 1 },
   cardContent: { padding: spacing.xxl, paddingBottom: 40, flexGrow: 1 },
-  pendingCard: { backgroundColor: C.surface, borderRadius: radii.xxl, padding: 28, alignItems: "center", width: "100%" },
-  pendingIcon: { width: 84, height: 84, borderRadius: 42, backgroundColor: C.accentSoft, alignItems: "center", justifyContent: "center", marginBottom: 20 },
+  card: { backgroundColor: C.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.xxl, paddingBottom: 40, flex: 1 },
+
+  centeredContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xxl },
+  pendingCard: { backgroundColor: C.surface, borderRadius: radii.xxl, padding: 28, alignItems: "center", width: "100%", ...shadows.lg },
+  pendingIconWrap: { width: 84, height: 84, borderRadius: 42, backgroundColor: C.accentSoft, alignItems: "center", justifyContent: "center", marginBottom: 20 },
   pendingTitle: { ...typography.h2, color: C.text, marginBottom: 12, textAlign: "center" },
   pendingSubtitle: { ...typography.body, color: C.textMuted, textAlign: "center", marginBottom: 20, lineHeight: 22 },
-  pendingInfo: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.surfaceSecondary, borderRadius: radii.md, padding: 12, marginBottom: 24, width: "100%" },
-  pendingInfoTxt: { ...typography.caption, color: C.textMuted, flex: 1 },
+  pendingInfoRow: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.surfaceSecondary, borderRadius: radii.md, padding: 12, marginBottom: 24, width: "100%" },
+  pendingInfoText: { ...typography.caption, color: C.textMuted, flex: 1 },
+
+  sectionTitle: { ...typography.h3, color: C.text, marginBottom: 6 },
+  sectionSubtitle: { ...typography.caption, color: C.textMuted, marginBottom: spacing.xl, lineHeight: 18 },
 
   tabs: { flexDirection: "row", backgroundColor: C.surfaceSecondary, borderRadius: radii.lg, padding: 3, marginBottom: spacing.xl },
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: radii.md },
@@ -1020,55 +1133,23 @@ const styles = StyleSheet.create({
   tabText: { ...typography.captionMedium, color: C.textMuted },
   tabTextActive: { color: C.text, fontFamily: "Inter_600SemiBold" },
 
-  cardTitle: { ...typography.h3, color: C.text, marginBottom: 5 },
-  cardSubtitle: { ...typography.caption, color: C.textMuted, marginBottom: spacing.xl },
-
-  inputWrapper: { flexDirection: "row", alignItems: "stretch", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: spacing.sm, backgroundColor: C.surfaceSecondary },
-  countryCode: { paddingHorizontal: 14, justifyContent: "center", backgroundColor: C.surface, borderRightWidth: 1, borderRightColor: C.border },
-  countryCodeText: { ...typography.subtitle, color: C.text },
-  phoneInput: { flex: 1, paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text },
-  input: { flex: 1, paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, backgroundColor: C.surfaceSecondary },
-  input2: { paddingHorizontal: 16, paddingVertical: 14, ...typography.bodyMedium, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, marginBottom: 12, backgroundColor: C.surfaceSecondary },
-  otpInput: { textAlign: "center", letterSpacing: 8, ...typography.otp },
-  inputError: { borderColor: C.danger },
-  pwdWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: 10, backgroundColor: C.surfaceSecondary },
-  eyeBtn: { paddingHorizontal: 14 },
-
-  fieldLabel: { ...typography.captionMedium, color: C.textSecondary, marginBottom: 6 },
-
-  errorBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.dangerSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12, borderWidth: 1, borderColor: "#FECACA" },
-  errorTxt: { ...typography.captionMedium, color: C.danger, flex: 1 },
-  devOtpBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.successSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8, borderWidth: 1, borderColor: "#80E6CC" },
-  devOtpTxt: { ...typography.captionMedium, color: C.success, flex: 1 },
-
-  btn: { backgroundColor: C.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm, ...shadows.md },
-  btnDisabled: { opacity: 0.7 },
-  btnText: { ...typography.button, color: "#fff" },
-
-  resendBtn: { alignItems: "center", marginBottom: spacing.sm },
-  resendText: { ...typography.bodyMedium, color: C.primary },
-  backBtn: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: spacing.lg },
-  backBtnText: { ...typography.bodyMedium, color: C.primary },
-  linkBtn: { alignItems: "center", marginTop: spacing.md },
-  linkBtnText: { ...typography.captionMedium, color: C.primary },
-
-  trustRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 10, backgroundColor: C.surfaceSecondary, borderRadius: radii.sm, marginBottom: 12 },
-  checkbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 2, borderColor: C.border, alignItems: "center", justifyContent: "center" },
+  trustRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, backgroundColor: C.surfaceSecondary, borderRadius: radii.md, marginBottom: spacing.md },
+  checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: C.border, alignItems: "center", justifyContent: "center" },
   checkboxChecked: { backgroundColor: C.primary, borderColor: C.primary },
-  trustTxt: { ...typography.caption, color: C.textSecondary },
+  trustText: { ...typography.caption, color: C.textSecondary, flex: 1 },
 
-  divider: { flexDirection: "row", alignItems: "center", marginVertical: spacing.lg },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.border },
-  dividerText: { ...typography.captionMedium, color: C.textMuted, marginHorizontal: 12 },
+  resendBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, marginBottom: spacing.md },
+  resendDisabled: { opacity: 0.5 },
+  resendText: { ...typography.bodyMedium, color: C.primary },
 
-  socialBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, paddingVertical: 14, marginBottom: spacing.sm },
-  socialBtnText: { ...typography.bodySemiBold, color: C.text },
+  forgotBtn: { alignSelf: "flex-end", marginBottom: spacing.md, marginTop: -4 },
+  forgotText: { ...typography.captionMedium, color: C.primary },
 
-  magicSentBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.successSoft, borderRadius: radii.lg, padding: 14, marginTop: spacing.sm, borderWidth: 1, borderColor: "#80E6CC" },
-  magicSentText: { ...typography.captionMedium, color: C.success, flex: 1 },
-  magicCooldown: { ...typography.small, color: C.textMuted },
+  linkBtn: { alignItems: "center", marginTop: spacing.md },
+  linkBtnText: { ...typography.bodyMedium, color: C.primary },
+  backRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: spacing.lg },
+  backRowText: { ...typography.bodyMedium, color: C.primary },
 
-  footer: { backgroundColor: C.surface, paddingHorizontal: spacing.xxl, paddingTop: 12, alignItems: "center" },
+  footer: { backgroundColor: C.surface, paddingHorizontal: spacing.xxl, paddingTop: 10, alignItems: "center" },
   footerText: { ...typography.caption, color: C.textMuted, textAlign: "center" },
-
 });

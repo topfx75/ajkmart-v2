@@ -254,7 +254,8 @@ router.post("/send-merge-otp", async (req, res) => {
 
   const otp = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-  await db.update(usersTable).set({ otpCode: otp, otpExpiry, otpUsed: false, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+  const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
+  await db.update(usersTable).set({ otpCode: otp, otpExpiry, otpUsed: false, pendingMergeIdentifier: normalizedIdentifier, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
   if (looksLikePhone) {
     const phone = canonicalizePhone(identifier);
@@ -310,35 +311,37 @@ router.post("/merge-account", async (req, res) => {
   const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
   if (!currentUser) { res.status(404).json({ error: "User not found" }); return; }
 
+  const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
+
+  if (currentUser.otpCode !== otp || !currentUser.otpExpiry || currentUser.otpExpiry < new Date() || currentUser.otpUsed) {
+    res.status(400).json({ error: "Invalid or expired OTP" });
+    return;
+  }
+
+  if (currentUser.pendingMergeIdentifier !== normalizedIdentifier) {
+    res.status(400).json({ error: "OTP was not issued for this identifier" });
+    return;
+  }
+
   if (looksLikePhone) {
-    const phone = canonicalizePhone(identifier);
+    const phone = normalizedIdentifier;
     if (currentUser.phone === phone) { res.status(400).json({ error: "This phone is already linked to your account" }); return; }
 
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
     if (existing) { res.status(409).json({ error: "This phone number is already linked to another account" }); return; }
 
-    if (currentUser.otpCode !== otp || !currentUser.otpExpiry || currentUser.otpExpiry < new Date() || currentUser.otpUsed) {
-      res.status(400).json({ error: "Invalid or expired OTP" });
-      return;
-    }
-
-    await db.update(usersTable).set({ phone, otpUsed: true, phoneVerified: true, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+    await db.update(usersTable).set({ phone, otpUsed: true, phoneVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
     writeAuthAuditLog("account_merge_phone", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
     res.json({ success: true, message: "Phone number linked successfully", linked: "phone" });
   } else {
-    const email = identifier.trim().toLowerCase();
+    const email = normalizedIdentifier;
     if (currentUser.email === email) { res.status(400).json({ error: "This email is already linked to your account" }); return; }
 
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
     if (existing) { res.status(409).json({ error: "This email is already linked to another account" }); return; }
 
-    if (currentUser.otpCode !== otp || !currentUser.otpExpiry || currentUser.otpExpiry < new Date() || currentUser.otpUsed) {
-      res.status(400).json({ error: "Invalid or expired OTP" });
-      return;
-    }
-
-    await db.update(usersTable).set({ email, otpUsed: true, emailVerified: true, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
+    await db.update(usersTable).set({ email, otpUsed: true, emailVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
     writeAuthAuditLog("account_merge_email", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { email } });
     res.json({ success: true, message: "Email linked successfully", linked: "email" });

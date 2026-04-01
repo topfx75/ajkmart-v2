@@ -78,6 +78,8 @@ export const usersTable = pgTable("users", {
   ignoreCount:     integer("ignore_count").notNull().default(0),
   isRestricted:    boolean("is_restricted").notNull().default(false),
   cancellationDebt: decimal("cancellation_debt", { precision: 10, scale: 2 }).notNull().default("0"),
+  /* ── Pending merge identifier — binds merge-OTP to a specific identifier ── */
+  pendingMergeIdentifier: text("pending_merge_identifier"),
   /* ── Device fingerprinting — for multi-account abuse detection ── */
   deviceId:        text("device_id"),
   /* ── Token version — incremented on logout/ban/role change to invalidate access JWTs ── */

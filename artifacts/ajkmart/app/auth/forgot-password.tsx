@@ -3,14 +3,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,35 +19,20 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { API_BASE as API } from "@/utils/api";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
 
-const C = Colors.light;
+import {
+  OtpDigitInput,
+  AuthButton,
+  AlertBox,
+  PhoneInput,
+  InputField,
+  PasswordStrengthBar,
+  StepProgress,
+  DevOtpBanner,
+  authColors as C,
+} from "@/components/auth-shared";
 
 type ForgotStep = "method" | "otp" | "newPassword" | "totp" | "done";
 type ResetMethod = "phone" | "email";
-
-function PasswordStrength({ password }: { password: string }) {
-  const checks = [
-    { label: "8+ characters", ok: password.length >= 8 },
-    { label: "Uppercase", ok: /[A-Z]/.test(password) },
-    { label: "Number", ok: /[0-9]/.test(password) },
-  ];
-  const score = checks.filter(c => c.ok).length;
-  const colors = [C.danger, C.accent, C.success];
-  const labels = ["Weak", "Medium", "Strong"];
-
-  if (!password) return null;
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <View style={{ flexDirection: "row", gap: 4, marginBottom: 6 }}>
-        {[0, 1, 2].map(i => (
-          <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < score ? colors[Math.min(score - 1, 2)] : C.border }} />
-        ))}
-      </View>
-      <Text style={{ ...typography.smallMedium, color: colors[Math.min(score - 1, 2)] || C.textMuted }}>
-        {score > 0 ? labels[score - 1] : ""}
-      </Text>
-    </View>
-  );
-}
 
 export default function ForgotPasswordScreen() {
   const insets = useSafeAreaInsets();
@@ -58,8 +41,12 @@ export default function ForgotPasswordScreen() {
   const { config } = usePlatformConfig();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
+  const phoneEnabled = isMethodEnabled(config.auth.phoneOtpEnabled);
+  const emailEnabled = isMethodEnabled(config.auth.emailOtpEnabled);
+  const defaultMethod: ResetMethod = phoneEnabled ? "phone" : "email";
+
   const [step, setStep] = useState<ForgotStep>("method");
-  const [method, setMethod] = useState<ResetMethod>("phone");
+  const [method, setMethod] = useState<ResetMethod>(defaultMethod);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -72,7 +59,6 @@ export default function ForgotPasswordScreen() {
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [totpCode, setTotpCode] = useState("");
-
   const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
@@ -83,13 +69,17 @@ export default function ForgotPasswordScreen() {
 
   const clearError = () => setError("");
 
+  const stepNumber = step === "method" ? 1 : step === "otp" ? 2 : step === "newPassword" || step === "totp" ? 3 : 4;
+
   const handleSendResetCode = async () => {
     clearError();
     if (method === "phone" && !isValidPakistaniPhone(phone)) {
-      setError("Please enter a valid Pakistani phone number"); return;
+      setError("Please enter a valid Pakistani phone number");
+      return;
     }
     if (method === "email" && (!email || !email.includes("@"))) {
-      setError("Please enter a valid email address"); return;
+      setError("Please enter a valid email address");
+      return;
     }
     if (resendCooldown > 0) return;
 
@@ -105,7 +95,7 @@ export default function ForgotPasswordScreen() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error || "Request fail."); setLoading(false); return; }
+      if (!res.ok) { setError(data.error || "Request failed."); setLoading(false); return; }
       if (__DEV__ === true && data.otp) setDevOtp(data.otp);
       setResendCooldown(60);
       setStep("otp");
@@ -113,9 +103,14 @@ export default function ForgotPasswordScreen() {
     setLoading(false);
   };
 
-  const handleVerifyAndReset = async () => {
+  const handleVerifyOtp = () => {
     clearError();
-    if (!otp || otp.length < 6) { setError("Please enter the 6-digit OTP"); return; }
+    if (!otp || otp.length < 6) { setError("Please enter the 6-digit code"); return; }
+    setStep("newPassword");
+  };
+
+  const handleResetPassword = async () => {
+    clearError();
     if (!newPassword || newPassword.length < 8) { setError("New password must be at least 8 characters"); return; }
     if (!/[A-Z]/.test(newPassword)) { setError("Password must contain an uppercase letter"); return; }
     if (!/[0-9]/.test(newPassword)) { setError("Password must contain a number"); return; }
@@ -140,7 +135,7 @@ export default function ForgotPasswordScreen() {
           setLoading(false);
           return;
         }
-        setError(data.error || "Reset fail.");
+        setError(data.error || "Reset failed.");
         setLoading(false);
         return;
       }
@@ -151,59 +146,91 @@ export default function ForgotPasswordScreen() {
 
   const handleTotpSubmit = async () => {
     if (!totpCode || totpCode.length < 6) { setError("Please enter the 6-digit 2FA code"); return; }
-    await handleVerifyAndReset();
+    await handleResetPassword();
+  };
+
+  const goBack = () => {
+    if (step === "method") router.back();
+    else if (step === "otp") setStep("method");
+    else if (step === "newPassword") setStep("otp");
+    else if (step === "totp") setStep("newPassword");
+    clearError();
   };
 
   if (step === "done") {
     return (
       <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.xxl }}>
+        <View style={s.doneCenter}>
           <View style={s.doneCard}>
             <View style={s.doneIconWrap}>
-              <Ionicons name="checkmark-circle" size={64} color={C.success} />
+              <View style={s.doneIconCircle}>
+                <Ionicons name="checkmark" size={40} color="#fff" />
+              </View>
             </View>
             <Text style={s.doneTitle}>Password Reset!</Text>
-            <Text style={s.doneSub}>Your password has been successfully changed. Please log in with your new password.</Text>
-            <Pressable onPress={() => router.replace("/auth")} style={s.btn}>
-              <Text style={s.btnText}>Login</Text>
-            </Pressable>
+            <Text style={s.doneSub}>
+              Your password has been successfully changed. Please log in with your new password.
+            </Text>
+            <AuthButton label="Go to Login" onPress={() => router.replace("/auth")} icon="log-in-outline" />
           </View>
         </View>
       </LinearGradient>
     );
   }
 
+  const stepDescriptions: Record<string, string> = {
+    method: "Enter your phone or email to receive a reset code",
+    otp: "Enter the verification code we sent you",
+    newPassword: "Create a strong new password",
+    totp: "Enter your authenticator app code",
+  };
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
         <View style={[s.topSection, { paddingTop: topPad + 16 }]}>
-          <Pressable onPress={() => step === "method" ? router.back() : setStep("method")} style={s.backBtn}>
+          <Pressable
+            onPress={goBack}
+            style={s.backBtn}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </Pressable>
+
           <View style={s.headerIcon}>
-            <Ionicons name="lock-closed" size={32} color="rgba(255,255,255,0.9)" />
+            <Ionicons name="lock-closed" size={28} color="rgba(255,255,255,0.95)" />
           </View>
           <Text style={s.headerTitle}>Reset Password</Text>
-          <Text style={s.headerSub}>
-            {step === "method" ? "Enter your phone or email to receive a reset code"
-              : step === "otp" ? "Enter the code and your new password"
-              : step === "totp" ? "Enter your 2FA code"
-              : ""}
-          </Text>
+          <Text style={s.headerSub}>{stepDescriptions[step] || ""}</Text>
+
+          <View style={s.progressRow}>
+            <StepProgress total={4} current={stepNumber} />
+          </View>
         </View>
 
         <ScrollView style={s.card} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           {step === "method" && (
             <>
-              <View style={s.methodTabs}>
+              <View style={s.methodTabs} accessibilityRole="tablist">
                 {isMethodEnabled(config.auth.phoneOtpEnabled) && (
-                  <Pressable onPress={() => { setMethod("phone"); clearError(); }} style={[s.methodTab, method === "phone" && s.methodTabActive]}>
+                  <Pressable
+                    onPress={() => { setMethod("phone"); clearError(); }}
+                    style={[s.methodTab, method === "phone" && s.methodTabActive]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: method === "phone" }}
+                  >
                     <Ionicons name="call-outline" size={16} color={method === "phone" ? C.primary : C.textMuted} />
                     <Text style={[s.methodTabText, method === "phone" && s.methodTabTextActive]}>Phone</Text>
                   </Pressable>
                 )}
                 {isMethodEnabled(config.auth.emailOtpEnabled) && (
-                  <Pressable onPress={() => { setMethod("email"); clearError(); }} style={[s.methodTab, method === "email" && s.methodTabActive]}>
+                  <Pressable
+                    onPress={() => { setMethod("email"); clearError(); }}
+                    style={[s.methodTab, method === "email" && s.methodTabActive]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: method === "email" }}
+                  >
                     <Ionicons name="mail-outline" size={16} color={method === "email" ? C.primary : C.textMuted} />
                     <Text style={[s.methodTabText, method === "email" && s.methodTabTextActive]}>Email</Text>
                   </Pressable>
@@ -213,164 +240,137 @@ export default function ForgotPasswordScreen() {
               {method === "phone" && (
                 <>
                   <Text style={s.fieldLabel}>Phone Number</Text>
-                  <View style={s.inputWrapper}>
-                    <View style={s.countryCode}><Text style={s.countryCodeText}>+92</Text></View>
-                    <TextInput
-                      style={s.input}
-                      value={phone}
-                      onChangeText={v => { setPhone(v); clearError(); }}
-                      placeholder="3XX XXX XXXX"
-                      placeholderTextColor={C.textMuted}
-                      keyboardType="phone-pad"
-                      maxLength={11}
-                      autoFocus
-                    />
-                  </View>
+                  <PhoneInput
+                    value={phone}
+                    onChangeText={v => { setPhone(v); clearError(); }}
+                    autoFocus
+                  />
                 </>
               )}
 
               {method === "email" && (
-                <>
-                  <Text style={s.fieldLabel}>Email Address</Text>
-                  <TextInput
-                    style={s.inputFull}
-                    value={email}
-                    onChangeText={v => { setEmail(v); clearError(); }}
-                    placeholder="your@email.com"
-                    placeholderTextColor={C.textMuted}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoFocus
-                  />
-                </>
+                <InputField
+                  label="Email Address"
+                  value={email}
+                  onChangeText={v => { setEmail(v); clearError(); }}
+                  placeholder="your@email.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoFocus
+                />
               )}
             </>
           )}
 
           {step === "otp" && (
             <>
-              <Pressable onPress={() => { setStep("method"); clearError(); }} style={s.changeBtn}>
-                <Ionicons name="arrow-back" size={14} color={C.primary} />
-                <Text style={s.changeBtnText}>Change {method === "phone" ? "Number" : "Email"}</Text>
-              </Pressable>
+              <View style={s.sentToRow}>
+                <Ionicons name={method === "phone" ? "call-outline" : "mail-outline"} size={16} color={C.textMuted} />
+                <Text style={s.sentToText}>
+                  Code sent to {method === "phone" ? `+92 ${phone}` : email}
+                </Text>
+              </View>
 
-              <Text style={s.fieldLabel}>Reset Code</Text>
-              <Text style={s.fieldSub}>
-                Code sent to {method === "phone" ? `+92 ${phone}` : email}
-              </Text>
-              <TextInput
-                style={[s.inputFull, s.otpInput, error ? s.inputError : null]}
+              <OtpDigitInput
                 value={otp}
                 onChangeText={v => { setOtp(v); clearError(); }}
-                placeholder="6-digit code"
-                placeholderTextColor={C.textMuted}
-                keyboardType="number-pad"
-                maxLength={6}
-                autoFocus
+                hasError={!!error}
+                onComplete={() => handleVerifyOtp()}
               />
-              {__DEV__ === true && devOtp ? (
-                <View style={s.devOtpBox}>
-                  <Ionicons name="key-outline" size={14} color={C.success} />
-                  <Text style={s.devOtpTxt}>Dev OTP: <Text style={{ fontFamily: "Inter_700Bold", letterSpacing: 4 }}>{devOtp}</Text></Text>
-                </View>
-              ) : null}
+
+              <DevOtpBanner otp={__DEV__ === true ? devOtp : ""} />
 
               <Pressable
                 onPress={handleSendResetCode}
-                style={[s.resendBtn, resendCooldown > 0 && { opacity: 0.4 }]}
+                style={[s.resendBtn, resendCooldown > 0 && s.resendDisabled]}
                 disabled={resendCooldown > 0}
+                accessibilityRole="button"
               >
-                <Text style={s.resendText}>
+                <Ionicons name="refresh-outline" size={16} color={resendCooldown > 0 ? C.textMuted : C.primary} />
+                <Text style={[s.resendText, resendCooldown > 0 && { color: C.textMuted }]}>
                   {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Code"}
                 </Text>
               </Pressable>
+            </>
+          )}
 
-              <Text style={[s.fieldLabel, { marginTop: spacing.lg }]}>New Password</Text>
-              <View style={s.pwdWrapper}>
-                <TextInput
-                  style={[s.input, { flex: 1, marginBottom: 0, borderWidth: 0 }]}
-                  value={newPassword}
-                  onChangeText={v => { setNewPassword(v); clearError(); }}
-                  placeholder="New password"
-                  placeholderTextColor={C.textMuted}
-                  secureTextEntry={!showPwd}
-                />
-                <Pressable onPress={() => setShowPwd(v => !v)} style={s.eyeBtn}>
-                  <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color={C.textMuted} />
-                </Pressable>
-              </View>
-              <PasswordStrength password={newPassword} />
+          {step === "newPassword" && (
+            <>
+              <InputField
+                label="New Password"
+                value={newPassword}
+                onChangeText={v => { setNewPassword(v); clearError(); }}
+                placeholder="Enter new password"
+                secureTextEntry={!showPwd}
+                rightIcon={showPwd ? "eye-off-outline" : "eye-outline"}
+                onRightIconPress={() => setShowPwd(v => !v)}
+                autoFocus
+              />
+              <PasswordStrengthBar password={newPassword} />
 
-              <Text style={s.fieldLabel}>Confirm Password</Text>
-              <View style={[s.pwdWrapper, confirmPassword && newPassword !== confirmPassword && s.inputError]}>
-                <TextInput
-                  style={[s.input, { flex: 1, marginBottom: 0, borderWidth: 0 }]}
-                  value={confirmPassword}
-                  onChangeText={v => { setConfirmPassword(v); clearError(); }}
-                  placeholder="Re-enter password"
-                  placeholderTextColor={C.textMuted}
-                  secureTextEntry={!showConfirmPwd}
-                />
-                <Pressable onPress={() => setShowConfirmPwd(v => !v)} style={s.eyeBtn}>
-                  <Ionicons name={showConfirmPwd ? "eye-off-outline" : "eye-outline"} size={20} color={C.textMuted} />
-                </Pressable>
-              </View>
+              <InputField
+                label="Confirm Password"
+                value={confirmPassword}
+                onChangeText={v => { setConfirmPassword(v); clearError(); }}
+                placeholder="Re-enter new password"
+                secureTextEntry={!showConfirmPwd}
+                rightIcon={showConfirmPwd ? "eye-off-outline" : "eye-outline"}
+                onRightIconPress={() => setShowConfirmPwd(v => !v)}
+                error={!!confirmPassword && newPassword !== confirmPassword}
+              />
+              {confirmPassword && newPassword !== confirmPassword && (
+                <Text style={s.mismatchText}>Passwords do not match</Text>
+              )}
             </>
           )}
 
           {step === "totp" && (
             <>
-              <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
-                <View style={s.totpIcon}>
-                  <Ionicons name="shield-checkmark" size={36} color={C.primary} />
+              <View style={s.totpHeader}>
+                <View style={s.totpIconWrap}>
+                  <Ionicons name="shield-checkmark" size={32} color={C.primary} />
                 </View>
+                <Text style={s.totpTitle}>Two-Factor Authentication</Text>
+                <Text style={s.totpSub}>Enter the 6-digit code from your authenticator app</Text>
               </View>
-              <Text style={[s.fieldLabel, { textAlign: "center" }]}>Two-Factor Authentication</Text>
-              <Text style={[s.fieldSub, { textAlign: "center" }]}>
-                Enter the 6-digit code from your authenticator app
-              </Text>
-              <TextInput
-                style={[s.inputFull, s.otpInput]}
+
+              <OtpDigitInput
                 value={totpCode}
                 onChangeText={v => { setTotpCode(v); clearError(); }}
-                placeholder="6-digit code"
-                placeholderTextColor={C.textMuted}
-                keyboardType="number-pad"
-                maxLength={6}
-                autoFocus
+                hasError={!!error}
+                onComplete={() => handleTotpSubmit()}
               />
             </>
           )}
 
-          {error ? (
-            <View style={s.errorBox}>
-              <Ionicons name="alert-circle-outline" size={15} color={C.danger} />
-              <Text style={s.errorTxt}>{error}</Text>
-            </View>
-          ) : null}
+          {error ? <AlertBox type="error" message={error} /> : null}
 
-          <Pressable
+          <AuthButton
+            label={
+              step === "method" ? "Send Reset Code"
+                : step === "otp" ? "Verify Code"
+                : step === "newPassword" ? "Reset Password"
+                : step === "totp" ? "Verify & Reset"
+                : ""
+            }
             onPress={
               step === "method" ? handleSendResetCode
-                : step === "otp" ? handleVerifyAndReset
+                : step === "otp" ? handleVerifyOtp
+                : step === "newPassword" ? handleResetPassword
                 : step === "totp" ? handleTotpSubmit
                 : () => {}
             }
-            style={[s.btn, loading && s.btnDisabled]}
-            disabled={loading}
-          >
-            {loading ? <ActivityIndicator color="#fff" /> : (
-              <Text style={s.btnText}>
-                {step === "method" ? "Send Reset Code"
-                  : step === "otp" ? "Reset Password"
-                  : step === "totp" ? "Verify & Reset"
-                  : ""}
-              </Text>
-            )}
-          </Pressable>
+            loading={loading}
+            icon={step === "newPassword" ? "lock-closed-outline" : step === "otp" ? "checkmark-circle-outline" : undefined}
+          />
 
-          <Pressable onPress={() => router.replace("/auth")} style={{ alignItems: "center", marginTop: spacing.lg }}>
-            <Text style={{ ...typography.bodyMedium, color: C.primary }}>Back to Login</Text>
+          <Pressable
+            onPress={() => router.replace("/auth")}
+            style={s.loginLink}
+            accessibilityLabel="Back to login"
+            accessibilityRole="link"
+          >
+            <Text style={s.loginLinkText}>Back to Login</Text>
           </Pressable>
         </ScrollView>
       </LinearGradient>
@@ -380,53 +380,54 @@ export default function ForgotPasswordScreen() {
 
 const s = StyleSheet.create({
   gradient: { flex: 1 },
-  topSection: { alignItems: "center", paddingBottom: spacing.xxl, paddingHorizontal: spacing.xl },
-  backBtn: { position: "absolute", left: spacing.lg, top: Platform.OS === "web" ? 67 : 50, width: 40, height: 40, borderRadius: radii.md, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
-  headerIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 28, color: "#fff", marginBottom: 4 },
-  headerSub: { ...typography.body, color: "rgba(255,255,255,0.85)", textAlign: "center" },
+  topSection: { alignItems: "center", paddingBottom: spacing.xl, paddingHorizontal: spacing.xl },
+  backBtn: {
+    position: "absolute", left: spacing.lg,
+    top: Platform.OS === "web" ? 67 : 50,
+    width: 40, height: 40, borderRadius: radii.md,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center",
+  },
+  headerIcon: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center", marginBottom: spacing.md,
+  },
+  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 26, color: "#fff", marginBottom: 4 },
+  headerSub: { ...typography.body, color: "rgba(255,255,255,0.85)", textAlign: "center", marginBottom: spacing.lg },
+  progressRow: { marginBottom: spacing.sm },
 
-  card: { backgroundColor: C.surface, borderTopLeftRadius: radii.xxl + 4, borderTopRightRadius: radii.xxl + 4, padding: spacing.xxl, flex: 1 },
+  card: { backgroundColor: C.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: spacing.xxl, flex: 1 },
 
   methodTabs: { flexDirection: "row", backgroundColor: C.surfaceSecondary, borderRadius: radii.lg, padding: 3, marginBottom: spacing.xl, gap: 2 },
-  methodTab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 10, borderRadius: radii.md },
+  methodTab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: radii.md },
   methodTabActive: { backgroundColor: C.surface, ...shadows.sm },
   methodTabText: { ...typography.captionMedium, color: C.textMuted },
   methodTabTextActive: { color: C.text, fontFamily: "Inter_600SemiBold" },
 
   fieldLabel: { ...typography.captionMedium, color: C.textSecondary, marginBottom: spacing.sm },
-  fieldSub: { ...typography.caption, color: C.textMuted, marginBottom: spacing.md },
 
-  inputWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: spacing.md, backgroundColor: C.surfaceSecondary },
-  countryCode: { paddingHorizontal: 14, paddingVertical: 16, backgroundColor: C.surface, borderRightWidth: 1, borderRightColor: C.border },
-  countryCodeText: { ...typography.subtitle, color: C.text },
-  input: { flex: 1, paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text },
-  inputFull: { paddingHorizontal: 16, paddingVertical: 15, ...typography.bodyMedium, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, marginBottom: spacing.md, backgroundColor: C.surfaceSecondary },
-  otpInput: { textAlign: "center", letterSpacing: 8, ...typography.otp },
-  inputError: { borderColor: C.danger },
+  sentToRow: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.surfaceSecondary, borderRadius: radii.md, padding: 12, marginBottom: spacing.lg },
+  sentToText: { ...typography.caption, color: C.textMuted, flex: 1 },
 
-  pwdWrapper: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, overflow: "hidden", marginBottom: 10, backgroundColor: C.surfaceSecondary },
-  eyeBtn: { paddingHorizontal: 14 },
-
-  changeBtn: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: spacing.md },
-  changeBtnText: { ...typography.bodyMedium, color: C.primary },
-
-  errorBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.dangerSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: spacing.md, borderWidth: 1, borderColor: "#FECACA" },
-  errorTxt: { ...typography.captionMedium, color: C.danger, flex: 1 },
-  devOtpBox: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.successSoft, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: spacing.sm, borderWidth: 1, borderColor: "#80E6CC" },
-  devOtpTxt: { ...typography.captionMedium, color: C.success, flex: 1 },
-
-  resendBtn: { alignItems: "center", marginBottom: spacing.sm },
+  resendBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, marginBottom: spacing.md },
+  resendDisabled: { opacity: 0.5 },
   resendText: { ...typography.bodyMedium, color: C.primary },
 
-  totpIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center" },
+  mismatchText: { ...typography.caption, color: C.danger, marginTop: -8, marginBottom: spacing.md, paddingLeft: 4 },
 
-  btn: { backgroundColor: C.primary, borderRadius: radii.lg, paddingVertical: 16, alignItems: "center", marginTop: spacing.sm, ...shadows.md },
-  btnDisabled: { opacity: 0.7 },
-  btnText: { ...typography.button, color: "#fff" },
+  totpHeader: { alignItems: "center", marginBottom: spacing.xl },
+  totpIconWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center", marginBottom: spacing.md },
+  totpTitle: { ...typography.subtitle, color: C.text, marginBottom: 6, textAlign: "center" },
+  totpSub: { ...typography.caption, color: C.textMuted, textAlign: "center" },
 
+  loginLink: { alignItems: "center", marginTop: spacing.xl },
+  loginLinkText: { ...typography.bodyMedium, color: C.primary },
+
+  doneCenter: { flex: 1, justifyContent: "center", alignItems: "center", padding: spacing.xxl },
   doneCard: { backgroundColor: C.surface, borderRadius: radii.xxl, padding: spacing.xxxl, alignItems: "center", width: "100%", ...shadows.lg },
-  doneIconWrap: { marginBottom: spacing.lg },
-  doneTitle: { ...typography.h2, color: C.text, marginBottom: spacing.sm },
+  doneIconWrap: { marginBottom: spacing.xl },
+  doneIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.success, alignItems: "center", justifyContent: "center" },
+  doneTitle: { ...typography.h2, color: C.text, marginBottom: spacing.sm, textAlign: "center" },
   doneSub: { ...typography.body, color: C.textMuted, textAlign: "center", marginBottom: spacing.xxl, lineHeight: 22 },
 });
