@@ -98,7 +98,10 @@ export function RideTracker({
   const socketRef = useRef<{ disconnect: () => void } | null>(null);
 
   useEffect(() => {
-    const ACTIVE_STATUSES = ["accepted", "arrived", "in_transit", "picked_up", "in_progress"];
+    /* Only the three valid ride statuses from the server state machine should
+       keep the socket open — "picked_up" and "in_progress" are delivery-order
+       statuses that can never appear on a ride record. */
+    const ACTIVE_STATUSES = ["accepted", "arrived", "in_transit"];
     const isActive = ACTIVE_STATUSES.includes(ride?.status ?? "");
     if (!isActive || !rideId) return;
 
@@ -126,7 +129,12 @@ export function RideTracker({
       if (socket) socket.disconnect();
       socketRef.current = null;
     };
-  }, [rideId, ride?.status, token]);
+    /* NOTE: ride?.status is intentionally NOT in the dep array.
+       Including it would tear down and re-create the socket on every status
+       transition (accepted → arrived → in_transit), causing a live-location gap
+       the customer sees as the rider pin freezing. The socket connection is keyed
+       only on the ride ID and auth token — status checks run inside the effect. */
+  }, [rideId, token]);
 
   useEffect(() => {
     AsyncStorage.getItem(`rated_ride_${rideId}`).then(val => {

@@ -486,10 +486,16 @@ export default function Active() {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  /* Socket.io: connect to receive admin:chat messages and send rider:chat replies */
+  /* Socket.io: connect to receive admin:chat messages and send rider:chat replies.
+     Depend on user?.id so the socket is torn down and reconnected (with the fresh
+     token) whenever the session changes — e.g. after a token rotation or logout. */
   useEffect(() => {
-    const token = sessionStorage.getItem("ajkmart_rider_token") ?? localStorage.getItem("ajkmart_rider_token") ?? "";
-    if (!token) return;
+    /* Read the token fresh at effect-run time, not at mount time, so that a
+       rotated access-token is always used for the (re-)connection handshake. */
+    const token = sessionStorage.getItem("ajkmart_rider_token")
+      ?? localStorage.getItem("ajkmart_rider_token")
+      ?? "";
+    if (!token || !user?.id) return;
     const socket = io(window.location.origin, {
       path: "/api/socket.io",
       auth: { token },
@@ -506,7 +512,7 @@ export default function Active() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, []);
+  }, [user?.id]);
 
   type QueuedUpdate = { kind: "location" | "status"; run: () => Promise<unknown> };
   const pendingUpdatesRef                          = useRef<QueuedUpdate[]>([]);

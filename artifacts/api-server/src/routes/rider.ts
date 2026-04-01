@@ -1329,7 +1329,10 @@ router.get("/history", async (req, res) => {
 
   const combined = [
     ...orders.map(o => ({ kind: "order" as const, id: o.id, status: o.status, amount: safeNum(o.total), earnings: parseFloat((safeNum(o.total) * riderKeepPct).toFixed(2)), address: o.deliveryAddress, type: o.type, createdAt: o.createdAt })),
-    ...rides.map(r => ({ kind: "ride" as const, id: r.id, status: r.status, amount: safeNum(r.fare), earnings: parseFloat((safeNum(r.fare) * riderKeepPct).toFixed(2)), address: r.dropAddress, type: r.type, createdAt: r.createdAt })),
+    /* Cancelled rides have no earnings — the rider was never paid. Returning a
+       non-zero earnings value for cancelled rides caused totalEarnings on the
+       frontend to be inflated by fare×keepPct for every cancelled ride. */
+    ...rides.map(r => ({ kind: "ride" as const, id: r.id, status: r.status, amount: safeNum(r.fare), earnings: r.status === "cancelled" ? 0 : parseFloat((safeNum(r.fare) * riderKeepPct).toFixed(2)), address: r.dropAddress, type: r.type, createdAt: r.createdAt })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
    .slice(offsetParam, offsetParam + limitParam);
 
@@ -1471,18 +1474,29 @@ router.get("/earnings", async (req, res) => {
   const s = await getPlatformSettings();
   const riderKeepPct = parseFloat(s["rider_keep_pct"] ?? "80") / 100;
 
-  const [todayOrders, weekOrders, monthOrders, todayRides, weekRides, monthRides] = await Promise.all([
+  /* Bonus transactions are credited per completed trip and must be included in the
+     earnings summary — otherwise the displayed total is always lower than actual
+     when rider_bonus_per_trip > 0. */
+  const [
+    todayOrders, weekOrders, monthOrders,
+    todayRides,  weekRides,  monthRides,
+    todayBonus,  weekBonus,  monthBonus,
+  ] = await Promise.all([
     db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.updatedAt, today))),
     db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.updatedAt, weekAgo))),
     db.select({ s: sum(ordersTable.total), c: count() }).from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"), gte(ordersTable.updatedAt, monthAgo))),
     db.select({ s: sum(ridesTable.fare),   c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "completed"), gte(ridesTable.updatedAt, today))),
     db.select({ s: sum(ridesTable.fare),   c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "completed"), gte(ridesTable.updatedAt, weekAgo))),
     db.select({ s: sum(ridesTable.fare),   c: count() }).from(ridesTable).where(and(eq(ridesTable.riderId, riderId), eq(ridesTable.status, "completed"), gte(ridesTable.updatedAt, monthAgo))),
+    /* Per-trip bonuses credited to wallet on ride/delivery completion */
+    db.select({ s: sum(walletTransactionsTable.amount) }).from(walletTransactionsTable).where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "bonus"), gte(walletTransactionsTable.createdAt, today))),
+    db.select({ s: sum(walletTransactionsTable.amount) }).from(walletTransactionsTable).where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "bonus"), gte(walletTransactionsTable.createdAt, weekAgo))),
+    db.select({ s: sum(walletTransactionsTable.amount) }).from(walletTransactionsTable).where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "bonus"), gte(walletTransactionsTable.createdAt, monthAgo))),
   ]);
 
-  const todayTotal = (safeNum(todayOrders[0]?.s) + safeNum(todayRides[0]?.s)) * riderKeepPct;
-  const weekTotal  = (safeNum(weekOrders[0]?.s)  + safeNum(weekRides[0]?.s))  * riderKeepPct;
-  const monthTotal = (safeNum(monthOrders[0]?.s) + safeNum(monthRides[0]?.s)) * riderKeepPct;
+  const todayTotal = (safeNum(todayOrders[0]?.s) + safeNum(todayRides[0]?.s)) * riderKeepPct + safeNum(todayBonus[0]?.s);
+  const weekTotal  = (safeNum(weekOrders[0]?.s)  + safeNum(weekRides[0]?.s))  * riderKeepPct + safeNum(weekBonus[0]?.s);
+  const monthTotal = (safeNum(monthOrders[0]?.s) + safeNum(monthRides[0]?.s)) * riderKeepPct + safeNum(monthBonus[0]?.s);
 
   res.json({
     today:  { earnings: parseFloat(todayTotal.toFixed(2)), deliveries: (todayOrders[0]?.c ?? 0) + (todayRides[0]?.c ?? 0) },
@@ -1962,14 +1976,55 @@ router.post("/location/batch", async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
   const riderId = req.riderId!;
 
-  const sorted = parsed.data.locations.sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
+  const settings = await getCachedSettings();
+
+  /* GPS accuracy threshold — same as the single-ping endpoint */
+  const minAccuracyMeters = parseInt(settings["security_gps_accuracy"] ?? "50", 10);
+
+  /* Speed-spoof threshold — same floor as single-ping endpoint */
+  const configMaxSpeed = parseInt(settings["security_max_speed_kmh"] ?? "150", 10);
+  const MAX_ALLOWED_KMH = Math.max(configMaxSpeed, 300);
+
+  const nowMs = Date.now();
+  /* Reject timestamps more than 24 h old or more than 60 s in the future.
+     Client-supplied timestamps are untrusted; bounding them prevents arbitrary
+     historical backdating of location records. */
+  const MAX_AGE_MS    = 24 * 60 * 60 * 1000;
+  const MAX_FUTURE_MS = 60 * 1000;
+
+  const sorted = parsed.data.locations
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   let inserted = 0;
+  let skipped  = 0;
+  /* Track the previous accepted point to detect speed spoofing within the batch */
+  let prevBatchLat: number | null = null;
+  let prevBatchLng: number | null = null;
+  let prevBatchTs:  Date   | null = null;
+
   for (const loc of sorted) {
+    const ts    = new Date(loc.timestamp);
+    const tsMs  = ts.getTime();
+
+    /* ── Timestamp sanity ── */
+    if (isNaN(tsMs) || nowMs - tsMs > MAX_AGE_MS || tsMs - nowMs > MAX_FUTURE_MS) {
+      skipped++; continue;
+    }
+
+    /* ── GPS accuracy filter (same rule as single-ping) ── */
+    if (loc.accuracy !== undefined && loc.accuracy > minAccuracyMeters) {
+      skipped++; continue;
+    }
+
+    /* ── Speed-based spoof detection within the batch ── */
+    if (settings["security_spoof_detection"] === "on" && prevBatchLat != null && prevBatchLng != null && prevBatchTs != null) {
+      const result = detectGPSSpoof(prevBatchLat, prevBatchLng, prevBatchTs, loc.latitude, loc.longitude, MAX_ALLOWED_KMH);
+      if (result.spoofed) {
+        skipped++; continue;
+      }
+    }
+
     try {
-      const ts = new Date(loc.timestamp);
       await db.insert(locationLogsTable).values({
         id: generateId(),
         userId: riderId,
@@ -1983,46 +2038,52 @@ router.post("/location/batch", async (req, res) => {
         isSpoofed: false,
         createdAt: ts,
       });
+      prevBatchLat = loc.latitude;
+      prevBatchLng = loc.longitude;
+      prevBatchTs  = ts;
       inserted++;
-    } catch { /* skip invalid entries */ }
+    } catch { /* skip invalid DB entries */ }
   }
 
-  const last = sorted[sorted.length - 1]!;
-  const nowDate = new Date();
-  await db.insert(liveLocationsTable).values({
-    userId: riderId,
-    latitude: last.latitude.toString(),
-    longitude: last.longitude.toString(),
-    role: "rider",
-    action: null,
-    updatedAt: nowDate,
-  }).onConflictDoUpdate({
-    target: liveLocationsTable.userId,
-    set: {
-      latitude: last.latitude.toString(),
-      longitude: last.longitude.toString(),
+  /* Only update live location and emit if at least one clean ping was inserted.
+     prevBatchLat/Lng hold the last accepted (non-spoofed, in-accuracy) coordinates. */
+  if (inserted > 0) {
+    const nowDate = new Date();
+    await db.insert(liveLocationsTable).values({
+      userId: riderId,
+      latitude: prevBatchLat!.toString(),
+      longitude: prevBatchLng!.toString(),
       role: "rider",
       action: null,
       updatedAt: nowDate,
-    },
-  });
+    }).onConflictDoUpdate({
+      target: liveLocationsTable.userId,
+      set: {
+        latitude: prevBatchLat!.toString(),
+        longitude: prevBatchLng!.toString(),
+        role: "rider",
+        action: null,
+        updatedAt: nowDate,
+      },
+    });
 
-  emitRiderLocation({
-    userId: riderId,
-    latitude: last.latitude,
-    longitude: last.longitude,
-    accuracy: last.accuracy,
-    speed: last.speed,
-    heading: last.heading,
-    batteryLevel: last.batteryLevel,
-    action: null,
-    rideId: null,
-    vendorId: null,
-    orderId: null,
-    updatedAt: nowDate.toISOString(),
-  });
+    emitRiderLocation({
+      userId: riderId,
+      latitude: prevBatchLat!,
+      longitude: prevBatchLng!,
+      accuracy: undefined,
+      speed: undefined,
+      heading: undefined,
+      batteryLevel: undefined,
+      action: null,
+      rideId: null,
+      vendorId: null,
+      orderId: null,
+      updatedAt: nowDate.toISOString(),
+    });
+  }
 
-  res.json({ success: true, inserted, total: sorted.length });
+  res.json({ success: true, inserted, skipped, total: sorted.length });
 });
 
 /* ── GET /rider/wallet/deposits — Deposit history ── */
