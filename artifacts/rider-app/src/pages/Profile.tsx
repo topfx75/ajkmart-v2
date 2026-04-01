@@ -16,7 +16,7 @@ import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 
-const fc = (n: number) => `Rs. ${Math.round(n).toLocaleString()}`;
+const fc = (n: number, currencySymbol = "Rs.") => `${currencySymbol} ${Math.round(n).toLocaleString()}`;
 
 const CITIES   = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Other"];
 const BANKS    = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
@@ -93,6 +93,7 @@ function SavedCheckmark({ show, label }: { show: boolean; label: string }) {
 export default function Profile() {
   const { user, logout, refreshUser, loading: authLoading } = useAuth();
   const { config } = usePlatformConfig();
+  const currency = config.platform.currencySymbol ?? "Rs.";
   const riderKeepPct = config.rider?.keepPct ?? config.finance.riderEarningPct ?? 80;
 
   const { data: notifData } = useQuery({
@@ -530,8 +531,8 @@ export default function Profile() {
         <div className="flex gap-2 animate-[slideUp_0.5s_ease-out]">
           {[
             { label: T("deliveriesLabel"), value: String(totalDeliveries), icon: <ClipboardList size={15} className="text-blue-500"/>,   bg: "bg-blue-50",   border: "border-blue-100" },
-            { label: T("earnedStat"),      value: fc(totalEarnings),       icon: <BarChart2 size={15} className="text-green-500"/>,      bg: "bg-green-50",  border: "border-green-100" },
-            { label: T("walletStat"),      value: fc(Number(user?.walletBalance || 0)), icon: <Wallet size={15} className="text-amber-500"/>, bg: "bg-amber-50",  border: "border-amber-100" },
+            { label: T("earnedStat"),      value: fc(totalEarnings, currency),       icon: <BarChart2 size={15} className="text-green-500"/>,      bg: "bg-green-50",  border: "border-green-100" },
+            { label: T("walletStat"),      value: fc(Number(user?.walletBalance || 0), currency), icon: <Wallet size={15} className="text-amber-500"/>, bg: "bg-amber-50",  border: "border-amber-100" },
             { label: T("ratingStat"),      value: rating.toFixed(1),       icon: <Star size={15} className="text-yellow-500"/>,          bg: "bg-yellow-50", border: "border-yellow-100" },
           ].map(s => (
             <div key={s.label} className={`flex-1 ${s.bg} rounded-2xl p-3 border ${s.border} text-center`}>
@@ -1045,7 +1046,7 @@ export default function Profile() {
                               {(p.type || "penalty").replace(/_/g, " ")}
                             </span>
                             {p.amount > 0 && (
-                              <span className="text-xs font-black text-red-600">−Rs. {Math.round(p.amount)}</span>
+                              <span className="text-xs font-black text-red-600">−{currency} {Math.round(p.amount)}</span>
                             )}
                           </div>
                           {p.reason && <p className="text-xs text-gray-600 mt-1 leading-relaxed">{p.reason}</p>}

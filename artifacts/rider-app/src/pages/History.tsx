@@ -5,10 +5,9 @@ import {
   ShoppingCart, CreditCard, Calendar, RefreshCw,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual } from "@workspace/i18n";
-
-function formatCurrency(n: number) { return `Rs. ${Math.round(n).toLocaleString()}`; }
 function formatDate(d: string | Date) {
   const date = new Date(d);
   return date.toLocaleDateString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -31,6 +30,8 @@ export default function History() {
   const PAGE_SIZE = 20;
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
+  const { config } = usePlatformConfig();
+  const formatCurrency = (n: number) => `${config.platform.currencySymbol ?? "Rs."} ${Math.round(n).toLocaleString()}`;
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["rider-history"],

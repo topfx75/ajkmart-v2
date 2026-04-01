@@ -496,7 +496,7 @@ export default function Active() {
   const [pressedBtn, setPressedBtn]                = useState<string | null>(null);
   const [isOffline, setIsOffline]                  = useState(!navigator.onLine);
   const [riderPos, setRiderPos]                    = useState<{ lat: number; lng: number } | null>(null);
-  const [adminMessages, setAdminMessages]          = useState<Array<{ text: string; ts: string }>>([]);
+  const [adminMessages, setAdminMessages]          = useState<Array<{ text: string; ts: string; from: "admin" | "rider" }>>([]);
   const [showAdminChat, setShowAdminChat]          = useState(false);
   const [chatReply, setChatReply]                  = useState("");
   const { socket: sharedSocket } = useSocket();
@@ -513,7 +513,7 @@ export default function Active() {
     if (!sharedSocket) return;
     const handler = (msg: { message: string; sentAt: string; from: "admin" }) => {
       if (!isMountedRef.current) return;
-      setAdminMessages(prev => [...prev, { text: msg.message, ts: msg.sentAt }]);
+      setAdminMessages(prev => [...prev, { text: msg.message, ts: msg.sentAt, from: "admin" }]);
       setShowAdminChat(true);
     };
     sharedSocket.on("admin:chat", handler);
@@ -976,8 +976,8 @@ export default function Active() {
             </div>
             <div className="bg-gray-50 rounded-2xl p-3 min-h-[80px] max-h-44 overflow-y-auto space-y-2 mb-3">
               {adminMessages.map((m, i) => (
-                <div key={i} className="flex justify-start">
-                  <div className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-xl max-w-[80%]">{m.text}</div>
+                <div key={i} className={`flex ${m.from === "rider" ? "justify-end" : "justify-start"}`}>
+                  <div className={`text-xs px-3 py-1.5 rounded-xl max-w-[80%] ${m.from === "rider" ? "bg-gray-900 text-white" : "bg-blue-600 text-white"}`}>{m.text}</div>
                 </div>
               ))}
             </div>
@@ -988,7 +988,9 @@ export default function Active() {
                 onChange={e => setChatReply(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === "Enter" && chatReply.trim() && socketRef.current) {
-                    socketRef.current.emit("rider:chat", { message: chatReply.trim() });
+                    const msg = chatReply.trim();
+                    socketRef.current.emit("rider:chat", { message: msg });
+                    setAdminMessages(prev => [...prev, { text: msg, ts: new Date().toISOString(), from: "rider" }]);
                     setChatReply("");
                   }
                 }}
@@ -998,7 +1000,9 @@ export default function Active() {
               <button
                 onClick={() => {
                   if (!chatReply.trim() || !socketRef.current) return;
-                  socketRef.current.emit("rider:chat", { message: chatReply.trim() });
+                  const msg = chatReply.trim();
+                  socketRef.current.emit("rider:chat", { message: msg });
+                  setAdminMessages(prev => [...prev, { text: msg, ts: new Date().toISOString(), from: "rider" }]);
                   setChatReply("");
                 }}
                 className="bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl"
@@ -1122,7 +1126,7 @@ export default function Active() {
                   )}
 
                   <div className="grid grid-cols-2 gap-2">
-                    <NavButton label={T("goToStore")} address={order.vendorAddress || order.vendorStoreName} color="orange" />
+                    <NavButton label={T("goToStore")} lat={order.vendorLat} lng={order.vendorLng} address={order.vendorAddress || order.vendorStoreName} color="orange" />
                     {order.vendorPhone && <CallButton phone={order.vendorPhone} label="Call Store" name={order.vendorStoreName} />}
                   </div>
 
@@ -1191,7 +1195,7 @@ export default function Active() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <NavButton label={T("navigateLabel")} address={order.deliveryAddress} color="blue" />
+                    <NavButton label={T("navigateLabel")} lat={order.deliveryLat} lng={order.deliveryLng} address={order.deliveryAddress} color="blue" />
                     <CallButton name={order.customerName} phone={order.customerPhone} />
                   </div>
 

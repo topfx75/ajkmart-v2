@@ -5,6 +5,7 @@ export interface AuthUser {
   id: string; phone: string; name?: string; email?: string;
   avatar?: string; isOnline: boolean; walletBalance: number;
   isRestricted?: boolean;
+  role?: string;
   createdAt?: string; lastLoginAt?: string;
   stats: { deliveriesToday: number; earningsToday: number; totalDeliveries: number; totalEarnings: number; rating?: number };
   cnic?: string; city?: string; address?: string; emergencyContact?: string;

@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import { usePlatformConfig, getRiderModules } from "./lib/useConfig";
 import { useLanguage, LanguageProvider } from "./lib/useLanguage";
 import { SocketProvider } from "./lib/socket";
+import { registerDrainHandler, type QueuedPing } from "./lib/gpsQueue";
+import { api } from "./lib/api";
 import { BottomNav } from "./components/BottomNav";
 import { AnnouncementBar } from "./components/AnnouncementBar";
 import { MaintenanceScreen } from "./components/MaintenanceScreen";
@@ -19,6 +21,7 @@ import Profile from "./pages/Profile";
 import Wallet from "./pages/Wallet";
 import Notifications from "./pages/Notifications";
 import SecuritySettings from "./pages/SecuritySettings";
+import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
 
@@ -27,6 +30,12 @@ function AppRoutes() {
   const { config } = usePlatformConfig();
   const modules = getRiderModules(config);
   useLanguage();
+
+  useEffect(() => {
+    return registerDrainHandler(async (pings: QueuedPing[]) => {
+      await api.batchLocation(pings.map(({ id, ...rest }) => rest));
+    });
+  }, []);
 
   /* Show a subtle toast whenever refreshUser fails persistently */
   const [refreshFailToast, setRefreshFailToast] = useState(false);
@@ -92,6 +101,7 @@ function AppRoutes() {
           <Route path="/notifications" component={Notifications} />
           <Route path="/profile" component={Profile} />
           <Route path="/settings/security" component={SecuritySettings} />
+          <Route component={NotFound} />
         </Switch>
       </div>
       <BottomNav />

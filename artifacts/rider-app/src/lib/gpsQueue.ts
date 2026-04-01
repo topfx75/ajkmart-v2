@@ -90,3 +90,34 @@ export async function queueSize(): Promise<number> {
     });
   } catch { return 0; }
 }
+
+let _drainFn: ((pings: QueuedPing[]) => Promise<void>) | null = null;
+let _draining = false;
+
+export function registerDrainHandler(fn: (pings: QueuedPing[]) => Promise<void>): () => void {
+  _drainFn = fn;
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    drainQueue();
+  }
+  return () => { if (_drainFn === fn) _drainFn = null; };
+}
+
+async function drainQueue(): Promise<void> {
+  if (_draining || !_drainFn) return;
+  _draining = true;
+  try {
+    const pings = await dequeueAll();
+    if (pings.length === 0) return;
+    const CHUNK = 100;
+    for (let i = 0; i < pings.length; i += CHUNK) {
+      const chunk = pings.slice(i, i + CHUNK);
+      await _drainFn(chunk);
+      await clearQueue(chunk.map(p => p.id));
+    }
+  } catch { /* drain failed — will retry next online event */ }
+  finally { _draining = false; }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => drainQueue());
+}

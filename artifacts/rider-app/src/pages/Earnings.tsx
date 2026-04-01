@@ -13,8 +13,6 @@ import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
 } from "../components/ui/accordion";
 
-function formatCurrency(n: number) { return `Rs. ${Math.round(n).toLocaleString()}`; }
-
 type Period = "today" | "week" | "month";
 
 export default function Earnings() {
@@ -22,6 +20,8 @@ export default function Earnings() {
   const { config } = usePlatformConfig();
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
+  const currency = config.platform.currencySymbol ?? "Rs.";
+  const formatCurrency = (n: number) => `${currency} ${Math.round(n).toLocaleString()}`;
   const riderKeepPct = config.rider?.keepPct ?? config.finance.riderEarningPct;
   const [period, setPeriod] = useState<Period>("week");
   const qc = useQueryClient();
