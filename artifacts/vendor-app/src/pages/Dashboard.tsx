@@ -23,15 +23,15 @@ function VendorNoticeBanner({ message }: { message: string }) {
   );
 }
 
-function LiveTrackingNotice({ liveTracking }: { liveTracking: boolean }) {
+function LiveTrackingNotice({ liveTracking, T }: { liveTracking: boolean; T: (k: Parameters<typeof tDual>[0]) => string }) {
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem("live_tracking_notice_dismissed") === "1");
   if (liveTracking || dismissed) return null;
   return (
     <div className="fixed bottom-24 left-4 right-4 z-40 bg-amber-50 border border-amber-300 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg md:max-w-sm md:left-auto md:right-6">
       <span className="text-lg">📍</span>
       <div className="flex-1">
-        <p className="text-xs font-bold text-amber-800">Live Tracking Disabled</p>
-        <p className="text-xs text-amber-600">Admin ne live tracking band ki hai</p>
+        <p className="text-xs font-bold text-amber-800">{T("liveTrackingDisabled")}</p>
+        <p className="text-xs text-amber-600">{T("liveTrackingUnavailable")}</p>
       </div>
       <button onClick={() => { sessionStorage.setItem("live_tracking_notice_dismissed", "1"); setDismissed(true); }} className="text-amber-500 hover:text-amber-700 text-lg leading-none flex-shrink-0">×</button>
     </div>
@@ -69,7 +69,7 @@ export default function Dashboard() {
       setPendingOrderIds(s => { const n = new Set(s); n.delete(orderId); return n; });
       qc.invalidateQueries({ queryKey: ["vendor-orders"] });
       qc.invalidateQueries({ queryKey: ["vendor-stats"] });
-      showToast(status === "confirmed" ? "✅ Order confirmed!" : "❌ Order cancelled");
+      showToast(status === "confirmed" ? `✅ ${T("orderAcceptedMsg")}` : `❌ ${T("orderCancelledMsg")}`);
     },
     onError: (e: Error, { orderId }) => {
       setPendingOrderIds(s => { const n = new Set(s); n.delete(orderId); return n; });
@@ -96,7 +96,7 @@ export default function Dashboard() {
         subtitle={user?.storeCategory ? `${user.storeCategory} · ${config.platform.appName} Partner` : `${config.platform.appName} Vendor Portal`}
         actions={
           <div className="flex items-center gap-2">
-            <span className="hidden md:block text-sm text-gray-500 font-medium">Store:</span>
+            <span className="hidden md:block text-sm text-gray-500 font-medium">{T("store")}:</span>
             <button
               onClick={() => toggleMut.mutate(!user?.storeIsOpen)}
               disabled={toggleMut.isPending}
@@ -106,7 +106,7 @@ export default function Dashboard() {
               <div className={`w-6 h-6 bg-white rounded-full absolute top-1 shadow-md transition-all duration-300 ${user?.storeIsOpen ? "left-7" : "left-1"}`} />
             </button>
             <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${user?.storeIsOpen ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-              {user?.storeIsOpen ? "Open" : "Closed"}
+              {user?.storeIsOpen ? T("openLabel") : T("closedLabel")}
             </span>
           </div>
         }
@@ -202,8 +202,8 @@ export default function Dashboard() {
                 <div className="px-4 py-3.5 border-b border-orange-100 bg-orange-50 flex items-center gap-2">
                   <span className="text-lg">🔔</span>
                   <div>
-                    <p className="font-bold text-orange-800 text-sm">{pendingOrders.length} New Order{pendingOrders.length > 1 ? "s" : ""}!</p>
-                    <p className="text-orange-500 text-xs">Accept within 5 minutes</p>
+                    <p className="font-bold text-orange-800 text-sm">{pendingOrders.length} {T("newOrders")}!</p>
+                    <p className="text-orange-500 text-xs">{T("acceptWithinTime")}</p>
                   </div>
                 </div>
                 <div className="divide-y divide-gray-50">
@@ -215,7 +215,7 @@ export default function Dashboard() {
                         {o.type === "food" ? "🍔" : "🛒"}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-800 capitalize">{o.type} Order</p>
+                        <p className="font-semibold text-sm text-gray-800 capitalize">{o.type}</p>
                         <p className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()} · {fc(o.total)}</p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
@@ -232,8 +232,8 @@ export default function Dashboard() {
             ) : (
               <div className={`${CARD} px-4 py-10 text-center`}>
                 <p className="text-4xl mb-2">📋</p>
-                <p className="font-bold text-gray-500 text-sm">No pending orders</p>
-                <p className="text-xs text-gray-400 mt-1">New orders appear here instantly</p>
+                <p className="font-bold text-gray-500 text-sm">{T("noNewOrders")}</p>
+                <p className="text-xs text-gray-400 mt-1">{T("newOrdersAppearHere")}</p>
               </div>
             )}
           </div>
@@ -243,14 +243,14 @@ export default function Dashboard() {
             {activeOrders.length > 0 ? (
               <div className={CARD}>
                 <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between">
-                  <p className="font-bold text-gray-800 text-sm">{activeOrders.length} Active Order{activeOrders.length > 1 ? "s" : ""}</p>
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">In Progress</span>
+                  <p className="font-bold text-gray-800 text-sm">{activeOrders.length} {T("activeOrders")}</p>
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">{T("inProgress")}</span>
                 </div>
                 <div className="divide-y divide-gray-50">
                   {activeOrders.map((o: any) => (
                     <div key={o.id} className="px-4 py-3 flex items-center justify-between">
                       <div>
-                        <p className="font-semibold text-sm text-gray-800 capitalize">{o.type} Order</p>
+                        <p className="font-semibold text-sm text-gray-800 capitalize">{o.type}</p>
                         <p className="text-xs text-gray-400 font-mono">#{o.id.slice(-6).toUpperCase()}</p>
                       </div>
                       <div className="text-right">
@@ -267,8 +267,8 @@ export default function Dashboard() {
             ) : (
               <div className={`${CARD} px-4 py-10 text-center`}>
                 <p className="text-4xl mb-2">🍳</p>
-                <p className="font-bold text-gray-500 text-sm">No active orders</p>
-                <p className="text-xs text-gray-400 mt-1">Accepted orders show here</p>
+                <p className="font-bold text-gray-500 text-sm">{T("noActiveOrdersLabel")}</p>
+                <p className="text-xs text-gray-400 mt-1">{T("activeOrdersShowHere")}</p>
               </div>
             )}
           </div>
@@ -278,12 +278,12 @@ export default function Dashboard() {
         <div className="md:hidden bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-4 text-white shadow-sm">
           <div className="flex justify-between items-center">
             <div>
-              <p className="text-sm text-orange-100 font-medium">Your Commission</p>
+              <p className="text-sm text-orange-100 font-medium">{T("yourCommission")}</p>
               <p className="text-4xl font-extrabold">{Math.round(100 - (config.platform.vendorCommissionPct ?? DEFAULT_COMMISSION_PCT))}%</p>
-              <p className="text-xs text-orange-100 mt-0.5">of every order value</p>
+              <p className="text-xs text-orange-100 mt-0.5">{T("ofEveryOrder")}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-orange-100">All-Time Earned</p>
+              <p className="text-sm text-orange-100">{T("allTimeEarned")}</p>
               <p className="text-2xl font-extrabold">{fc(user?.stats?.totalRevenue || 0)}</p>
             </div>
           </div>
@@ -314,23 +314,23 @@ export default function Dashboard() {
       </div>
 
       {/* Live Tracking disabled notice — dismissable once per session */}
-      <LiveTrackingNotice liveTracking={config.features.liveTracking} />
+      <LiveTrackingNotice liveTracking={config.features.liveTracking} T={T} />
 
       {/* Accept order confirmation dialog */}
       {acceptDialog && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setAcceptDialog(null)}>
           <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold text-gray-800 mb-1">Accept Order?</h3>
-            <p className="text-sm text-gray-500 mb-4">Yeh order accept karna chahte hain? / By accepting, you commit to preparing this order ({fc(acceptDialog.total)}) within the required time.</p>
+            <h3 className="text-lg font-extrabold text-gray-800 mb-1">{T("acceptOrder")}?</h3>
+            <p className="text-sm text-gray-500 mb-4">{T("reviewConfirm")} ({fc(acceptDialog.total)})</p>
             <div className="flex gap-3">
-              <button onClick={() => setAcceptDialog(null)} className="flex-1 h-11 border-2 border-gray-200 text-gray-600 font-bold rounded-xl text-sm">← Back</button>
+              <button onClick={() => setAcceptDialog(null)} className="flex-1 h-11 border-2 border-gray-200 text-gray-600 font-bold rounded-xl text-sm">← {T("back")}</button>
               <button
                 onClick={() => {
                   orderActionMut.mutate({ orderId: acceptDialog.orderId, status: "confirmed" });
                   setAcceptDialog(null);
                 }}
                 className="flex-1 h-11 bg-green-500 text-white font-bold rounded-xl text-sm">
-                ✓ Confirm Accept
+                ✓ {T("confirmLabel")}
               </button>
             </div>
           </div>
@@ -341,9 +341,9 @@ export default function Dashboard() {
       {cancelDialog && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setCancelDialog(null)}>
           <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold text-gray-800 mb-1">Cancel Order</h3>
-            <p className="text-sm text-gray-500 mb-4">Yeh order cancel karna chahte hain? / Cancel this order?</p>
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1.5">Cancellation Reason (Optional)</label>
+            <h3 className="text-lg font-extrabold text-gray-800 mb-1">{T("cancelOrder")}</h3>
+            <p className="text-sm text-gray-500 mb-4">{T("cancelConfirmMsg")}</p>
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1.5">{T("reason")} ({T("noteOptional")})</label>
             <textarea
               rows={3}
               defaultValue={cancelReasonRef.current}
@@ -352,14 +352,14 @@ export default function Dashboard() {
               className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-orange-400 resize-none mb-4"
             />
             <div className="flex gap-3">
-              <button onClick={() => setCancelDialog(null)} className="flex-1 h-11 border-2 border-gray-200 text-gray-600 font-bold rounded-xl text-sm">← Back</button>
+              <button onClick={() => setCancelDialog(null)} className="flex-1 h-11 border-2 border-gray-200 text-gray-600 font-bold rounded-xl text-sm">← {T("back")}</button>
               <button
                 onClick={() => {
                   orderActionMut.mutate({ orderId: cancelDialog.orderId, status: "cancelled", reason: cancelReasonRef.current || undefined });
                   setCancelDialog(null);
                 }}
                 className="flex-1 h-11 bg-red-500 text-white font-bold rounded-xl text-sm">
-                ✕ Confirm Cancel
+                ✕ {T("cancelConfirm")}
               </button>
             </div>
           </div>

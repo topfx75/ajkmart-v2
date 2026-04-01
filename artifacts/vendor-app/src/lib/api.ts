@@ -167,6 +167,30 @@ export const api = {
   withdrawWallet: (data: { amount: number; bankName: string; accountNumber: string; accountTitle: string; note?: string }) =>
     apiFetch("/vendor/wallet/withdraw", { method: "POST", body: JSON.stringify(data) }),
 
+  /* Image Upload */
+  uploadImage: async (file: File): Promise<{ url: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const result = await apiFetch("/uploads", {
+            method: "POST",
+            body: JSON.stringify({
+              file: reader.result as string,
+              filename: file.name,
+              mimeType: file.type,
+            }),
+          });
+          resolve({ url: result.url });
+        } catch (e) {
+          reject(e);
+        }
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  },
+
   /* Notifications */
   getNotifications:  () => apiFetch("/vendor/notifications"),
   markAllRead:       () => apiFetch("/vendor/notifications/read-all", { method: "PATCH", body: "{}" }),

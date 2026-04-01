@@ -34,10 +34,10 @@ function StarRating({ value, size = "sm" }: { value: number; size?: "sm" | "lg" 
   );
 }
 
-function StatusPill({ status }: { status: string }) {
-  if (status === "visible")            return <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold">Visible</span>;
-  if (status === "pending_moderation") return <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">Under Review</span>;
-  if (status === "rejected")           return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">Rejected</span>;
+function StatusPill({ status, T }: { status: string; T: (k: TranslationKey) => string }) {
+  if (status === "visible")            return <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold">{T("visibleLabel")}</span>;
+  if (status === "pending_moderation") return <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">{T("underReview")}</span>;
+  if (status === "rejected")           return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">{T("rejected")}</span>;
   return null;
 }
 
@@ -59,13 +59,18 @@ export default function Reviews() {
     staleTime: 30_000,
   });
 
+  const [toast, setToast] = useState("");
+  const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
+
   const postM = useMutation({
     mutationFn: ({ reviewId, reply }: { reviewId: string, reply: string }) => api.postVendorReply(reviewId, reply),
     onSuccess: () => { 
       qc.invalidateQueries({ queryKey: ["vendor-reviews"] }); 
       setReplyOpen(null);
       setReplyText("");
+      showToast(`✅ ${T("replyPostedMsg")}`);
     },
+    onError: (e: Error) => showToast("❌ " + (e.message || T("somethingWentWrong"))),
   });
 
   const putM = useMutation({
@@ -74,7 +79,9 @@ export default function Reviews() {
       qc.invalidateQueries({ queryKey: ["vendor-reviews"] }); 
       setReplyOpen(null);
       setReplyText("");
+      showToast(`✅ ${T("replyUpdatedMsg")}`);
     },
+    onError: (e: Error) => showToast("❌ " + (e.message || T("somethingWentWrong"))),
   });
 
   const delM = useMutation({
@@ -83,7 +90,9 @@ export default function Reviews() {
       qc.invalidateQueries({ queryKey: ["vendor-reviews"] }); 
       setReplyOpen(null);
       setReplyText("");
+      showToast(`🗑️ ${T("replyDeletedMsg")}`);
     },
+    onError: (e: Error) => showToast("❌ " + (e.message || T("somethingWentWrong"))),
   });
 
   const reviews: Array<{
@@ -200,7 +209,7 @@ export default function Reviews() {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-bold text-gray-800">{r.customerName ?? T("customer")}</p>
-                      <StatusPill status={r.status} />
+                      <StatusPill status={r.status} T={T} />
                     </div>
                     <p className="text-xs text-gray-400">
                       {r.orderType && (
@@ -228,7 +237,7 @@ export default function Reviews() {
                         }
                       }}
                     >
-                      {r.vendorReply ? "Edit Reply" : "Reply"}
+                      {r.vendorReply ? T("editReplyLabel") : T("replyLabel")}
                     </button>
                   )}
                 </div>
@@ -321,6 +330,13 @@ export default function Reviews() {
         </div>
       )}
       </div>
+
+      {toast && (
+        <div className="fixed top-0 left-0 right-0 z-50 flex justify-center toast-in"
+          style={{ paddingTop: "calc(env(safe-area-inset-top,0px) + 8px)", paddingLeft: "16px", paddingRight: "16px" }}>
+          <div className="bg-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-2xl max-w-sm w-full text-center">{toast}</div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,7 +6,8 @@ import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
-import { fc, CARD, CARD_HEADER, INPUT, TEXTAREA, BTN_PRIMARY, LABEL, errMsg } from "../lib/ui";
+import { ImageUploader } from "../components/ImageUploader";
+import { fc, CARD, INPUT, TEXTAREA, BTN_PRIMARY, LABEL, errMsg } from "../lib/ui";
 import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
 } from "../components/ui/accordion";
@@ -136,9 +137,9 @@ export default function Store() {
   });
 
   const TABS = [
-    { key:"info",   label:"Store Info", icon:"🏪" },
-    { key:"hours",  label:"Hours",      icon:"🕐" },
-    { key:"promos", label:"Promos",     icon:"🎟️" },
+    { key:"info",   label: T("storeInfo"), icon:"🏪" },
+    { key:"hours",  label: T("hoursLabel"), icon:"🕐" },
+    { key:"promos", label: T("promosLabel"), icon:"🎟️" },
   ];
 
   return (
@@ -177,9 +178,9 @@ export default function Store() {
               )}
               <div className={`${CARD} p-4 space-y-3`}>
                 {[
-                  { label:"Store Name",           key:"storeName",         placeholder:"My Awesome Store",                  type:"text" },
-                  { label:"Category",             key:"storeCategory",     placeholder:"restaurant / grocery / pharmacy...", type:"text" },
-                  { label:"Announcement / Notice",key:"storeAnnouncement", placeholder:"20% off all items today!",           type:"text" },
+                  { label: T("storeName"),                   key:"storeName",         placeholder:"My Awesome Store",                  type:"text" },
+                  { label: T("categoryLabel"),               key:"storeCategory",     placeholder:"restaurant / grocery / pharmacy...", type:"text" },
+                  { label: T("announcementNotice"),           key:"storeAnnouncement", placeholder:"20% off all items today!",           type:"text" },
                 ].map(({ label, key, placeholder, type }) => (
                   <div key={key}>
                     <label className={LABEL}>{label}</label>
@@ -190,26 +191,28 @@ export default function Store() {
             </div>
             <div className="space-y-4">
               <div className={`${CARD} p-4 space-y-3`}>
-                {[
-                  { label:"Banner Image URL",     key:"storeBanner",       placeholder:"https://...",      type:"url"  },
-                  { label:"Est. Delivery Time",   key:"storeDeliveryTime", placeholder:"30-45 min",        type:"text" },
-                ].map(({ label, key, placeholder, type }) => (
-                  <div key={key}>
-                    <label className={LABEL}>{label}</label>
-                    <input type={type} value={(sf as any)[key]} onChange={e => s(key, e.target.value)} placeholder={placeholder} className={INPUT}/>
-                  </div>
-                ))}
+                <ImageUploader
+                  value={sf.storeBanner}
+                  onChange={url => s("storeBanner", url)}
+                  label={T("bannerImage")}
+                  placeholder="https://..."
+                  previewHeight="h-36"
+                />
                 <div>
-                  <label className={LABEL}>Min Order (Rs.)</label>
+                  <label className={LABEL}>{T("deliveryTime")}</label>
+                  <input type="text" value={sf.storeDeliveryTime} onChange={e => s("storeDeliveryTime", e.target.value)} placeholder="30-45 min" className={INPUT}/>
+                </div>
+                <div>
+                  <label className={LABEL}>{T("minOrder")} (Rs.)</label>
                   <input type="number" inputMode="numeric" value={sf.storeMinOrder} onChange={e => s("storeMinOrder", e.target.value)} placeholder="0" className={INPUT}/>
                 </div>
                 <div>
-                  <label className={LABEL}>About Store</label>
+                  <label className={LABEL}>{T("aboutStore")}</label>
                   <textarea value={sf.storeDescription} onChange={e => s("storeDescription", e.target.value)} placeholder="Tell customers about your store..." rows={3} className={TEXTAREA}/>
                 </div>
               </div>
               <button onClick={() => storeMut.mutate()} disabled={storeMut.isPending} className={BTN_PRIMARY}>
-                {storeMut.isPending ? "Saving..." : "💾 Save Store Info"}
+                {storeMut.isPending ? T("saving") : `💾 ${T("saveStoreInfo")}`}
               </button>
             </div>
           </div>
@@ -223,8 +226,8 @@ export default function Store() {
                 <AccordionItem value="weekdays" className="border-0">
                   <AccordionTrigger className="px-4 py-3.5 bg-gray-50 hover:no-underline rounded-t-2xl">
                     <div>
-                      <span className="font-bold text-gray-800 text-sm block text-left">Weekday Hours</span>
-                      <span className="text-xs text-gray-400">Mon – Fri open/close times</span>
+                      <span className="font-bold text-gray-800 text-sm block text-left">{T("hoursLabel")} (Mon–Fri)</span>
+                      <span className="text-xs text-gray-400">{T("opens")} / {T("closes")}</span>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pt-0 pb-0">
@@ -237,19 +240,19 @@ export default function Store() {
                               <p className="font-bold text-sm text-gray-800">{day}</p>
                               <button onClick={() => setHours(prev => ({ ...prev, [day]: { ...h, closed: !h.closed } }))}
                                 className={`text-xs font-bold px-3 py-1.5 rounded-full android-press min-h-0 ${h.closed ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700"}`}>
-                                {h.closed ? "Closed" : "Open"}
+                                {h.closed ? T("closedLabel") : T("openLabel")}
                               </button>
                             </div>
                             {!h.closed && (
                               <div className="flex items-center gap-3">
                                 <div className="flex-1">
-                                  <p className="text-[10px] text-gray-400 font-bold mb-1">OPENS</p>
+                                  <p className="text-[10px] text-gray-400 font-bold mb-1">{T("opens").toUpperCase()}</p>
                                   <input type="time" value={h.open} onChange={e => setHours(prev => ({ ...prev, [day]: { ...h, open: e.target.value } }))}
                                     className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-orange-400 text-sm"/>
                                 </div>
                                 <span className="text-gray-300 font-bold mt-4">—</span>
                                 <div className="flex-1">
-                                  <p className="text-[10px] text-gray-400 font-bold mb-1">CLOSES</p>
+                                  <p className="text-[10px] text-gray-400 font-bold mb-1">{T("closes").toUpperCase()}</p>
                                   <input type="time" value={h.close} onChange={e => setHours(prev => ({ ...prev, [day]: { ...h, close: e.target.value } }))}
                                     className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-orange-400 text-sm"/>
                                 </div>
@@ -268,8 +271,8 @@ export default function Store() {
                 <AccordionItem value="weekend" className="border-0">
                   <AccordionTrigger className="px-4 py-3.5 bg-gray-50 hover:no-underline rounded-t-2xl">
                     <div>
-                      <span className="font-bold text-gray-800 text-sm block text-left">Weekend Hours</span>
-                      <span className="text-xs text-gray-400">Sat – Sun open/close times</span>
+                      <span className="font-bold text-gray-800 text-sm block text-left">{T("weekendHours")}</span>
+                      <span className="text-xs text-gray-400">{T("opens")} / {T("closes")}</span>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pt-0 pb-0">
@@ -282,19 +285,19 @@ export default function Store() {
                               <p className="font-bold text-sm text-gray-800">{day}</p>
                               <button onClick={() => setHours(prev => ({ ...prev, [day]: { ...h, closed: !h.closed } }))}
                                 className={`text-xs font-bold px-3 py-1.5 rounded-full android-press min-h-0 ${h.closed ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700"}`}>
-                                {h.closed ? "Closed" : "Open"}
+                                {h.closed ? T("closedLabel") : T("openLabel")}
                               </button>
                             </div>
                             {!h.closed && (
                               <div className="flex items-center gap-3">
                                 <div className="flex-1">
-                                  <p className="text-[10px] text-gray-400 font-bold mb-1">OPENS</p>
+                                  <p className="text-[10px] text-gray-400 font-bold mb-1">{T("opens").toUpperCase()}</p>
                                   <input type="time" value={h.open} onChange={e => setHours(prev => ({ ...prev, [day]: { ...h, open: e.target.value } }))}
                                     className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-orange-400 text-sm"/>
                                 </div>
                                 <span className="text-gray-300 font-bold mt-4">—</span>
                                 <div className="flex-1">
-                                  <p className="text-[10px] text-gray-400 font-bold mb-1">CLOSES</p>
+                                  <p className="text-[10px] text-gray-400 font-bold mb-1">{T("closes").toUpperCase()}</p>
                                   <input type="time" value={h.close} onChange={e => setHours(prev => ({ ...prev, [day]: { ...h, close: e.target.value } }))}
                                     className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-orange-400 text-sm"/>
                                 </div>
@@ -315,7 +318,7 @@ export default function Store() {
                 </div>
               )}
               <button onClick={() => hoursMut.mutate()} disabled={hoursMut.isPending} className={BTN_PRIMARY}>
-                {hoursMut.isPending ? "Saving..." : "💾 Save Hours"}
+                {hoursMut.isPending ? T("saving") : `💾 ${T("save")} ${T("hoursLabel")}`}
               </button>
             </div>
           </div>
@@ -325,67 +328,67 @@ export default function Store() {
         {tab === "promos" && !promoEnabled && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
             <p className="text-4xl mb-3">🔒</p>
-            <p className="font-bold text-amber-800 text-base">Promo Codes Disabled</p>
-            <p className="text-sm text-amber-600 mt-1 leading-relaxed">Admin ne abhi promo code creation disable ki hui hai. Jald hi wapas aayega!</p>
+            <p className="font-bold text-amber-800 text-base">{T("promoDisabled")}</p>
+            <p className="text-sm text-amber-600 mt-1 leading-relaxed">{T("promoCodesDesc")}</p>
           </div>
         )}
         {tab === "promos" && promoEnabled && (
           <div className="md:grid md:grid-cols-2 md:gap-6 space-y-4 md:space-y-0">
             <div>
               <div className={`${CARD} p-4 space-y-3`}>
-                <p className="font-bold text-gray-800 text-base">🎟️ Create Promo Code</p>
+                <p className="font-bold text-gray-800 text-base">🎟️ {T("createPromoCode")}</p>
                 <div>
-                  <label className={LABEL}>Promo Code *</label>
+                  <label className={LABEL}>{T("promoCode")} *</label>
                   <input value={pf.code} onChange={e => p("code", e.target.value.toUpperCase())} placeholder="SUMMER20"
                     className={`${INPUT} font-extrabold tracking-[0.2em]`}/>
                 </div>
                 <div>
-                  <label className={LABEL}>Discount Type</label>
+                  <label className={LABEL}>{T("discountType")}</label>
                   <div className="flex gap-2">
-                    <button onClick={() => p("type","pct")}  className={`flex-1 h-11 rounded-xl text-sm font-bold border-2 android-press min-h-0 ${pf.type==="pct"  ? "border-orange-500 bg-orange-50 text-orange-600" : "border-gray-200 text-gray-400"}`}>% Percentage</button>
-                    <button onClick={() => p("type","flat")} className={`flex-1 h-11 rounded-xl text-sm font-bold border-2 android-press min-h-0 ${pf.type==="flat" ? "border-orange-500 bg-orange-50 text-orange-600" : "border-gray-200 text-gray-400"}`}>Rs. Flat</button>
+                    <button onClick={() => p("type","pct")}  className={`flex-1 h-11 rounded-xl text-sm font-bold border-2 android-press min-h-0 ${pf.type==="pct"  ? "border-orange-500 bg-orange-50 text-orange-600" : "border-gray-200 text-gray-400"}`}>% {T("percentage")}</button>
+                    <button onClick={() => p("type","flat")} className={`flex-1 h-11 rounded-xl text-sm font-bold border-2 android-press min-h-0 ${pf.type==="flat" ? "border-orange-500 bg-orange-50 text-orange-600" : "border-gray-200 text-gray-400"}`}>Rs. {T("flatAmount")}</button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={LABEL}>{pf.type === "pct" ? "Discount %" : "Flat Amount"} *</label>
+                    <label className={LABEL}>{pf.type === "pct" ? `${T("percentage")} %` : T("flatAmount")} *</label>
                     <input type="number" inputMode="numeric" value={pf.type==="pct" ? pf.discountPct : pf.discountFlat} onChange={e => p(pf.type==="pct" ? "discountPct" : "discountFlat", e.target.value)} placeholder={pf.type==="pct" ? "20" : "100"} className={INPUT}/>
                   </div>
                   <div>
-                    <label className={LABEL}>Min Order (Rs.)</label>
+                    <label className={LABEL}>{T("minOrder")} (Rs.)</label>
                     <input type="number" inputMode="numeric" value={pf.minOrderAmount} onChange={e => p("minOrderAmount",e.target.value)} placeholder="500" className={INPUT}/>
                   </div>
                   <div>
-                    <label className={LABEL}>Usage Limit</label>
+                    <label className={LABEL}>{T("usageLimit")}</label>
                     <input type="number" inputMode="numeric" value={pf.usageLimit} onChange={e => p("usageLimit",e.target.value)} placeholder="100" className={INPUT}/>
                   </div>
                   <div>
-                    <label className={LABEL}>Expires On</label>
+                    <label className={LABEL}>{T("expiresOn")}</label>
                     <input type="date" value={pf.expiresAt} onChange={e => p("expiresAt",e.target.value)} className={INPUT}/>
                   </div>
                   <div className="col-span-2">
-                    <label className={LABEL}>Description</label>
+                    <label className={LABEL}>{T("descriptionLabel")}</label>
                     <input value={pf.description} onChange={e => p("description",e.target.value)} placeholder="Get 20% off on all items" className={INPUT}/>
                   </div>
                 </div>
                 {!promoDiscountValid && (pf.discountPct !== "" || pf.discountFlat !== "") && (
-                  <p className="text-xs text-red-500 font-medium">⚠️ Discount must be greater than 0</p>
+                  <p className="text-xs text-red-500 font-medium">⚠️ {T("discountMustBePositive")}</p>
                 )}
                 <button onClick={() => createPromoMut.mutate()} disabled={!pf.code || !promoDiscountValid || createPromoMut.isPending} className={BTN_PRIMARY}>
-                  {createPromoMut.isPending ? "Creating..." : "🎟️ Create Promo Code"}
+                  {createPromoMut.isPending ? T("loading") : `🎟️ ${T("createPromoCode")}`}
                 </button>
               </div>
             </div>
 
             <div>
-              <p className="font-bold text-gray-700 text-sm mb-3">Active Promo Codes</p>
+              <p className="font-bold text-gray-700 text-sm mb-3">{T("activePromoCodes")}</p>
               {promoLoad ? (
                 <div className="h-16 skeleton rounded-2xl"/>
               ) : promos.length === 0 ? (
                 <div className={`${CARD} px-4 py-12 text-center`}>
                   <p className="text-4xl mb-2">🎟️</p>
-                  <p className="font-bold text-gray-600 text-base">No promo codes yet</p>
-                  <p className="text-sm text-gray-400 mt-1">Create your first one</p>
+                  <p className="font-bold text-gray-600 text-base">{T("noPromoCodes")}</p>
+                  <p className="text-sm text-gray-400 mt-1">{T("createPromoCode")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -418,10 +421,10 @@ export default function Store() {
                                 type: pm.discountFlat > 0 ? "flat" : "pct",
                               });
                             }} className="h-9 px-3 text-xs font-bold rounded-xl android-press min-h-0 bg-blue-50 text-blue-600">
-                              {editingPromo?.id === pm.id ? "Cancel" : "✏️ Edit"}
+                              {editingPromo?.id === pm.id ? T("cancelConfirm") : `✏️ ${T("edit")}`}
                             </button>
                             <button onClick={() => togglePromoMut.mutate(pm.id)} className={`h-9 px-3 text-xs font-bold rounded-xl android-press min-h-0 ${pm.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                              {pm.isActive ? "Active" : "Off"}
+                              {pm.isActive ? T("active") : T("inactiveLabel")}
                             </button>
                             <button onClick={() => deletePromoMut.mutate(pm.id)} className="h-9 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">Del</button>
                           </div>
@@ -430,28 +433,28 @@ export default function Store() {
                           <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className={LABEL}>{pf.type === "pct" ? "Discount %" : "Flat Amount"}</label>
+                                <label className={LABEL}>{pf.type === "pct" ? `${T("percentage")} %` : T("flatAmount")}</label>
                                 <input type="number" inputMode="numeric" value={pf.type==="pct" ? pf.discountPct : pf.discountFlat} onChange={e => p(pf.type==="pct" ? "discountPct" : "discountFlat", e.target.value)} className={INPUT}/>
                               </div>
                               <div>
-                                <label className={LABEL}>Min Order (Rs.)</label>
+                                <label className={LABEL}>{T("minOrder")} (Rs.)</label>
                                 <input type="number" inputMode="numeric" value={pf.minOrderAmount} onChange={e => p("minOrderAmount", e.target.value)} className={INPUT}/>
                               </div>
                               <div>
-                                <label className={LABEL}>Usage Limit</label>
+                                <label className={LABEL}>{T("usageLimit")}</label>
                                 <input type="number" inputMode="numeric" value={pf.usageLimit} onChange={e => p("usageLimit", e.target.value)} className={INPUT}/>
                               </div>
                               <div>
-                                <label className={LABEL}>Expires On</label>
+                                <label className={LABEL}>{T("expiresOn")}</label>
                                 <input type="date" value={pf.expiresAt} onChange={e => p("expiresAt", e.target.value)} className={INPUT}/>
                               </div>
                               <div className="col-span-2">
-                                <label className={LABEL}>Description</label>
+                                <label className={LABEL}>{T("descriptionLabel")}</label>
                                 <input value={pf.description} onChange={e => p("description", e.target.value)} className={INPUT}/>
                               </div>
                             </div>
                             <button onClick={() => updatePromoMut.mutate(pm.id)} disabled={updatePromoMut.isPending} className="w-full h-10 bg-orange-500 text-white font-bold rounded-xl text-sm android-press">
-                              {updatePromoMut.isPending ? "Saving..." : "✓ Save Changes"}
+                              {updatePromoMut.isPending ? T("saving") : `✓ ${T("save")}`}
                             </button>
                           </div>
                         )}

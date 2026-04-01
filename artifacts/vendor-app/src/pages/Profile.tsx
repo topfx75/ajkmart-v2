@@ -16,7 +16,7 @@ const CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jh
 const BANKS  = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
 const BIZ_TYPES = ["Sole Proprietorship","Partnership","Private Limited","Trust / NGO","Individual / Freelancer"];
 
-function fd(d: string | Date) {
+function fdLong(d: string | Date) {
   return new Date(d).toLocaleDateString("en-PK", { day:"numeric", month:"long", year:"numeric" });
 }
 
@@ -232,8 +232,8 @@ export default function Profile() {
                 <p className="font-bold text-gray-800 text-sm">🔒 Security & Session</p>
               </div>
               <div className="px-4 py-3">
-                <InfoRow label="Member Since" value={user?.createdAt ? fd(user.createdAt) : "—"} />
-                <InfoRow label="Last Login"   value={user?.lastLoginAt ? fd(user.lastLoginAt) : "Now"} />
+                <InfoRow label="Member Since" value={user?.createdAt ? fdLong(user.createdAt) : "—"} />
+                <InfoRow label="Last Login"   value={user?.lastLoginAt ? fdLong(user.lastLoginAt) : "Now"} />
                 <InfoRow label="Status"       value="✓ Active & Verified" />
                 <div className="bg-blue-50 rounded-xl p-3 mt-2">
                   <p className="text-xs text-blue-700 font-medium">🔐 Session secured via encrypted authentication. Logout if using a shared device.</p>

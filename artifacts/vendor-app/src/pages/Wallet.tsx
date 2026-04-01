@@ -199,29 +199,29 @@ export default function Wallet() {
           <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full"/>
           <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/10 rounded-full"/>
           <div className="relative">
-            <p className="text-sm text-orange-100 font-semibold">Available Balance</p>
+            <p className="text-sm text-orange-100 font-semibold">{T("availableBalance")}</p>
             <p className={`text-5xl font-extrabold mt-1 tracking-tight ${balance < 0 ? "text-red-200" : ""}`}>{fc(balance)}</p>
-            <p className="text-xs text-orange-200 mt-2">{vendorKeepPct}% of each order goes to your wallet · {commissionPct}% platform commission</p>
+            <p className="text-xs text-orange-200 mt-2">{vendorKeepPct}% → {T("wallet")} · {commissionPct}% {T("platformFeeLabel")}</p>
             <div className="flex gap-3 mt-4">
               {withdrawalEnabled ? (
                 balance >= minPayout ? (
                   <button onClick={() => setShowWithdraw(true)}
                     className="flex-1 h-12 bg-white text-orange-500 font-extrabold rounded-2xl android-press text-sm flex items-center justify-center gap-2 shadow-md">
-                    💸 Withdraw
+                    💸 {T("withdraw")}
                   </button>
                 ) : (
                   <div className="flex-1 h-12 bg-white/30 rounded-2xl flex flex-col items-center justify-center text-sm font-bold text-white/80 cursor-not-allowed" title={`Minimum payout: ${fc(minPayout)}`}>
-                    <span>💸 Min. {fc(minPayout)} required</span>
+                    <span>💸 {T("minWithdrawalLabel")}: {fc(minPayout)}</span>
                   </div>
                 )
               ) : (
                 <div className="flex-1 h-12 bg-white/30 rounded-2xl flex items-center justify-center text-sm font-bold text-white/80 cursor-not-allowed">
-                  🔒 Withdrawals Paused
+                  🔒 {T("withdrawalsPaused")}
                 </div>
               )}
               <div className="flex-1 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
                 <div className="text-center">
-                  <p className="text-xs text-orange-200">Your Share</p>
+                  <p className="text-xs text-orange-200">{T("vendorShare")}</p>
                   <p className="text-xl font-extrabold">{vendorKeepPct}%</p>
                 </div>
               </div>
@@ -232,9 +232,9 @@ export default function Wallet() {
         {/* ── Earnings Stats ── */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "Today's Earnings",  value: fc(todayEarned), icon: "☀️", color: "bg-amber-50" },
-            { label: "This Week",         value: fc(weekEarned),  icon: "📅", color: "bg-blue-50"  },
-            { label: "Credits (last 50 txns)", value: fc(credits),  icon: "💰", color: "bg-green-50" },
+            { label: T("earnedToday"),    value: fc(todayEarned), icon: "☀️", color: "bg-amber-50" },
+            { label: T("earnedThisWeek"), value: fc(weekEarned),  icon: "📅", color: "bg-blue-50"  },
+            { label: T("totalCredits"),   value: fc(credits),     icon: "💰", color: "bg-green-50" },
           ].map(s => (
             <div key={s.label} className={`${s.color} rounded-2xl p-3 text-center`}>
               <p className="text-xl">{s.icon}</p>
@@ -249,8 +249,8 @@ export default function Wallet() {
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3">
             <span className="text-2xl flex-shrink-0">🚫</span>
             <div>
-              <p className="text-sm font-bold text-red-800">Withdrawals Temporarily Disabled</p>
-              <p className="text-xs text-red-600 mt-0.5 leading-relaxed">Admin ne withdrawal requests abhi disable ki hain. Please baad mein try karein ya support se rabita karein.</p>
+              <p className="text-sm font-bold text-red-800">{T("withdrawalsPaused")}</p>
+              <p className="text-xs text-red-600 mt-0.5 leading-relaxed">{T("withdrawalsDisabled")}</p>
             </div>
           </div>
         )}
@@ -259,7 +259,7 @@ export default function Wallet() {
         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex gap-3">
           <span className="text-2xl flex-shrink-0">📅</span>
           <div>
-            <p className="text-sm font-bold text-amber-800">Settlement Cycle</p>
+            <p className="text-sm font-bold text-amber-800">{T("settlementCycle")}</p>
             <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Earnings are settled every <strong>{settleDays} days</strong> after order completion. Min. withdrawal is <strong>{fc(minPayout)}</strong>{maxPayout != null ? <> · Max. <strong>{fc(maxPayout)}</strong> per request</> : " · No maximum limit set by admin"}.</p>
           </div>
         </div>
@@ -267,7 +267,7 @@ export default function Wallet() {
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex gap-3">
           <span className="text-2xl flex-shrink-0">🔒</span>
           <div>
-            <p className="text-sm font-bold text-blue-800">Secure Withdrawals</p>
+            <p className="text-sm font-bold text-blue-800">{T("secureWithdrawals")}</p>
             <p className="text-xs text-blue-600 mt-0.5 leading-relaxed">All withdrawal requests are reviewed by admin. Funds transferred within 24–48 hours. Min: {fc(minPayout)}{maxPayout != null ? ` – Max: ${fc(maxPayout)} per request` : " · No maximum limit configured"}.</p>
           </div>
         </div>
@@ -276,10 +276,10 @@ export default function Wallet() {
         <div className={CARD}>
           <div className={CARD_HEADER}>
             <div>
-              <p className="font-bold text-gray-800 text-sm">Transaction History</p>
+              <p className="font-bold text-gray-800 text-sm">{T("transactionHistory")}</p>
               <p className="text-xs text-gray-400 mt-0.5">{transactions.length} records · Total debits: {fc(debits)}</p>
             </div>
-            <span className="text-xs text-gray-400 font-medium">Last 50</span>
+            <span className="text-xs text-gray-400 font-medium">50</span>
           </div>
 
           {isLoading ? (
@@ -289,8 +289,8 @@ export default function Wallet() {
           ) : transactions.length === 0 ? (
             <div className="px-4 py-16 text-center">
               <p className="text-4xl mb-3">💳</p>
-              <p className="font-bold text-gray-600">No transactions yet</p>
-              <p className="text-sm text-gray-400 mt-1">Your earnings will appear here after orders are delivered</p>
+              <p className="font-bold text-gray-600">{T("noTransactionsFilter")}</p>
+              <p className="text-sm text-gray-400 mt-1">{T("noTransactionsYet")}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -335,7 +335,7 @@ export default function Wallet() {
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["vendor-wallet"] });
             refreshUser();
-            showToast("✅ Withdrawal request submitted!");
+            showToast(`✅ ${T("withdrawalSubmitted")}`);
           }}
         />
       )}

@@ -5,6 +5,7 @@ import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
+import { ImageUploader } from "../components/ImageUploader";
 import { fc, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart" };
@@ -210,14 +211,12 @@ export default function Products() {
           </div>
           <div className="space-y-4">
             <div className={`${CARD} p-4`}>
-              <Field label={T("imageUrlLabel")}>
-                <input type="url" value={form.image} onChange={e => f("image",e.target.value)} placeholder="https://..." className={INPUT}/>
-              </Field>
-              {form.image && (
-                <div className="rounded-xl overflow-hidden h-40 bg-gray-100 mt-3">
-                  <img src={form.image} alt="preview" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.display="none")}/>
-                </div>
-              )}
+              <ImageUploader
+                value={form.image}
+                onChange={url => f("image", url)}
+                label={T("imageUrlLabel")}
+                placeholder="https://..."
+              />
             </div>
             <div className="flex gap-3">
               <button onClick={closeForm} className={BTN_SECONDARY}>Cancel</button>

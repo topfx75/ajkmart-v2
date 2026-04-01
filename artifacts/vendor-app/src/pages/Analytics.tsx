@@ -9,9 +9,9 @@ import { PageHeader } from "../components/PageHeader";
 import { fc, CARD, CARD_HEADER, BADGE_GREEN, BADGE_ORANGE, BADGE_RED, BADGE_GRAY } from "../lib/ui";
 
 const RANGES = [
-  { label: "7 Days",  value: 7  },
-  { label: "30 Days", value: 30 },
-  { label: "90 Days", value: 90 },
+  { value: 7  },
+  { value: 30 },
+  { value: 90 },
 ];
 
 function MiniBar({ pct, color }: { pct: number; color: string }) {
@@ -74,7 +74,7 @@ export default function Analytics() {
               <button key={r.value} onClick={() => setDays(r.value)}
                 className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 transition-all
                   ${days === r.value ? "bg-white text-orange-500 md:bg-orange-500 md:text-white" : "bg-white/20 text-white md:bg-gray-100 md:text-gray-600"}`}>
-                {r.label}
+                {r.value} {T("daysLabel")}
               </button>
             ))}
           </div>
@@ -85,10 +85,10 @@ export default function Analytics() {
         {/* ── KPI Cards ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Revenue",        value: fc(totalRevenue),             icon: "💰", sub: `Last ${days} days`, bg: "bg-orange-50", val: "text-orange-600" },
-            { label: "Orders",         value: String(totalOrders),          icon: "📦", sub: `Last ${days} days`, bg: "bg-blue-50",   val: "text-blue-600"   },
-            { label: "Avg Order",      value: fc(avgOrderValue),            icon: "📊", sub: "Per order value",   bg: "bg-purple-50", val: "text-purple-600" },
-            { label: "Completion",     value: `${completionRate}%`,         icon: "✅", sub: "Orders delivered",  bg: "bg-green-50",  val: "text-green-600"  },
+            { label: T("revenue"),       value: fc(totalRevenue),             icon: "💰", sub: `${days} ${T("dayTrend")}`, bg: "bg-orange-50", val: "text-orange-600" },
+            { label: T("orders"),        value: String(totalOrders),          icon: "📦", sub: `${days} ${T("dayTrend")}`, bg: "bg-blue-50",   val: "text-blue-600"   },
+            { label: T("avgOrder"),      value: fc(avgOrderValue),            icon: "📊", sub: T("avgOrder"),       bg: "bg-purple-50", val: "text-purple-600" },
+            { label: T("completion"),    value: `${completionRate}%`,         icon: "✅", sub: T("delivered"),      bg: "bg-green-50",  val: "text-green-600"  },
           ].map(k => (
             <div key={k.label} className={`${k.bg} rounded-2xl p-4`}>
               <p className="text-2xl">{k.icon}</p>
@@ -108,8 +108,8 @@ export default function Analytics() {
           <div className={CARD}>
             <div className={CARD_HEADER}>
               <div>
-                <p className="font-bold text-gray-800 text-sm">Daily Revenue</p>
-                <p className="text-xs text-gray-400">{days}-day trend</p>
+                <p className="font-bold text-gray-800 text-sm">{T("dailyRevenue")}</p>
+                <p className="text-xs text-gray-400">{days} {T("dayTrend")}</p>
               </div>
               <span className="text-xs font-bold text-orange-500 bg-orange-50 px-2.5 py-1 rounded-full">Rs.</span>
             </div>
@@ -117,7 +117,7 @@ export default function Analytics() {
               {isLoading ? (
                 <div className="h-40 skeleton rounded-xl"/>
               ) : dailyData.length === 0 ? (
-                <div className="h-40 flex items-center justify-center text-gray-400 text-sm">No data yet</div>
+                <div className="h-40 flex items-center justify-center text-gray-400 text-sm">{T("noDataYet")}</div>
               ) : (
                 <>
                   <div className="flex items-end gap-0.5 h-40 px-1 overflow-x-auto">
@@ -147,8 +147,8 @@ export default function Analytics() {
           <div className={CARD}>
             <div className={CARD_HEADER}>
               <div>
-                <p className="font-bold text-gray-800 text-sm">Daily Orders</p>
-                <p className="text-xs text-gray-400">{days}-day trend</p>
+                <p className="font-bold text-gray-800 text-sm">{T("dailyOrders")}</p>
+                <p className="text-xs text-gray-400">{days} {T("dayTrend")}</p>
               </div>
               <span className="text-xs font-bold text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full">#</span>
             </div>
@@ -156,7 +156,7 @@ export default function Analytics() {
               {isLoading ? (
                 <div className="h-40 skeleton rounded-xl"/>
               ) : dailyData.length === 0 ? (
-                <div className="h-40 flex items-center justify-center text-gray-400 text-sm">No data yet</div>
+                <div className="h-40 flex items-center justify-center text-gray-400 text-sm">{T("noDataYet")}</div>
               ) : (
                 <>
                   <div className="flex items-end gap-0.5 h-40 px-1 overflow-x-auto">
@@ -187,7 +187,7 @@ export default function Analytics() {
           {/* ── Order Status Breakdown ── */}
           <div className={CARD}>
             <div className={`${CARD_HEADER} bg-gray-50`}>
-              <p className="font-bold text-gray-800 text-sm">Order Status Breakdown</p>
+              <p className="font-bold text-gray-800 text-sm">{T("orderStatusBreakdown")}</p>
             </div>
             <div className="p-4 space-y-3">
               {isLoading ? (
@@ -212,14 +212,14 @@ export default function Analytics() {
           {/* ── Top Products ── */}
           <div className={CARD}>
             <div className={`${CARD_HEADER} bg-gray-50`}>
-              <p className="font-bold text-gray-800 text-sm">🏆 Top Products</p>
-              <span className="text-xs text-gray-400">by orders</span>
+              <p className="font-bold text-gray-800 text-sm">🏆 {T("topProducts")}</p>
+              <span className="text-xs text-gray-400">{T("byOrders")}</span>
             </div>
             <div className="divide-y divide-gray-50">
               {isLoading ? (
                 [1,2,3,4,5].map(i => <div key={i} className="h-14 skeleton rounded-lg m-3"/>)
               ) : topProducts.length === 0 ? (
-                <div className="px-4 py-10 text-center text-gray-400 text-sm">No product data yet</div>
+                <div className="px-4 py-10 text-center text-gray-400 text-sm">{T("noDataYet")}</div>
               ) : (
                 topProducts.slice(0, 8).map((p: any, i: number) => (
                   <div key={p.productId || i} className="px-4 py-3 flex items-center gap-3">
@@ -228,7 +228,7 @@ export default function Analytics() {
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
-                      <p className="text-xs text-gray-400">{p.orders} orders sold</p>
+                      <p className="text-xs text-gray-400">{p.orders} {T("ordersSold")}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-orange-500">{fc(p.revenue || 0)}</p>
