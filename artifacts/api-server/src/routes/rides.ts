@@ -179,9 +179,20 @@ async function cleanupNotifiedRiders(rideId: string) {
     .catch(() => {});
 }
 
+class RideApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly httpStatus: number = 422,
+  ) {
+    super(message);
+    this.name = "RideApiError";
+  }
+}
+
 function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   if (!isFinite(lat1) || !isFinite(lng1) || !isFinite(lat2) || !isFinite(lng2)) {
-    throw new Error("Invalid coordinates: all values must be finite numbers");
+    throw new RideApiError("Invalid coordinates: all values must be finite numbers", "INVALID_COORDINATES", 422);
   }
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -192,10 +203,10 @@ function calcDistance(lat1: number, lng1: number, lat2: number, lng2: number): n
 
 async function calcFare(distance: number, type: string): Promise<{ baseFare: number; gstAmount: number; total: number }> {
   if (!isFinite(distance) || distance < 0) {
-    throw new Error("Invalid distance: must be a non-negative number");
+    throw new RideApiError("Invalid distance: must be a non-negative number", "INVALID_DISTANCE", 422);
   }
   if (!type || typeof type !== "string") {
-    throw new Error("Invalid service type: must be a non-empty string");
+    throw new RideApiError("Invalid service type: must be a non-empty string", "INVALID_SERVICE_TYPE", 422);
   }
 
   const s = await getPlatformSettings();
@@ -212,7 +223,7 @@ async function calcFare(distance: number, type: string): Promise<{ baseFare: num
   } else {
     const [svc] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, type)).limit(1);
     if (!svc) {
-      throw new Error(`Unknown ride service type: '${type}'`);
+      throw new RideApiError(`Unknown ride service type: '${type}'`, "UNKNOWN_SERVICE_TYPE", 422);
     }
     baseRate = parseFloat(svc.baseFare  ?? "15");
     perKm    = parseFloat(svc.perKm     ?? "8");
@@ -220,7 +231,7 @@ async function calcFare(distance: number, type: string): Promise<{ baseFare: num
   }
 
   if (!isFinite(baseRate) || !isFinite(perKm) || !isFinite(minFare)) {
-    throw new Error("Fare configuration is invalid for this service type");
+    throw new RideApiError("Fare configuration is invalid for this service type", "INVALID_FARE_CONFIG", 500);
   }
 
   const surgeEnabled    = (s["ride_surge_enabled"] ?? "off") === "on";
@@ -312,7 +323,9 @@ router.post("/estimate", async (req, res) => {
       minOffer,
     });
   } catch (e: any) {
-    res.status(422).json({ error: e.message });
+    const status = e instanceof RideApiError ? e.httpStatus : 422;
+    const code = e instanceof RideApiError ? e.code : "ESTIMATE_FAILED";
+    res.status(status).json({ error: e.message, code });
   }
 });
 
@@ -378,7 +391,9 @@ router.post("/", customerAuth, async (req, res) => {
     gstAmount = fareResult.gstAmount;
     platformFare = fareResult.total;
   } catch (e: any) {
-    res.status(422).json({ error: e.message }); return;
+    const status = e instanceof RideApiError ? e.httpStatus : 422;
+    const code = e instanceof RideApiError ? e.code : "FARE_CALCULATION_FAILED";
+    res.status(status).json({ error: e.message, code }); return;
   }
 
   const bargainEnabled  = (s["ride_bargaining_enabled"] ?? "on") === "on";
@@ -433,7 +448,7 @@ router.post("/", customerAuth, async (req, res) => {
           .set({ walletBalance: sql`wallet_balance - ${fareToCharge.toFixed(2)}` })
           .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, fareToCharge.toFixed(2))))
           .returning({ id: usersTable.id, walletBalance: usersTable.walletBalance });
-        if (!deducted) throw new Error(`Insufficient wallet balance. Required: Rs. ${fareToCharge.toFixed(0)}`);
+        if (!deducted) throw new RideApiError(`Insufficient wallet balance. Required: Rs. ${fareToCharge.toFixed(0)}`, "INSUFFICIENT_BALANCE", 402);
         // NOTE: ride.id is unknown at this point; we patch the reference after insertion
         const rideId = generateId();
         await tx.insert(walletTransactionsTable).values({
@@ -494,7 +509,9 @@ router.post("/", customerAuth, async (req, res) => {
       isBargaining,
     });
   } catch (e: any) {
-    res.status(400).json({ error: e.message });
+    const status = e instanceof RideApiError ? e.httpStatus : 400;
+    const code = e instanceof RideApiError ? e.code : "BOOKING_FAILED";
+    res.status(status).json({ error: e.message, code });
   }
 });
 
@@ -679,14 +696,14 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
         .for("update")
         .limit(1);
 
-      if (!ride) throw new Error("Ride not found");
-      if (ride.userId !== userId) throw new Error("Not your ride");
-      if (ride.status !== "bargaining") throw new Error("Ride is not in bargaining state");
+      if (!ride) throw new RideApiError("Ride not found", "RIDE_NOT_FOUND", 404);
+      if (ride.userId !== userId) throw new RideApiError("Not your ride", "RIDE_ACCESS_DENIED", 403);
+      if (ride.status !== "bargaining") throw new RideApiError("Ride is not in bargaining state", "RIDE_NOT_BARGAINING", 400);
 
       const [bid] = await tx.select().from(rideBidsTable)
         .where(and(eq(rideBidsTable.id, bidId), eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.status, "pending")))
         .limit(1);
-      if (!bid) throw new Error("Bid not found or no longer pending");
+      if (!bid) throw new RideApiError("Bid not found or no longer pending", "BID_NOT_FOUND", 404);
 
       const agreedFare = parseFloat(bid.fare);
 
@@ -695,7 +712,7 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
           .set({ walletBalance: sql`wallet_balance - ${agreedFare.toFixed(2)}` })
           .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, agreedFare.toFixed(2))))
           .returning({ id: usersTable.id });
-        if (!deducted) throw new Error(`Insufficient wallet balance. Need Rs. ${agreedFare.toFixed(0)}`);
+        if (!deducted) throw new RideApiError(`Insufficient wallet balance. Need Rs. ${agreedFare.toFixed(0)}`, "INSUFFICIENT_BALANCE", 402);
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId, type: "debit", amount: agreedFare.toFixed(2),
           description: `Ride payment (bargained) — #${rideId.slice(-6).toUpperCase()}`,
@@ -718,14 +735,14 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
         .where(and(eq(ridesTable.id, rideId), eq(ridesTable.userId, userId), eq(ridesTable.status, "bargaining")))
         .returning();
 
-      if (!rideUpdate) throw new Error("Ride is no longer available for acceptance");
+      if (!rideUpdate) throw new RideApiError("Ride is no longer available for acceptance", "RIDE_UNAVAILABLE", 409);
 
       const bidUpdateResult = await tx.update(rideBidsTable)
         .set({ status: "accepted", updatedAt: new Date() })
         .where(and(eq(rideBidsTable.id, bidId), eq(rideBidsTable.status, "pending")))
         .returning();
 
-      if (bidUpdateResult.length === 0) throw new Error("Bid is no longer available");
+      if (bidUpdateResult.length === 0) throw new RideApiError("Bid is no longer available", "BID_UNAVAILABLE", 409);
 
       await tx.update(rideBidsTable)
         .set({ status: "rejected", updatedAt: new Date() })
@@ -734,11 +751,9 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
       return { rideUpdate, bid };
     });
   } catch (e: any) {
-    const status = e.message.includes("not found") ? 404
-      : e.message.includes("Not your") ? 403
-      : e.message.includes("not in bargaining") ? 400
-      : 400;
-    res.status(status).json({ error: e.message });
+    const status = e instanceof RideApiError ? e.httpStatus : 400;
+    const code = e instanceof RideApiError ? e.code : "ACCEPT_BID_FAILED";
+    res.status(status).json({ error: e.message, code });
     return;
   }
 

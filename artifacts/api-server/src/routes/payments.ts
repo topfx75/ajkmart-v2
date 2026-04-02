@@ -602,7 +602,7 @@ router.post("/callback/easypaisa", async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  GET /api/payments/status/:txnRef
-//  Poll payment status (gateway status check)
+//  Poll payment status by transaction reference
 // ═══════════════════════════════════════════════════════════════════════════════
 router.get("/status/:txnRef", async (req, res) => {
   const txnRef = req.params["txnRef"]!;
@@ -633,6 +633,60 @@ router.get("/status/:txnRef", async (req, res) => {
   };
 
   res.json({ txnRef, status, message: messages[status] || status, amount: order?.total ? parseFloat(String(order.total)) : null });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GET /api/payments/order-status/:orderId
+//  Check payment status by orderId — used by client as an HTTP fallback when
+//  socket acknowledgment is missed (e.g., after app backgrounding)
+// ═══════════════════════════════════════════════════════════════════════════════
+router.get("/order-status/:orderId", customerAuth, async (req, res) => {
+  const orderId = req.params["orderId"]!;
+  const callerId = req.customerId!;
+
+  const [order] = await db.select({
+    id: ordersTable.id,
+    userId: ordersTable.userId,
+    status: ordersTable.status,
+    paymentMethod: ordersTable.paymentMethod,
+    paymentStatus: ordersTable.paymentStatus,
+    total: ordersTable.total,
+    txnRef: ordersTable.txnRef,
+    updatedAt: ordersTable.updatedAt,
+  }).from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+
+  if (!order) {
+    res.status(404).json({ error: "Order not found", code: "ORDER_NOT_FOUND" });
+    return;
+  }
+  if (order.userId !== callerId) {
+    res.status(403).json({ error: "Access denied", code: "ORDER_ACCESS_DENIED" });
+    return;
+  }
+
+  let paymentStatus = order.paymentStatus || "pending";
+  if (order.txnRef && paymentStatus === "pending") {
+    const elapsed = Date.now() - order.updatedAt.getTime();
+    if (elapsed > PAYMENT_TTL_MS) {
+      paymentStatus = "expired";
+      await db.update(ordersTable).set({ paymentStatus: "expired", updatedAt: new Date() }).where(eq(ordersTable.id, orderId));
+    }
+  }
+
+  const isWalletOrCash = order.paymentMethod === "wallet" || order.paymentMethod === "cash";
+  const effectivePaymentStatus = isWalletOrCash
+    ? (order.status === "cancelled" ? "refunded" : "settled")
+    : paymentStatus;
+
+  res.json({
+    orderId: order.id,
+    orderStatus: order.status,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: effectivePaymentStatus,
+    total: order.total ? parseFloat(String(order.total)) : null,
+    txnRef: order.txnRef,
+    confirmed: order.status !== "pending" || isWalletOrCash,
+  });
 });
 
 export default router;

@@ -3675,81 +3675,99 @@ router.get("/search", async (req, res) => {
 
   const pattern = `%${q}%`;
 
+  const errors: Array<{ source: string; message: string }> = [];
+
+  const safeQuery = async <T>(source: string, fn: () => Promise<T>): Promise<T | []> => {
+    try {
+      return await fn();
+    } catch (err: any) {
+      errors.push({ source, message: err.message ?? "Unknown error" });
+      return [] as unknown as T;
+    }
+  };
+
   const [users, rides, orders, pharmacy] = await Promise.all([
-    /* Users — by name or phone */
-    db.select({
-      id:    usersTable.id,
-      name:  usersTable.name,
-      phone: usersTable.phone,
-      email: usersTable.email,
-      role:  usersTable.role,
-      createdAt: usersTable.createdAt,
-    })
-    .from(usersTable)
-    .where(or(ilike(usersTable.name, pattern), ilike(usersTable.phone, pattern), ilike(usersTable.email, pattern)))
-    .orderBy(desc(usersTable.createdAt))
-    .limit(5),
+    safeQuery("users", () =>
+      db.select({
+        id:    usersTable.id,
+        name:  usersTable.name,
+        phone: usersTable.phone,
+        email: usersTable.email,
+        role:  usersTable.role,
+        createdAt: usersTable.createdAt,
+      })
+      .from(usersTable)
+      .where(or(ilike(usersTable.name, pattern), ilike(usersTable.phone, pattern), ilike(usersTable.email, pattern)))
+      .orderBy(desc(usersTable.createdAt))
+      .limit(5)
+    ),
 
-    /* Rides — by ID or address */
-    db.select({
-      id:            ridesTable.id,
-      type:          ridesTable.type,
-      status:        ridesTable.status,
-      pickupAddress: ridesTable.pickupAddress,
-      dropAddress:   ridesTable.dropAddress,
-      fare:          ridesTable.fare,
-      offeredFare:   ridesTable.offeredFare,
-      riderName:     ridesTable.riderName,
-      createdAt:     ridesTable.createdAt,
-    })
-    .from(ridesTable)
-    .where(or(
-      ilike(ridesTable.id, pattern),
-      ilike(ridesTable.pickupAddress, pattern),
-      ilike(ridesTable.dropAddress, pattern),
-      ilike(ridesTable.riderName, pattern),
-      ilike(ridesTable.status, pattern),
-    ))
-    .orderBy(desc(ridesTable.createdAt))
-    .limit(5),
+    safeQuery("rides", () =>
+      db.select({
+        id:            ridesTable.id,
+        type:          ridesTable.type,
+        status:        ridesTable.status,
+        pickupAddress: ridesTable.pickupAddress,
+        dropAddress:   ridesTable.dropAddress,
+        fare:          ridesTable.fare,
+        offeredFare:   ridesTable.offeredFare,
+        riderName:     ridesTable.riderName,
+        createdAt:     ridesTable.createdAt,
+      })
+      .from(ridesTable)
+      .where(or(
+        ilike(ridesTable.id, pattern),
+        ilike(ridesTable.pickupAddress, pattern),
+        ilike(ridesTable.dropAddress, pattern),
+        ilike(ridesTable.riderName, pattern),
+        ilike(ridesTable.status, pattern),
+      ))
+      .orderBy(desc(ridesTable.createdAt))
+      .limit(5)
+    ),
 
-    /* Orders — by ID or delivery address */
-    db.select({
-      id:              ordersTable.id,
-      status:          ordersTable.status,
-      type:            ordersTable.type,
-      total:           ordersTable.total,
-      deliveryAddress: ordersTable.deliveryAddress,
-      createdAt:       ordersTable.createdAt,
-    })
-    .from(ordersTable)
-    .where(or(
-      ilike(ordersTable.id, pattern),
-      ilike(ordersTable.deliveryAddress, pattern),
-      ilike(ordersTable.status, pattern),
-    ))
-    .orderBy(desc(ordersTable.createdAt))
-    .limit(5),
+    safeQuery("orders", () =>
+      db.select({
+        id:              ordersTable.id,
+        status:          ordersTable.status,
+        type:            ordersTable.type,
+        total:           ordersTable.total,
+        deliveryAddress: ordersTable.deliveryAddress,
+        createdAt:       ordersTable.createdAt,
+      })
+      .from(ordersTable)
+      .where(or(
+        ilike(ordersTable.id, pattern),
+        ilike(ordersTable.deliveryAddress, pattern),
+        ilike(ordersTable.status, pattern),
+      ))
+      .orderBy(desc(ordersTable.createdAt))
+      .limit(5)
+    ),
 
-    /* Pharmacy orders */
-    db.select({
-      id:              pharmacyOrdersTable.id,
-      status:          pharmacyOrdersTable.status,
-      total:           pharmacyOrdersTable.total,
-      deliveryAddress: pharmacyOrdersTable.deliveryAddress,
-      createdAt:       pharmacyOrdersTable.createdAt,
-    })
-    .from(pharmacyOrdersTable)
-    .where(or(
-      ilike(pharmacyOrdersTable.id, pattern),
-      ilike(pharmacyOrdersTable.deliveryAddress, pattern),
-      ilike(pharmacyOrdersTable.status, pattern),
-    ))
-    .orderBy(desc(pharmacyOrdersTable.createdAt))
-    .limit(5),
+    safeQuery("pharmacy", () =>
+      db.select({
+        id:              pharmacyOrdersTable.id,
+        status:          pharmacyOrdersTable.status,
+        total:           pharmacyOrdersTable.total,
+        deliveryAddress: pharmacyOrdersTable.deliveryAddress,
+        createdAt:       pharmacyOrdersTable.createdAt,
+      })
+      .from(pharmacyOrdersTable)
+      .where(or(
+        ilike(pharmacyOrdersTable.id, pattern),
+        ilike(pharmacyOrdersTable.deliveryAddress, pattern),
+        ilike(pharmacyOrdersTable.status, pattern),
+      ))
+      .orderBy(desc(pharmacyOrdersTable.createdAt))
+      .limit(5)
+    ),
   ]);
 
-  res.json({ users, rides, orders, pharmacy, query: q });
+  res.json({
+    users, rides, orders, pharmacy, query: q,
+    ...(errors.length > 0 ? { errors, partial: true } : {}),
+  });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════════

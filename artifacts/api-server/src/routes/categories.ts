@@ -1,4 +1,7 @@
 import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { productsTable } from "@workspace/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
@@ -26,7 +29,6 @@ const FOOD_CATEGORIES = [
 router.get("/", async (req, res) => {
   const type = req.query["type"] as string;
 
-  // Feature flag check: if a specific type is requested, verify that service is enabled
   if (type && (type === "mart" || type === "food")) {
     try {
       const s = await getPlatformSettings();
@@ -39,7 +41,35 @@ router.get("/", async (req, res) => {
   }
 
   let categories = type === "food" ? FOOD_CATEGORIES : type === "mart" ? MART_CATEGORIES : [...MART_CATEGORIES, ...FOOD_CATEGORIES];
-  res.json({ categories: categories.map((c) => ({ ...c, productCount: Math.floor(Math.random() * 50) + 5 })) });
+
+  const countRows = await db
+    .select({
+      category: productsTable.category,
+      productType: productsTable.type,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(productsTable)
+    .where(
+      and(
+        eq(productsTable.inStock, true),
+        eq(productsTable.approvalStatus, "approved"),
+      )
+    )
+    .groupBy(productsTable.category, productsTable.type);
+
+  const countByCategory = new Map<string, number>();
+  const countByType = new Map<string, number>();
+  for (const r of countRows) {
+    countByCategory.set(r.category, (countByCategory.get(r.category) ?? 0) + r.count);
+    countByType.set(r.productType, (countByType.get(r.productType) ?? 0) + r.count);
+  }
+
+  res.json({
+    categories: categories.map((c) => ({
+      ...c,
+      productCount: countByCategory.get(c.id) ?? countByType.get(c.type) ?? 0,
+    })),
+  });
 });
 
 export default router;
