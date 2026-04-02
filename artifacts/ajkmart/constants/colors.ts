@@ -128,6 +128,7 @@ export default {
     surfaceElevated: "#FFFFFF",
     border: "#E2E8F0",
     borderLight: "#F1F5F9",
+    inputBg: "#F8F9FA",
     tint: primary,
     tabIconDefault: "#94A3B8",
     tabIconSelected: primary,

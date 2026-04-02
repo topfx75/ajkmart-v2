@@ -862,7 +862,7 @@ const s = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg,
     paddingHorizontal: spacing.lg, paddingVertical: 14,
-    backgroundColor: C.inputBg || "#F8F9FA",
+    backgroundColor: C.inputBg,
     marginBottom: spacing.md,
   },
   pickerError: { borderColor: C.danger },
