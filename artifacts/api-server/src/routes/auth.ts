@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable, magicLinkTokensTable, rateLimitsTable } from "@workspace/db/schema";
+import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable, magicLinkTokensTable, rateLimitsTable, pendingOtpsTable } from "@workspace/db/schema";
 import { eq, and, sql, lt, or } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -530,30 +530,23 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
   const otp       = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-  await db
-    .insert(usersTable)
-    .values({
-      id:             generateId(),
-      phone,
-      otpCode:        hashOtp(otp),
-      otpExpiry,
-      otpUsed:        false,
-      role:           "customer",
-      roles:          "customer",
-      walletBalance:  "0",
-      isActive:       !isNewUser || !requireApproval,
-      approvalStatus: newUserApprovalStatus,
-      ...(isNewUser && deviceId ? { deviceId } : {}),
-    })
-    .onConflictDoUpdate({
-      target: usersTable.phone,
-      set: {
-        otpCode:   hashOtp(otp),
-        otpExpiry,
-        otpUsed:   false,
-        updatedAt: new Date(),
-      },
-    });
+  if (isNewUser) {
+    /* NEW USERS: store OTP in pending_otps — do NOT create a users record yet.
+       The users record is only created after OTP is successfully verified. */
+    await db
+      .insert(pendingOtpsTable)
+      .values({ id: generateId(), phone, otpHash: hashOtp(otp), otpExpiry })
+      .onConflictDoUpdate({
+        target: pendingOtpsTable.phone,
+        set: { otpHash: hashOtp(otp), otpExpiry, attempts: 0 },
+      });
+  } else {
+    /* EXISTING USERS: update OTP in the users table (login / resend flow) */
+    await db
+      .update(usersTable)
+      .set({ otpCode: hashOtp(otp), otpExpiry, otpUsed: false, updatedAt: new Date() })
+      .where(eq(usersTable.phone, phone));
+  }
 
   writeAuthAuditLog("otp_sent", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
   req.log.info({ phone, otp }, "OTP sent");
@@ -678,7 +671,89 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
     .limit(1);
 
   if (!user) {
-    res.status(404).json({ error: "User not found. Please request a new OTP." });
+    /* ── NEW USER REGISTRATION PATH ──────────────────────────────────────────
+       If the phone is not yet in usersTable, check pendingOtpsTable.
+       This prevents phantom account creation — user records are only
+       created AFTER successful OTP verification, not at send-otp time. */
+    const [pending] = await db
+      .select()
+      .from(pendingOtpsTable)
+      .where(eq(pendingOtpsTable.phone, phone))
+      .limit(1);
+
+    if (!pending) {
+      res.status(404).json({ error: "User not found. Please request a new OTP." });
+      return;
+    }
+
+    /* Verify OTP from pending_otps */
+    const otpValid = pending.otpHash === hashOtp(otp) && new Date() < pending.otpExpiry;
+    if (!otpValid) {
+      /* Increment failed attempts */
+      const newAttempts = (pending.attempts ?? 0) + 1;
+      await db.update(pendingOtpsTable)
+        .set({ attempts: newAttempts })
+        .where(eq(pendingOtpsTable.phone, phone));
+
+      if (newAttempts >= maxAttempts) {
+        await db.delete(pendingOtpsTable).where(eq(pendingOtpsTable.phone, phone));
+        res.status(429).json({ error: `Too many failed attempts. Please request a new OTP.`, lockedMinutes: 1 });
+      } else {
+        const remaining = maxAttempts - newAttempts;
+        res.status(401).json({
+          error: `Invalid OTP. ${remaining > 0 ? `${remaining} attempt(s) remaining.` : "Please request a new OTP."}`,
+          attemptsRemaining: Math.max(0, remaining),
+        });
+      }
+      return;
+    }
+
+    /* OTP valid — create user record now */
+    const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
+    const deviceId = req.body.deviceId as string | undefined;
+    const newUserId = generateId();
+    await db.insert(usersTable).values({
+      id:             newUserId,
+      phone,
+      role:           "customer",
+      roles:          "customer",
+      walletBalance:  "0",
+      phoneVerified:  true,
+      isActive:       !requireApproval,
+      approvalStatus: requireApproval ? "pending" : "approved",
+      ...(deviceId ? { deviceId } : {}),
+    });
+
+    /* Delete from pending_otps */
+    await db.delete(pendingOtpsTable).where(eq(pendingOtpsTable.phone, phone));
+    writeAuthAuditLog("otp_verified_new_user", { userId: newUserId, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
+
+    const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
+    if (signupBonus > 0) {
+      await db.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${signupBonus}` })
+        .where(eq(usersTable.id, newUserId));
+      await db.insert(walletTransactionsTable).values({
+        id: generateId(), userId: newUserId, type: "bonus",
+        amount: signupBonus.toFixed(2), description: "Welcome bonus — Thanks for joining!",
+      });
+    }
+
+    const accessToken = signAccessToken(newUserId, phone, "customer", "customer", 0);
+    const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
+    await db.insert(refreshTokensTable).values({
+      id: generateId(), userId: newUserId, tokenHash: refreshHash,
+      authMethod: "phone_otp", expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000),
+    });
+
+    res.json({
+      token: accessToken,
+      refreshToken: refreshRaw,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      user: { id: newUserId, phone, name: null, email: null, username: null, role: "customer", roles: "customer",
+              walletBalance: signupBonus, isActive: !requireApproval, totpEnabled: false },
+      ...(requireApproval ? { pendingApproval: true } : {}),
+    });
     return;
   }
 

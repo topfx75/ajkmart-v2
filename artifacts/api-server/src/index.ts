@@ -8,7 +8,7 @@ import { initSocketIO } from "./lib/socketio.js";
 import { ensureAuthMethodColumn } from "./routes/admin.js";
 import { initVapid } from "./lib/webpush.js";
 import { db } from "@workspace/db";
-import { locationLogsTable } from "@workspace/db/schema";
+import { locationLogsTable, pendingOtpsTable } from "@workspace/db/schema";
 import { lt } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
@@ -29,14 +29,22 @@ const httpServer = http.createServer(app);
 initSocketIO(httpServer);
 initVapid();
 
-/* ── Cron: archive location_logs older than 30 days (runs at midnight) ── */
+/* ── Cron: cleanup jobs (runs at midnight) ── */
 cron.schedule("0 0 * * *", async () => {
+  /* location_logs older than 30 days */
   try {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const result = await db.delete(locationLogsTable).where(lt(locationLogsTable.createdAt, cutoff));
     logger.info({ cutoff, result }, "[cron] location_logs cleanup complete");
   } catch (e) {
     logger.error({ err: e }, "[cron] location_logs cleanup failed");
+  }
+  /* pending_otps expired (phantom registration prevention) */
+  try {
+    const result = await db.delete(pendingOtpsTable).where(lt(pendingOtpsTable.otpExpiry, new Date()));
+    logger.info({ result }, "[cron] pending_otps cleanup complete");
+  } catch (e) {
+    logger.error({ err: e }, "[cron] pending_otps cleanup failed");
   }
 }, { timezone: "Asia/Karachi" });
 
