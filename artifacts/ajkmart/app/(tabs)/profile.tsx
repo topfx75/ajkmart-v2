@@ -1428,18 +1428,19 @@ export default function ProfileScreen() {
               <Text style={ph.handle}>@{user.username}</Text>
             ) : null}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.sm }}>
-              <View style={ph.roleBadge}>
-                <Ionicons name={role.label === "Delivery Rider" ? "bicycle-outline" : role.label === "Store Vendor" ? "storefront-outline" : "person-outline"} size={11} color="#fff" />
-                <Text style={ph.roleTxt}>{role.label}</Text>
-              </View>
               <View style={[ph.roleBadge, { backgroundColor: levelInfo.bg + "33", borderColor: levelInfo.color + "55" }]}>
                 <Ionicons name={levelInfo.icon} size={11} color={levelInfo.color} />
-                <Text style={[ph.roleTxt, { color: levelInfo.color }]}>{levelInfo.label}</Text>
+                <Text style={[ph.roleTxt, { color: levelInfo.color }]}>{levelInfo.label} Member</Text>
               </View>
-              {user?.kycStatus === "verified" && (
+              {user?.kycStatus === "verified" ? (
                 <View style={[ph.roleBadge, { backgroundColor: C.success + "22", borderColor: C.success + "44" }]}>
                   <Ionicons name="checkmark-circle" size={11} color={C.success} />
                   <Text style={[ph.roleTxt, { color: C.success }]}>Verified</Text>
+                </View>
+              ) : (
+                <View style={[ph.roleBadge, { backgroundColor: "rgba(255,255,255,0.15)", borderColor: "rgba(255,255,255,0.25)" }]}>
+                  <Ionicons name="shield-outline" size={11} color="rgba(255,255,255,0.8)" />
+                  <Text style={[ph.roleTxt, { color: "rgba(255,255,255,0.8)" }]}>Member</Text>
                 </View>
               )}
             </View>
@@ -1582,22 +1583,6 @@ export default function ProfileScreen() {
             </View>
           </View>
         )}
-
-        <Pressable onPress={() => router.push("/(tabs)/wallet")} style={wb.wrap} accessibilityRole="button" accessibilityLabel={`${platformCfg.appName} wallet, Rs. ${(user?.walletBalance || 0).toLocaleString()}, tap to manage`}>
-          <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={wb.grad}>
-            <View style={wb.iconBox}>
-              <Ionicons name="wallet" size={22} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={wb.lbl}>{platformCfg.appName} {T("wallet")}</Text>
-              <Text style={wb.amt}>Rs. {(user?.walletBalance || 0).toLocaleString()}</Text>
-            </View>
-            <View style={wb.btn}>
-              <Text style={wb.btnTxt}>{T("manageLabel")}</Text>
-              <Ionicons name="arrow-forward" size={13} color="#fff" />
-            </View>
-          </LinearGradient>
-        </Pressable>
 
         {platformConfig.features.referral && platformConfig.customer.referralEnabled && (
           <View style={rc.wrap}>

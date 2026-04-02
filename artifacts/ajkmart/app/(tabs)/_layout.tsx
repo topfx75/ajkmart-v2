@@ -122,23 +122,27 @@ function ClassicTabLayout() {
         tabBarStyle: {
           position: "absolute",
           backgroundColor: isIOS ? "transparent" : C.surface,
-          borderTopWidth: 0,
+          borderTopWidth: 1,
+          borderTopColor: C.borderLight,
           paddingBottom: insets.bottom,
+          height: isWeb ? 68 : 60 + insets.bottom,
           ...shadows.lg,
-          ...(isWeb ? { height: 72, borderTopWidth: 1, borderTopColor: C.borderLight } : {}),
         },
         tabBarBackground: () =>
           isIOS ? (
-            <BlurView intensity={95} tint="light" style={StyleSheet.absoluteFill} />
-          ) : isWeb ? (
+            <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill} />
+          ) : (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: C.surface }]} />
-          ) : null,
+          ),
         tabBarLabelStyle: {
           ...typography.tabLabel,
-          marginTop: -2,
+          fontSize: 11,
+          fontFamily: "Inter_600SemiBold",
+          marginTop: 2,
         },
         tabBarItemStyle: {
-          paddingTop: 6,
+          paddingTop: 8,
+          paddingBottom: 4,
         },
       }}
     >
@@ -199,27 +203,33 @@ function ClassicTabLayout() {
 const tabStyles = StyleSheet.create({
   iconWrap: {
     position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 5,
   },
   activeIconWrap: {
     position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: C.primarySoft,
-    borderRadius: radii.md,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 5,
   },
   badge: {
     position: "absolute",
-    top: -6,
-    right: -10,
-    backgroundColor: C.accent,
+    top: -4,
+    right: -4,
+    backgroundColor: C.danger,
     borderRadius: 9,
-    minWidth: 18,
-    height: 18,
+    minWidth: 17,
+    height: 17,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: "#fff",
+    borderColor: C.surface,
   },
   badgeText: {
     fontFamily: "Inter_700Bold",
