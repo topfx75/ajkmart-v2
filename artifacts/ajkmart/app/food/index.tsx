@@ -8,6 +8,7 @@ import {
   Image,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -45,7 +46,8 @@ function FoodCard({ item }: { item: any }) {
 
   const [showSwitchModal, setShowSwitchModal] = useState(false);
 
-  const handleAdd = () => {
+  const handleAdd = (e?: any) => {
+    e?.stopPropagation?.();
     if (itemCount > 0 && cartType !== "food" && cartType !== "none") {
       setShowSwitchModal(true);
       return;
@@ -54,7 +56,7 @@ function FoodCard({ item }: { item: any }) {
   };
 
   return (
-    <View style={styles.foodCard}>
+    <Pressable onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })} style={styles.foodCard}>
       <CartSwitchModal
         visible={showSwitchModal}
         targetService="Food"
@@ -90,13 +92,13 @@ function FoodCard({ item }: { item: any }) {
         <View style={styles.foodFooter}>
           <Text style={styles.foodPrice}>Rs. {item.price}</Text>
           <Animated.View style={{ transform: [{ scale }] }}>
-            <Pressable onPress={handleAdd} style={[styles.addBtn, added && styles.addBtnAdded]}>
+            <Pressable onPress={(e) => handleAdd(e)} style={[styles.addBtn, added && styles.addBtnAdded]}>
               <Ionicons name={added ? "checkmark" : "add"} size={16} color="#fff" />
             </Pressable>
           </Animated.View>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -110,7 +112,7 @@ function FoodScreenInner() {
   const topPad = Math.max(insets.top, 12);
 
   const { data: catData } = useGetCategories({ type: "food" });
-  const { data, isLoading, isError, refetch } = useGetProducts({ type: "food", search: search || undefined, category: selectedCat });
+  const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "food", search: search || undefined, category: selectedCat });
 
   const categories = catData?.categories || [];
   const items = data?.products || [];
@@ -180,7 +182,7 @@ function FoodScreenInner() {
         onCancel={() => setClearBannerConfirm(false)}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={C.food} />}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.catContent}>
           <Pressable onPress={() => setSelectedCat(undefined)} style={[styles.catChip, !selectedCat && styles.catChipActive]}>
             <Ionicons name="fast-food-outline" size={14} color={!selectedCat ? "#fff" : C.food} />
@@ -195,9 +197,17 @@ function FoodScreenInner() {
         </ScrollView>
 
         {isLoading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={C.food} size="large" />
-            <Text style={styles.loadingText}>Loading food items...</Text>
+          <View style={styles.skeletonList}>
+            {[0,1,2,3,4].map(i => (
+              <View key={i} style={styles.skeletonCard}>
+                <View style={styles.skeletonImg} />
+                <View style={{ flex: 1, padding: 14, gap: 8 }}>
+                  <View style={{ height: 14, width: "70%", backgroundColor: "#FEF3C7", borderRadius: 6 }} />
+                  <View style={{ height: 10, width: "45%", backgroundColor: "#FFF7ED", borderRadius: 5 }} />
+                  <View style={{ height: 12, width: "35%", backgroundColor: "#FEF3C7", borderRadius: 6 }} />
+                </View>
+              </View>
+            ))}
           </View>
         ) : isError ? (
           <View style={styles.center}>
@@ -291,6 +301,9 @@ const styles = StyleSheet.create({
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.food, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, marginTop: 4 },
   retryBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 10 },
+  skeletonList: { paddingHorizontal: 16, paddingTop: 12, gap: 12 },
+  skeletonCard: { flexDirection: "row", backgroundColor: C.surface, borderRadius: 18, overflow: "hidden", height: 110 },
+  skeletonImg: { width: 110, backgroundColor: "#FFF7ED" },
   emptyIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
   emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary },

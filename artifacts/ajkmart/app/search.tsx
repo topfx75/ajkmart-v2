@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useState, useRef, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
+  Animated,
+  Image,
   Platform,
   Pressable,
   SectionList,
@@ -17,10 +19,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
-import { getProducts } from "@workspace/api-client-react";
-import type { GetProductsType, Product } from "@workspace/api-client-react";
+import { getProducts, type GetProductsType, type Product } from "@workspace/api-client-react";
 
 const C = Colors.light;
+const HISTORY_KEY = "@ajkmart_search_history";
+const MAX_HISTORY = 8;
 
 type ServiceKey = "mart" | "food" | "pharmacy";
 
@@ -32,18 +35,20 @@ interface SearchResult {
   type: ServiceKey;
   category?: string;
   originalPrice?: number;
+  rating?: number;
+  vendorName?: string;
 }
-
-const SERVICE_ROUTES: Record<ServiceKey, "/mart" | "/food" | "/pharmacy"> = {
-  mart: "/mart",
-  food: "/food",
-  pharmacy: "/pharmacy",
-};
 
 const SERVICE_META: Record<ServiceKey, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string; bg: string }> = {
   mart:     { label: "Mart",     icon: "basket-outline",   color: "#7C3AED", bg: "#F3E8FF" },
   food:     { label: "Food",     icon: "restaurant-outline", color: "#D97706", bg: "#FEF3C7" },
   pharmacy: { label: "Pharmacy", icon: "medical-outline",  color: "#059669", bg: "#D1FAE5" },
+};
+
+const SERVICE_ROUTES: Record<ServiceKey, "/mart" | "/food" | "/pharmacy"> = {
+  mart: "/mart",
+  food: "/food",
+  pharmacy: "/pharmacy",
 };
 
 function ServiceBadge({ type }: { type: ServiceKey }) {
@@ -67,9 +72,39 @@ export default function UniversalSearchScreen() {
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [added, setAdded] = useState<Record<string, boolean>>({});
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [suggestions] = useState<string[]>([
+    "Milk", "Rice", "Chicken", "Bread", "Eggs", "Butter", "Oil", "Sugar",
+  ]);
 
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    AsyncStorage.getItem(HISTORY_KEY).then(raw => {
+      if (raw) {
+        try { setSearchHistory(JSON.parse(raw)); } catch {}
+      }
+    });
+    Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+  }, []);
+
+  const saveToHistory = useCallback((term: string) => {
+    const trimmed = term.trim();
+    if (!trimmed) return;
+    setSearchHistory(prev => {
+      const filtered = prev.filter(h => h.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, MAX_HISTORY);
+      AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    setSearchHistory([]);
+    AsyncStorage.removeItem(HISTORY_KEY);
+  }, []);
 
   const enabledServices: ServiceKey[] = [
     ...(config.features.mart ? ["mart" as ServiceKey] : []),
@@ -77,14 +112,15 @@ export default function UniversalSearchScreen() {
     ...(config.features.pharmacy ? ["pharmacy" as ServiceKey] : []),
   ];
 
-  const fetchResults = useCallback(async (q: string) => {
+  const fetchResults = useCallback(async (q: string, fromExplicit = false) => {
     if (!q.trim()) { setSections([]); return; }
     setLoading(true);
     setSearchError(false);
+    if (fromExplicit) saveToHistory(q);
 
     const results = await Promise.allSettled(
       enabledServices.map((svc) =>
-        getProducts({ type: svc as GetProductsType, search: q, limit: 20 } as Parameters<typeof getProducts>[0])
+        getProducts({ type: svc as GetProductsType, search: q })
           .then((data) =>
             (data?.products || []).map((p: Product) => ({
               id: p.id,
@@ -93,6 +129,8 @@ export default function UniversalSearchScreen() {
               image: p.image,
               category: p.category,
               originalPrice: p.originalPrice,
+              rating: p.rating,
+              vendorName: p.vendorName,
               type: svc,
             } as SearchResult))
           )
@@ -106,8 +144,6 @@ export default function UniversalSearchScreen() {
       if (result.status === "fulfilled" && result.value.length > 0) {
         newSections.push({ title: SERVICE_META[svc].label, data: result.value, type: svc });
         anySuccess = true;
-      } else if (result.status === "rejected") {
-        console.warn(`[Search] ${svc} fetch failed:`, result.reason instanceof Error ? result.reason.message : String(result.reason));
       }
     });
 
@@ -116,7 +152,7 @@ export default function UniversalSearchScreen() {
       setSearchError(true);
     }
     setLoading(false);
-  }, [enabledServices.join(",")]);
+  }, [enabledServices.join(","), saveToHistory]);
 
   const onChangeText = (text: string) => {
     setQuery(text);
@@ -151,7 +187,7 @@ export default function UniversalSearchScreen() {
     doAddItem(item);
   };
 
-  const totalResults = sections.reduce((acc, s) => acc + s.data.length, 0);
+  const totalResults = sections.reduce((acc, sec) => acc + sec.data.length, 0);
 
   return (
     <View style={[s.screen, { paddingTop: topPad }]}>
@@ -171,6 +207,7 @@ export default function UniversalSearchScreen() {
             returnKeyType="search"
             autoCapitalize="none"
             autoFocus
+            onSubmitEditing={() => { if (query.trim()) fetchResults(query, true); }}
           />
           {query.length > 0 && (
             <Pressable onPress={() => { setQuery(""); setSections([]); }}>
@@ -189,10 +226,13 @@ export default function UniversalSearchScreen() {
 
       {!loading && query.trim() && totalResults === 0 && searchError && (
         <View style={s.center}>
-          <Ionicons name="wifi-outline" size={40} color="#EF4444" />
+          <View style={s.errorIconWrap}>
+            <Ionicons name="wifi-outline" size={40} color="#EF4444" />
+          </View>
           <Text style={[s.emptyTxt, { color: "#EF4444" }]}>Search failed</Text>
           <Text style={s.emptySub}>Check your connection and try again</Text>
           <Pressable onPress={() => fetchResults(query)} style={s.retryBtn}>
+            <Ionicons name="refresh-outline" size={14} color="#fff" />
             <Text style={s.retryBtnTxt}>Retry</Text>
           </Pressable>
         </View>
@@ -200,7 +240,9 @@ export default function UniversalSearchScreen() {
 
       {!loading && query.trim() && totalResults === 0 && !searchError && (
         <View style={s.center}>
-          <Ionicons name="search-outline" size={40} color={C.textMuted} />
+          <View style={s.emptyIconWrap}>
+            <Ionicons name="search-outline" size={40} color={C.textMuted} />
+          </View>
           <Text style={s.emptyTxt}>No results for "{query}"</Text>
           <Text style={s.emptySub}>Try a different keyword or browse a service</Text>
           <View style={s.noResultsCtaRow}>
@@ -218,11 +260,66 @@ export default function UniversalSearchScreen() {
       )}
 
       {!loading && !query.trim() && (
-        <View style={s.center}>
-          <Ionicons name="search" size={40} color={C.border} />
-          <Text style={s.emptyTxt}>Start typing to search</Text>
-          <Text style={s.emptySub}>Results from Mart, Food & Pharmacy</Text>
-        </View>
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+          {searchHistory.length > 0 && (
+            <View style={s.historySection}>
+              <View style={s.historyHeader}>
+                <Ionicons name="time-outline" size={16} color={C.textSecondary} />
+                <Text style={s.historyTitle}>Recent Searches</Text>
+                <Pressable onPress={clearHistory} style={s.clearHistoryBtn}>
+                  <Text style={s.clearHistoryTxt}>Clear</Text>
+                </Pressable>
+              </View>
+              <View style={s.historyChips}>
+                {searchHistory.map((term, i) => (
+                  <Pressable
+                    key={`${term}-${i}`}
+                    onPress={() => { setQuery(term); fetchResults(term, true); }}
+                    style={s.historyChip}
+                  >
+                    <Ionicons name="time-outline" size={13} color={C.textMuted} />
+                    <Text style={s.historyChipTxt}>{term}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={s.suggestSection}>
+            <View style={s.suggestHeader}>
+              <Ionicons name="trending-up-outline" size={16} color={C.primary} />
+              <Text style={s.suggestTitle}>Popular Searches</Text>
+            </View>
+            <View style={s.suggestChips}>
+              {suggestions.map((term, i) => (
+                <Pressable
+                  key={term}
+                  onPress={() => { setQuery(term); fetchResults(term, true); }}
+                  style={s.suggestChip}
+                >
+                  <Text style={s.suggestChipTxt}>{term}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View style={s.browseSection}>
+            <Text style={s.browseTitle}>Browse by Service</Text>
+            <View style={s.browseGrid}>
+              {enabledServices.map(sv => {
+                const m = SERVICE_META[sv];
+                return (
+                  <Pressable key={sv} onPress={() => router.push(SERVICE_ROUTES[sv])} style={[s.browseCard, { backgroundColor: m.bg }]}>
+                    <View style={[s.browseIconWrap, { backgroundColor: m.color + "20" }]}>
+                      <Ionicons name={m.icon} size={24} color={m.color} />
+                    </View>
+                    <Text style={[s.browseLabel, { color: m.color }]}>{m.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Animated.View>
       )}
 
       {!loading && totalResults > 0 && (
@@ -236,35 +333,59 @@ export default function UniversalSearchScreen() {
             <View style={s.sectionHeader}>
               <Ionicons name={SERVICE_META[section.type].icon} size={14} color={SERVICE_META[section.type].color} />
               <Text style={[s.sectionTitle, { color: SERVICE_META[section.type].color }]}>{section.title}</Text>
-              <View style={[s.sectionDivider, { backgroundColor: SERVICE_META[section.type].color + "40" }]} />
+              <View style={[s.sectionCount, { backgroundColor: SERVICE_META[section.type].bg }]}>
+                <Text style={[s.sectionCountTxt, { color: SERVICE_META[section.type].color }]}>{section.data.length}</Text>
+              </View>
+              <View style={[s.sectionDivider, { backgroundColor: SERVICE_META[section.type].color + "30" }]} />
             </View>
           )}
           renderItem={({ item }) => (
-            <View style={s.card}>
+            <Pressable
+              onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })}
+              style={s.card}
+            >
+              <View style={s.cardImgWrap}>
+                {item.image ? (
+                  <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                ) : (
+                  <Ionicons name={SERVICE_META[item.type].icon} size={20} color={C.textMuted} />
+                )}
+              </View>
               <View style={s.cardInfo}>
                 <View style={s.cardMeta}>
                   <Text style={s.cardName} numberOfLines={2}>{item.name}</Text>
                   <ServiceBadge type={item.type} />
                 </View>
-                {item.originalPrice && Number(item.originalPrice) > item.price ? (
-                  <View style={s.priceRow}>
-                    <Text style={s.cardPrice}>Rs. {item.price.toLocaleString()}</Text>
-                    <Text style={s.cardOriginal}>Rs. {Number(item.originalPrice).toLocaleString()}</Text>
-                  </View>
-                ) : (
-                  <Text style={s.cardPrice}>Rs. {item.price.toLocaleString()}</Text>
+                {item.vendorName && (
+                  <Text style={s.cardVendor} numberOfLines={1}>{item.vendorName}</Text>
                 )}
+                <View style={s.cardBottom}>
+                  {item.originalPrice && Number(item.originalPrice) > item.price ? (
+                    <View style={s.priceRow}>
+                      <Text style={s.cardPrice}>Rs. {item.price.toLocaleString()}</Text>
+                      <Text style={s.cardOriginal}>Rs. {Number(item.originalPrice).toLocaleString()}</Text>
+                    </View>
+                  ) : (
+                    <Text style={s.cardPrice}>Rs. {item.price.toLocaleString()}</Text>
+                  )}
+                  {item.rating != null && (
+                    <View style={s.cardRating}>
+                      <Ionicons name="star" size={10} color="#F59E0B" />
+                      <Text style={s.cardRatingTxt}>{item.rating}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
               {item.type === "pharmacy" ? (
-                <Pressable onPress={() => router.push("/pharmacy")} style={s.viewBtn}>
+                <Pressable onPress={(e) => { e?.stopPropagation?.(); router.push("/pharmacy"); }} style={s.viewBtn}>
                   <Ionicons name="arrow-forward" size={16} color="#059669" />
                 </Pressable>
               ) : (
-                <Pressable onPress={() => handleAdd(item)} style={[s.addBtn, added[item.id] && s.addBtnDone]}>
+                <Pressable onPress={(e) => { e?.stopPropagation?.(); handleAdd(item); }} style={[s.addBtn, added[item.id] && s.addBtnDone]}>
                   <Ionicons name={added[item.id] ? "checkmark" : "add"} size={18} color="#fff" />
                 </Pressable>
               )}
-            </View>
+            </Pressable>
           )}
         />
       )}
@@ -281,25 +402,57 @@ const s = StyleSheet.create({
   list:      { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 40 },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 14, paddingBottom: 6 },
   sectionTitle:  { fontSize: 12, fontFamily: "Inter_700Bold", letterSpacing: 0.5, textTransform: "uppercase" },
+  sectionCount:  { borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
+  sectionCountTxt: { fontSize: 10, fontFamily: "Inter_700Bold" },
   sectionDivider: { flex: 1, height: 1, marginLeft: 6 },
-  card:      { flexDirection: "row", alignItems: "center", backgroundColor: C.surface, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: C.border },
+  card:      { flexDirection: "row", alignItems: "center", backgroundColor: C.surface, borderRadius: 16, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: C.border, gap: 12 },
+  cardImgWrap: { width: 56, height: 56, borderRadius: 12, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   cardInfo:  { flex: 1 },
-  cardMeta:  { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4, gap: 8 },
-  cardName:  { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium", color: C.text },
+  cardMeta:  { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 2, gap: 8 },
+  cardName:  { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold", color: C.text },
+  cardVendor: { fontSize: 12, fontFamily: "Inter_400Regular", color: C.textMuted, marginBottom: 4 },
+  cardBottom: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   priceRow:  { flexDirection: "row", alignItems: "center", gap: 8 },
   cardPrice: { fontSize: 14, fontFamily: "Inter_700Bold", color: C.primary },
   cardOriginal: { fontSize: 12, fontFamily: "Inter_400Regular", color: C.textMuted, textDecorationLine: "line-through" },
+  cardRating: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  cardRatingTxt: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#92400E" },
   badge:     { flexDirection: "row", alignItems: "center", gap: 3, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
   badgeTxt:  { fontSize: 10, fontFamily: "Inter_600SemiBold" },
-  addBtn:    { width: 36, height: 36, borderRadius: 18, backgroundColor: C.primary, alignItems: "center", justifyContent: "center" },
+  addBtn:    { width: 36, height: 36, borderRadius: 12, backgroundColor: C.primary, alignItems: "center", justifyContent: "center" },
   addBtnDone:{ backgroundColor: "#10B981" },
-  viewBtn:   { width: 36, height: 36, borderRadius: 18, backgroundColor: "#D1FAE5", alignItems: "center", justifyContent: "center" },
+  viewBtn:   { width: 36, height: 36, borderRadius: 12, backgroundColor: "#D1FAE5", alignItems: "center", justifyContent: "center" },
   center:    { flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 60, gap: 8 },
   emptyTxt:  { fontSize: 16, fontFamily: "Inter_600SemiBold", color: C.text, marginTop: 8 },
   emptySub:  { fontSize: 13, fontFamily: "Inter_400Regular", color: C.textMuted },
-  retryBtn:  { marginTop: 8, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: "#EF4444", borderRadius: 12 },
+  errorIconWrap: { width: 64, height: 64, borderRadius: 20, backgroundColor: "#FEE2E2", alignItems: "center", justifyContent: "center" },
+  emptyIconWrap: { width: 64, height: 64, borderRadius: 20, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
+  retryBtn:  { marginTop: 8, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: "#EF4444", borderRadius: 12 },
   retryBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#fff" },
   noResultsCtaRow: { flexDirection: "row", gap: 10, marginTop: 12, flexWrap: "wrap", justifyContent: "center" },
   ctaBtn:    { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
   ctaBtnTxt: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+
+  historySection: { paddingHorizontal: 16, paddingTop: 16 },
+  historyHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  historyTitle: { flex: 1, fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textSecondary },
+  clearHistoryBtn: { paddingHorizontal: 10, paddingVertical: 4 },
+  clearHistoryTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.danger },
+  historyChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  historyChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
+  historyChipTxt: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.text },
+
+  suggestSection: { paddingHorizontal: 16, paddingTop: 20 },
+  suggestHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  suggestTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
+  suggestChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  suggestChip: { backgroundColor: C.primarySoft, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
+  suggestChipTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.primary },
+
+  browseSection: { paddingHorizontal: 16, paddingTop: 24 },
+  browseTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, marginBottom: 12 },
+  browseGrid: { flexDirection: "row", gap: 10 },
+  browseCard: { flex: 1, borderRadius: 16, padding: 16, alignItems: "center", gap: 10 },
+  browseIconWrap: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  browseLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
 });

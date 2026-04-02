@@ -8,6 +8,7 @@ import {
   Image,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,7 +32,8 @@ const PRODUCT_CARD_W = (width - 16 * 2 - 12) / 2;
 function AddToCartButton({ onPress, added }: { onPress: () => void; added: boolean }) {
   const scale = useRef(new Animated.Value(1)).current;
 
-  const handlePress = () => {
+  const handlePress = (e: any) => {
+    e?.stopPropagation?.();
     Animated.sequence([
       Animated.timing(scale, { toValue: 0.85, duration: 80, useNativeDriver: true }),
       Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }),
@@ -77,7 +79,7 @@ function FlashCard({ product }: { product: any }) {
   };
 
   return (
-    <View style={[styles.flashCard, { width: FLASH_CARD_W }]}>
+    <Pressable onPress={() => router.push({ pathname: "/product/[id]", params: { id: product.id } })} style={[styles.flashCard, { width: FLASH_CARD_W }]}>
       <CartSwitchModal
         visible={showSwitchModal}
         targetService="Mart"
@@ -108,7 +110,7 @@ function FlashCard({ product }: { product: any }) {
           <AddToCartButton onPress={handleAdd} added={added} />
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -141,7 +143,7 @@ function ProductCard({ product }: { product: any }) {
   };
 
   return (
-    <View style={[styles.productCard, { width: PRODUCT_CARD_W }]}>
+    <Pressable onPress={() => router.push({ pathname: "/product/[id]", params: { id: product.id } })} style={[styles.productCard, { width: PRODUCT_CARD_W }]}>
       <CartSwitchModal
         visible={showSwitchModal}
         targetService="Mart"
@@ -158,6 +160,12 @@ function ProductCard({ product }: { product: any }) {
             <Text style={styles.discountTxt}>{discount}% OFF</Text>
           </View>
         )}
+        {product.rating != null && (
+          <View style={styles.ratingBadge}>
+            <Ionicons name="star" size={10} color="#F59E0B" />
+            <Text style={styles.ratingTxt}>{product.rating}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.productBody}>
         <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
@@ -172,7 +180,7 @@ function ProductCard({ product }: { product: any }) {
           <AddToCartButton onPress={handleAdd} added={added} />
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -196,7 +204,7 @@ function MartScreenInner() {
   const appName = platformConfig.platform.appName;
 
   const { data: catData } = useGetCategories({ type: "mart" });
-  const { data, isLoading, isError, refetch } = useGetProducts({ type: "mart", search: search || undefined, category: selectedCat });
+  const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "mart", search: search || undefined, category: selectedCat });
 
   const categories = catData?.categories || [];
   const products   = data?.products   || [];
@@ -270,7 +278,7 @@ function MartScreenInner() {
         onCancel={() => setClearBannerConfirm(false)}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={C.primary} />}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingTop: 14 }} contentContainerStyle={styles.catRow}>
           <Pressable
             onPress={() => setSelectedCat(undefined)}
@@ -429,6 +437,8 @@ const styles = StyleSheet.create({
   productOrigPrice: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, textDecorationLine: "line-through" },
   addBtn: { width: 34, height: 34, borderRadius: 11, backgroundColor: C.primary, alignItems: "center", justifyContent: "center", shadowColor: C.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
   addBtnDone: { backgroundColor: C.success },
+  ratingBadge: { position: "absolute", bottom: 8, right: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
+  ratingTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#fff" },
 
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80, gap: 12 },
   errorIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },

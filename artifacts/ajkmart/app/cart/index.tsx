@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -1022,29 +1023,33 @@ export default function CartScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your Items</Text>
           {items.map(item => (
-            <View key={item.productId} style={styles.cartItem}>
+            <Pressable key={item.productId} onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.productId } })} style={styles.cartItem}>
               <View style={[styles.itemThumb, { backgroundColor: item.type === "food" ? "#FEF3C7" : "#EFF6FF" }]}>
-                <Ionicons
-                  name={item.type === "food" ? "restaurant-outline" : "basket-outline"}
-                  size={20}
-                  color={item.type === "food" ? "#D97706" : "#1A56DB"}
-                />
+                {item.image ? (
+                  <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                ) : (
+                  <Ionicons
+                    name={item.type === "food" ? "restaurant-outline" : "basket-outline"}
+                    size={20}
+                    color={item.type === "food" ? "#D97706" : "#1A56DB"}
+                  />
+                )}
               </View>
               <View style={styles.itemInfo}>
                 <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
                 <Text style={styles.itemUnit}>Rs. {item.price} each</Text>
               </View>
               <View style={styles.qtyControl}>
-                <Pressable onPress={() => updateQuantity(item.productId, item.quantity - 1)} style={styles.qtyBtn}>
+                <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.productId, item.quantity - 1); }} style={styles.qtyBtn}>
                   <Ionicons name={item.quantity === 1 ? "trash-outline" : "remove"} size={14} color={item.quantity === 1 ? C.danger : C.primary} />
                 </Pressable>
                 <Text style={styles.qtyText}>{item.quantity}</Text>
-                <Pressable onPress={() => updateQuantity(item.productId, item.quantity + 1)} style={styles.qtyBtn}>
+                <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.productId, item.quantity + 1); }} style={styles.qtyBtn}>
                   <Ionicons name="add" size={14} color={C.primary} />
                 </Pressable>
               </View>
               <Text style={styles.itemTotal}>Rs. {item.price * item.quantity}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -1339,7 +1344,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, marginBottom: 12 },
 
   cartItem: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: C.surface, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: C.borderLight, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
-  itemThumb: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  itemThumb: { width: 56, height: 56, borderRadius: 14, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   itemInfo: { flex: 1 },
   itemName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text, marginBottom: 3 },
   itemUnit: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
