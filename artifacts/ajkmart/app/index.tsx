@@ -16,9 +16,5 @@ export default function RootIndex() {
     );
   }
 
-  if (!user) {
-    return <Redirect href="/auth" />;
-  }
-
   return <Redirect href="/(tabs)" />;
 }

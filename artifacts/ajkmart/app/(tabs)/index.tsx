@@ -159,19 +159,24 @@ function ActiveTrackerStrip({ userId, position, tabBarHeight = 0 }: { userId: st
   );
 }
 
-function SvcCard({ service, delay, fullWidth, T }: { service: ServiceDefinition; delay: number; fullWidth?: boolean; T: (key: Parameters<typeof tDual>[0]) => string }) {
+function SvcCard({ service, delay, fullWidth, T, isGuest }: { service: ServiceDefinition; delay: number; fullWidth?: boolean; T: (key: Parameters<typeof tDual>[0]) => string; isGuest?: boolean }) {
   const labelMap: Record<string, Parameters<typeof tDual>[0]> = { food: "foodDelivery", rides: "bikeCarRide", pharmacy: "pharmacy", parcel: "parcel" };
   const subMap: Record<string, Parameters<typeof tDual>[0]> = { food: "restaurantsNearYou", rides: "safeBooking", pharmacy: "medicinesDelivered", parcel: "parcelsAnywhere" };
   const title = labelMap[service.key] ? T(labelMap[service.key]) : service.label;
   const sub = subMap[service.key] ? T(subMap[service.key]) : service.description;
   const tag = service.key === "rides" ? T("instantLabel") : service.tag;
 
+  const handlePress = () => {
+    if (isGuest) { router.push("/auth" as Href); return; }
+    safeNavigate(String(service.route));
+  };
+
   return (
     <AnimatedPressable
-      onPress={() => safeNavigate(String(service.route))}
+      onPress={handlePress}
       style={[styles.svcWrap, fullWidth ? { width: "100%" } : { width: HALF_W }]}
       delay={delay}
-      accessibilityLabel={`${title}. ${sub}`}
+      accessibilityLabel={`${title}. ${sub}${isGuest ? ". Sign in required" : ""}`}
     >
       <LinearGradient colors={service.cardGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.svcCard}>
         <View style={[styles.blob, { width: 110, height: 110, top: -30, right: -30, opacity: 0.1, backgroundColor: C.surface }]} />
@@ -181,13 +186,131 @@ function SvcCard({ service, delay, fullWidth, T }: { service: ServiceDefinition;
         <Text style={[styles.svcTitle, { color: service.textColor }]}>{title}</Text>
         <Text style={[styles.svcSub, { color: service.textColor, opacity: 0.7 }]}>{sub}</Text>
         <View style={[styles.svcTag, { backgroundColor: service.tagBg }]}>
-          <Ionicons name={service.tagIcon} size={11} color={service.tagColor} />
-          <Text style={[styles.svcTagTxt, { color: service.tagColor }]}>{tag}</Text>
+          <Ionicons name={isGuest ? "lock-closed" : service.tagIcon} size={11} color={service.tagColor} />
+          <Text style={[styles.svcTagTxt, { color: service.tagColor }]}>{isGuest ? "Sign in" : tag}</Text>
         </View>
       </LinearGradient>
     </AnimatedPressable>
   );
 }
+
+function GuestHero({ services, appName }: { services: ServiceDefinition[]; appName: string }) {
+  const featurePills = [
+    { icon: "bag-handle-outline" as const, label: "Shop Online" },
+    { icon: "bicycle-outline" as const, label: "Book Rides" },
+    { icon: "cube-outline" as const, label: "Send Parcels" },
+    { icon: "medical-outline" as const, label: "Pharmacy" },
+  ].filter((_, i) => i < Math.max(2, services.length));
+
+  return (
+    <View style={gh.wrap}>
+      <LinearGradient
+        colors={[C.primaryDark, C.primary, C.primaryLight]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={gh.card}
+      >
+        <View style={[gh.blob, { top: -40, right: -40, width: 160, height: 160 }]} />
+        <View style={[gh.blob, { bottom: -30, left: -20, width: 120, height: 120 }]} />
+
+        <View style={gh.topRow}>
+          <View style={gh.logoBox}>
+            <Ionicons name="bag-handle" size={26} color={C.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={gh.appName}>{appName}</Text>
+            <Text style={gh.tagline}>Your super app for everything</Text>
+          </View>
+        </View>
+
+        <Text style={gh.headline}>Shop, Ride & More —{"\n"}All in One Place</Text>
+
+        <View style={gh.pillRow}>
+          {featurePills.map((p, i) => (
+            <View key={i} style={gh.pill}>
+              <Ionicons name={p.icon} size={13} color="rgba(255,255,255,0.9)" />
+              <Text style={gh.pillTxt}>{p.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={gh.ctaRow}>
+          <Pressable
+            onPress={() => router.push("/auth" as Href)}
+            style={gh.signInBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in or register"
+          >
+            <Ionicons name="person-circle-outline" size={18} color={C.primary} />
+            <Text style={gh.signInTxt}>Sign In / Register</Text>
+            <Ionicons name="arrow-forward" size={16} color={C.primary} />
+          </Pressable>
+        </View>
+
+        <Text style={gh.guestNote}>Browse freely — sign in to place orders</Text>
+      </LinearGradient>
+    </View>
+  );
+}
+
+const gh = StyleSheet.create({
+  wrap: { paddingHorizontal: H_PAD, marginTop: spacing.lg, marginBottom: spacing.sm },
+  card: {
+    borderRadius: radii.xxl,
+    padding: spacing.xl,
+    overflow: "hidden",
+    gap: spacing.md,
+  },
+  blob: {
+    position: "absolute",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  topRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  logoBox: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.lg,
+    backgroundColor: C.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  appName: { fontFamily: "Inter_700Bold", fontSize: 16, color: "#fff", lineHeight: 20 },
+  tagline: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.7)", lineHeight: 17 },
+  headline: {
+    fontFamily: "Inter_700Bold",
+    fontSize: 24,
+    color: "#fff",
+    lineHeight: 32,
+    marginTop: spacing.xs,
+  },
+  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.xs },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: radii.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  pillTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.95)" },
+  ctaRow: { marginTop: spacing.xs },
+  signInBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: "#fff",
+    borderRadius: radii.xl,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.xl,
+    justifyContent: "center",
+  },
+  signInTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.primary, flex: 1, textAlign: "center" },
+  guestNote: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.6)", textAlign: "center" },
+});
 
 
 function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: number; onPress: () => void; appName?: string }) {
@@ -561,16 +684,13 @@ export default function HomeScreen() {
                 <Text style={styles.locTxt}>{platformConfig.platform.businessAddress}</Text>
               </View>
             </View>
-            <View style={styles.hdrActions}>
-              <Pressable onPress={() => router.push("/cart")} style={styles.cartBtn} accessibilityRole="button" accessibilityLabel={`Shopping cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}>
-                <Ionicons name="bag-outline" size={20} color={C.textInverse} />
-                {itemCount > 0 && (
-                  <View style={styles.cartBadge}>
-                    <Text style={styles.cartBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
-                  </View>
-                )}
-              </Pressable>
-            </View>
+            {user?.id && (
+              <View style={styles.hdrActions}>
+                <Pressable onPress={() => router.push("/search" as Href)} style={styles.cartBtn} accessibilityRole="button" accessibilityLabel="Search">
+                  <Ionicons name="search-outline" size={20} color={C.textInverse} />
+                </Pressable>
+              </View>
+            )}
           </View>
 
           <SearchHeader
@@ -606,6 +726,10 @@ export default function HomeScreen() {
           />
         ) : (
           <>
+            {!user?.id && (
+              <GuestHero services={activeServices} appName={appName} />
+            )}
+
             {activeServices.length > 0 && (
               <View style={styles.catSection}>
                 <CategoryStrip services={activeServices} T={T} />
@@ -621,18 +745,19 @@ export default function HomeScreen() {
 
             <View style={styles.grid}>
               {(() => {
+                const isGuest = !user?.id;
                 const elements: React.ReactNode[] = [];
                 for (let i = 0; i < activeServices.length; i += 2) {
                   const pair = activeServices.slice(i, i + 2);
                   if (pair.length === 2) {
                     elements.push(
                       <View key={`row-${i}`} style={styles.halfRow}>
-                        <SvcCard service={pair[0]} delay={100 + i * 40} T={T} />
-                        <SvcCard service={pair[1]} delay={140 + i * 40} T={T} />
+                        <SvcCard service={pair[0]} delay={100 + i * 40} T={T} isGuest={isGuest} />
+                        <SvcCard service={pair[1]} delay={140 + i * 40} T={T} isGuest={isGuest} />
                       </View>
                     );
                   } else {
-                    elements.push(<SvcCard key={`single-${i}`} service={pair[0]} delay={100 + i * 40} fullWidth T={T} />);
+                    elements.push(<SvcCard key={`single-${i}`} service={pair[0]} delay={100 + i * 40} fullWidth T={T} isGuest={isGuest} />);
                   }
                 }
                 return elements;
@@ -648,6 +773,23 @@ export default function HomeScreen() {
 
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
       </SmartRefresh>
+
+      {user?.id && itemCount > 0 && (
+        <Pressable
+          onPress={() => router.push("/cart" as Href)}
+          style={[styles.cartFab, { bottom: TAB_H + insets.bottom + 16 }]}
+          accessibilityRole="button"
+          accessibilityLabel={`Cart — ${itemCount} item${itemCount > 1 ? "s" : ""}`}
+        >
+          <LinearGradient colors={[C.primaryDark, C.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cartFabGrad}>
+            <Ionicons name="bag" size={20} color="#fff" />
+            <Text style={styles.cartFabTxt}>Cart</Text>
+            <View style={styles.cartFabBadge}>
+              <Text style={styles.cartFabBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
+            </View>
+          </LinearGradient>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -728,6 +870,34 @@ const styles = StyleSheet.create({
     borderColor: C.surface,
   },
   cartBadgeTxt: { ...Typ.tiny, fontSize: 9, color: C.textInverse },
+  cartFab: {
+    position: "absolute",
+    right: H_PAD,
+    borderRadius: radii.full,
+    overflow: "hidden",
+    ...shadows.xl,
+  },
+  cartFabGrad: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: radii.full,
+  },
+  cartFabTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+  cartFabBadge: {
+    backgroundColor: C.accent,
+    borderRadius: 12,
+    minWidth: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    borderWidth: 2,
+    borderColor: C.primary,
+  },
+  cartFabBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#fff" },
 
   announceBar: {
     backgroundColor: C.primary,

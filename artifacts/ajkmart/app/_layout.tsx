@@ -48,13 +48,16 @@ function AuthGuard() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
 
-  /* FIX 16: Include segments in deps so guard re-runs on navigation changes */
   useEffect(() => {
     if (isLoading) return;
     const inAuthGroup = segments[0] === "auth";
+    const inTabsGroup = segments[0] === "(tabs)";
     const inRootIndex = (segments as string[]).length === 0;
 
-    if (!user && !inAuthGroup) {
+    // Guests can browse home (tabs) freely; only block deep protected routes
+    const isPublicRoute = inAuthGroup || inTabsGroup || inRootIndex;
+
+    if (!user && !isPublicRoute) {
       router.replace("/auth");
     } else if (user && (inAuthGroup || inRootIndex)) {
       router.replace("/(tabs)");
