@@ -9,30 +9,24 @@ const router: IRouter = Router();
 
 router.get("/flash-deals", async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
-
   const now = new Date();
-  const defaultExpiry = new Date(now);
-  defaultExpiry.setHours(23, 59, 59, 999);
 
   const conditions: SQL[] = [
     eq(productsTable.approvalStatus, "approved"),
     eq(productsTable.inStock, true),
     isNotNull(productsTable.originalPrice),
     gt(productsTable.originalPrice, productsTable.price),
+    isNotNull(productsTable.dealExpiresAt),
+    gt(productsTable.dealExpiresAt, now),
   ];
 
   const products = await db.select().from(productsTable)
     .where(and(...conditions))
-    .orderBy(desc(productsTable.createdAt))
+    .orderBy(asc(productsTable.dealExpiresAt))
     .limit(limit);
 
-  const validProducts = products.filter(p => {
-    if (!p.dealExpiresAt) return true;
-    return p.dealExpiresAt.getTime() > now.getTime();
-  });
-
   res.json({
-    products: validProducts.map(p => {
+    products: products.map(p => {
       const price = parseFloat(p.price);
       const origPrice = p.originalPrice ? parseFloat(p.originalPrice) : price;
       const discount = origPrice > price ? Math.round(((origPrice - price) / origPrice) * 100) : 0;
@@ -42,10 +36,10 @@ router.get("/flash-deals", async (req, res) => {
         originalPrice: origPrice,
         rating: p.rating ? parseFloat(p.rating) : 4.0,
         discountPercent: discount,
-        dealExpiresAt: p.dealExpiresAt ? p.dealExpiresAt.toISOString() : defaultExpiry.toISOString(),
+        dealExpiresAt: p.dealExpiresAt!.toISOString(),
       };
     }),
-    total: validProducts.length,
+    total: products.length,
   });
 });
 
@@ -79,6 +73,57 @@ router.get("/trending-searches", async (req, res) => {
       total: Math.min(limit, fallbackTerms.length),
     });
   }
+});
+
+router.get("/search", async (req, res) => {
+  const { q, type, sort, minPrice, maxPrice, minRating } = req.query;
+  const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+  const perPage = Math.min(Math.max(parseInt(req.query.perPage as string) || 20, 1), 50);
+  const offset = (page - 1) * perPage;
+
+  if (!q || typeof q !== "string" || !q.trim()) {
+    res.json({ products: [], total: 0, page, perPage, totalPages: 0 });
+    return;
+  }
+
+  const conditions: SQL[] = [
+    eq(productsTable.approvalStatus, "approved"),
+    eq(productsTable.inStock, true),
+    ilike(productsTable.name, `%${q.trim()}%`),
+  ];
+  if (type && typeof type === "string") conditions.push(eq(productsTable.type, type));
+  if (minPrice) conditions.push(gte(productsTable.price, String(minPrice)));
+  if (maxPrice) conditions.push(lte(productsTable.price, String(maxPrice)));
+  if (minRating) conditions.push(gte(productsTable.rating, String(minRating)));
+
+  let orderBy;
+  switch (sort) {
+    case "price_asc": orderBy = asc(productsTable.price); break;
+    case "price_desc": orderBy = desc(productsTable.price); break;
+    case "rating": orderBy = desc(productsTable.rating); break;
+    case "newest": orderBy = desc(productsTable.createdAt); break;
+    default: orderBy = desc(productsTable.reviewCount);
+  }
+
+  const [allProducts, countResult] = await Promise.all([
+    db.select().from(productsTable).where(and(...conditions)).orderBy(orderBy).limit(perPage).offset(offset),
+    db.select({ total: sql<number>`count(*)::int` }).from(productsTable).where(and(...conditions)),
+  ]);
+
+  const total = countResult[0]?.total ?? 0;
+
+  res.json({
+    products: allProducts.map(p => ({
+      ...p,
+      price: parseFloat(p.price),
+      originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : undefined,
+      rating: p.rating ? parseFloat(p.rating) : 4.0,
+    })),
+    total,
+    page,
+    perPage,
+    totalPages: Math.ceil(total / perPage),
+  });
 });
 
 router.get("/", async (req, res) => {

@@ -13,6 +13,6 @@ export { rateRide, getDispatchStatus, retryRideDispatch } from "./ride-dispatch"
 export {
   getBanners, getTrending, getForYou, getSimilar,
   trackInteraction, getProductVariants,
-  getFlashDeals, getTrendingSearches,
+  getFlashDeals, getTrendingSearches, searchProducts,
 } from "./discovery";
-export type { Banner, RecommendationProduct, FlashDealProduct } from "./discovery";
+export type { Banner, RecommendationProduct, FlashDealProduct, SearchProductsParams, SearchProductsResponse } from "./discovery";

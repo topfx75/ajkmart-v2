@@ -20,11 +20,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
-import { getProducts, getTrendingSearches, type GetProductsType, type Product } from "@workspace/api-client-react";
+import { searchProducts, getTrendingSearches } from "@workspace/api-client-react";
 
 const C = Colors.light;
 const HISTORY_KEY = "@ajkmart_search_history";
-const MAX_HISTORY = 8;
+const MAX_HISTORY = 10;
 
 type SortOption = "relevance" | "price_asc" | "price_desc" | "rating" | "newest";
 const SORT_OPTIONS: { key: SortOption; label: string }[] = [
@@ -89,6 +89,9 @@ export default function UniversalSearchScreen() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [minRating, setMinRating] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,23 +131,27 @@ export default function UniversalSearchScreen() {
     ...(config.features.pharmacy ? ["pharmacy" as ServiceKey] : []),
   ];
 
-  const fetchResults = useCallback(async (q: string, fromExplicit = false) => {
-    if (!q.trim()) { setSections([]); return; }
-    setLoading(true);
+  const fetchResults = useCallback(async (q: string, fromExplicit = false, page = 1) => {
+    if (!q.trim()) { setSections([]); setTotalPages(0); setCurrentPage(1); return; }
+    if (page === 1) setLoading(true);
+    else setLoadingMore(true);
     setSearchError(false);
     if (fromExplicit) saveToHistory(q);
 
-    const extraParams: Record<string, string> = {};
-    if (sortBy !== "relevance") extraParams.sort = sortBy;
-    if (minPrice) extraParams.minPrice = minPrice;
-    if (maxPrice) extraParams.maxPrice = maxPrice;
-    if (minRating) extraParams.minRating = minRating;
-
-    const results = await Promise.allSettled(
-      enabledServices.map((svc) =>
-        getProducts({ type: svc as GetProductsType, search: q, ...extraParams } as any)
-          .then((data) =>
-            (data?.products || []).map((p: Product) => ({
+    try {
+      const results = await Promise.allSettled(
+        enabledServices.map((svc) =>
+          searchProducts({
+            q: q.trim(),
+            type: svc,
+            sort: sortBy !== "relevance" ? sortBy : undefined,
+            minPrice: minPrice || undefined,
+            maxPrice: maxPrice || undefined,
+            minRating: minRating || undefined,
+            page,
+            perPage: 20,
+          }).then((data) => ({
+            products: data.products.map((p) => ({
               id: p.id,
               name: p.name,
               price: p.price,
@@ -154,27 +161,65 @@ export default function UniversalSearchScreen() {
               rating: p.rating,
               vendorName: p.vendorName,
               type: svc,
-            } as SearchResult))
-          )
-      )
-    );
+            } as SearchResult)),
+            totalPages: data.totalPages,
+          }))
+        )
+      );
 
-    const newSections: Array<{ title: string; data: SearchResult[]; type: ServiceKey }> = [];
-    let anySuccess = false;
-    results.forEach((result, i) => {
-      const svc = enabledServices[i]!;
-      if (result.status === "fulfilled" && result.value.length > 0) {
-        newSections.push({ title: SERVICE_META[svc].label, data: result.value, type: svc });
-        anySuccess = true;
+      const newSections: Array<{ title: string; data: SearchResult[]; type: ServiceKey }> = [];
+      let anySuccess = false;
+      let maxPages = 0;
+      results.forEach((result, i) => {
+        const svc = enabledServices[i]!;
+        if (result.status === "fulfilled" && result.value.products.length > 0) {
+          if (page > 1) {
+            const existingIdx = sections.findIndex(sec => sec.type === svc);
+            if (existingIdx >= 0) {
+              const existingIds = new Set(sections[existingIdx]!.data.map(d => d.id));
+              const newItems = result.value.products.filter(p => !existingIds.has(p.id));
+              newSections.push({
+                title: SERVICE_META[svc].label,
+                data: [...sections[existingIdx]!.data, ...newItems],
+                type: svc,
+              });
+            } else {
+              newSections.push({ title: SERVICE_META[svc].label, data: result.value.products, type: svc });
+            }
+          } else {
+            newSections.push({ title: SERVICE_META[svc].label, data: result.value.products, type: svc });
+          }
+          if (result.value.totalPages > maxPages) maxPages = result.value.totalPages;
+          anySuccess = true;
+        } else if (page > 1) {
+          const existing = sections.find(sec => sec.type === svc);
+          if (existing) newSections.push(existing);
+        }
+      });
+
+      if (page > 1) {
+        const unchanged = sections.filter(sec => !newSections.some(ns => ns.type === sec.type));
+        setSections([...newSections, ...unchanged]);
+      } else {
+        setSections(newSections);
       }
-    });
-
-    setSections(newSections);
-    if (!anySuccess && results.every((r) => r.status === "rejected")) {
-      setSearchError(true);
+      setTotalPages(maxPages);
+      setCurrentPage(page);
+      if (!anySuccess && page === 1 && results.every((r) => r.status === "rejected")) {
+        setSearchError(true);
+      }
+    } catch {
+      if (page === 1) setSearchError(true);
     }
     setLoading(false);
-  }, [enabledServices.join(","), saveToHistory, sortBy, minPrice, maxPrice, minRating]);
+    setLoadingMore(false);
+  }, [enabledServices.join(","), saveToHistory, sortBy, minPrice, maxPrice, minRating, sections]);
+
+  const loadNextPage = useCallback(() => {
+    if (currentPage < totalPages && !loadingMore && query.trim()) {
+      fetchResults(query, false, currentPage + 1);
+    }
+  }, [currentPage, totalPages, loadingMore, query, fetchResults]);
 
   const onChangeText = (text: string) => {
     setQuery(text);
@@ -400,6 +445,8 @@ export default function UniversalSearchScreen() {
               <View style={[s.sectionDivider, { backgroundColor: SERVICE_META[section.type].color + "30" }]} />
             </View>
           )}
+          onEndReached={loadNextPage}
+          onEndReachedThreshold={0.3}
           renderItem={({ item }) => (
             <Pressable
               onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })}
@@ -448,6 +495,12 @@ export default function UniversalSearchScreen() {
               )}
             </Pressable>
           )}
+          ListFooterComponent={loadingMore ? (
+            <View style={s.loadMoreWrap}>
+              <ActivityIndicator size="small" color={C.primary} />
+              <Text style={s.loadMoreTxt}>Loading more...</Text>
+            </View>
+          ) : null}
         />
       )}
     </View>
@@ -528,4 +581,7 @@ const s = StyleSheet.create({
   filterInput: { backgroundColor: C.surfaceSecondary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, fontFamily: "Inter_400Regular", color: C.text, borderWidth: 1, borderColor: C.border },
   filterApply: { backgroundColor: C.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, marginTop: 12 },
   filterApplyTxt: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#fff" },
+
+  loadMoreWrap: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 },
+  loadMoreTxt: { fontSize: 13, fontFamily: "Inter_400Regular", color: C.textMuted },
 });

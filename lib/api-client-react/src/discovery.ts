@@ -114,8 +114,54 @@ export const getFlashDeals = async (
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   const q = qs.toString();
-  const res = await customFetch(`/products/flash-deals${q ? `?${q}` : ""}`, { ...options, method: "GET" }) as any;
+  const res: { products?: FlashDealProduct[] } = await customFetch(`/products/flash-deals${q ? `?${q}` : ""}`, { ...options, method: "GET" });
   return res.products ?? [];
+};
+
+export interface SearchProductsParams {
+  q: string;
+  type?: string;
+  sort?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  minRating?: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface SearchProductsResponse {
+  products: Array<{
+    id: string;
+    name: string;
+    price: number;
+    image: string | null;
+    category: string | null;
+    originalPrice?: number;
+    rating: number | null;
+    vendorName: string | null;
+    type: string | null;
+  }>;
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}
+
+export const searchProducts = async (
+  params: SearchProductsParams,
+  options?: RequestInit,
+): Promise<SearchProductsResponse> => {
+  const qs = new URLSearchParams();
+  qs.set("q", params.q);
+  if (params.type) qs.set("type", params.type);
+  if (params.sort) qs.set("sort", params.sort);
+  if (params.minPrice) qs.set("minPrice", params.minPrice);
+  if (params.maxPrice) qs.set("maxPrice", params.maxPrice);
+  if (params.minRating) qs.set("minRating", params.minRating);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.perPage) qs.set("perPage", String(params.perPage));
+  const res: SearchProductsResponse = await customFetch(`/products/search?${qs.toString()}`, { ...options, method: "GET" });
+  return res;
 };
 
 export const getTrendingSearches = async (
@@ -125,6 +171,6 @@ export const getTrendingSearches = async (
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   const q = qs.toString();
-  const res = await customFetch(`/products/trending-searches${q ? `?${q}` : ""}`, { ...options, method: "GET" }) as any;
+  const res: { searches?: string[] } = await customFetch(`/products/trending-searches${q ? `?${q}` : ""}`, { ...options, method: "GET" });
   return res.searches ?? [];
 };
