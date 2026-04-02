@@ -119,14 +119,14 @@ function ActiveTrackerStrip({ userId, position, tabBarHeight = 0 }: { userId: st
     items.push({
       label: `${activeOrders.length} active order${activeOrders.length > 1 ? "s" : ""}`,
       route: activeOrders[0]?.id ? `/order?orderId=${activeOrders[0].id}` : "/(tabs)/orders",
-      c1: "#D97706", c2: "#F59E0B",
+      c1: C.amber, c2: C.gold,
     });
   }
   if (activeRides.length > 0) {
     items.push({
       label: `${activeRides.length} active ride${activeRides.length > 1 ? "s" : ""}`,
       route: activeRides[0]?.id ? `/ride?rideId=${activeRides[0].id}` : "/(tabs)/orders",
-      c1: "#059669", c2: "#10B981",
+      c1: C.emerald, c2: C.emeraldDot,
     });
   }
 
@@ -175,9 +175,9 @@ function SvcCard({ service, delay, fullWidth, T }: { service: ServiceDefinition;
       accessibilityLabel={`${title}. ${sub}`}
     >
       <LinearGradient colors={service.cardGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.svcCard}>
-        <View style={[styles.blob, { width: 110, height: 110, top: -30, right: -30, opacity: 0.1, backgroundColor: "#fff" }]} />
+        <View style={[styles.blob, { width: 110, height: 110, top: -30, right: -30, opacity: 0.1, backgroundColor: C.surface }]} />
         <LinearGradient colors={service.iconGradient} style={styles.svcIcon}>
-          <Ionicons name={service.iconFocused} size={24} color="#fff" />
+          <Ionicons name={service.iconFocused} size={24} color={C.textInverse} />
         </LinearGradient>
         <Text style={[styles.svcTitle, { color: service.textColor }]}>{title}</Text>
         <Text style={[styles.svcSub, { color: service.textColor, opacity: 0.7 }]}>{sub}</Text>
@@ -190,8 +190,12 @@ function SvcCard({ service, delay, fullWidth, T }: { service: ServiceDefinition;
   );
 }
 
-function RiderOnlineBanner() {
-  const { isOnline, toggleOnline, lastPosition, locationPermission } = useRiderLocation();
+function RiderOnlineBanner({ isOnline, toggleOnline, lastPosition, locationPermission }: {
+  isOnline: boolean;
+  toggleOnline: () => Promise<string | undefined>;
+  lastPosition: { lat: number; lng: number } | null;
+  locationPermission: string | null;
+}) {
   const [toggling, setToggling] = useState(false);
 
   const handleToggle = async () => {
@@ -211,14 +215,14 @@ function RiderOnlineBanner() {
   return (
     <View style={riderS.container}>
       <LinearGradient
-        colors={isOnline ? [C.emeraldDeep, C.emerald] : ["#1E3A5F", C.brandBlue]}
+        colors={isOnline ? [C.emeraldDeep, C.emerald] : [C.navyDark, C.brandBlue]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={riderS.card}
       >
         <View style={riderS.row}>
           <View style={riderS.statusSection}>
-            <View style={[riderS.dot, { backgroundColor: isOnline ? C.emeraldMid : "#93C5FD" }]} />
+            <View style={[riderS.dot, { backgroundColor: isOnline ? C.emeraldMid : C.blueMist }]} />
             <View>
               <Text style={riderS.statusLabel}>{isOnline ? "You are Online" : "You are Offline"}</Text>
               <Text style={riderS.statusSub}>
@@ -240,7 +244,7 @@ function RiderOnlineBanner() {
             accessibilityState={{ disabled: toggling }}
           >
             {toggling ? (
-              <Ionicons name="sync" size={14} color="#fff" />
+              <Ionicons name="sync" size={14} color={C.textInverse} />
             ) : (
               <Text style={riderS.toggleTxt}>{isOnline ? "Go Offline" : "Go Online"}</Text>
             )}
@@ -257,13 +261,13 @@ const riderS = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   statusSection: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  statusLabel: { fontFamily: "Inter_700Bold", fontSize: 13, color: "#fff" },
+  statusLabel: { fontFamily: "Inter_700Bold", fontSize: 13, color: C.textInverse },
   statusSub: { fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 1 },
-  permDenied: { fontFamily: "Inter_500Medium", fontSize: 11, color: "#FCA5A5", marginTop: 2 },
+  permDenied: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.redMist, marginTop: 2 },
   toggleBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.lg, minWidth: 90, alignItems: "center" },
-  toggleOn: { backgroundColor: "#10B981" },
+  toggleOn: { backgroundColor: C.emeraldDot },
   toggleOff: { backgroundColor: "rgba(255,255,255,0.2)" },
-  toggleTxt: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" },
+  toggleTxt: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.textInverse },
 });
 
 function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: number; onPress: () => void; appName?: string }) {
@@ -273,7 +277,7 @@ function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: numbe
         <View style={[styles.blob, { width: 140, height: 140, top: -45, right: 50, opacity: 0.08 }]} />
         <View style={styles.walletL}>
           <View style={styles.walletIcon}>
-            <Ionicons name="wallet" size={20} color="#fff" />
+            <Ionicons name="wallet" size={20} color={C.textInverse} />
           </View>
           <View>
             <Text style={styles.walletLbl}>{appName} Wallet</Text>
@@ -395,7 +399,7 @@ function BannerCarousel({ features }: { features: Record<string, boolean> }) {
                 <Text style={styles.bannerDesc}>{b.desc}</Text>
                 <View style={styles.bannerCta}>
                   <Text style={styles.bannerCtaTxt}>{b.cta}</Text>
-                  <Ionicons name="arrow-forward" size={13} color="#fff" />
+                  <Ionicons name="arrow-forward" size={13} color={C.textInverse} />
                 </View>
               </View>
               <View style={styles.bannerIconWrap}>
@@ -440,10 +444,10 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
   }, []);
 
   const deals = [
-    { icon: "leaf-outline" as const, name: "Fresh Fruits", discount: "20% OFF", color: "#059669", bg: "#ECFDF5" },
-    { icon: "nutrition-outline" as const, name: "Dairy Items", discount: "15% OFF", color: "#D97706", bg: "#FFFBEB" },
-    { icon: "water-outline" as const, name: "Beverages", discount: "10% OFF", color: "#2563EB", bg: "#EFF6FF" },
-    { icon: "fish-outline" as const, name: "Meat & Fish", discount: "25% OFF", color: "#DC2626", bg: "#FEF2F2" },
+    { icon: "leaf-outline" as const, name: "Fresh Fruits", discount: "20% OFF", color: C.emerald, bg: C.emeraldBg },
+    { icon: "nutrition-outline" as const, name: "Dairy Items", discount: "15% OFF", color: C.amber, bg: C.amberBg },
+    { icon: "water-outline" as const, name: "Beverages", discount: "10% OFF", color: C.royalBlue, bg: C.blueSoft },
+    { icon: "fish-outline" as const, name: "Meat & Fish", discount: "25% OFF", color: C.red, bg: C.redBg },
   ];
 
   return (
@@ -513,6 +517,9 @@ export default function HomeScreen() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   const { config: platformConfig, loading: configLoading, refresh: refreshConfig } = usePlatformConfig();
+  const isRiderUser = user?.role === "rider";
+  const riderLocation = useRiderLocation();
+  const showRiderBanner = isRiderUser && platformConfig?.features?.rides && riderLocation.locationPermission !== "denied";
 
   const handleHomeRefresh = useCallback(async () => {
     try { await refreshConfig(); } catch (err) { console.warn("[Home] Config refresh failed:", err instanceof Error ? err.message : String(err)); }
@@ -554,7 +561,7 @@ export default function HomeScreen() {
       {announcement && !announceDismissed && (
         <View style={styles.announceBar} accessibilityRole="alert">
           <View style={styles.announceIcon}>
-            <Ionicons name="megaphone" size={12} color="#fff" />
+            <Ionicons name="megaphone" size={12} color={C.textInverse} />
           </View>
           <Text style={styles.announceTxt} numberOfLines={1}>{announcement}</Text>
           <Pressable
@@ -595,7 +602,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.hdrActions}>
               <Pressable onPress={() => router.push("/cart")} style={styles.cartBtn} accessibilityRole="button" accessibilityLabel={`Shopping cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}>
-                <Ionicons name="bag-outline" size={20} color="#fff" />
+                <Ionicons name="bag-outline" size={20} color={C.textInverse} />
                 {itemCount > 0 && (
                   <View style={styles.cartBadge}>
                     <Text style={styles.cartBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
@@ -619,7 +626,14 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        {user?.role === "rider" && platformConfig?.features?.rides && <RiderOnlineBanner />}
+        {showRiderBanner && (
+          <RiderOnlineBanner
+            isOnline={riderLocation.isOnline}
+            toggleOnline={riderLocation.toggleOnline}
+            lastPosition={riderLocation.lastPosition}
+            locationPermission={riderLocation.locationPermission}
+          />
+        )}
 
         {contentBanner ? (
           <View style={styles.announceBanner}>
@@ -704,7 +718,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radii.lg,
-    backgroundColor: "#E2E8F0",
+    backgroundColor: C.border,
     opacity: 0.7,
   },
   trackerCard: {
@@ -723,13 +737,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  trackerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#fff" },
-  trackerTxt: { flex: 1, ...typography.captionMedium, color: "#fff" },
+  trackerDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.surface },
+  trackerTxt: { flex: 1, ...typography.captionMedium, color: C.textInverse },
   trackerCta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#fff",
+    backgroundColor: C.surface,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: radii.full,
@@ -740,7 +754,7 @@ const styles = StyleSheet.create({
   hdrRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: spacing.lg },
   hdrActions: { flexDirection: "row", gap: spacing.sm },
   greeting: { ...typography.caption, color: "rgba(255,255,255,0.8)", marginBottom: 2 },
-  hdrTitle: { ...typography.h2, color: "#fff", marginBottom: Platform.OS === "web" ? 2 : 5 },
+  hdrTitle: { ...typography.h2, color: C.textInverse, marginBottom: Platform.OS === "web" ? 2 : 5 },
   locRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   locTxt: { ...typography.small, color: "rgba(255,255,255,0.7)" },
   cartBtn: {
@@ -767,7 +781,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#fff",
   },
-  cartBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 9, color: "#fff" },
+  cartBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 9, color: C.textInverse },
 
   announceBar: {
     backgroundColor: C.primary,
@@ -785,7 +799,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  announceTxt: { flex: 1, ...typography.captionMedium, color: "#fff" },
+  announceTxt: { flex: 1, ...typography.captionMedium, color: C.textInverse },
   announceClose: { padding: 4 },
 
   announceBanner: {
@@ -800,7 +814,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderWidth: 1,
-    borderColor: "#B3D4FF",
+    borderColor: C.blueLightBorder,
   },
   announceBannerTxt: { flex: 1, ...typography.captionMedium, color: C.primary },
 
@@ -847,12 +861,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   walletLbl: { ...typography.caption, color: "rgba(255,255,255,0.8)", marginBottom: 2 },
-  walletBal: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff" },
+  walletBal: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.textInverse },
   walletTopUp: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "#fff",
+    backgroundColor: C.surface,
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: radii.md,
@@ -877,8 +891,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: radii.full,
   },
-  bannerTagTxt: { ...typography.smallMedium, color: "#fff" },
-  bannerTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff", marginBottom: 5 },
+  bannerTagTxt: { ...typography.smallMedium, color: C.textInverse },
+  bannerTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.textInverse, marginBottom: 5 },
   bannerDesc: { ...typography.caption, color: "rgba(255,255,255,0.9)", lineHeight: 17, marginBottom: spacing.md },
   bannerCta: {
     flexDirection: "row",
@@ -890,7 +904,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radii.full,
   },
-  bannerCtaTxt: { ...typography.captionMedium, color: "#fff" },
+  bannerCtaTxt: { ...typography.captionMedium, color: C.textInverse },
   bannerIconWrap: { marginLeft: spacing.sm },
 
   dotsRow: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: spacing.md },
@@ -952,5 +966,5 @@ const styles = StyleSheet.create({
     ...typography.smallMedium,
   },
 
-  blob: { position: "absolute", borderRadius: 999, backgroundColor: "#fff" },
+  blob: { position: "absolute", borderRadius: 999, backgroundColor: C.surface },
 });

@@ -64,6 +64,11 @@ const purpleBorder = "#DDD6FE";
 const indigoDark = "#4F46E5";
 const indigoDarkest = "#3730A3";
 const indigoBorder = "#C7D2FE";
+const navyDark = "#1E3A5F";
+const blueMist = "#93C5FD";
+const redMist = "#FCA5A5";
+const blueLightBorder = "#B3D4FF";
+const royalBlue = "#2563EB";
 
 export const spacing = {
   xs: 4,
@@ -243,6 +248,11 @@ export default {
     indigoDark,
     indigoDarkest,
     indigoBorder,
+    navyDark,
+    blueMist,
+    redMist,
+    blueLightBorder,
+    royalBlue,
     pharmacy: "#AF52DE",
     pharmacyLight: "#F5E6FF",
     parcel: "#FF6B35",
