@@ -1,11 +1,85 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { productsTable, productVariantsTable } from "@workspace/db/schema";
-import { eq, ilike, and, SQL, gte, lte, desc, asc, sql } from "drizzle-orm";
+import { eq, ilike, and, SQL, gte, lte, gt, desc, asc, sql, isNotNull } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { adminAuth, getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
+
+router.get("/flash-deals", async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+
+  const now = new Date();
+  const defaultExpiry = new Date(now);
+  defaultExpiry.setHours(23, 59, 59, 999);
+
+  const conditions: SQL[] = [
+    eq(productsTable.approvalStatus, "approved"),
+    eq(productsTable.inStock, true),
+    isNotNull(productsTable.originalPrice),
+    gt(productsTable.originalPrice, productsTable.price),
+  ];
+
+  const products = await db.select().from(productsTable)
+    .where(and(...conditions))
+    .orderBy(desc(productsTable.createdAt))
+    .limit(limit);
+
+  const validProducts = products.filter(p => {
+    if (!p.dealExpiresAt) return true;
+    return p.dealExpiresAt.getTime() > now.getTime();
+  });
+
+  res.json({
+    products: validProducts.map(p => {
+      const price = parseFloat(p.price);
+      const origPrice = p.originalPrice ? parseFloat(p.originalPrice) : price;
+      const discount = origPrice > price ? Math.round(((origPrice - price) / origPrice) * 100) : 0;
+      return {
+        ...p,
+        price,
+        originalPrice: origPrice,
+        rating: p.rating ? parseFloat(p.rating) : 4.0,
+        discountPercent: discount,
+        dealExpiresAt: p.dealExpiresAt ? p.dealExpiresAt.toISOString() : defaultExpiry.toISOString(),
+      };
+    }),
+    total: validProducts.length,
+  });
+});
+
+router.get("/trending-searches", async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit as string) || 12, 30);
+
+  const fallbackTerms = ["Milk", "Rice", "Chicken Breast", "Bread", "Eggs", "Cooking Oil", "Sugar", "Butter", "Flour", "Tea", "Tomatoes", "Onions"];
+
+  try {
+    const results = await db
+      .select({
+        name: productsTable.name,
+      })
+      .from(productsTable)
+      .where(and(
+        eq(productsTable.approvalStatus, "approved"),
+        eq(productsTable.inStock, true),
+      ))
+      .orderBy(desc(productsTable.reviewCount), desc(productsTable.rating))
+      .limit(limit);
+
+    const terms = results.map(r => r.name);
+
+    res.json({
+      searches: terms.length > 0 ? terms : fallbackTerms.slice(0, limit),
+      total: terms.length || fallbackTerms.length,
+    });
+  } catch {
+    res.json({
+      searches: fallbackTerms.slice(0, limit),
+      total: Math.min(limit, fallbackTerms.length),
+    });
+  }
+});
 
 router.get("/", async (req, res) => {
   const { category, search, type, minPrice, maxPrice, minRating, sort, vendor } = req.query;

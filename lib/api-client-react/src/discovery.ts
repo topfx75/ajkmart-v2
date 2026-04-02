@@ -92,3 +92,39 @@ export const getProductVariants = async (
   const res = await customFetch(`/variants/product/${productId}`, { ...options, method: "GET" });
   return res.variants ?? [];
 };
+
+export interface FlashDealProduct {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number;
+  image: string | null;
+  category: string | null;
+  rating: number | null;
+  vendorName: string | null;
+  unit: string | null;
+  discountPercent: number;
+  dealExpiresAt: string;
+}
+
+export const getFlashDeals = async (
+  params?: { limit?: number },
+  options?: RequestInit,
+): Promise<FlashDealProduct[]> => {
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const q = qs.toString();
+  const res = await customFetch(`/products/flash-deals${q ? `?${q}` : ""}`, { ...options, method: "GET" }) as any;
+  return res.products ?? [];
+};
+
+export const getTrendingSearches = async (
+  params?: { limit?: number },
+  options?: RequestInit,
+): Promise<string[]> => {
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const q = qs.toString();
+  const res = await customFetch(`/products/trending-searches${q ? `?${q}` : ""}`, { ...options, method: "GET" }) as any;
+  return res.searches ?? [];
+};

@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
-import { getProducts, type GetProductsType, type Product } from "@workspace/api-client-react";
+import { getProducts, getTrendingSearches, type GetProductsType, type Product } from "@workspace/api-client-react";
 
 const C = Colors.light;
 const HISTORY_KEY = "@ajkmart_search_history";
@@ -83,9 +83,7 @@ export default function UniversalSearchScreen() {
   const [searchError, setSearchError] = useState(false);
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [suggestions] = useState<string[]>([
-    "Milk", "Rice", "Chicken", "Bread", "Eggs", "Butter", "Oil", "Sugar",
-  ]);
+  const [trendingTerms, setTrendingTerms] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortOption>("relevance");
   const [showFilters, setShowFilters] = useState(false);
   const [minPrice, setMinPrice] = useState("");
@@ -102,6 +100,9 @@ export default function UniversalSearchScreen() {
         try { setSearchHistory(JSON.parse(raw)); } catch {}
       }
     });
+    getTrendingSearches({ limit: 12 })
+      .then(terms => { if (terms.length > 0) setTrendingTerms(terms); })
+      .catch(() => {});
     Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
   }, []);
 
@@ -343,23 +344,25 @@ export default function UniversalSearchScreen() {
             </View>
           )}
 
-          <View style={s.suggestSection}>
-            <View style={s.suggestHeader}>
-              <Ionicons name="trending-up-outline" size={16} color={C.primary} />
-              <Text style={s.suggestTitle}>Popular Searches</Text>
+          {trendingTerms.length > 0 && (
+            <View style={s.suggestSection}>
+              <View style={s.suggestHeader}>
+                <Ionicons name="trending-up-outline" size={16} color={C.primary} />
+                <Text style={s.suggestTitle}>Trending Searches</Text>
+              </View>
+              <View style={s.suggestChips}>
+                {trendingTerms.map((term) => (
+                  <Pressable
+                    key={term}
+                    onPress={() => { setQuery(term); fetchResults(term, true); }}
+                    style={s.suggestChip}
+                  >
+                    <Text style={s.suggestChipTxt}>{term}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-            <View style={s.suggestChips}>
-              {suggestions.map((term, i) => (
-                <Pressable
-                  key={term}
-                  onPress={() => { setQuery(term); fetchResults(term, true); }}
-                  style={s.suggestChip}
-                >
-                  <Text style={s.suggestChipTxt}>{term}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
+          )}
 
           <View style={s.browseSection}>
             <Text style={s.browseTitle}>Browse by Service</Text>

@@ -6,9 +6,7 @@ import {
   Alert,
   Animated,
   Dimensions,
-  NativeScrollEvent,
   useWindowDimensions,
-  NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -32,7 +30,6 @@ import { tDual } from "@workspace/i18n";
 import {
   SERVICE_REGISTRY,
   getActiveServices,
-  getActiveBanners,
   type ServiceDefinition,
 } from "@/constants/serviceRegistry";
 import {
@@ -44,7 +41,7 @@ import {
   CountdownTimer,
   SearchHeader,
 } from "@/components/user-shared";
-import { getBanners, getTrending, type Banner, type RecommendationProduct } from "@workspace/api-client-react";
+import { getBanners, getTrending, getFlashDeals, type Banner, type RecommendationProduct, type FlashDealProduct } from "@workspace/api-client-react";
 import { Image, FlatList } from "react-native";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
@@ -329,129 +326,44 @@ function CategoryStrip({ services, T }: { services: ServiceDefinition[]; T: (key
   );
 }
 
-function BannerCarousel({ features }: { features: Record<string, boolean> }) {
-  const banners = getActiveBanners(features);
-  const scrollRef = useRef<ScrollView>(null);
-  const [active, setActive] = useState(0);
-  const { width: windowWidth } = useWindowDimensions();
-  const BANNER_W = windowWidth - H_PAD * 2;
-  const dotWidths = useRef(banners.map((_, i) => new Animated.Value(i === 0 ? 24 : 6))).current;
-
-  useEffect(() => {
-    if (banners.length <= 1) return;
-    const timer = setInterval(() => {
-      setActive((prev) => {
-        const next = (prev + 1) % banners.length;
-        scrollRef.current?.scrollTo({ x: next * BANNER_W, animated: true });
-        return next;
-      });
-    }, 3500);
-    return () => clearInterval(timer);
-  }, [BANNER_W, banners.length]);
-
-  useEffect(() => {
-    dotWidths.forEach((dw, i) => {
-      Animated.spring(dw, {
-        toValue: i === active ? 24 : 6,
-        useNativeDriver: false,
-        friction: 8,
-        tension: 100,
-      }).start();
-    });
-  }, [active]);
-
-  const onScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const idx = Math.round(e.nativeEvent.contentOffset.x / BANNER_W);
-      setActive(idx);
-    },
-    [BANNER_W]
-  );
-
-  if (banners.length === 0) return null;
-
-  return (
-    <View>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled={false}
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        decelerationRate="fast"
-        snapToInterval={BANNER_W}
-        snapToAlignment="start"
-        contentContainerStyle={{ paddingHorizontal: 0 }}
-        style={{ width: BANNER_W }}
-        accessibilityRole="adjustable"
-        accessibilityLabel={`Promotional banners. ${banners.length} items`}
-      >
-        {banners.map((b, i) => (
-          <Pressable key={i} onPress={() => router.push(b.route as Href)} style={{ width: BANNER_W }} accessibilityRole="button" accessibilityLabel={`${b.title}. ${b.desc}`}>
-            <LinearGradient colors={[b.c1, b.c2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bannerCard}>
-              <View style={[styles.blob, { width: 130, height: 130, top: -30, right: 60, opacity: 0.12 }]} />
-              <View style={[styles.blob, { width: 70, height: 70, bottom: -10, right: 10, opacity: 0.08 }]} />
-              <View style={{ flex: 1 }}>
-                <View style={styles.bannerTagRow}>
-                  <View style={styles.bannerTagChip}>
-                    <Text style={styles.bannerTagTxt}>{b.tag}</Text>
-                  </View>
-                </View>
-                <Text style={styles.bannerTitle}>{b.title}</Text>
-                <Text style={styles.bannerDesc}>{b.desc}</Text>
-                <View style={styles.bannerCta}>
-                  <Text style={styles.bannerCtaTxt}>{b.cta}</Text>
-                  <Ionicons name="arrow-forward" size={13} color={C.textInverse} />
-                </View>
-              </View>
-              <View style={styles.bannerIconWrap}>
-                <Ionicons name={b.icon} size={56} color={C.overlayLight15} />
-              </View>
-            </LinearGradient>
-          </Pressable>
-        ))}
-      </ScrollView>
-      {banners.length > 1 && (
-        <View style={styles.dotsRow}>
-          {banners.map((_, i) => (
-            <Pressable
-              key={i}
-              onPress={() => { setActive(i); scrollRef.current?.scrollTo({ x: i * BANNER_W, animated: true }); }}
-              accessibilityRole="button"
-              accessibilityLabel={`Banner ${i + 1} of ${banners.length}`}
-              accessibilityState={{ selected: active === i }}
-            >
-              <Animated.View
-                style={[
-                  styles.dot,
-                  {
-                    width: dotWidths[i],
-                    backgroundColor: active === i ? C.primary : C.border,
-                  },
-                ]}
-              />
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
 function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => string }) {
-  const flashTarget = useMemo(() => {
-    const d = new Date();
-    d.setHours(d.getHours() + 6);
-    return d;
-  }, []);
+  const { data: deals, isLoading } = useQuery({
+    queryKey: ["flash-deals"],
+    queryFn: () => getFlashDeals({ limit: 10 }),
+    staleTime: 3 * 60 * 1000,
+  });
 
-  const deals = [
-    { icon: "leaf-outline" as const, name: "Fresh Fruits", discount: "20% OFF", color: C.emerald, bg: C.emeraldBg },
-    { icon: "nutrition-outline" as const, name: "Dairy Items", discount: "15% OFF", color: C.amber, bg: C.amberBg },
-    { icon: "water-outline" as const, name: "Beverages", discount: "10% OFF", color: C.royalBlue, bg: C.blueSoft },
-    { icon: "fish-outline" as const, name: "Meat & Fish", discount: "25% OFF", color: C.red, bg: C.redBg },
-  ];
+  const items = deals ?? [];
+  const earliestExpiry = useMemo(() => {
+    if (items.length === 0) return null;
+    const times = items.map(d => new Date(d.dealExpiresAt).getTime()).filter(t => !isNaN(t));
+    if (times.length === 0) return null;
+    return new Date(Math.min(...times));
+  }, [items]);
+
+  if (isLoading) {
+    return (
+      <View style={styles.flashSection}>
+        <View style={styles.flashHeader}>
+          <View style={styles.flashHeaderLeft}>
+            <Ionicons name="flash" size={18} color={C.danger} />
+            <Text style={styles.flashTitle}>{T("todaysDeals")}</Text>
+          </View>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.flashRow}>
+          {[0,1,2,3].map(i => (
+            <View key={i} style={styles.flashCard}>
+              <SkeletonBlock w={52} h={52} r={26} />
+              <SkeletonBlock w={60} h={12} r={6} />
+              <SkeletonBlock w={50} h={18} r={10} />
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (items.length === 0) return null;
 
   return (
     <View style={styles.flashSection}>
@@ -460,30 +372,34 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
           <Ionicons name="flash" size={18} color={C.danger} />
           <Text style={styles.flashTitle}>{T("todaysDeals")}</Text>
         </View>
-        <CountdownTimer targetTime={flashTarget} />
+        {earliestExpiry && <CountdownTimer targetTime={earliestExpiry} />}
       </View>
-      <ScrollView
+      <FlatList
         horizontal
+        data={items}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.flashRow}
-      >
-        {deals.map((deal, i) => (
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
           <Pressable
-            key={i}
-            onPress={() => safeNavigate("/mart")}
+            onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })}
             style={styles.flashCard}
-            accessibilityLabel={`${deal.name} ${deal.discount}`}
+            accessibilityLabel={`${item.name} ${item.discountPercent}% OFF`}
           >
-            <View style={[styles.flashIconWrap, { backgroundColor: deal.bg }]}>
-              <Ionicons name={deal.icon} size={26} color={deal.color} />
+            <View style={[styles.flashIconWrap, { backgroundColor: C.dangerSoft }]}>
+              {item.image ? (
+                <Image source={{ uri: item.image }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+              ) : (
+                <Ionicons name="flash" size={26} color={C.danger} />
+              )}
             </View>
-            <Text style={styles.flashName} numberOfLines={1}>{deal.name}</Text>
-            <View style={[styles.flashBadge, { backgroundColor: deal.bg }]}>
-              <Text style={[styles.flashDiscount, { color: deal.color }]}>{deal.discount}</Text>
+            <Text style={styles.flashName} numberOfLines={1}>{item.name}</Text>
+            <View style={[styles.flashBadge, { backgroundColor: C.dangerSoft }]}>
+              <Text style={[styles.flashDiscount, { color: C.danger }]}>{item.discountPercent}% OFF</Text>
             </View>
           </Pressable>
-        ))}
-      </ScrollView>
+        )}
+      />
     </View>
   );
 }
@@ -788,18 +704,9 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {platformConfig.content.showBanner && (
-              <>
-                <SectionHeader title={T("todaysDeals")} subtitle={T("autoSlidesLabel")} />
-                <View style={styles.carouselWrap}>
-                  <BannerCarousel features={features} />
-                </View>
-              </>
-            )}
+            {platformConfig.content.showBanner && <DynamicBannerCarousel />}
 
             <FlashDealsSection T={T} />
-
-            <DynamicBannerCarousel />
             <TrendingSection />
 
             <SectionHeader title={T("ourServices")} subtitle={T("allInOne")} />
