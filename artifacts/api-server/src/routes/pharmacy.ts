@@ -154,7 +154,12 @@ router.post("/", customerAuth, async (req, res) => {
   if (prescriptionPhotoUri?.trim()) {
     const rawUri = prescriptionPhotoUri.trim();
     if (rawUri.startsWith("rx-")) {
-      resolvedPhotoUrl = prescriptionRefMap.get(rawUri) ?? rawUri;
+      let resolved = prescriptionRefMap.get(rawUri);
+      if (!resolved) {
+        await new Promise((r) => setTimeout(r, 1500));
+        resolved = prescriptionRefMap.get(rawUri);
+      }
+      resolvedPhotoUrl = resolved ?? rawUri;
     } else {
       resolvedPhotoUrl = rawUri;
     }
