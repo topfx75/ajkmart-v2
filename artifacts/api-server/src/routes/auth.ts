@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import rateLimit from "express-rate-limit";
 import crypto from "crypto";
 import { db } from "@workspace/db";
 import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable, magicLinkTokensTable } from "@workspace/db/schema";
@@ -36,6 +37,20 @@ import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri,
 import { sendVerificationEmail, sendPasswordResetEmail, sendMagicLinkEmail } from "../services/email.js";
 import { getUserLanguage, getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
+
+/* ── OTP rate limiter: max 3 send-otp requests per 5 minutes per IP ── */
+const otpLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many OTP requests. Please wait 5 minutes and try again." },
+  keyGenerator: (req) => {
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) ?? req.socket.remoteAddress ?? "unknown";
+    return ip;
+  },
+});
 
 function hashOtp(otp: string): string {
   return createHash("sha256").update(otp).digest("hex");
@@ -361,7 +376,7 @@ router.post("/merge-account", async (req, res) => {
    POST /auth/send-otp
    Atomically upsert user by phone — one account per number.
 ───────────────────────────────────────────────────────────── */
-router.post("/send-otp", verifyCaptcha, async (req, res) => {
+router.post("/send-otp", otpLimiter, verifyCaptcha, async (req, res) => {
   const rawPhone = req.body?.phone;
   const deviceId: string | undefined = typeof req.body?.deviceId === "string" ? req.body.deviceId : undefined;
   const preferredChannel: string | undefined = req.body?.preferredChannel;
@@ -1207,7 +1222,7 @@ router.post("/check-available", async (req, res) => {
    Send OTP to email address (only for existing accounts with that email)
    Body: { email }
 ══════════════════════════════════════════════════════════════ */
-router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
+router.post("/send-email-otp", otpLimiter, verifyCaptcha, async (req, res) => {
   const { email } = req.body;
   if (!email || !email.includes("@")) {
     res.status(400).json({ error: "Valid email address required" }); return;
