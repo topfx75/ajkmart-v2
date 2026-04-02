@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { Phone, Mail, User } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig, getVendorAuthConfig } from "../lib/useConfig";
@@ -111,6 +112,43 @@ export default function Login() {
   const [magicLinkEmail, setMagicLinkEmail] = useState("");
 
   const clearError = () => setError("");
+
+  const [failedAttempts, setFailedAttempts] = useState(() => {
+    try { return parseInt(sessionStorage.getItem("vendor_login_attempts") || "0", 10) || 0; } catch { return 0; }
+  });
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(() => {
+    try {
+      const s = sessionStorage.getItem("vendor_lockout_until");
+      const v = s ? parseInt(s, 10) : null;
+      return v && v > Date.now() ? v : null;
+    } catch { return null; }
+  });
+  const isLockedOut = lockoutUntil !== null && lockoutUntil > Date.now();
+
+  const handleAuthError = (e: unknown) => {
+    const msg = e instanceof Error ? e.message : "Login failed. Please try again.";
+    const isLockError = msg.toLowerCase().includes("locked") || msg.toLowerCase().includes("too many");
+    if (isLockError) {
+      const until = Date.now() + (vendorAuth.lockoutDurationSec ?? 300) * 1000;
+      setLockoutUntil(until);
+      try { sessionStorage.setItem("vendor_lockout_until", String(until)); } catch { /* ignore */ }
+      setError("Account temporarily locked due to too many failed attempts. Please try again later.");
+      return;
+    }
+    if (vendorAuth.lockoutEnabled) {
+      setFailedAttempts(prev => {
+        const next = prev + 1;
+        try { sessionStorage.setItem("vendor_login_attempts", String(next)); } catch { /* ignore */ }
+        if (next >= (vendorAuth.lockoutMaxAttempts ?? 5)) {
+          const until = Date.now() + (vendorAuth.lockoutDurationSec ?? 300) * 1000;
+          setLockoutUntil(until);
+          try { sessionStorage.setItem("vendor_lockout_until", String(until)); } catch { /* ignore */ }
+        }
+        return next;
+      });
+    }
+    setError(msg);
+  };
 
   const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
@@ -394,7 +432,7 @@ export default function Login() {
   const verifyPhoneOtp = async () => {
     if (!otp || otp.length < 6) { setError(T("enterOtp")); return; }
     setLoading(true); clearError();
-    try { await doLogin(await api.verifyOtp(phone, otp, getDeviceFingerprint())); } catch (e) { setError(e instanceof Error ? e.message : "Verification failed"); }
+    try { await doLogin(await api.verifyOtp(phone, otp, getDeviceFingerprint())); } catch (e) { handleAuthError(e); }
     setLoading(false);
   };
 
@@ -415,7 +453,7 @@ export default function Login() {
   const verifyEmailOtp = async () => {
     if (!emailOtp || emailOtp.length < 6) { setError(T("enterOtp")); return; }
     setLoading(true); clearError();
-    try { await doLogin(await api.verifyEmailOtp(email, emailOtp, getDeviceFingerprint())); } catch (e) { setError(e instanceof Error ? e.message : "Verification failed"); }
+    try { await doLogin(await api.verifyEmailOtp(email, emailOtp, getDeviceFingerprint())); } catch (e) { handleAuthError(e); }
     setLoading(false);
   };
 
@@ -423,7 +461,7 @@ export default function Login() {
     if (!username || username.length < 3) { setError(T("enterUsername")); return; }
     if (!password || password.length < 6) { setError(T("enterPassword")); return; }
     setLoading(true); clearError();
-    try { await doLogin(await api.loginUsername(username, password, getDeviceFingerprint())); } catch (e) { setError(e instanceof Error ? e.message : "Login failed"); }
+    try { await doLogin(await api.loginUsername(username, password, getDeviceFingerprint())); } catch (e) { handleAuthError(e); }
     setLoading(false);
   };
 
@@ -1086,6 +1124,34 @@ export default function Login() {
                 </div>
               </>
             )}
+
+            {vendorAuth.lockoutEnabled && failedAttempts > 0 && !isLockedOut && (step === "input" || step === "otp") && (() => {
+              const remaining = (vendorAuth.lockoutMaxAttempts ?? 5) - failedAttempts;
+              const alts: { m: LoginMethod; label: string; icon: ReactNode }[] = [];
+              if (method !== "phone" && vendorAuth.phoneOtp) alts.push({ m: "phone", label: "Phone OTP", icon: <Phone size={11} /> });
+              if (method !== "email" && vendorAuth.emailOtp) alts.push({ m: "email", label: "Email OTP", icon: <Mail size={11} /> });
+              if (method !== "username" && vendorAuth.usernamePassword) alts.push({ m: "username", label: "Password", icon: <User size={11} /> });
+              return (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3">
+                  <p className="text-xs text-amber-700 font-semibold mb-1">
+                    ⚠️ {failedAttempts} failed attempt{failedAttempts > 1 ? "s" : ""} &middot; {remaining} remaining
+                  </p>
+                  {alts.length > 0 && (
+                    <>
+                      <p className="text-[10px] text-amber-600 mb-1.5">Try a different sign-in method:</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {alts.map(({ m, label, icon }) => (
+                          <button key={m} onClick={() => selectMethod(m)}
+                            className="flex items-center gap-1 text-[11px] bg-white border border-amber-300 text-amber-800 rounded-lg px-2.5 py-1 font-semibold hover:bg-amber-100 transition-colors">
+                            {icon} {label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {step !== "continue" && error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-600 text-sm font-medium">{error}</p></div>}
 

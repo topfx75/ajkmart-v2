@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth, type AuthUser } from "../lib/auth";
 import { api, apiFetch } from "../lib/api";
@@ -321,6 +321,14 @@ export default function Login() {
       });
     }
     setError(msg);
+  };
+
+  const switchToMethod = (m: LoginMethod) => {
+    setMethod(m);
+    setStep("input");
+    setError("");
+    setOtp(""); setEmailOtp(""); setPassword("");
+    setDevOtp(""); setEmailDevOtp("");
   };
 
   const [phoneFallbackEmail, setPhoneFallbackEmail] = useState("");
@@ -798,11 +806,33 @@ export default function Login() {
             </>
           )}
 
-          {auth.lockoutEnabled && failedAttempts > 0 && !isLockedOut && step === "input" && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-700 font-medium">
-              {failedAttempts} {T("failedAttempts")} ({auth.lockoutMaxAttempts - failedAttempts} remaining)
-            </div>
-          )}
+          {auth.lockoutEnabled && failedAttempts > 0 && !isLockedOut && (step === "input" || step === "otp") && (() => {
+            const remaining = auth.lockoutMaxAttempts - failedAttempts;
+            const alts: { m: LoginMethod; label: string; icon: ReactNode }[] = [];
+            if (method !== "phone" && auth.phoneOtp) alts.push({ m: "phone", label: "Phone OTP", icon: <Phone size={11} /> });
+            if (method !== "email" && auth.emailOtp) alts.push({ m: "email", label: "Email OTP", icon: <Mail size={11} /> });
+            if (method !== "username" && auth.usernamePassword) alts.push({ m: "username", label: "Password", icon: <User size={11} /> });
+            return (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3">
+                <p className="text-xs text-amber-700 font-semibold mb-1">
+                  ⚠️ {failedAttempts} {T("failedAttempts")} &middot; {remaining} remaining
+                </p>
+                {alts.length > 0 && (
+                  <>
+                    <p className="text-[10px] text-amber-600 mb-1.5">Try a different sign-in method:</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {alts.map(({ m, label, icon }) => (
+                        <button key={m} onClick={() => switchToMethod(m)}
+                          className="flex items-center gap-1 text-[11px] bg-white border border-amber-300 text-amber-800 rounded-lg px-2.5 py-1 font-semibold hover:bg-amber-100 transition-colors">
+                          {icon} {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {step !== "continue" && error && <p className="text-red-500 text-sm mb-3 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 
