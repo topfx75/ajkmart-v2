@@ -9,6 +9,7 @@ export default function Login() {
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [devOtp, setDevOtp] = useState("");
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,7 +17,8 @@ export default function Login() {
     if (!phone.trim()) { setErr("Enter your phone number"); return; }
     setLoading(true);
     try {
-      await api.sendOtp(phone.trim());
+      const r = await api.sendOtp(phone.trim());
+      setDevOtp(r.otp || "");
       setStep("otp");
     } catch (e: any) {
       setErr(e.message);
@@ -80,8 +82,14 @@ export default function Login() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">OTP sent to {phone}</label>
-                  <button type="button" onClick={() => { setStep("phone"); setOtp(""); setErr(""); }} className="text-xs text-green-600 font-bold hover:underline">Change</button>
+                  <button type="button" onClick={() => { setStep("phone"); setOtp(""); setErr(""); setDevOtp(""); }} className="text-xs text-green-600 font-bold hover:underline">Change</button>
                 </div>
+                {devOtp && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 mb-3">
+                    <p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">Dev OTP</p>
+                    <p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{devOtp}</p>
+                  </div>
+                )}
                 <input
                   type="number"
                   inputMode="numeric"

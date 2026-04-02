@@ -251,7 +251,7 @@ export default function Login() {
         await doLogin(res as AuthResponse);
         setLoading(false); return;
       }
-      setDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setDevOtp(res.otp || "");
       setOtpChannel(res.channel || "sms");
       setFallbackChannels(res.fallbackChannels || []);
       setStep("otp");
@@ -264,7 +264,7 @@ export default function Login() {
     setLoading(true); clearError();
     try {
       const res = await api.sendEmailOtp(em);
-      setEmailDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setEmailDevOtp(res.otp || "");
       setOtpChannel("email");
       setFallbackChannels([]);
       setStep("otp");
@@ -382,7 +382,7 @@ export default function Login() {
     setLoading(true); clearError();
     try {
       const res = await api.sendOtp(phone, channel);
-      setDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setDevOtp(res.otp || "");
       setOtpChannel(res.channel || "sms");
       setFallbackChannels(res.fallbackChannels || []);
       setStep("otp");
@@ -403,7 +403,7 @@ export default function Login() {
     setLoading(true); clearError();
     try {
       const res = await api.sendEmailOtp(email);
-      setEmailDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setEmailDevOtp(res.otp || "");
       setOtpChannel("email");
       setFallbackChannels([]);
       setStep("otp");
@@ -473,7 +473,7 @@ export default function Login() {
         setStep("register-info");
         setLoading(false); return;
       }
-      setRegDevOtp(import.meta.env.DEV ? (res.otp || "") : "");
+      setRegDevOtp(res.otp || "");
       setStep("register-otp");
       startCooldown();
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to send OTP"); }
