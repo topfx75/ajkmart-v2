@@ -261,24 +261,54 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
   }, []);
 
   /* Also track foreground location on web using watchPosition */
-  const watchIdRef = useRef<Location.LocationSubscription | null>(null);
+  /* On web we use navigator.geolocation directly to avoid expo-location's
+     broken LocationEventEmitter.removeSubscription on web (expo-location ~19 bug). */
+  const watchIdRef = useRef<Location.LocationSubscription | number | null>(null);
 
   const startForegroundWatch = useCallback(async () => {
-    if (watchIdRef.current) return;
-    const intervalSec = hasActiveTaskRef.current ? ACTIVE_INTERVAL_SEC : IDLE_INTERVAL_SEC;
-    watchIdRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.Balanced,
-        distanceInterval: MIN_DISTANCE_METERS,
-        timeInterval: intervalSec * 1000,
-      },
-      (loc) => sendLocation(loc),
-    );
+    if (watchIdRef.current !== null) return;
+    if (Platform.OS === "web") {
+      if (!navigator?.geolocation) return;
+      const intervalSec = hasActiveTaskRef.current ? ACTIVE_INTERVAL_SEC : IDLE_INTERVAL_SEC;
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          sendLocation({
+            coords: {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              altitude: pos.coords.altitude ?? null,
+              accuracy: pos.coords.accuracy,
+              altitudeAccuracy: pos.coords.altitudeAccuracy ?? null,
+              heading: pos.coords.heading ?? null,
+              speed: pos.coords.speed ?? null,
+            },
+            timestamp: pos.timestamp,
+            mocked: false,
+          } as Location.LocationObject);
+        },
+        (err) => console.warn("[RiderLocation] Web watchPosition error:", err.message),
+        { enableHighAccuracy: false, timeout: intervalSec * 1000, maximumAge: 30000 },
+      );
+    } else {
+      const intervalSec = hasActiveTaskRef.current ? ACTIVE_INTERVAL_SEC : IDLE_INTERVAL_SEC;
+      watchIdRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: MIN_DISTANCE_METERS,
+          timeInterval: intervalSec * 1000,
+        },
+        (loc) => sendLocation(loc),
+      );
+    }
   }, [sendLocation]);
 
   const stopForegroundWatch = useCallback(() => {
-    if (watchIdRef.current) {
-      watchIdRef.current.remove();
+    if (watchIdRef.current !== null) {
+      if (Platform.OS === "web") {
+        navigator.geolocation.clearWatch(watchIdRef.current as number);
+      } else {
+        (watchIdRef.current as Location.LocationSubscription).remove();
+      }
       watchIdRef.current = null;
     }
   }, []);
