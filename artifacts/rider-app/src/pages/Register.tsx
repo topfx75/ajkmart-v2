@@ -363,7 +363,7 @@ export default function Register() {
           } catch (e: unknown) { setError(e instanceof Error ? e.message : T("loginFailed")); setLoading(false); return; }
           try {
             const emailRes = await api.sendEmailOtp(email.trim(), captchaToken);
-            if (import.meta.env.DEV && emailRes.otp) setDevOtp(emailRes.otp);
+            setDevOtp(emailRes.otp || "");
             setOtpSendFailed(false);
           } catch {
             setOtpSendFailed(true);
@@ -386,7 +386,7 @@ export default function Register() {
               navigate("/");
               setLoading(false); return;
             }
-            if (import.meta.env.DEV && res.otp) setDevOtp(res.otp);
+            setDevOtp(res.otp || "");
           } catch (e: unknown) { setError(e instanceof Error ? e.message : T("loginFailed")); setLoading(false); return; }
         }
         setStep(4);

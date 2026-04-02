@@ -587,9 +587,10 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
 
   const isDev = process.env.NODE_ENV !== "production";
   const userDevOtp = existingUser[0]?.devOtpEnabled === true;
+  const globalDevOtp = settings["security_global_dev_otp"] === "on";
 
   if (!deliverySuccess) {
-    if (isDev || userDevOtp) {
+    if (isDev || userDevOtp || globalDevOtp) {
       deliveryChannel = "dev";
       req.log.warn({ phone }, "All OTP delivery channels failed — returning OTP in dev/devOtp mode");
     } else {
@@ -607,10 +608,11 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     fallbackChannels,
   };
 
-  /* Dev OTP: expose OTP in response when the admin has explicitly enabled devOtpEnabled
-     on this user AND the server is not running in production mode.
-     The per-user flag is the gating mechanism — the admin controls it from the Users page. */
-  if (userDevOtp && isDev) {
+  /* Dev OTP: expose OTP in response when:
+     - the admin enabled devOtpEnabled on this specific user (per-user flag in Users page), OR
+     - the global Dev OTP Mode platform setting is "on" (Security settings in admin)
+     Both only work when the server is not in production mode. */
+  if ((userDevOtp || globalDevOtp) && isDev) {
     response.otp = otp;
     response.devMode = true;
   }
