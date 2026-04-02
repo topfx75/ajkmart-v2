@@ -36,3 +36,5 @@ export * from "./vendor_profiles";
 export * from "./push_subscriptions";
 export * from "./pending_otps";
 export * from "./kyc_verifications";
+export * from "./user_sessions";
+export * from "./login_history";

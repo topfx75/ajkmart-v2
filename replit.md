@@ -30,17 +30,8 @@ AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pak
 - **`artifacts/rider-app/src/pages/Home.tsx`**: Parcel rides show `📦 Parcel` amber badge on request cards.
 - **`artifacts/rider-app/src/lib/api.ts`**: `verifyRideOtp(id, otp)` method added.
 
-#### P4-T007 — Customer Booking Web Portal (new artifact)
-- **New artifact**: `artifacts/customer` at `/customer/` path, React + Vite.
-- **`src/pages/Login.tsx`**: Phone OTP login (send → verify flow) using `/api/auth/send-otp` + `/api/auth/verify-otp`.
-- **`src/pages/Booking.tsx`**: Leaflet map (click-to-set pickup/drop), Nominatim geocoding search, ride type selector (Bike/Auto/Car), fare estimate display with distance and surge info, InDrive bargaining offer mode, parcel delivery toggle with receiver fields and package type picker.
-- **`src/pages/Tracking.tsx`**: Live tracking with Socket.io (listens for `ride:otp`, `ride:update`, `rider:location`). Shows large OTP banner when rider arrives. Leaflet map with rider location marker + polyline. Status timeline. Cancel button for pre-trip statuses. 8s polling fallback.
-- **`src/pages/Completed.tsx`**: Trip summary (fare, addresses, driver name). 5-star rating with optional comment.
-- **`src/pages/History.tsx`**: Full ride history list with status badges, parcel indicator, LIVE badge for active rides (tap to re-open tracking).
-- **`src/lib/api.ts`**: Full API client — auth, estimate, book, getRide, cancelRide, acceptBid, counterOffer, rateRide, geocode/reverseGeocode.
-- **`src/lib/auth.tsx`**: Auth context with `getMe` on mount, login/logout.
-- **`src/lib/socket.tsx`**: Socket.io provider connecting with JWT auth.
-- **`src/index.css`**: Clean green-primary theme (HSL variables).
+#### P4-T007 — Customer Booking Web Portal (DELETED)
+- **Removed**: `artifacts/customer` web portal was deleted at user's request.
 
 ### User Preferences
 - I want iterative development.

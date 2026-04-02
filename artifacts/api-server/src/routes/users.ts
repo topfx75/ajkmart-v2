@@ -1,12 +1,13 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, walletTransactionsTable, ridesTable } from "@workspace/db/schema";
-import { eq, desc, and, count, sql } from "drizzle-orm";
-import { customerAuth } from "../middleware/security.js";
-import { randomUUID } from "crypto";
+import { usersTable, ordersTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable } from "@workspace/db/schema";
+import { eq, desc, and, count, sql, isNull } from "drizzle-orm";
+import { customerAuth, getClientIp, writeAuthAuditLog } from "../middleware/security.js";
+import { randomUUID, createHash } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import multer from "multer";
+import { generateId } from "../lib/id.js";
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
@@ -77,10 +78,11 @@ router.post("/export-data", async (req, res) => {
     return;
   }
 
-  const [orders, rides, walletHistory] = await Promise.all([
+  const [orders, rides, walletHistory, addresses] = await Promise.all([
     db.select().from(ordersTable).where(eq(ordersTable.userId, userId)).orderBy(desc(ordersTable.createdAt)),
     db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(desc(ridesTable.createdAt)),
     db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId)).orderBy(desc(walletTransactionsTable.createdAt)),
+    db.select().from(savedAddressesTable).where(eq(savedAddressesTable.userId, userId)),
   ]);
 
   const exportData = {
@@ -123,11 +125,21 @@ router.post("/export-data", async (req, res) => {
       description: t.description,
       createdAt: t.createdAt.toISOString(),
     })),
+    addresses: addresses.map(a => ({
+      id: a.id,
+      label: a.label,
+      address: a.address,
+      city: a.city,
+      isDefault: a.isDefault,
+    })),
   };
+
+  const ip = getClientIp(req);
+  writeAuthAuditLog("data_export", { userId, ip, userAgent: req.headers["user-agent"] as string });
 
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Content-Disposition", `attachment; filename="ajkmart-data-export-${userId.slice(-8)}.json"`);
-  res.json({ success: true, data: exportData });
+  res.json(exportData);
 });
 
 async function saveAvatarBuffer(userId: string, buffer: Buffer, mime: string) {
@@ -245,6 +257,12 @@ router.put("/profile", async (req, res) => {
 
 router.delete("/delete-account", async (req, res) => {
   const userId = req.customerId!;
+  const { confirmation } = req.body ?? {};
+
+  if (confirmation !== "DELETE") {
+    res.status(400).json({ error: "You must type DELETE to confirm account deletion." });
+    return;
+  }
 
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -289,14 +307,142 @@ router.delete("/delete-account", async (req, res) => {
         city: null,
         latitude: null,
         longitude: null,
+        totpSecret: null,
+        totpEnabled: false,
+        backupCodes: null,
+        trustedDevices: null,
+        passwordHash: null,
+        tokenVersion: sql`${usersTable.tokenVersion} + 1`,
         updatedAt: now,
       })
       .where(eq(usersTable.id, userId));
 
-    res.json({ success: true, message: "Account has been deleted" });
+    await db.update(refreshTokensTable)
+      .set({ revokedAt: now })
+      .where(eq(refreshTokensTable.userId, userId));
+
+    await db.update(userSessionsTable)
+      .set({ revokedAt: now })
+      .where(eq(userSessionsTable.userId, userId));
+
+    const ip = getClientIp(req);
+    writeAuthAuditLog("account_deleted", { userId, ip, userAgent: req.headers["user-agent"] as string });
+
+    res.json({ success: true, message: "Account has been deleted and all data anonymized." });
   } catch (e: any) {
     res.status(500).json({ error: e.message || "Could not delete account" });
   }
+});
+
+router.get("/sessions", async (req, res) => {
+  const userId = req.customerId!;
+  const sessions = await db.select().from(userSessionsTable)
+    .where(and(eq(userSessionsTable.userId, userId), isNull(userSessionsTable.revokedAt)))
+    .orderBy(desc(userSessionsTable.lastActiveAt));
+
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const currentToken = authHeader?.replace(/^Bearer\s+/i, "") ?? "";
+  const currentTokenHash = currentToken ? createHash("sha256").update(currentToken).digest("hex") : "";
+
+  res.json({
+    sessions: sessions.map(s => ({
+      id: s.id,
+      deviceName: s.deviceName,
+      browser: s.browser,
+      os: s.os,
+      ip: s.ip,
+      location: s.location,
+      lastActiveAt: s.lastActiveAt.toISOString(),
+      createdAt: s.createdAt.toISOString(),
+      isCurrent: s.tokenHash === currentTokenHash,
+    })),
+  });
+});
+
+router.delete("/sessions/all", async (req, res) => {
+  const userId = req.customerId!;
+  const authHeader = req.headers["authorization"] as string | undefined;
+  const currentToken = authHeader?.replace(/^Bearer\s+/i, "") ?? "";
+  const currentTokenHash = currentToken ? createHash("sha256").update(currentToken).digest("hex") : "";
+
+  await db.update(userSessionsTable)
+    .set({ revokedAt: new Date() })
+    .where(and(
+      eq(userSessionsTable.userId, userId),
+      isNull(userSessionsTable.revokedAt),
+      sql`${userSessionsTable.tokenHash} != ${currentTokenHash}`,
+    ));
+
+  await db.update(refreshTokensTable)
+    .set({ revokedAt: new Date() })
+    .where(and(
+      eq(refreshTokensTable.userId, userId),
+      isNull(refreshTokensTable.revokedAt),
+    ));
+
+  const ip = getClientIp(req);
+  writeAuthAuditLog("sessions_revoked_all", { userId, ip, userAgent: req.headers["user-agent"] as string });
+
+  res.json({ success: true, message: "All other sessions have been signed out." });
+});
+
+router.delete("/sessions/:sessionId", async (req, res) => {
+  const userId = req.customerId!;
+  const sessionId = req.params["sessionId"]!;
+
+  const [session] = await db.select().from(userSessionsTable)
+    .where(and(eq(userSessionsTable.id, sessionId), eq(userSessionsTable.userId, userId)))
+    .limit(1);
+
+  if (!session) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  if (session.revokedAt) {
+    res.status(400).json({ error: "Session already revoked" });
+    return;
+  }
+
+  await db.update(userSessionsTable)
+    .set({ revokedAt: new Date() })
+    .where(eq(userSessionsTable.id, sessionId));
+
+  if (session.tokenHash) {
+    await db.update(refreshTokensTable)
+      .set({ revokedAt: new Date() })
+      .where(and(
+        eq(refreshTokensTable.userId, userId),
+        isNull(refreshTokensTable.revokedAt),
+      ));
+  }
+
+  const ip = getClientIp(req);
+  writeAuthAuditLog("session_revoked", { userId, ip, userAgent: req.headers["user-agent"] as string, metadata: { sessionId } });
+
+  res.json({ success: true, message: "Session revoked" });
+});
+
+router.get("/login-history", async (req, res) => {
+  const userId = req.customerId!;
+  const history = await db.select().from(loginHistoryTable)
+    .where(eq(loginHistoryTable.userId, userId))
+    .orderBy(desc(loginHistoryTable.createdAt))
+    .limit(20);
+
+  res.json({
+    history: history.map(h => ({
+      id: h.id,
+      ip: h.ip,
+      deviceName: h.deviceName,
+      browser: h.browser,
+      os: h.os,
+      location: h.location,
+      success: h.success,
+      method: h.method,
+      createdAt: h.createdAt.toISOString(),
+    })),
+  });
 });
 
 export default router;
