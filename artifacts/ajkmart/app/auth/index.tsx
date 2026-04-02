@@ -778,6 +778,18 @@ export default function AuthScreen() {
         end={{ x: 0.5, y: 1 }}
         style={styles.flex}
       >
+        {router.canGoBack() && (
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backToHome, { top: topPad + 12 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Back to home"
+          >
+            <Ionicons name="arrow-back" size={16} color="rgba(255,255,255,0.9)" />
+            <Text style={styles.backToHomeTxt}>Back</Text>
+          </Pressable>
+        )}
+
         <View style={[styles.topSection, { paddingTop: topPad + 32 }]}>
           <View style={styles.logoWrap}>
             <View style={styles.logoRing} />
@@ -1231,6 +1243,21 @@ const styles = StyleSheet.create({
   linkBtn: { alignItems: "center", marginTop: spacing.md },
   linkBtnText: { ...typography.bodyMedium, color: C.primary },
   backRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: spacing.lg },
+  backToHome: {
+    position: "absolute",
+    left: 16,
+    zIndex: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: radii.full,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  backToHomeTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "rgba(255,255,255,0.9)" },
   backRowText: { ...typography.bodyMedium, color: C.primary },
 
   footer: { backgroundColor: C.surface, paddingHorizontal: spacing.xxl, paddingTop: 10, alignItems: "center" },
