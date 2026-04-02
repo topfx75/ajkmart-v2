@@ -73,7 +73,7 @@ function FoodCard({ item }: { item: any }) {
           : <Ionicons name="restaurant-outline" size={32} color={C.amber} />}
         {item.deliveryTime && (
           <View style={styles.timeBadge}>
-            <Ionicons name="time-outline" size={10} color="#fff" />
+            <Ionicons name="time-outline" size={10} color={C.textInverse} />
             <Text style={styles.timeText}>{item.deliveryTime}</Text>
           </View>
         )}
@@ -84,7 +84,7 @@ function FoodCard({ item }: { item: any }) {
         {item.rating != null && (
           <View style={styles.ratingRow}>
             <View style={styles.ratingPill}>
-              <Ionicons name="star" size={11} color="#F59E0B" />
+              <Ionicons name="star" size={11} color={C.gold} />
               <Text style={styles.ratingText}>{item.rating}</Text>
             </View>
             {item.reviewCount != null && (
@@ -100,14 +100,14 @@ function FoodCard({ item }: { item: any }) {
                 <Ionicons name={qtyInCart <= 1 ? "trash-outline" : "remove"} size={14} color={C.red} />
               </Pressable>
               <Text style={styles.stepperQty}>{qtyInCart}</Text>
-              <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.id, qtyInCart + 1); }} style={[styles.stepperBtn, { backgroundColor: "#FFF4E5" }]}>
+              <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.id, qtyInCart + 1); }} style={[styles.stepperBtn, { backgroundColor: C.accentSoft }]}>
                 <Ionicons name="add" size={14} color={C.amber} />
               </Pressable>
             </View>
           ) : (
             <Animated.View style={{ transform: [{ scale }] }}>
               <Pressable onPress={(e) => handleAdd(e)} style={[styles.addBtn, added && styles.addBtnAdded]}>
-                <Ionicons name={added ? "checkmark" : "add"} size={16} color="#fff" />
+                <Ionicons name={added ? "checkmark" : "add"} size={16} color={C.textInverse} />
               </Pressable>
             </Animated.View>
           )}
@@ -135,20 +135,20 @@ function FoodScreenInner() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#92400E", C.amber, "#F59E0B"]}
+        colors={[C.amberDark, C.amber, C.gold]}
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={20} color="#fff" />
+            <Ionicons name="arrow-back" size={20} color={C.textInverse} />
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Food Delivery</Text>
             <Text style={styles.headerSub}>Order from nearby restaurants</Text>
           </View>
           <Pressable onPress={() => router.push("/cart")} style={styles.cartBtn}>
-            <Ionicons name="bag-outline" size={22} color="#fff" />
+            <Ionicons name="bag-outline" size={22} color={C.textInverse} />
             {itemCount > 0 && (
               <View style={styles.cartBadge}>
                 <Text style={styles.cartBadgeTxt}>{itemCount}</Text>
@@ -174,17 +174,17 @@ function FoodScreenInner() {
       </LinearGradient>
 
       {showCartBanner && (
-        <View style={{ backgroundColor: "#E0E7FF", flexDirection: "row", alignItems: "center", padding: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: "#C7D2FE" }}>
-          <Ionicons name="warning-outline" size={18} color="#4F46E5" />
+        <View style={{ backgroundColor: C.indigoSoft, flexDirection: "row", alignItems: "center", padding: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: C.indigoBorder }}>
+          <Ionicons name="warning-outline" size={18} color={C.indigoDark} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#3730A3" }}>{cartType === "pharmacy" ? "Pharmacy cart active" : cartType === "mart" ? "Mart cart active" : "Another cart active"}</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#3730A3" }}>Adding Food items will clear your existing cart</Text>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: C.indigoDarkest }}>{cartType === "pharmacy" ? "Pharmacy cart active" : cartType === "mart" ? "Mart cart active" : "Another cart active"}</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.indigoDarkest }}>Adding Food items will clear your existing cart</Text>
           </View>
           <Pressable
             onPress={() => setClearBannerConfirm(true)}
-            style={{ backgroundColor: "#4F46E5", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+            style={{ backgroundColor: C.indigoDark, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
           >
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "#fff" }}>Clear Cart</Text>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: C.textInverse }}>Clear Cart</Text>
           </Pressable>
         </View>
       )}
@@ -200,12 +200,12 @@ function FoodScreenInner() {
       <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={C.food} />}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.catContent}>
           <Pressable onPress={() => setSelectedCat(undefined)} style={[styles.catChip, !selectedCat && styles.catChipActive]}>
-            <Ionicons name="fast-food-outline" size={14} color={!selectedCat ? "#fff" : C.food} />
+            <Ionicons name="fast-food-outline" size={14} color={!selectedCat ? C.textInverse : C.food} />
             <Text style={[styles.catChipText, !selectedCat && styles.catChipTextActive]}>All</Text>
           </Pressable>
           {categories.map(c => (
             <Pressable key={c.id} onPress={() => setSelectedCat(selectedCat === c.id ? undefined : c.id)} style={[styles.catChip, selectedCat === c.id && styles.catChipActive]}>
-              <Ionicons name={c.icon as any} size={14} color={selectedCat === c.id ? "#fff" : C.food} />
+              <Ionicons name={c.icon as any} size={14} color={selectedCat === c.id ? C.textInverse : C.food} />
               <Text style={[styles.catChipText, selectedCat === c.id && styles.catChipTextActive]}>{c.name}</Text>
             </Pressable>
           ))}
@@ -218,7 +218,7 @@ function FoodScreenInner() {
                 <View style={styles.skeletonImg} />
                 <View style={{ flex: 1, padding: 14, gap: 8 }}>
                   <View style={{ height: 14, width: "70%", backgroundColor: C.amberSoft, borderRadius: 6 }} />
-                  <View style={{ height: 10, width: "45%", backgroundColor: "#FFF7ED", borderRadius: 5 }} />
+                  <View style={{ height: 10, width: "45%", backgroundColor: C.orangeBg, borderRadius: 5 }} />
                   <View style={{ height: 12, width: "35%", backgroundColor: C.amberSoft, borderRadius: 6 }} />
                 </View>
               </View>
@@ -232,7 +232,7 @@ function FoodScreenInner() {
             <Text style={styles.errorTitle}>Could not load</Text>
             <Text style={styles.errorSub}>Check your internet and retry</Text>
             <Pressable onPress={() => refetch()} style={styles.retryBtn}>
-              <Ionicons name="refresh-outline" size={16} color="#fff" />
+              <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
               <Text style={styles.retryBtnTxt}>Retry</Text>
             </Pressable>
           </View>
@@ -272,37 +272,37 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 16 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
   backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff" },
+  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.textInverse },
   headerSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 2 },
   cartBtn: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
   cartBadge: { position: "absolute", top: -4, right: -4, backgroundColor: C.red, borderRadius: 9, minWidth: 18, height: 18, alignItems: "center", justifyContent: "center", paddingHorizontal: 4, borderWidth: 2, borderColor: C.amber },
-  cartBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#fff" },
-  searchBar: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
+  cartBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: C.textInverse },
+  searchBar: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, shadowColor: C.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
   searchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 14, color: C.text, padding: 0 },
 
   catScroll: { marginTop: 12 },
   catContent: { paddingHorizontal: 16, gap: 8, flexDirection: "row" },
-  catChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, backgroundColor: C.amberSoft, borderWidth: 1.5, borderColor: "#FDE68A" },
+  catChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, backgroundColor: C.amberSoft, borderWidth: 1.5, borderColor: C.amberBorder },
   catChipActive: { backgroundColor: C.food, borderColor: C.food },
   catChipText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.food },
-  catChipTextActive: { color: "#fff" },
+  catChipTextActive: { color: C.textInverse },
 
   secRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 18, marginBottom: 12 },
   secTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text },
   countBadge: { backgroundColor: C.food, borderRadius: 10, minWidth: 24, height: 24, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  countBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#fff" },
+  countBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 11, color: C.textInverse },
 
   foodList: { paddingHorizontal: 16, paddingTop: 4, gap: 12 },
-  foodCard: { backgroundColor: C.surface, borderRadius: 18, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },
+  foodCard: { backgroundColor: C.surface, borderRadius: 18, flexDirection: "row", overflow: "hidden", shadowColor: C.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },
   foodImageBox: { width: 110, backgroundColor: C.amberSoft, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   timeBadge: { position: "absolute", bottom: 8, left: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  timeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#fff" },
+  timeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: C.textInverse },
   foodInfo: { flex: 1, padding: 14, justifyContent: "center" },
   foodName: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text, marginBottom: 3 },
   foodVendor: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, marginBottom: 8 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
   ratingPill: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: C.amberSoft, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  ratingText: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#92400E" },
+  ratingText: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.amberDark },
   reviewCount: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
   foodFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   foodPrice: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text },
@@ -317,11 +317,11 @@ const styles = StyleSheet.create({
   errorTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
   errorSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted },
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.food, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, marginTop: 4 },
-  retryBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+  retryBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.textInverse },
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 10 },
   skeletonList: { paddingHorizontal: 16, paddingTop: 12, gap: 12 },
   skeletonCard: { flexDirection: "row", backgroundColor: C.surface, borderRadius: 18, overflow: "hidden", height: 110 },
-  skeletonImg: { width: 110, backgroundColor: "#FFF7ED" },
+  skeletonImg: { width: 110, backgroundColor: C.orangeBg },
   emptyIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
   emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary },

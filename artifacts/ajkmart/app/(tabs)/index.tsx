@@ -211,14 +211,14 @@ function RiderOnlineBanner() {
   return (
     <View style={riderS.container}>
       <LinearGradient
-        colors={isOnline ? ["#065F46", "#059669"] : ["#1E3A5F", "#1A56DB"]}
+        colors={isOnline ? [C.emeraldDeep, C.emerald] : ["#1E3A5F", C.brandBlue]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={riderS.card}
       >
         <View style={riderS.row}>
           <View style={riderS.statusSection}>
-            <View style={[riderS.dot, { backgroundColor: isOnline ? "#6EE7B7" : "#93C5FD" }]} />
+            <View style={[riderS.dot, { backgroundColor: isOnline ? C.emeraldMid : "#93C5FD" }]} />
             <View>
               <Text style={riderS.statusLabel}>{isOnline ? "You are Online" : "You are Offline"}</Text>
               <Text style={riderS.statusSub}>
@@ -619,7 +619,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        {user?.role === "rider" && <RiderOnlineBanner />}
+        {user?.role === "rider" && platformConfig?.features?.rides && <RiderOnlineBanner />}
 
         {contentBanner ? (
           <View style={styles.announceBanner}>

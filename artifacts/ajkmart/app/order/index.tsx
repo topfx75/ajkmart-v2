@@ -294,7 +294,7 @@ export default function OrderDetailScreen() {
             onPress={() => router.replace("/(tabs)")}
             style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: C.primary, borderRadius: 14 }}
           >
-            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" }}>Go to Home</Text>
+            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textInverse }}>Go to Home</Text>
           </Pressable>
         </View>
       </View>
@@ -372,12 +372,12 @@ export default function OrderDetailScreen() {
         </View>
 
         {isActive && LIVE_TRACKING_STATUSES.includes(order.status) && (
-          <View style={[s.card, { backgroundColor: "#ECFDF5", borderColor: "#6EE7B7", padding: 0, overflow: "hidden" }]}>
+          <View style={[s.card, { backgroundColor: C.emeraldBg, borderColor: C.emeraldMid, padding: 0, overflow: "hidden" }]}>
             {/* Tracking failure banner */}
             {trackFailed && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderBottomWidth: 1, borderBottomColor: "#FDE68A", paddingHorizontal: 14, paddingVertical: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderBottomWidth: 1, borderBottomColor: C.amberBorder, paddingHorizontal: 14, paddingVertical: 10 }}>
                 <Ionicons name="warning-outline" size={15} color={C.amber} />
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#92400E", flex: 1 }}>Live tracking is temporarily unavailable. Your order is still on the way.</Text>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.amberDark, flex: 1 }}>Live tracking is temporarily unavailable. Your order is still on the way.</Text>
               </View>
             )}
             {/* Static map showing rider position */}
@@ -391,18 +391,18 @@ export default function OrderDetailScreen() {
             <View style={{ padding: 14 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: riderLat ? 10 : 0 }}>
                 <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: C.emerald, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="navigate-outline" size={20} color="#fff" />
+                  <Ionicons name="navigate-outline" size={20} color={C.textInverse} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#065F46" }}>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.emeraldDeep }}>
                     {order.status === "in_transit" ? "In Transit" : "On the Way to You"}
                   </Text>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#047857", marginTop: 2 }}>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.emeraldDark, marginTop: 2 }}>
                     {etaMinutes !== null ? `ETA: ~${etaMinutes} min` : "Your delivery is heading your way"}
                   </Text>
                 </View>
                 <View style={{ backgroundColor: C.emerald, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 11, color: "#fff" }}>LIVE</Text>
+                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 11, color: C.textInverse }}>LIVE</Text>
                 </View>
               </View>
               {order.deliveryAddress ? (
@@ -416,10 +416,10 @@ export default function OrderDetailScreen() {
                       Linking.openURL(`https://maps.google.com/?q=${encodedAddr}`);
                     });
                   }}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: "#A7F3D0" }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.surface, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: C.emeraldBorder }}
                 >
                   <Ionicons name="location-outline" size={16} color={C.emerald} />
-                  <Text style={{ flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: "#065F46" }} numberOfLines={1}>
+                  <Text style={{ flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: C.emeraldDeep }} numberOfLines={1}>
                     {order.deliveryAddress}
                   </Text>
                   <Ionicons name="open-outline" size={14} color={C.emerald} />
@@ -442,19 +442,19 @@ export default function OrderDetailScreen() {
                     <View style={s.stepItem}>
                       <View style={[
                         s.stepDot,
-                        done && { backgroundColor: active ? cfg.color : "#10B981" },
+                        done && { backgroundColor: active ? cfg.color : C.emeraldDot },
                         active && { shadowColor: cfg.color, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6 },
                       ]}>
                         {done
-                          ? <Ionicons name="checkmark" size={13} color="#fff" />
-                          : <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#CBD5E1" }} />}
+                          ? <Ionicons name="checkmark" size={13} color={C.textInverse} />
+                          : <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.slate }} />}
                       </View>
                       <Text style={[s.stepLabel, done && { color: C.text }, active && { fontFamily: "Inter_700Bold" }]}>
                         {activeStepLabels[i]}
                       </Text>
                     </View>
                     {!isLast && (
-                      <View style={[s.stepLine, stepIdx > i && { backgroundColor: "#10B981" }]} />
+                      <View style={[s.stepLine, stepIdx > i && { backgroundColor: C.emeraldDot }]} />
                     )}
                   </React.Fragment>
                 );
@@ -473,14 +473,14 @@ export default function OrderDetailScreen() {
             </View>
             <View style={{ gap: 12, marginTop: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#10B981", marginTop: 4 }} />
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.emeraldDot, marginTop: 4 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Pickup</Text>
                   <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 }}>{order.pickupAddress || "—"}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444", marginTop: 4 }} />
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.redBright, marginTop: 4 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Drop-off</Text>
                   <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 }}>{order.dropAddress || "—"}</Text>
@@ -509,12 +509,12 @@ export default function OrderDetailScreen() {
           <View style={s.card}>
             <View style={s.cardHeader}>
               {isPharmacy ? (
-                <View style={[s.typeChip, { backgroundColor: "#F3E8FF" }]}>
+                <View style={[s.typeChip, { backgroundColor: C.purpleLight }]}>
                   <Ionicons name="medical-outline" size={13} color={C.purple} />
                   <Text style={[s.typeChipText, { color: C.purple }]}>Pharmacy</Text>
                 </View>
               ) : isParcelType ? (
-                <View style={[s.typeChip, { backgroundColor: "#ECFDF5" }]}>
+                <View style={[s.typeChip, { backgroundColor: C.emeraldBg }]}>
                   <Ionicons name="cube-outline" size={13} color={C.emerald} />
                   <Text style={[s.typeChipText, { color: C.emerald }]}>Parcel</Text>
                 </View>
@@ -528,9 +528,9 @@ export default function OrderDetailScreen() {
             </View>
 
             {isPharmacy && order.prescriptionNote ? (
-              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#F3E8FF", borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: "#DDD6FE" }}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: C.purpleLight, borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.purpleBorder }}>
                 <Ionicons name="document-text-outline" size={16} color={C.purple} style={{ marginTop: 1 }} />
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "#5B21B6", flex: 1, lineHeight: 19 }}>{order.prescriptionNote}</Text>
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.purpleDeep, flex: 1, lineHeight: 19 }}>{order.prescriptionNote}</Text>
               </View>
             ) : null}
 
@@ -577,7 +577,7 @@ export default function OrderDetailScreen() {
               </View>
               {order.riderPhone && (
                 <Pressable onPress={() => Linking.openURL(`tel:${order.riderPhone}`)} style={s.callBtn}>
-                  <Ionicons name="call" size={18} color="#fff" />
+                  <Ionicons name="call" size={18} color={C.textInverse} />
                 </Pressable>
               )}
             </View>
@@ -654,9 +654,9 @@ export default function OrderDetailScreen() {
               onPress={handleRefundRequest}
               disabled={refundRequesting}
             >
-              {refundRequesting ? <ActivityIndicator color="#fff" size="small" /> : (
+              {refundRequesting ? <ActivityIndicator color={C.textInverse} size="small" /> : (
                 <>
-                  <Ionicons name="return-down-back-outline" size={16} color="#fff" />
+                  <Ionicons name="return-down-back-outline" size={16} color={C.textInverse} />
                   <Text style={s.refundBtnText}>{T("requestRefund")}</Text>
                 </>
               )}
@@ -699,7 +699,7 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
   headerBar: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#fff",
+    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: C.surface,
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
   backBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
@@ -708,25 +708,25 @@ const s = StyleSheet.create({
   loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted },
   scroll: { padding: 16, gap: 14 },
   statusCard: {
-    backgroundColor: "#fff", borderRadius: 20, padding: 24, alignItems: "center",
+    backgroundColor: C.surface, borderRadius: 20, padding: 24, alignItems: "center",
     borderWidth: 1.5, gap: 8,
   },
   statusIcon: { width: 56, height: 56, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   statusLabel: { fontFamily: "Inter_700Bold", fontSize: 20 },
   orderId: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.textMuted },
   etaChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.amberSoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginTop: 4 },
-  etaText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#92400E" },
-  stepperCard: { backgroundColor: "#fff", borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border },
+  etaText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.amberDark },
+  stepperCard: { backgroundColor: C.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border },
   sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, marginBottom: 14 },
   stepperRow: { flexDirection: "row", alignItems: "flex-start", overflow: "hidden" },
   stepItem: { alignItems: "center", flex: 1, gap: 6, minWidth: 0 },
   stepDot: {
-    width: 28, height: 28, borderRadius: 14, backgroundColor: "#F1F5F9",
+    width: 28, height: 28, borderRadius: 14, backgroundColor: C.background,
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
   stepLabel: { fontSize: 9, textAlign: "center", color: C.textMuted, fontFamily: "Inter_400Regular", maxWidth: "100%", flexShrink: 1 },
-  stepLine: { height: 2, flex: 0.3, backgroundColor: "#F1F5F9", marginTop: 13, borderRadius: 1, flexShrink: 1 },
-  card: { backgroundColor: "#fff", borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border },
+  stepLine: { height: 2, flex: 0.3, backgroundColor: C.background, marginTop: 13, borderRadius: 1, flexShrink: 1 },
+  card: { backgroundColor: C.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
   typeChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   typeChipText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
@@ -749,27 +749,27 @@ const s = StyleSheet.create({
   paymentText: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.text },
   cancelOrderBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    paddingVertical: 14, borderRadius: 16, backgroundColor: "#FEF2F2",
-    borderWidth: 1.5, borderColor: "#FECACA",
+    paddingVertical: 14, borderRadius: 16, backgroundColor: C.redBg,
+    borderWidth: 1.5, borderColor: C.redBorder,
   },
   cancelOrderBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.red },
   refundSection: {
-    backgroundColor: "#FFF7ED", borderRadius: 16, padding: 18,
-    borderWidth: 1.5, borderColor: "#FED7AA", gap: 8,
+    backgroundColor: C.orangeBg, borderRadius: 16, padding: 18,
+    borderWidth: 1.5, borderColor: C.orangeBorder, gap: 8,
   },
-  refundTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: "#9A3412" },
-  refundDesc: { fontFamily: "Inter_400Regular", fontSize: 13, color: "#9A3412", lineHeight: 20 },
+  refundTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.orangeDark },
+  refundDesc: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.orangeDark, lineHeight: 20 },
   refundBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    paddingVertical: 12, borderRadius: 12, backgroundColor: "#EA580C", marginTop: 4,
+    paddingVertical: 12, borderRadius: 12, backgroundColor: C.orangeBrand, marginTop: 4,
   },
-  refundBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#fff" },
+  refundBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textInverse },
   refundSuccessBox: {
     flexDirection: "row", alignItems: "center", gap: 10,
     backgroundColor: C.emeraldSoft, borderRadius: 16, padding: 16,
-    borderWidth: 1.5, borderColor: "#A7F3D0",
+    borderWidth: 1.5, borderColor: C.emeraldBorder,
   },
-  refundSuccessText: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#065F46", flex: 1 },
+  refundSuccessText: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.emeraldDeep, flex: 1 },
   cancelDisabledBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: C.surfaceSecondary,

@@ -42,6 +42,28 @@ const gray = "#6B7280";
 const graySoft = "#F3F4F6";
 const slate = "#CBD5E1";
 const slateBorder = "#E2E8F0";
+const emeraldBg = "#ECFDF5";
+const emeraldBorder = "#A7F3D0";
+const emeraldMid = "#6EE7B7";
+const emeraldDeep = "#065F46";
+const redBright = "#EF4444";
+const redDark = "#B91C1C";
+const redBg = "#FEF2F2";
+const redBorder = "#FECACA";
+const amberBrown = "#B45309";
+const amberBg = "#FFFBEB";
+const amberBorder = "#FDE68A";
+const orangeDark = "#9A3412";
+const orangeBrand = "#EA580C";
+const orangeBg = "#FFF7ED";
+const orangeSoft = "#FFEDD5";
+const orangeBorder = "#FED7AA";
+const purpleLight = "#F3E8FF";
+const purpleDeep = "#5B21B6";
+const purpleBorder = "#DDD6FE";
+const indigoDark = "#4F46E5";
+const indigoDarkest = "#3730A3";
+const indigoBorder = "#C7D2FE";
 
 export const spacing = {
   xs: 4,
@@ -199,6 +221,28 @@ export default {
     graySoft,
     slate,
     slateBorder,
+    emeraldBg,
+    emeraldBorder,
+    emeraldMid,
+    emeraldDeep,
+    redBright,
+    redDark,
+    redBg,
+    redBorder,
+    amberBrown,
+    amberBg,
+    amberBorder,
+    orangeDark,
+    orangeBrand,
+    orangeBg,
+    orangeSoft,
+    orangeBorder,
+    purpleLight,
+    purpleDeep,
+    purpleBorder,
+    indigoDark,
+    indigoDarkest,
+    indigoBorder,
     pharmacy: "#AF52DE",
     pharmacyLight: "#F5E6FF",
     parcel: "#FF6B35",

@@ -343,7 +343,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
           </View>
           {ride.riderPhone && (
             <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)} style={styles.callBtn} accessibilityRole="button" accessibilityLabel={`Call rider ${ride.riderName}`}>
-              <Ionicons name="call-outline" size={16} color="#fff" />
+              <Ionicons name="call-outline" size={16} color={C.textInverse} />
             </Pressable>
           )}
         </View>
@@ -446,7 +446,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
                       active && { shadowColor: cfg.color, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
                     ]}>
                       {done
-                        ? <Ionicons name="checkmark" size={10} color="#fff" />
+                        ? <Ionicons name="checkmark" size={10} color={C.textInverse} />
                         : <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: C.slate }} />}
                     </View>
                     <Text style={[styles.rideStepLabel, done && { color: C.text }, active && { fontFamily: "Inter_700Bold" }]}>
@@ -500,7 +500,7 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
       accessibilityLabel={`Pharmacy order ${order.id.slice(-8).toUpperCase()}, ${T(cfg.labelKey)}, Rs. ${(order.total != null ? Number(order.total) : 0).toLocaleString()}`}
     >
       <View style={styles.cardTop}>
-        <View style={[styles.chip, { backgroundColor: "#F3E8FF" }]}>
+        <View style={[styles.chip, { backgroundColor: C.purpleLight }]}>
           <Ionicons name="medical-outline" size={13} color={C.purple} />
           <Text style={[styles.chipText, { color: C.purple }]}>{T("pharmacy")}</Text>
         </View>
@@ -778,7 +778,7 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
 
           <View style={rm.headerIconWrap}>
             <LinearGradient colors={[C.gold, C.goldSoft]} style={rm.headerIcon}>
-              <Ionicons name="star" size={24} color="#fff" />
+              <Ionicons name="star" size={24} color={C.textInverse} />
             </LinearGradient>
           </View>
 
@@ -820,7 +820,7 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
           <TextInput
             style={rm.input}
             placeholder={t("shareExperiencePlaceholder")}
-            placeholderTextColor="#94A3B8"
+            placeholderTextColor={C.textMuted}
             value={comment}
             onChangeText={setComment}
             multiline
@@ -840,7 +840,7 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
               disabled={loading}
             >
               {loading
-                ? <ActivityIndicator size="small" color="#fff" />
+                ? <ActivityIndicator size="small" color={C.textInverse} />
                 : <Text style={rm.submitText}>{t("submitReview")}</Text>}
             </Pressable>
           </View>
@@ -852,7 +852,7 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
 
 const rm = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  sheet:    { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: "90%" },
+  sheet:    { backgroundColor: C.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: "90%" },
   handle:   { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: 20 },
   headerIconWrap: { alignItems: "center", marginBottom: 14 },
   headerIcon: { width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center" },
@@ -860,7 +860,7 @@ const rm = StyleSheet.create({
   sub:      { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, textAlign: "center", marginBottom: 16 },
   sectionLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textSecondary, textAlign: "center", marginTop: 4, marginBottom: 2 },
   divider:  { height: 1, backgroundColor: C.border, marginVertical: 12 },
-  ratingLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#B45309", textAlign: "center", marginBottom: 4, marginTop: 2 },
+  ratingLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.amberBrown, textAlign: "center", marginBottom: 4, marginTop: 2 },
   input: {
     borderWidth: 1.5, borderColor: C.border, borderRadius: 16,
     padding: 14, fontFamily: "Inter_400Regular", fontSize: 14, color: C.text,
@@ -871,7 +871,7 @@ const rm = StyleSheet.create({
   cancelBtn: { flex: 1, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, paddingVertical: 15, alignItems: "center" },
   cancelText:{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textSecondary },
   submitBtn: { flex: 2, backgroundColor: C.primary, borderRadius: 16, paddingVertical: 15, alignItems: "center", justifyContent: "center", shadowColor: C.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
-  submitText:{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" },
+  submitText:{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.textInverse },
 });
 
 
@@ -1186,31 +1186,31 @@ export default function OrdersScreen() {
           <View style={styles.emptyBtns}>
             {martActive && (
               <Pressable onPress={() => router.push("/mart")} style={styles.emptyBtn}>
-                <Ionicons name="storefront-outline" size={15} color="#fff" />
+                <Ionicons name="storefront-outline" size={15} color={C.textInverse} />
                 <Text style={styles.emptyBtnText}>Mart</Text>
               </Pressable>
             )}
             {foodActive && (
               <Pressable onPress={() => router.push("/food")} style={[styles.emptyBtn, { backgroundColor: C.amber }]}>
-                <Ionicons name="restaurant-outline" size={15} color="#fff" />
+                <Ionicons name="restaurant-outline" size={15} color={C.textInverse} />
                 <Text style={styles.emptyBtnText}>Food</Text>
               </Pressable>
             )}
             {ridesActive && (
               <Pressable onPress={() => router.push("/ride")} style={[styles.emptyBtn, { backgroundColor: C.emerald }]}>
-                <Ionicons name="car-outline" size={15} color="#fff" />
+                <Ionicons name="car-outline" size={15} color={C.textInverse} />
                 <Text style={styles.emptyBtnText}>Ride</Text>
               </Pressable>
             )}
             {pharmActive && (
               <Pressable onPress={() => router.push("/pharmacy")} style={[styles.emptyBtn, { backgroundColor: C.purple }]}>
-                <Ionicons name="medical-outline" size={15} color="#fff" />
+                <Ionicons name="medical-outline" size={15} color={C.textInverse} />
                 <Text style={styles.emptyBtnText}>Pharmacy</Text>
               </Pressable>
             )}
             {parcelActive && (
-              <Pressable onPress={() => router.push("/parcel")} style={[styles.emptyBtn, { backgroundColor: "#B45309" }]}>
-                <Ionicons name="cube-outline" size={15} color="#fff" />
+              <Pressable onPress={() => router.push("/parcel")} style={[styles.emptyBtn, { backgroundColor: C.amberBrown }]}>
+                <Ionicons name="cube-outline" size={15} color={C.textInverse} />
                 <Text style={styles.emptyBtnText}>Parcel</Text>
               </Pressable>
             )}
@@ -1298,21 +1298,21 @@ export default function OrdersScreen() {
       >
         {showRidesErr && (
           <Pressable onPress={fetchRides} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load ride orders, tap to retry">
-            <Ionicons name="car-outline" size={15} color="#B91C1C" />
+            <Ionicons name="car-outline" size={15} color={C.redDark} />
             <Text style={styles.sectionErrTxt}>Could not load ride orders</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
           </Pressable>
         )}
         {showPharmErr && (
           <Pressable onPress={fetchPharmacy} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load pharmacy orders, tap to retry">
-            <Ionicons name="medical-outline" size={15} color="#B91C1C" />
+            <Ionicons name="medical-outline" size={15} color={C.redDark} />
             <Text style={styles.sectionErrTxt}>Could not load pharmacy orders</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
           </Pressable>
         )}
         {showParcelErr && (
           <Pressable onPress={fetchParcel} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load parcel bookings, tap to retry">
-            <Ionicons name="cube-outline" size={15} color="#B91C1C" />
+            <Ionicons name="cube-outline" size={15} color={C.redDark} />
             <Text style={styles.sectionErrTxt}>Could not load parcel bookings</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
           </Pressable>
@@ -1337,7 +1337,7 @@ export default function OrdersScreen() {
             {anyPast > historyLimit && (
               <Pressable
                 onPress={() => setHistoryLimit(l => l + 5)}
-                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: "#F1F5F9", borderRadius: 16, marginTop: 4, borderWidth: 1, borderColor: C.border }}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: C.background, borderRadius: 16, marginTop: 4, borderWidth: 1, borderColor: C.border }}
                 accessibilityRole="button"
                 accessibilityLabel={`Load more, ${anyPast - historyLimit} remaining`}
               >
@@ -1357,7 +1357,7 @@ export default function OrdersScreen() {
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <LinearGradient
-        colors={["#0D3B93", C.brandBlue, "#3B82F6"]}
+        colors={[C.brandBlueDark, C.brandBlue, C.brandBlueMid]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: topPad + 12 }]}
@@ -1392,12 +1392,12 @@ export default function OrdersScreen() {
                 <Ionicons
                   name={tab.icon as any}
                   size={14}
-                  color={isActive ? "#fff" : C.textSecondary}
+                  color={isActive ? C.textInverse : C.textSecondary}
                 />
                 <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{T(tab.labelKey)}</Text>
                 {count > 0 && (
                   <View style={[styles.tabBadge, isActive && { backgroundColor: "rgba(255,255,255,0.3)" }]}>
-                    <Text style={[styles.tabBadgeText, isActive && { color: "#fff" }]}>{count}</Text>
+                    <Text style={[styles.tabBadgeText, isActive && { color: C.textInverse }]}>{count}</Text>
                   </View>
                 )}
               </Pressable>
@@ -1456,7 +1456,7 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 16 },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 24, color: "#fff", marginBottom: 4 },
+  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 24, color: C.textInverse, marginBottom: 4 },
   headerSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.8)" },
 
   tabsWrap: { backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border },
@@ -1468,7 +1468,7 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: C.primary, borderColor: C.primary },
   tabLabel: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.textSecondary },
-  tabLabelActive: { color: "#fff" },
+  tabLabelActive: { color: C.textInverse },
   tabBadge: {
     backgroundColor: C.border, borderRadius: 9,
     minWidth: 18, height: 18, alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
@@ -1485,19 +1485,19 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, textAlign: "center" },
   emptyBtns: { flexDirection: "row", gap: 10, marginTop: 8 },
   emptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 14 },
-  emptyBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#fff" },
+  emptyBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textInverse },
 
   secRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 },
   activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.emeraldDot },
   secTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, flex: 1 },
   countBadge: { borderRadius: 10, minWidth: 24, height: 24, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  countText: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#fff" },
+  countText: { fontFamily: "Inter_700Bold", fontSize: 11, color: C.textInverse },
 
   card: {
     backgroundColor: C.surface, borderRadius: 20,
     marginHorizontal: 16, marginBottom: 12, padding: 16,
     borderWidth: 1, borderColor: C.borderLight,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
+    shadowColor: C.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 22 },
@@ -1513,7 +1513,7 @@ const styles = StyleSheet.create({
   expandRow: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: 14, paddingVertical: 4 },
 
   noteRow: { flexDirection: "row", gap: 8, alignItems: "flex-start", marginBottom: 12, padding: 10, backgroundColor: C.purpleBg, borderRadius: 12, borderWidth: 1, borderColor: C.purpleSoft },
-  noteText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: "#5B21B6" },
+  noteText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: C.purpleDeep },
 
   rideRoute: { marginBottom: 12, gap: 4 },
   ridePoint: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -1545,16 +1545,16 @@ const styles = StyleSheet.create({
 
   cancelBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-    marginTop: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: "#FEF2F2",
-    borderWidth: 1.5, borderColor: "#FECACA",
+    marginTop: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: C.redBg,
+    borderWidth: 1.5, borderColor: C.redBorder,
   },
   cancelBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.red },
   rateBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-    marginTop: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: "#FFFBEB",
-    borderWidth: 1.5, borderColor: "#FDE68A",
+    marginTop: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: C.amberBg,
+    borderWidth: 1.5, borderColor: C.amberBorder,
   },
-  rateBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#B45309" },
+  rateBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.amberBrown },
   reviewedBadge: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.borderLight,
@@ -1563,13 +1563,13 @@ const styles = StyleSheet.create({
   refundBar: {
     flexDirection: "row", alignItems: "center", gap: 6,
     marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
-    backgroundColor: C.emeraldSoft, borderWidth: 1, borderColor: "#A7F3D0",
+    backgroundColor: C.emeraldSoft, borderWidth: 1, borderColor: C.emeraldBorder,
   },
   refundText: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.emeraldDark },
   refundRequestBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 10, paddingVertical: 10, borderRadius: 14, backgroundColor: C.purpleBg,
-    borderWidth: 1.5, borderColor: "#DDD6FE",
+    borderWidth: 1.5, borderColor: C.purpleBorder,
   },
   refundRequestBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.purple },
   reorderBtn: {
@@ -1609,9 +1609,9 @@ const styles = StyleSheet.create({
 
   sectionErrBanner: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: "#FEF2F2", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
-    borderWidth: 1, borderColor: "#FECACA", marginBottom: 8,
+    backgroundColor: C.redBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: C.redBorder, marginBottom: 8,
   },
-  sectionErrTxt: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: "#B91C1C" },
+  sectionErrTxt: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: C.redDark },
   sectionErrRetry: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.red },
 });
