@@ -65,6 +65,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const pendingOrderIdRef = useRef<string | null>(null);
   const pendingOrderDataRef = useRef<AckSuccessData | null>(null);
   const ackStuckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ackFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     authTokenRef.current = token;
@@ -77,6 +78,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const resetAckState = useCallback(() => {
     if (ackStuckTimerRef.current) { clearTimeout(ackStuckTimerRef.current); ackStuckTimerRef.current = null; }
+    if (ackFallbackTimerRef.current) { clearTimeout(ackFallbackTimerRef.current); ackFallbackTimerRef.current = null; }
     pendingOrderIdRef.current = null;
     pendingOrderDataRef.current = null;
     setPendingAck(false);
@@ -296,6 +298,33 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const startAckStuckTimer = (delayMs: number) => {
     if (ackStuckTimerRef.current) clearTimeout(ackStuckTimerRef.current);
+    if (ackFallbackTimerRef.current) clearTimeout(ackFallbackTimerRef.current);
+
+    ackFallbackTimerRef.current = setTimeout(async () => {
+      const oid = pendingOrderIdRef.current;
+      if (!oid) return;
+      try {
+        const tkn = authTokenRef.current;
+        const res = await fetch(`${API_BASE}/orders/${oid}`, {
+          headers: tkn ? { Authorization: `Bearer ${tkn}` } : {},
+        });
+        if (res.ok) {
+          const d = await res.json();
+          const order = d.order || d;
+          if (order && order.id) {
+            const data = pendingOrderDataRef.current;
+            if (ackStuckTimerRef.current) { clearTimeout(ackStuckTimerRef.current); ackStuckTimerRef.current = null; }
+            pendingOrderIdRef.current = null;
+            pendingOrderDataRef.current = null;
+            setAckStuck(false);
+            clearCartOnAck();
+            if (data) setOrderSuccess(data);
+            return;
+          }
+        }
+      } catch {}
+    }, 10000);
+
     ackStuckTimerRef.current = setTimeout(() => {
       if (pendingOrderIdRef.current) setAckStuck(true);
     }, delayMs);
@@ -303,6 +332,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const cancelAckStuckTimer = () => {
     if (ackStuckTimerRef.current) { clearTimeout(ackStuckTimerRef.current); ackStuckTimerRef.current = null; }
+    if (ackFallbackTimerRef.current) { clearTimeout(ackFallbackTimerRef.current); ackFallbackTimerRef.current = null; }
   };
 
   const clearOrderSuccess = () => setOrderSuccess(null);

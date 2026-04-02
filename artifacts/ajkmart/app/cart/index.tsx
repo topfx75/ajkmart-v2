@@ -52,68 +52,197 @@ interface SavedAddress {
 }
 
 function AddressPickerModal({
-  visible, addresses, selected, onSelect, onClose,
+  visible, addresses, selected, onSelect, onClose, onAddressCreated, token,
 }: {
   visible: boolean;
   addresses: SavedAddress[];
   selected: string;
   onSelect: (a: SavedAddress) => void;
   onClose: () => void;
+  onAddressCreated: (a: SavedAddress) => void;
+  token: string | null | undefined;
 }) {
+  const [showForm, setShowForm] = useState(false);
+  const [newLabel, setNewLabel] = useState("Home");
+  const [newAddress, setNewAddress] = useState("");
+  const [newCity, setNewCity] = useState("Muzaffarabad");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setShowForm(false);
+    setNewLabel("Home");
+    setNewAddress("");
+    setNewCity("Muzaffarabad");
+    setFormError(null);
+  };
+
+  const handleSave = async () => {
+    if (!newAddress.trim()) { setFormError("Address is required"); return; }
+    if (!newCity.trim()) { setFormError("City is required"); return; }
+    setSaving(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_BASE}/addresses`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          label: newLabel.trim() || "Home",
+          address: newAddress.trim(),
+          city: newCity.trim(),
+          icon: newLabel.toLowerCase().includes("work") ? "briefcase-outline" : newLabel.toLowerCase().includes("office") ? "business-outline" : "home-outline",
+          isDefault: addresses.length === 0,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Failed to save address");
+      }
+      const d = await res.json();
+      const created: SavedAddress = d.address || d;
+      onAddressCreated(created);
+      resetForm();
+    } catch (e: any) {
+      setFormError(e.message || "Could not save address");
+    }
+    setSaving(false);
+  };
+
+  const LABEL_PRESETS = ["Home", "Work", "Office", "Other"];
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!saving) { resetForm(); onClose(); } }}>
+      <Pressable style={styles.overlay} onPress={() => { if (!saving) { resetForm(); onClose(); } }}>
         <Pressable style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>Choose Delivery Address</Text>
-          {addresses.length === 0 ? (
-            <View style={{ alignItems: "center", paddingVertical: 28, gap: 10 }}>
-              <Ionicons name="location-outline" size={40} color={C.textMuted} />
-              <Text style={{ ...Typ.button, color: C.text }}>No saved addresses</Text>
-              <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, textAlign: "center" }}>
-                Add a delivery address to continue
-              </Text>
+          <Text style={styles.sheetTitle}>{showForm ? "Add New Address" : "Choose Delivery Address"}</Text>
+
+          {showForm ? (
+            <View style={{ gap: 14 }}>
+              <View>
+                <Text style={{ ...Typ.captionMedium, color: C.textSecondary, marginBottom: 6 }}>Label</Text>
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                  {LABEL_PRESETS.map(l => (
+                    <Pressable
+                      key={l}
+                      onPress={() => setNewLabel(l)}
+                      style={{
+                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+                        backgroundColor: newLabel === l ? C.primary : C.surfaceSecondary,
+                        borderWidth: 1, borderColor: newLabel === l ? C.primary : C.border,
+                      }}
+                    >
+                      <Text style={{ ...Typ.captionMedium, color: newLabel === l ? C.textInverse : C.text }}>{l}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+              <View>
+                <Text style={{ ...Typ.captionMedium, color: C.textSecondary, marginBottom: 6 }}>Street Address</Text>
+                <TextInput
+                  value={newAddress}
+                  onChangeText={setNewAddress}
+                  placeholder="e.g. CMH Road, Near GPO"
+                  placeholderTextColor={C.textMuted}
+                  multiline
+                  style={{
+                    borderWidth: 1.5, borderColor: C.border, borderRadius: 14,
+                    paddingHorizontal: 14, paddingVertical: 12, minHeight: 60,
+                    ...Typ.body, color: C.text, backgroundColor: C.surfaceSecondary,
+                    textAlignVertical: "top",
+                  }}
+                />
+              </View>
+              <View>
+                <Text style={{ ...Typ.captionMedium, color: C.textSecondary, marginBottom: 6 }}>City</Text>
+                <TextInput
+                  value={newCity}
+                  onChangeText={setNewCity}
+                  placeholder="e.g. Muzaffarabad"
+                  placeholderTextColor={C.textMuted}
+                  style={{
+                    borderWidth: 1.5, borderColor: C.border, borderRadius: 14,
+                    paddingHorizontal: 14, paddingVertical: 12,
+                    ...Typ.body, color: C.text, backgroundColor: C.surfaceSecondary,
+                  }}
+                />
+              </View>
+              {formError && <Text style={{ ...Typ.caption, color: C.red }}>{formError}</Text>}
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                <Pressable
+                  onPress={() => resetForm()}
+                  disabled={saving}
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: "center", backgroundColor: C.surfaceSecondary, borderWidth: 1, borderColor: C.border }}
+                >
+                  <Text style={{ ...Typ.buttonSmall, color: C.textSecondary }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSave}
+                  disabled={saving}
+                  style={{ flex: 2, paddingVertical: 14, borderRadius: 14, alignItems: "center", backgroundColor: C.primary, opacity: saving ? 0.7 : 1 }}
+                >
+                  {saving
+                    ? <ActivityIndicator size="small" color={C.textInverse} />
+                    : <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.textInverse }}>Save & Select</Text>
+                  }
+                </Pressable>
+              </View>
             </View>
           ) : (
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
-              {addresses.map(addr => {
-                const isSel = selected === addr.id;
-                return (
-                  <Pressable
-                    key={addr.id}
-                    onPress={() => { onSelect(addr); onClose(); }}
-                    style={[styles.addrOpt, isSel && styles.addrOptSel]}
-                  >
-                    <View style={[styles.addrOptIcon, { backgroundColor: isSel ? C.brandBlueSoft : C.surfaceSecondary }]}>
-                      <Ionicons name={(addr.icon as keyof typeof Ionicons.glyphMap) || "location-outline"} size={20} color={isSel ? C.primary : C.textSecondary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Text style={[styles.addrOptLabel, isSel && { color: C.primary }]}>{addr.label}</Text>
-                        {addr.isDefault && (
-                          <View style={styles.defaultTag}>
-                            <Text style={styles.defaultTagText}>Default</Text>
+            <>
+              {addresses.length === 0 ? (
+                <View style={{ alignItems: "center", paddingVertical: 28, gap: 10 }}>
+                  <Ionicons name="location-outline" size={40} color={C.textMuted} />
+                  <Text style={{ ...Typ.button, color: C.text }}>No saved addresses</Text>
+                  <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, textAlign: "center" }}>
+                    Add a delivery address to continue
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
+                  {addresses.map(addr => {
+                    const isSel = selected === addr.id;
+                    return (
+                      <Pressable
+                        key={addr.id}
+                        onPress={() => { onSelect(addr); onClose(); }}
+                        style={[styles.addrOpt, isSel && styles.addrOptSel]}
+                      >
+                        <View style={[styles.addrOptIcon, { backgroundColor: isSel ? C.brandBlueSoft : C.surfaceSecondary }]}>
+                          <Ionicons name={(addr.icon as keyof typeof Ionicons.glyphMap) || "location-outline"} size={20} color={isSel ? C.primary : C.textSecondary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={[styles.addrOptLabel, isSel && { color: C.primary }]}>{addr.label}</Text>
+                            {addr.isDefault && (
+                              <View style={styles.defaultTag}>
+                                <Text style={styles.defaultTagText}>Default</Text>
+                              </View>
+                            )}
                           </View>
-                        )}
-                      </View>
-                      <Text style={styles.addrOptAddress} numberOfLines={1}>{addr.address}</Text>
-                      <Text style={styles.addrOptCity}>{addr.city}</Text>
-                    </View>
-                    {isSel && <Ionicons name="checkmark-circle" size={22} color={C.primary} />}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+                          <Text style={styles.addrOptAddress} numberOfLines={1}>{addr.address}</Text>
+                          <Text style={styles.addrOptCity}>{addr.city}</Text>
+                        </View>
+                        {isSel && <Ionicons name="checkmark-circle" size={22} color={C.primary} />}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
+              <Pressable onPress={() => setShowForm(true)} style={[styles.addrOpt, { borderColor: C.primary, borderStyle: "dashed", marginTop: 8 }]}>
+                <View style={[styles.addrOptIcon, { backgroundColor: C.brandBlueSoft }]}>
+                  <Ionicons name="add-outline" size={20} color={C.primary} />
+                </View>
+                <Text style={[styles.addrOptLabel, { color: C.primary }]}>Add New Address</Text>
+              </Pressable>
+              <Pressable onPress={onClose} style={styles.cancelBtn}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+            </>
           )}
-          <Pressable onPress={() => { onClose(); router.push({ pathname: "/(tabs)/profile", params: { section: "addresses" } }); }} style={[styles.addrOpt, { borderColor: C.primary, borderStyle: "dashed", marginTop: 8 }]}>
-            <View style={[styles.addrOptIcon, { backgroundColor: C.brandBlueSoft }]}>
-              <Ionicons name="add-outline" size={20} color={C.primary} />
-            </View>
-            <Text style={[styles.addrOptLabel, { color: C.primary }]}>Add New Address</Text>
-          </Pressable>
-          <Pressable onPress={onClose} style={styles.cancelBtn}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
-          </Pressable>
         </Pressable>
       </Pressable>
     </Modal>
@@ -197,21 +326,16 @@ export default function CartScreen() {
         }
         if (mountedRef.current) setGwBackgrounded(true);
       } else if (nextState === "active" && gwBackgrounded) {
-        // Auto-resume polling when user returns to foreground
         setGwBackgrounded(false);
         const txn = gwTxnRef.current;
         const oid = gwOrderId.current;
         if (!txn) return;
-        gwPollRef.current.active = true;
-        gwPollRef.current.intervalId = setInterval(async () => {
-          if (!gwPollRef.current.active) return;
+        const checkAndResume = async () => {
           try {
             const r = await fetch(`${API_BASE}/payments/status/${encodeURIComponent(txn)}`);
             const d = await r.json() as any;
+            if (!mountedRef.current) return;
             if (d.status === "completed" || d.status === "success") {
-              gwPollRef.current.active = false;
-              if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
-              if (!mountedRef.current) return;
               if (oid) {
                 const successData = { id: oid.slice(-6).toUpperCase(), time: "30-45 min", payMethod };
                 setPendingOrderId(oid, successData);
@@ -221,17 +345,57 @@ export default function CartScreen() {
               setGwStep("done");
               setShowGwModal(false);
             } else if (d.status === "failed" || d.status === "expired") {
-              gwPollRef.current.active = false;
-              if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
-              if (!mountedRef.current) return;
               setGwStep("input");
               if (oid) await cancelPendingOrder(oid);
               showToast(d.message || T("paymentNotSuccessful"), "error");
+            } else {
+              gwPollRef.current.active = true;
+              const resumeStart = Date.now();
+              gwPollRef.current.intervalId = setInterval(async () => {
+                if (!gwPollRef.current.active || !mountedRef.current) {
+                  if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
+                  return;
+                }
+                if (Date.now() - resumeStart >= 120000) {
+                  gwPollRef.current.active = false;
+                  if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
+                  if (oid) await cancelPendingOrder(oid);
+                  if (mountedRef.current) {
+                    setGwStep("input");
+                    showToast("Payment timeout — please check your account or contact support", "error");
+                  }
+                  return;
+                }
+                try {
+                  const sr = await fetch(`${API_BASE}/payments/status/${encodeURIComponent(txn)}`);
+                  const sd = await sr.json() as any;
+                  if (!mountedRef.current) return;
+                  if (sd.status === "completed" || sd.status === "success") {
+                    gwPollRef.current.active = false;
+                    if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
+                    if (oid) {
+                      const successData = { id: oid.slice(-6).toUpperCase(), time: "30-45 min", payMethod };
+                      setPendingOrderId(oid, successData);
+                      setPendingAck(true);
+                      startAckStuckTimer(60000);
+                    }
+                    setGwStep("done");
+                    setShowGwModal(false);
+                  } else if (sd.status === "failed" || sd.status === "expired") {
+                    gwPollRef.current.active = false;
+                    if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
+                    setGwStep("input");
+                    if (oid) await cancelPendingOrder(oid);
+                    showToast(sd.message || T("paymentNotSuccessful"), "error");
+                  }
+                } catch {}
+              }, 4000);
             }
-          } catch (err) {
-            console.warn("[Cart] Gateway event processing error:", err instanceof Error ? err.message : String(err));
+          } catch {
+            showToast(T("paymentServerError") || "Could not check payment status", "error");
           }
-        }, 3000);
+        };
+        checkAndResume();
       }
     });
     return () => sub.remove();
@@ -797,61 +961,11 @@ export default function CartScreen() {
 
           {gwStep === "waiting" && (
             <View style={{ alignItems: "center", paddingVertical: 24 }}>
-              {gwBackgrounded ? (
-                <>
-                  <Ionicons name="pause-circle-outline" size={48} color={C.textMuted} />
-                  <Text style={{ ...Typ.h3, fontSize: 16, color: C.text, marginTop: 16 }}>Polling Paused</Text>
-                  <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
-                    The app was moved to the background. Resume polling to check if your payment went through.
-                  </Text>
-                  <Pressable
-                    onPress={async () => {
-                      const txn = gwTxnRef.current;
-                      const oid = gwOrderId.current;
-                      if (!txn) {
-                        showToast(T("paymentRefNotFound"), "error");
-                        return;
-                      }
-                      try {
-                        const statusRes = await fetch(`${API_BASE}/payments/status/${encodeURIComponent(txn)}`);
-                        const statusData = await statusRes.json() as any;
-                        if (statusData.status === "completed" || statusData.status === "success") {
-                          setGwBackgrounded(false);
-                          if (oid) {
-                            const successData = { id: oid.slice(-6).toUpperCase(), time: "30-45 min", payMethod };
-                            setPendingOrderId(oid, successData);
-                            setPendingAck(true);
-                            startAckStuckTimer(60000);
-                          }
-                          setGwStep("done");
-                          setShowGwModal(false);
-                        } else if (statusData.status === "failed" || statusData.status === "expired") {
-                          setGwBackgrounded(false);
-                          setGwStep("input");
-                          if (oid) await cancelPendingOrder(oid);
-                          showToast(statusData.message || T("paymentNotSuccessful"), "error");
-                        } else {
-                          showToast(T("paymentPending"), "info");
-                        }
-                      } catch {
-                        showToast(T("paymentServerError"), "error");
-                      }
-                    }}
-                    style={{ marginTop: 16, backgroundColor: C.primary, borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 8 }}
-                  >
-                    <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
-                    <Text style={{ fontSize: 14, fontFamily: Font.semiBold, color: C.textInverse }}>Check Payment Status</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <>
-                  <ActivityIndicator size="large" color={gwColor} />
-                  <Text style={{ ...Typ.h3, fontSize: 16, color: C.text, marginTop: 20 }}>Payment Processing...</Text>
-                  <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
-                    {`A ${gwName} notification will be sent to ${gwMobile} — please approve`}
-                  </Text>
-                </>
-              )}
+              <ActivityIndicator size="large" color={gwColor} />
+              <Text style={{ ...Typ.h3, fontSize: 16, color: C.text, marginTop: 20 }}>Payment Processing...</Text>
+              <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
+                {`A ${gwName} notification will be sent to ${gwMobile} — please approve`}
+              </Text>
             </View>
           )}
 
@@ -867,32 +981,14 @@ export default function CartScreen() {
     </Modal>
   );
 
-  if (pendingAck && !orderSuccess) {
-    if (ackStuck) {
-      return (
-        <View style={[styles.container, { backgroundColor: C.background, justifyContent: "center", alignItems: "center", paddingHorizontal: 32 }]}>
-          <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: C.yellowLightBg, justifyContent: "center", alignItems: "center", marginBottom: 20 }}>
-            <Ionicons name="warning-outline" size={32} color={C.amberBrown} />
-          </View>
-          <Text style={{ ...Typ.h3, color: C.text, textAlign: "center" }}>Taking longer than expected</Text>
-          <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginTop: 10, textAlign: "center", lineHeight: 20 }}>
-            Your order was placed but we haven't received server confirmation yet. Check your orders list to see if it appears.
-          </Text>
-          <Pressable
-            onPress={() => router.push("/(tabs)/orders")}
-            style={{ marginTop: 24, backgroundColor: C.primary, borderRadius: 14, paddingHorizontal: 28, paddingVertical: 14 }}
-          >
-            <Text style={{ ...Typ.button, color: C.textInverse }}>View My Orders</Text>
-          </Pressable>
-          <Pressable
-            onPress={dismissAck}
-            style={{ marginTop: 12, paddingVertical: 10 }}
-          >
-            <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Dismiss</Text>
-          </Pressable>
-        </View>
-      );
+  useEffect(() => {
+    if (pendingAck && ackStuck && !orderSuccess) {
+      dismissAck();
+      router.replace("/(tabs)/orders");
     }
+  }, [pendingAck, ackStuck, orderSuccess]);
+
+  if (pendingAck && !orderSuccess && !ackStuck) {
     return (
       <View style={[styles.container, { backgroundColor: C.background, justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color={C.primary} />
@@ -1057,13 +1153,7 @@ export default function CartScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
           <Pressable
-            onPress={() => {
-              if (addresses.length === 0) {
-                showToast(T("addAddressFirst"), "info");
-                return;
-              }
-              setShowAddrPicker(true);
-            }}
+            onPress={() => setShowAddrPicker(true)}
             style={styles.addrCard}
           >
             <View style={styles.addrCardIcon}>
@@ -1299,6 +1389,11 @@ export default function CartScreen() {
         selected={selectedAddrId}
         onSelect={(a) => setSelectedAddrId(a.id)}
         onClose={() => setShowAddrPicker(false)}
+        token={token}
+        onAddressCreated={(a) => {
+          setAddresses(prev => [...prev, a]);
+          setSelectedAddrId(a.id);
+        }}
       />
 
       <GatewayModal />
