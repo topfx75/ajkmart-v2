@@ -637,7 +637,7 @@ export default function HomeScreen() {
                 }
                 return elements;
               })()}
-              {features.wallet && <WalletStrip balance={user?.walletBalance || 0} onPress={() => router.push("/(tabs)/wallet")} appName={appName} />}
+
             </View>
           </>
         )}
