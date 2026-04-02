@@ -859,6 +859,105 @@ export async function requireUserAuth(req: Request, res: Response, next: NextFun
   return customerAuth(req, res, next);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   REQUIRE ROLE — DRY factory that replaces customerAuth / riderAuth /
+   vendorAuth with a single configurable middleware.
+
+   Usage:
+     router.use(requireRole("rider"))          — enforce single role
+     router.get("/", requireRole("customer"))  — per-route
+     router.use(requireRole("vendor", { vendorApprovalCheck: true }))
+            — adds vendor pending/rejected approval status checks
+
+   Sets on req: customerId, customerPhone, customerUser
+   Additionally sets riderId + riderUser when role includes "rider"
+   Additionally sets vendorId + vendorUser when role includes "vendor"
+══════════════════════════════════════════════════════════════ */
+export function requireRole(
+  role: string | string[],
+  opts: { vendorApprovalCheck?: boolean } = {}
+) {
+  const allowedRoles = Array.isArray(role) ? role : [role];
+
+  return async function requireRoleMiddleware(req: Request, res: Response, next: NextFunction) {
+    const authHeader = req.headers["authorization"] as string | undefined;
+    const tokenHeader = req.headers["x-auth-token"] as string | undefined;
+    const token = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
+    const ip = getClientIp(req);
+
+    if (!token) {
+      res.status(401).json({ error: "Authentication required." });
+      return;
+    }
+
+    const payload = verifyUserJwt(token);
+    if (!payload) {
+      writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, roles: allowedRoles } });
+      res.status(401).json({ error: "Invalid or expired session. Please log in again." });
+      return;
+    }
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+    if (!user) { res.status(401).json({ error: "Account not found." }); return; }
+
+    if (user.isBanned) {
+      writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url } });
+      res.status(403).json({ error: "Account is banned. Please contact support." });
+      return;
+    }
+
+    if (!user.isActive) {
+      if (opts.vendorApprovalCheck) {
+        if (user.approvalStatus === "pending") {
+          writeAuthAuditLog("auth_denied_pending", { userId: user.id, ip, metadata: { url: req.url } });
+          res.status(403).json({ error: "Your vendor account is pending admin approval.", pendingApproval: true });
+          return;
+        }
+        if (user.approvalStatus === "rejected") {
+          writeAuthAuditLog("auth_denied_rejected", { userId: user.id, ip, metadata: { url: req.url } });
+          res.status(403).json({ error: "Your vendor application was rejected. Contact support for details.", rejected: true, approvalNote: user.approvalNote });
+          return;
+        }
+      }
+      writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url } });
+      res.status(403).json({ error: "Account is inactive. Please contact support." });
+      return;
+    }
+
+    if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
+      writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url } });
+      res.status(401).json({ error: "Session revoked. Please log in again." });
+      return;
+    }
+
+    if (allowedRoles.length > 0) {
+      const dbRoles = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
+      const hasRole = allowedRoles.some(r => dbRoles.includes(r));
+      if (!hasRole) {
+        writeAuthAuditLog("auth_denied_role", { userId: user.id, ip, metadata: { required: allowedRoles, actual: user.roles, url: req.url } });
+        res.status(403).json({ error: `Access denied. Required role: ${allowedRoles.join(" or ")}.` });
+        return;
+      }
+    }
+
+    req.customerId    = user.id;
+    req.customerPhone = user.phone ?? "";
+    req.customerUser  = user;
+
+    const dbRoles = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
+    if (dbRoles.includes("rider")) {
+      req.riderId   = user.id;
+      req.riderUser = user;
+    }
+    if (dbRoles.includes("vendor")) {
+      req.vendorId   = user.id;
+      req.vendorUser = user;
+    }
+
+    next();
+  };
+}
+
 export async function verifyCaptcha(req: Request, res: Response, next: NextFunction) {
   const settings = await getCachedSettings();
   if (settings["auth_captcha_enabled"] !== "on") {

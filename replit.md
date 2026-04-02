@@ -10,6 +10,35 @@ AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pak
 - Do not make changes to file `artifacts/api-server/src/routes/auth.ts`.
 - Prefer clear and concise explanations.
 
+### Phase 2 Cleanup — Completed Changes
+
+#### 1. Security Fixes (Critical)
+- **`artifacts/api-server/src/services/password.ts`**: Removed hardcoded JWT secret fallback (`"ajkmart-secret-2024"`) and TOTP encryption key fallback (`"ajkmart-totp-default-key-2024"`). Both now call `resolveRequiredSecret()` which throws an explicit error at call time if the env vars are missing — no more silent weak-key fallbacks.
+- **`artifacts/api-server/src/routes/auth.ts`**: Dev OTP is now gated by BOTH `NODE_ENV === "development"` AND `ALLOW_DEV_OTP === "true"` env var. A single misconfigured `NODE_ENV` can no longer leak OTP codes into production API responses.
+
+#### 2. Code Consolidation — requireRole Factory
+- **`artifacts/api-server/src/middleware/security.ts`**: Added `requireRole(role, opts?)` factory function. Replaces the four separate `customerAuth`, `riderAuth`, `vendorAuth` (local copy in vendor.ts), and `adminAuth` middlewares with a single, DRY, configurable pattern. Supports `opts.vendorApprovalCheck` for vendor-specific pending/rejected status messages. Sets `req.customerId`, `req.customerUser`, `req.riderId`/`riderUser`, and `req.vendorId`/`vendorUser` as appropriate.
+- **`artifacts/api-server/src/routes/vendor.ts`**: Removed the 50-line duplicate local `vendorAuth` function. Now uses `router.use(requireRole("vendor", { vendorApprovalCheck: true }))` — one line.
+
+#### 3. Ghost Rider Fix — Heartbeat Expiry
+- **`artifacts/api-server/src/lib/socketio.ts`**: Enhanced the stale-location cleanup interval. It now:
+  1. Queries for all riders whose `live_locations.updatedAt` is older than 5 minutes (before deleting).
+  2. Emits `rider:offline` event to `admin-fleet` for each stale rider with `{ userId, isOnline: false, reason: "heartbeat_timeout" }`.
+  3. Updates `users.is_online = false` in the database for all affected riders (prevents ghost-online status in DB).
+  4. Deletes the stale `live_locations` rows to remove ghost markers from the Admin fleet map.
+
+#### 4. New Profile Tables (Schema Refactor — Phase 2)
+- **`lib/db/src/schema/rider_profiles.ts`**: New table `rider_profiles` — stores all rider-specific fields: `vehicleType`, `vehiclePlate`, `vehicleRegNo`, `drivingLicense`, `vehiclePhoto`, `documents`. Linked to `users` by `userId`.
+- **`lib/db/src/schema/vendor_profiles.ts`**: New table `vendor_profiles` — stores all vendor/store-specific fields: `storeName`, `storeCategory`, `storeBanner`, `storeDescription`, `storeHours`, `storeAnnouncement`, `storeMinOrder`, `storeDeliveryTime`, `storeIsOpen`, `storeAddress`, `businessType`, `businessName`, `ntn`. Linked to `users` by `userId`.
+- **`lib/db/src/schema/users.ts`**: Vendor and rider fields marked as `DEPRECATED` with clear comments. They are retained for backward compatibility. Phase 3 will remove them after all queries are updated to JOIN the new profile tables.
+- **`lib/db/migrations/0011_rider_vendor_profiles.sql`**: Creates both tables and populates them from existing `users` data.
+
+#### 5. Static Data — AJK Cities in Database
+- **`lib/db/migrations/0012_seed_ajk_locations.sql`**: Seeds all 15 AJK fallback cities (Muzaffarabad, Mirpur, Rawalakot, etc.) into the `popular_locations` table. They can now be managed, edited, or extended from the Admin Panel. The hardcoded array in `maps.ts` remains as a last-resort safety net if the DB is unavailable.
+
+#### Important Environment Variables Added
+- `ALLOW_DEV_OTP=true` — must be explicitly set alongside `NODE_ENV=development` for dev OTP mode to expose codes in API responses. Default: not set (production-safe).
+
 ### System Architecture
 
 **Monorepo and Core Technologies:**

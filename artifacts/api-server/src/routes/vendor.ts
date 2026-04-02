@@ -1,68 +1,18 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { db } from "@workspace/db";
 import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable } from "@workspace/db/schema";
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
-import { verifyUserJwt, writeAuthAuditLog, getClientIp } from "../middleware/security.js";
+import { requireRole } from "../middleware/security.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
 
 const router: IRouter = Router();
 
-/* ── Auth Middleware ── */
-async function vendorAuth(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers["authorization"];
-  const tokenHeader = req.headers["x-auth-token"] as string | undefined;
-  const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
-  const ip = getClientIp(req);
-
-  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
-
-  const payload = verifyUserJwt(raw);
-  if (!payload) {
-    writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, role: "vendor" } });
-    res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return;
-  }
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-  if (!user) { res.status(401).json({ error: "User not found" }); return; }
-  if (!user.isActive) {
-    if (user.approvalStatus === "pending") {
-      writeAuthAuditLog("auth_denied_pending", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
-      res.status(403).json({ error: "Your vendor account is pending admin approval.", pendingApproval: true }); return;
-    }
-    if (user.approvalStatus === "rejected") {
-      writeAuthAuditLog("auth_denied_rejected", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
-      res.status(403).json({ error: "Your vendor application was rejected. Contact support for details.", rejected: true, approvalNote: user.approvalNote }); return;
-    }
-    writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
-    res.status(403).json({ error: "Account suspended by admin" }); return;
-  }
-  if (user.isBanned) {
-    writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
-    res.status(403).json({ error: "Account is banned" }); return;
-  }
-
-  /* Token version check — invalidates access JWTs on logout/ban/role change */
-  if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
-    writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url, role: "vendor" } });
-    res.status(401).json({ error: "Session revoked. Please log in again." }); return;
-  }
-
-  /* Enforce vendor role from the authoritative DB field */
-  const dbRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
-  if (!dbRoles.includes("vendor")) {
-    writeAuthAuditLog("auth_denied_role", { userId: user.id, ip, metadata: { required: "vendor", actual: user.roles, url: req.url } });
-    res.status(403).json({ error: "Access denied. Vendor role required." }); return;
-  }
-
-  req.vendorId = user.id;
-  req.vendorUser = user;
-  next();
-}
-router.use(vendorAuth);
+/* ── Auth: replaced duplicated vendorAuth with the shared requireRole factory ── */
+router.use(requireRole("vendor", { vendorApprovalCheck: true }));
 
 function safeNum(v: any, def = 0) { return parseFloat(String(v ?? def)) || def; }
 function formatUser(user: any) {

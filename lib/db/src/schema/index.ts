@@ -31,3 +31,5 @@ export * from "./rate_limits";
 export * from "./product_variants";
 export * from "./banners";
 export * from "./user_interactions";
+export * from "./rider_profiles";
+export * from "./vendor_profiles";

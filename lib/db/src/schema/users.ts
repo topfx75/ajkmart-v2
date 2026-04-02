@@ -35,17 +35,7 @@ export const usersTable = pgTable("users", {
   blockedServices: text("blocked_services").notNull().default(""),
   securityNote:    text("security_note"),
   isOnline:          boolean("is_online").notNull().default(false),
-  /* ── Vendor/Store fields ── */
-  storeName:         text("store_name"),
-  storeCategory:     text("store_category"),
-  storeBanner:       text("store_banner"),
-  storeDescription:  text("store_description"),
-  storeHours:        text("store_hours"),
-  storeAnnouncement: text("store_announcement"),
-  storeMinOrder:     decimal("store_min_order", { precision: 10, scale: 2 }).default("0"),
-  storeDeliveryTime: text("store_delivery_time"),
-  storeIsOpen:       boolean("store_is_open").notNull().default(true),
-  /* ── Extended profile fields ── */
+  /* ── Extended profile fields (shared across roles) ── */
   cnic:              text("cnic"),
   address:           text("address"),
   city:              text("city"),
@@ -55,16 +45,35 @@ export const usersTable = pgTable("users", {
   kycStatus:         text("kyc_status").notNull().default("none"),
   accountLevel:      text("account_level").notNull().default("bronze"),
   emergencyContact:  text("emergency_contact"),
-  vehicleType:       text("vehicle_type"),
-  vehiclePlate:      text("vehicle_plate"),
   bankName:          text("bank_name"),
   bankAccount:       text("bank_account"),
   bankAccountTitle:  text("bank_account_title"),
+  nationalId:        text("national_id"),
+  /* ── DEPRECATED: Vendor store fields ────────────────────────────────────────
+     These columns have been migrated to the vendor_profiles table.
+     They are kept here for backward compatibility during migration only.
+     New code should JOIN vendor_profiles. Phase 3 will DROP these columns.
+  ── */
+  storeName:         text("store_name"),
+  storeCategory:     text("store_category"),
+  storeBanner:       text("store_banner"),
+  storeDescription:  text("store_description"),
+  storeHours:        text("store_hours"),
+  storeAnnouncement: text("store_announcement"),
+  storeMinOrder:     decimal("store_min_order", { precision: 10, scale: 2 }).default("0"),
+  storeDeliveryTime: text("store_delivery_time"),
+  storeIsOpen:       boolean("store_is_open").notNull().default(true),
+  storeAddress:      text("store_address"),
   businessType:      text("business_type"),
   businessName:      text("business_name"),
-  storeAddress:      text("store_address"),
   ntn:               text("ntn"),
-  nationalId:        text("national_id"),
+  /* ── DEPRECATED: Rider vehicle fields ───────────────────────────────────────
+     These columns have been migrated to the rider_profiles table.
+     They are kept here for backward compatibility during migration only.
+     New code should JOIN rider_profiles. Phase 3 will DROP these columns.
+  ── */
+  vehicleType:       text("vehicle_type"),
+  vehiclePlate:      text("vehicle_plate"),
   vehicleRegNo:      text("vehicle_reg_no"),
   drivingLicense:    text("driving_license"),
   vehiclePhoto:      text("vehicle_photo"),

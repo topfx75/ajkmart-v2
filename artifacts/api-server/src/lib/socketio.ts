@@ -3,8 +3,8 @@ import type { Server as HttpServer } from "http";
 import { logger } from "./logger.js";
 import { verifyUserJwt, verifyAdminJwt } from "../middleware/security.js";
 import { db } from "@workspace/db";
-import { ridesTable, ordersTable, parcelBookingsTable, pharmacyOrdersTable, liveLocationsTable } from "@workspace/db/schema";
-import { eq, or, and, sql } from "drizzle-orm";
+import { ridesTable, ordersTable, parcelBookingsTable, pharmacyOrdersTable, liveLocationsTable, usersTable } from "@workspace/db/schema";
+import { eq, or, and, sql, lt } from "drizzle-orm";
 
 /* ── Server-side GPS broadcast throttle: max 1 emit per rider per 1500ms ── */
 const RIDER_LOC_THROTTLE_MS = 1500;
@@ -391,16 +391,57 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
     });
   });
 
+  /* ── Ghost Rider Expiry: runs every 5 minutes ─────────────────────────────
+     1. Finds riders whose last heartbeat/location update is older than 5 min.
+     2. Emits rider:offline to admin-fleet for each (before deleting from DB).
+     3. Sets users.is_online = false so the DB stays consistent.
+     4. Deletes from live_locations to remove ghost markers from the map.
+  ── */
   const STALE_LOC_TTL_MS = 5 * 60 * 1000;
-  setInterval(() => {
-    db.delete(liveLocationsTable)
-      .where(sql`${liveLocationsTable.updatedAt} < NOW() - INTERVAL '5 minutes'`)
-      .then((result) => {
-        if (result.rowCount && result.rowCount > 0) {
-          logger.info({ cleaned: result.rowCount }, "Cleaned stale live_locations");
-        }
-      })
-      .catch((err) => logger.warn({ err }, "Stale live_locations cleanup failed"));
+  setInterval(async () => {
+    try {
+      const cutoff = new Date(Date.now() - STALE_LOC_TTL_MS);
+
+      /* Step 1: Find stale rider entries before deleting */
+      const staleRiders = await db
+        .select({ userId: liveLocationsTable.userId, batteryLevel: liveLocationsTable.batteryLevel })
+        .from(liveLocationsTable)
+        .where(lt(liveLocationsTable.updatedAt, cutoff));
+
+      if (staleRiders.length === 0) return;
+
+      const now = new Date().toISOString();
+
+      /* Step 2: Emit rider:offline for each stale rider to admin-fleet */
+      for (const rider of staleRiders) {
+        _io?.to("admin-fleet").emit("rider:offline", {
+          userId: rider.userId,
+          isOnline: false,
+          reason: "heartbeat_timeout",
+          updatedAt: now,
+        });
+        /* Also clean the throttle map to release memory */
+        _riderLocLastEmit.delete(rider.userId);
+      }
+
+      /* Step 3: Mark users.is_online = false in DB for all stale riders */
+      const staleIds = staleRiders.map(r => r.userId);
+      await db
+        .update(usersTable)
+        .set({ isOnline: false, updatedAt: new Date() })
+        .where(sql`${usersTable.id} = ANY(ARRAY[${sql.join(staleIds.map(id => sql`${id}`), sql`, `)}]::text[])`);
+
+      /* Step 4: Delete stale rows from live_locations */
+      const result = await db
+        .delete(liveLocationsTable)
+        .where(lt(liveLocationsTable.updatedAt, cutoff));
+
+      if (result.rowCount && result.rowCount > 0) {
+        logger.info({ cleaned: result.rowCount, riders: staleIds }, "Ghost rider cleanup: removed stale live_locations and emitted rider:offline");
+      }
+    } catch (err) {
+      logger.warn({ err }, "Ghost rider cleanup failed");
+    }
   }, STALE_LOC_TTL_MS);
 
   logger.info("Socket.io initialized");

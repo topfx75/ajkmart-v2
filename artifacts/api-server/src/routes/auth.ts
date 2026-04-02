@@ -607,7 +607,11 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     fallbackChannels,
   };
 
-  if (userDevOtp) {
+  /* Dev OTP: only expose in response if BOTH the per-user flag is set AND
+     the server is explicitly in development mode with the ALLOW_DEV_OTP flag.
+     This prevents accidental OTP leakage if NODE_ENV is misconfigured in production. */
+  const allowDevOtp = process.env["NODE_ENV"] === "development" && process.env["ALLOW_DEV_OTP"] === "true";
+  if (userDevOtp && allowDevOtp) {
     response.otp = otp;
     response.devMode = true;
   }

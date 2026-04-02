@@ -55,9 +55,22 @@ export function generateSecureOtp(): string {
   return randomInt(100_000, 1_000_000).toString();
 }
 
+/* ── Fail-fast secret resolution ── */
+function resolveRequiredSecret(envKey: string, fallbackEnvKey?: string): string {
+  const val = process.env[envKey] ?? (fallbackEnvKey ? process.env[fallbackEnvKey] : undefined);
+  if (!val) {
+    const keys = fallbackEnvKey ? `${envKey} (or ${fallbackEnvKey})` : envKey;
+    throw new Error(
+      `[FATAL] ${keys} environment variable is not set. ` +
+      `This secret is required for cryptographic operations. Set it before starting the server.`
+    );
+  }
+  return val;
+}
+
 /* Simple hash for token generation (non-crypto-sensitive) */
 export function makeTokenHash(value: string): string {
-  const secret = process.env["JWT_SECRET"] || "ajkmart-secret-2024";
+  const secret = resolveRequiredSecret("JWT_SECRET");
   return createHash("sha256").update(value + secret).digest("hex").slice(0, 32);
 }
 
@@ -66,7 +79,7 @@ const TOTP_IV_LEN = 12;
 const TOTP_TAG_LEN = 16;
 
 function getTotpEncryptionKey(): Buffer {
-  const raw = process.env["TOTP_ENCRYPTION_KEY"] || process.env["JWT_SECRET"] || "ajkmart-totp-default-key-2024";
+  const raw = resolveRequiredSecret("TOTP_ENCRYPTION_KEY", "JWT_SECRET");
   return scryptSync(raw, "totp-salt", 32);
 }
 
