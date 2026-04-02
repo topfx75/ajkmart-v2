@@ -545,7 +545,7 @@ export default function HomeScreen() {
 
       <Animated.View style={{ opacity: hdOp }}>
         <LinearGradient
-          colors={[C.primaryDark, C.primary, C.primaryLight]}
+          colors={["#111827", "#1F2937", "#374151"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.header, { paddingTop: topPad + 8 }]}

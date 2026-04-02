@@ -596,7 +596,7 @@ export default function AuthScreen() {
   if (step === "totp") {
     return (
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
-        <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.flex}>
+        <LinearGradient colors={["#111827", "#1F2937", "#374151"]} style={styles.flex}>
           <ScrollView contentContainerStyle={styles.scrollGrow} keyboardShouldPersistTaps="handled">
             <View style={[styles.topSection, { paddingTop: topPad + 32 }]}>
               <View style={styles.heroIcon}>
@@ -674,7 +674,7 @@ export default function AuthScreen() {
 
   if (step === "pending") {
     return (
-      <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.flex}>
+      <LinearGradient colors={["#111827", "#1F2937", "#374151"]} style={styles.flex}>
         <View style={[styles.centeredContainer, { paddingTop: topPad + 40 }]}>
           <View style={styles.pendingCard}>
             <View style={styles.pendingIconWrap}>
@@ -703,7 +703,7 @@ export default function AuthScreen() {
   if (step === "complete-profile") {
     return (
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
-        <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={styles.flex}>
+        <LinearGradient colors={["#111827", "#1F2937", "#374151"]} style={styles.flex}>
           <ScrollView contentContainerStyle={styles.scrollGrow} keyboardShouldPersistTaps="handled">
             <View style={[styles.topSection, { paddingTop: topPad + 32 }]}>
               <View style={styles.heroIcon}>
@@ -773,7 +773,7 @@ export default function AuthScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.flex}>
       <LinearGradient
-        colors={[C.primaryDark, C.primary, C.primaryLight]}
+        colors={["#111827", "#1F2937", "#374151"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={styles.flex}
