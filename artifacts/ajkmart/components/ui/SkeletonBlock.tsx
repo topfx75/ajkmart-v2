@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, type StyleProp, type ViewStyle } from "react-native";
-import { radii } from "@/constants/colors";
+import Colors, { radii } from "@/constants/colors";
+
+const C = Colors.light;
 
 export function SkeletonBlock({
   w,
@@ -31,7 +33,7 @@ export function SkeletonBlock({
           width: w as number,
           height: h,
           borderRadius: r,
-          backgroundColor: "#CBD5E1",
+          backgroundColor: C.slate,
           opacity: op,
         },
         style,

@@ -158,12 +158,10 @@ function ParcelScreenInner() {
 
   useEffect(() => {
     if (!hasPrefill) return;
-    let cancelled = false;
     AsyncStorage.removeItem(PARCEL_DRAFT_KEY).catch(() => {});
     if (pPickup) setPickupAddress(pPickup);
     if (pDrop) setDropAddress(pDrop);
     if (pType) setParcelType(pType);
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

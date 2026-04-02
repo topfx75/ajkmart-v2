@@ -197,13 +197,13 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
         </Pressable>
       ) : isActive && (
         <View style={styles.cancelDisabledBar}>
-          <Ionicons name="information-circle-outline" size={13} color={C.textMuted} />
+          <Ionicons name="close-circle-outline" size={14} color={C.textMuted} />
           <Text style={styles.cancelDisabledText}>
             {["preparing", "ready", "picked_up"].includes(order.status)
-              ? "Order is being prepared"
+              ? T("cancelOrder") + " — Order is being prepared"
               : order.status === "out_for_delivery"
-              ? "Order is on the way"
-              : "Cancellation window passed"}
+              ? T("cancelOrder") + " — Order is on the way"
+              : T("cancelOrder") + " — Cancellation window passed"}
           </Text>
         </View>
       )}

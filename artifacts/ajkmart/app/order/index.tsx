@@ -633,14 +633,14 @@ export default function OrderDetailScreen() {
             <Text style={s.cancelOrderBtnText}>{isRide ? "Cancel Ride" : isParcelType ? "Cancel Booking" : "Cancel Order"}</Text>
           </Pressable>
         ) : isActive && !isDelivered && (
-          <View style={s.cancelDisabledBar}>
-            <Ionicons name="information-circle-outline" size={16} color={C.textMuted} />
-            <Text style={s.cancelDisabledText}>
-              {["preparing", "ready", "picked_up"].includes(order.status)
-                ? "Your order is being prepared and can no longer be cancelled"
+          <View style={s.cancelDisabledBtn}>
+            <Ionicons name="close-circle-outline" size={16} color={C.textMuted} />
+            <Text style={s.cancelDisabledBtnText}>
+              {T("cancelOrder")} — {["preparing", "ready", "picked_up"].includes(order.status)
+                ? "Order is being prepared"
                 : order.status === "out_for_delivery" || order.status === "in_transit"
-                ? "Your order is on the way and can no longer be cancelled"
-                : `Cancellation window has passed (${cancelWindowMin} min)`}
+                ? "Order is on the way"
+                : `Window passed (${cancelWindowMin}m)`}
             </Text>
           </View>
         )}
@@ -770,10 +770,10 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: "#A7F3D0",
   },
   refundSuccessText: { fontFamily: "Inter_500Medium", fontSize: 13, color: "#065F46", flex: 1 },
-  cancelDisabledBar: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, backgroundColor: C.surfaceSecondary,
-    borderWidth: 1, borderColor: C.border,
+  cancelDisabledBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: C.surfaceSecondary,
+    borderWidth: 1, borderColor: C.border, opacity: 0.65,
   },
-  cancelDisabledText: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, flex: 1 },
+  cancelDisabledBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.textMuted },
 });
