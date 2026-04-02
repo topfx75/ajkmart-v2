@@ -127,22 +127,36 @@ function KycSection({ onToast }: { onToast: (msg: string, t: "success" | "error"
     front: null, back: null, selfie: null,
   });
 
+  const previewUrlsRef = useRef<string[]>([]);
+
   const setPhoto = (key: "front" | "back" | "selfie", file: File) => {
     setPhotos(p => ({ ...p, [key]: file }));
-    const url = URL.createObjectURL(file);
-    setPreviews(p => ({ ...p, [key]: url }));
+    setPreviews(prev => {
+      if (prev[key]) URL.revokeObjectURL(prev[key]!);
+      const url = URL.createObjectURL(file);
+      previewUrlsRef.current.push(url);
+      return { ...prev, [key]: url };
+    });
   };
 
   const { data: kycData, isLoading: kycLoading, refetch: refetchKyc } = useQuery({
     queryKey: ["kyc-status"],
     queryFn: async () => {
       const r = await fetch(`${BASE}/api/kyc/status`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("ajkmart_customer_token")}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem("customer_token")}` },
       });
       if (!r.ok) throw new Error("Failed to fetch KYC status");
       return r.json() as Promise<{ status: string; record: any }>;
     },
   });
+
+  useEffect(() => {
+    const ref = previewUrlsRef;
+    return () => {
+      ref.current.forEach(url => URL.revokeObjectURL(url));
+      ref.current = [];
+    };
+  }, []);
 
   const submitMut = useMutation({
     mutationFn: async () => {
@@ -159,7 +173,7 @@ function KycSection({ onToast }: { onToast: (msg: string, t: "success" | "error"
 
       const r = await fetch(`${BASE}/api/kyc/submit`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("ajkmart_customer_token")}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem("customer_token")}` },
         body: fd,
       });
       if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "Submission failed"); }

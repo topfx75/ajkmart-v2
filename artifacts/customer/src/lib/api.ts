@@ -95,6 +95,7 @@ export const api = {
     dropLat: number; dropLng: number; dropAddress: string;
     type?: string;
     fare: number;
+    paymentMethod: string;
     isBargaining?: boolean;
     offeredFare?: number;
     isParcel?: boolean;
@@ -110,14 +111,14 @@ export const api = {
   cancelRide: (id: string) =>
     apiFetch(`/rides/${id}/cancel`, { method: "PATCH", body: JSON.stringify({ reason: "customer_cancelled" }) }),
 
-  acceptBid: (id: string) =>
-    apiFetch(`/rides/${id}/accept-bid`, { method: "PATCH", body: JSON.stringify({}) }),
+  acceptBid: (id: string, bidId: string) =>
+    apiFetch(`/rides/${id}/accept-bid`, { method: "PATCH", body: JSON.stringify({ bidId }) }),
 
   counterOffer: (id: string, offeredFare: number) =>
     apiFetch(`/rides/${id}/customer-counter`, { method: "PATCH", body: JSON.stringify({ offeredFare }) }),
 
-  rateRide: (id: string, rating: number, comment?: string) =>
-    apiFetch(`/rides/${id}/rate`, { method: "POST", body: JSON.stringify({ rating, comment }) }),
+  rateRide: (id: string, stars: number, comment?: string) =>
+    apiFetch(`/rides/${id}/rate`, { method: "POST", body: JSON.stringify({ stars, comment }) }),
 
   geocode: async (query: string): Promise<{ lat: number; lng: number; display_name: string }[]> => {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);

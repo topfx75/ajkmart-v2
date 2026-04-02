@@ -53,7 +53,7 @@ export default function Booking() {
   const [pickup, setPickup] = useState<LocResult | null>(null);
   const [drop, setDrop] = useState<LocResult | null>(null);
   const [mapMode, setMapMode] = useState<"pickup" | "drop">("pickup");
-  const [mapCenter] = useState<[number, number]>([20.5937, 78.9629]);
+  const [mapCenter] = useState<[number, number]>([33.7215, 73.0433]);
 
   const [pickupQuery, setPickupQuery] = useState("");
   const [dropQuery, setDropQuery] = useState("");
@@ -76,13 +76,14 @@ export default function Booking() {
   const [booking, setBooking] = useState(false);
   const [err, setErr] = useState("");
 
-  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const pickupTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const dropTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const searchPickup = (q: string) => {
     setPickupQuery(q);
-    clearTimeout(searchTimeout.current);
+    clearTimeout(pickupTimeout.current);
     if (q.length < 3) { setPickupResults([]); return; }
-    searchTimeout.current = setTimeout(async () => {
+    pickupTimeout.current = setTimeout(async () => {
       const r = await api.geocode(q);
       setPickupResults(r.slice(0, 5));
     }, 400);
@@ -90,9 +91,9 @@ export default function Booking() {
 
   const searchDrop = (q: string) => {
     setDropQuery(q);
-    clearTimeout(searchTimeout.current);
+    clearTimeout(dropTimeout.current);
     if (q.length < 3) { setDropResults([]); return; }
-    searchTimeout.current = setTimeout(async () => {
+    dropTimeout.current = setTimeout(async () => {
       const r = await api.geocode(q);
       setDropResults(r.slice(0, 5));
     }, 400);
@@ -120,6 +121,7 @@ export default function Booking() {
     if (!pickup || !drop) { setErr("Select pickup and drop locations"); return; }
     if (!estimate) { setErr("Could not estimate fare"); return; }
     if (isParcel && !receiverName.trim()) { setErr("Enter receiver name"); return; }
+    if (isBargaining && !(parseFloat(offeredFare) > 0)) { setErr("Offered fare must be greater than zero"); return; }
     setErr("");
     setBooking(true);
     try {
@@ -129,6 +131,7 @@ export default function Booking() {
         dropLat: drop.lat, dropLng: drop.lng,
         dropAddress: drop.display_name.slice(0, 200),
         type: rideType, fare: estimate.fare,
+        paymentMethod: "cash",
         isBargaining, offeredFare: isBargaining ? parseFloat(offeredFare) : undefined,
         isParcel, receiverName: isParcel ? receiverName : undefined,
         receiverPhone: isParcel ? receiverPhone : undefined,
@@ -142,7 +145,7 @@ export default function Booking() {
     }
   };
 
-  const fmt = (v?: number) => v != null ? `₹${v.toFixed(0)}` : "…";
+  const fmt = (v?: number) => v != null ? `Rs. ${v.toFixed(0)}` : "…";
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -323,9 +326,9 @@ export default function Booking() {
             </button>
             {isBargaining && (
               <div className="px-4 pb-4 border-t border-gray-100 pt-3">
-                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Your Offer (₹)</label>
+                <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Your Offer (Rs.)</label>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-black text-gray-400">₹</span>
+                  <span className="text-2xl font-black text-gray-400">Rs.</span>
                   <input
                     type="number"
                     value={offeredFare}
@@ -346,7 +349,7 @@ export default function Booking() {
           disabled={!pickup || !drop || !estimate || booking}
           className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black rounded-2xl py-4 text-lg disabled:opacity-50 shadow-lg shadow-green-200 transition-opacity sticky bottom-4"
         >
-          {booking ? "Booking…" : isBargaining ? `Offer ${offeredFare ? `₹${offeredFare}` : "…"} to Riders` : `Book for ${estimate ? fmt(estimate.fare) : "…"}`}
+          {booking ? "Booking…" : isBargaining ? `Offer ${offeredFare ? `Rs. ${offeredFare}` : "…"} to Riders` : `Book for ${estimate ? fmt(estimate.fare) : "…"}`}
         </button>
       </div>
     </div>

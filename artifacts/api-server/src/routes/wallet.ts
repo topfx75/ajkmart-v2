@@ -501,6 +501,9 @@ const SIMULATE_ALLOWED = [500, 1000, 2000, 5000];
 const SIMULATE_DAILY_LIMIT = 10000;
 
 router.post("/simulate-topup", customerAuth, async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    res.status(403).json({ error: "Not available in production" }); return;
+  }
   const userId = req.customerId!;
   const amount = parseInt(String(req.body["amount"] ?? ""), 10);
 

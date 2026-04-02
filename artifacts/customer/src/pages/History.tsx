@@ -30,7 +30,7 @@ export default function History() {
       .finally(() => setLoading(false));
   }, []);
 
-  const fmt = (v?: number | string) => v != null ? `₹${parseFloat(String(v)).toFixed(0)}` : "—";
+  const fmt = (v?: number | string) => v != null ? `Rs. ${parseFloat(String(v)).toFixed(0)}` : "—";
   const formatDate = (s?: string) => s ? new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 
   return (
@@ -66,7 +66,7 @@ export default function History() {
             return (
               <button
                 key={r.id}
-                onClick={() => active ? nav(`/tracking/${r.id}`) : undefined}
+                onClick={active ? () => nav(`/tracking/${r.id}`) : undefined}
                 className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between mb-2">

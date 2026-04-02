@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useAuth } from "../lib/auth";
 
 const BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
 const token = () => localStorage.getItem("customer_token") ?? "";
 
 async function getWallet() {
   const r = await fetch(`${BASE}/api/wallet`, { headers: { Authorization: `Bearer ${token()}` } });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.error || d.message || `HTTP ${r.status}`);
+  }
   return r.json() as Promise<{ balance: number; transactions: { id: string; type: string; amount: number; description: string; createdAt: string }[] }>;
 }
 
@@ -39,15 +44,17 @@ const TYPE_COLOR: Record<string, string> = {
 export default function Wallet() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
+  const { user, setUser } = useAuth();
   const [selected, setSelected] = useState<number | null>(null);
   const [toast, setToast] = useState("");
 
-  const { data, isLoading } = useQuery({ queryKey: ["cust-wallet"], queryFn: getWallet });
+  const { data, isLoading, isError, error: walletError } = useQuery({ queryKey: ["cust-wallet"], queryFn: getWallet });
 
   const topupMut = useMutation({
     mutationFn: simulateTopup,
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ["cust-wallet"] });
+      if (user) setUser({ ...user, walletBalance: d.newBalance });
       setToast(`✅ Rs. ${d.amount} added! New balance: Rs. ${d.newBalance.toFixed(0)}`);
       setSelected(null);
       setTimeout(() => setToast(""), 3000);
@@ -80,6 +87,8 @@ export default function Wallet() {
           <p className="text-sm opacity-80 mb-1">Current Balance</p>
           {isLoading ? (
             <div className="h-10 w-32 bg-white/20 rounded animate-pulse" />
+          ) : isError ? (
+            <p className="text-lg font-bold text-red-200">{(walletError as Error)?.message || "Failed to load wallet"}</p>
           ) : (
             <p className="text-4xl font-bold">Rs. {(data?.balance ?? 0).toFixed(0)}</p>
           )}

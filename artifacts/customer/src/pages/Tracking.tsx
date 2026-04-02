@@ -4,8 +4,8 @@ import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { X, Phone, AlertTriangle } from "lucide-react";
-import { io, type Socket } from "socket.io-client";
 import { api } from "../lib/api";
+import { useSocket } from "../lib/socket";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -54,53 +54,60 @@ export default function Tracking({ rideId }: Props) {
   const [riderLoc, setRiderLoc] = useState<[number, number] | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const [error, setError] = useState<string | null>(null);
+  const { socket } = useSocket();
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const loadRide = async () => {
     try {
       const d = await api.getRide(rideId);
       const r = d.ride ?? d;
       setRide(r);
+      setError(null);
       if (r.status === "completed") nav(`/completed/${rideId}`);
       if (r.tripOtp) setOtp(r.tripOtp);
-    } catch {}
+    } catch (e: any) {
+      setError(e.message || "Failed to load ride");
+    }
   };
 
   useEffect(() => {
     loadRide();
     pollRef.current = setInterval(loadRide, 8000);
 
-    const token = api.getToken();
-    if (token) {
-      const socket = io(window.location.origin, {
-        path: "/api/socket.io",
-        auth: { token },
-        transports: ["websocket", "polling"],
-      });
-      socketRef.current = socket;
-
-      socket.on("ride:otp", (data: any) => {
-        if (data.rideId === rideId) setOtp(data.otp);
-      });
-      socket.on("ride:update", (data: any) => {
-        if (data.id === rideId || data.rideId === rideId) {
-          loadRide();
-        }
-      });
-      socket.on("rider:location", (data: any) => {
-        if (data.rideId === rideId && data.lat && data.lng) {
-          setRiderLoc([parseFloat(data.lat), parseFloat(data.lng)]);
-        }
-      });
-      socket.emit("join:ride", { rideId });
-    }
-
     return () => {
       clearInterval(pollRef.current);
-      socketRef.current?.disconnect();
     };
   }, [rideId]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleOtp = (data: any) => {
+      if (data.rideId === rideId) setOtp(data.otp);
+    };
+    const handleUpdate = (data: any) => {
+      if (data.id === rideId || data.rideId === rideId) {
+        loadRide();
+      }
+    };
+    const handleLocation = (data: any) => {
+      if (data.rideId === rideId && data.lat && data.lng) {
+        setRiderLoc([parseFloat(data.lat), parseFloat(data.lng)]);
+      }
+    };
+
+    socket.on("ride:otp", handleOtp);
+    socket.on("ride:update", handleUpdate);
+    socket.on("rider:location", handleLocation);
+    socket.emit("join:ride", { rideId });
+
+    return () => {
+      socket.off("ride:otp", handleOtp);
+      socket.off("ride:update", handleUpdate);
+      socket.off("rider:location", handleLocation);
+    };
+  }, [socket, rideId]);
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -111,6 +118,21 @@ export default function Tracking({ rideId }: Props) {
       setCancelling(false);
     }
   };
+
+  if (error && !ride) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center px-6">
+          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+          <p className="text-gray-900 font-bold text-lg mb-1">Failed to load ride</p>
+          <p className="text-gray-500 text-sm mb-4">{error}</p>
+          <button onClick={() => nav("/")} className="bg-green-500 text-white font-bold rounded-2xl px-6 py-3">
+            Go Home
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!ride) {
     return (
@@ -124,7 +146,7 @@ export default function Tracking({ rideId }: Props) {
   }
 
   const curStep = STATUS_RANK[ride.status] ?? 0;
-  const mapCenter: [number, number] = riderLoc ?? [ride.pickupLat ?? 20.59, ride.pickupLng ?? 78.96];
+  const mapCenter: [number, number] = riderLoc ?? [ride.pickupLat ?? 33.72, ride.pickupLng ?? 73.04];
   const canCancel = ["searching", "bargaining", "accepted"].includes(ride.status);
   const riderArrived = ride.status === "arrived";
   const inTransit = ride.status === "in_transit";
@@ -174,7 +196,14 @@ export default function Tracking({ rideId }: Props) {
           <p className="text-3xl mb-1">{STATUS_STEPS[curStep]?.icon}</p>
           <p className={`font-black text-lg ${inTransit || riderArrived ? "" : "text-gray-900"}`}>{STATUS_STEPS[curStep]?.label ?? ride.status}</p>
           {ride.riderName && (
-            <p className={`text-sm mt-1 ${inTransit || riderArrived ? "opacity-80" : "text-gray-500"}`}>Driver: {ride.riderName}</p>
+            <div className="flex items-center justify-center gap-2 mt-1">
+              <p className={`text-sm ${inTransit || riderArrived ? "opacity-80" : "text-gray-500"}`}>Driver: {ride.riderName}</p>
+              {ride.riderPhone && (
+                <a href={`tel:${ride.riderPhone}`} className={`inline-flex items-center gap-1 text-sm font-semibold ${inTransit || riderArrived ? "text-white/90 hover:text-white" : "text-green-600 hover:text-green-700"}`}>
+                  <Phone size={14} /> {ride.riderPhone}
+                </a>
+              )}
+            </div>
           )}
         </div>
 
@@ -209,7 +238,7 @@ export default function Tracking({ rideId }: Props) {
           </div>
           <div className="border-t border-gray-100 pt-2 flex justify-between">
             <span className="text-sm text-gray-500">Fare</span>
-            <span className="font-black text-green-600">₹{parseFloat(ride.fare ?? "0").toFixed(0)}</span>
+            <span className="font-black text-green-600">Rs. {parseFloat(ride.fare ?? "0").toFixed(0)}</span>
           </div>
           {ride.isParcel && (
             <div className="text-xs text-amber-600 font-bold bg-amber-50 rounded-lg px-2 py-1">
