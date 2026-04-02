@@ -82,6 +82,7 @@ export const TEXT_KEYS = new Set([
   "content_tnc_url","content_privacy_url","content_refund_policy_url","content_faq_url","content_about_url",
   "security_session_days","security_admin_token_hrs","security_rider_token_days",
   "security_login_max_attempts","security_lockout_minutes",
+  "security_otp_max_per_phone","security_otp_max_per_ip","security_otp_window_min",
   "security_rate_limit","security_rate_admin","security_rate_rider","security_rate_vendor","security_rate_burst",
   "security_gps_accuracy","security_gps_interval","security_max_speed_kmh",
   "security_pwd_min_length","security_pwd_expiry_days","security_jwt_rotation_days",

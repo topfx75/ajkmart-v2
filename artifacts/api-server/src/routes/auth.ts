@@ -1,8 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
-import rateLimit from "express-rate-limit";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable, magicLinkTokensTable } from "@workspace/db/schema";
+import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable, magicLinkTokensTable, rateLimitsTable } from "@workspace/db/schema";
 import { eq, and, sql, lt, or } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -38,19 +37,9 @@ import { sendVerificationEmail, sendPasswordResetEmail, sendMagicLinkEmail } fro
 import { getUserLanguage, getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
 
-/* ── OTP rate limiter: max 3 send-otp requests per 5 minutes per IP ── */
-const otpLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 3,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many OTP requests. Please wait 5 minutes and try again." },
-  keyGenerator: (req) => {
-    const forwarded = req.headers["x-forwarded-for"];
-    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) ?? req.socket.remoteAddress ?? "unknown";
-    return ip;
-  },
-});
+/* OTP rate limiting is handled per-account + per-IP inside the route handler
+   using the admin-configurable settings (security_otp_max_per_phone,
+   security_otp_max_per_ip, security_otp_window_min) via checkAndIncrOtpRateLimit(). */
 
 function hashOtp(otp: string): string {
   return createHash("sha256").update(otp).digest("hex");
@@ -376,7 +365,7 @@ router.post("/merge-account", async (req, res) => {
    POST /auth/send-otp
    Atomically upsert user by phone — one account per number.
 ───────────────────────────────────────────────────────────── */
-router.post("/send-otp", otpLimiter, verifyCaptcha, async (req, res) => {
+router.post("/send-otp", verifyCaptcha, async (req, res) => {
   const rawPhone = req.body?.phone;
   const deviceId: string | undefined = typeof req.body?.deviceId === "string" ? req.body.deviceId : undefined;
   const preferredChannel: string | undefined = req.body?.preferredChannel;
@@ -525,6 +514,17 @@ router.post("/send-otp", otpLimiter, verifyCaptcha, async (req, res) => {
       res.status(429).json({ error: `Please wait ${waitSec} second(s) before requesting a new OTP.`, retryAfterSeconds: waitSec });
       return;
     }
+  }
+
+  /* ── Per-account + per-IP OTP rate limit (admin-configurable window) ── */
+  const otpRateCheck = await checkAndIncrOtpRateLimit({ identifier: phone, ip, settings });
+  if (otpRateCheck.blocked) {
+    const label = otpRateCheck.reason === "ip"
+      ? "Too many OTP requests from your network"
+      : "Too many OTP requests for this account";
+    addSecurityEvent({ type: "otp_rate_limit_exceeded", ip, details: `${label} (${phone}) — retry in ${otpRateCheck.retryAfterSeconds}s`, severity: "medium" });
+    res.status(429).json({ error: `${label}. Please wait ${otpRateCheck.retryAfterSeconds} second(s) before trying again.`, retryAfterSeconds: otpRateCheck.retryAfterSeconds });
+    return;
   }
 
   const otp       = generateSecureOtp();
@@ -1222,7 +1222,7 @@ router.post("/check-available", async (req, res) => {
    Send OTP to email address (only for existing accounts with that email)
    Body: { email }
 ══════════════════════════════════════════════════════════════ */
-router.post("/send-email-otp", otpLimiter, verifyCaptcha, async (req, res) => {
+router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   const { email } = req.body;
   if (!email || !email.includes("@")) {
     res.status(400).json({ error: "Valid email address required" }); return;
@@ -1274,6 +1274,17 @@ router.post("/send-email-otp", otpLimiter, verifyCaptcha, async (req, res) => {
       res.status(429).json({ error: `Please wait ${waitSec} second(s) before requesting a new email OTP.`, retryAfterSeconds: waitSec });
       return;
     }
+  }
+
+  /* ── Per-account + per-IP OTP rate limit (admin-configurable window) ── */
+  const emailRateCheck = await checkAndIncrOtpRateLimit({ identifier: normalized, ip, settings });
+  if (emailRateCheck.blocked) {
+    const label = emailRateCheck.reason === "ip"
+      ? "Too many OTP requests from your network"
+      : "Too many OTP requests for this email";
+    addAuditEntry({ action: "email_otp_rate_limit", ip, details: `${label} (${normalized}) — retry in ${emailRateCheck.retryAfterSeconds}s`, result: "fail" });
+    res.status(429).json({ error: `${label}. Please wait ${emailRateCheck.retryAfterSeconds} second(s) before trying again.`, retryAfterSeconds: emailRateCheck.retryAfterSeconds });
+    return;
   }
 
   const otp    = generateSecureOtp();
@@ -1758,6 +1769,66 @@ function isAuthMethodEnabled(settings: Record<string, string>, key: string, role
   } catch {
     return val === "on";
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   OTP Rate Limiter — per account (phone/email) + per IP address
+   Uses rateLimitsTable with sliding window (resets after window expires).
+   Keys: otp_acct:<identifier>  and  otp_ip:<ip>
+══════════════════════════════════════════════════════════════════════ */
+async function checkAndIncrOtpRateLimit(params: {
+  identifier: string;
+  ip:         string;
+  settings:   Record<string, string>;
+}): Promise<{ blocked: true; retryAfterSeconds: number; reason: "account" | "ip" } | { blocked: false }> {
+  const maxPerAcct = Math.max(1, parseInt(params.settings["security_otp_max_per_phone"] ?? "5",  10));
+  const maxPerIp   = Math.max(1, parseInt(params.settings["security_otp_max_per_ip"]    ?? "10", 10));
+  const windowMin  = Math.max(1, parseInt(params.settings["security_otp_window_min"]     ?? "60", 10));
+  const windowMs   = windowMin * 60 * 1000;
+  const now        = new Date();
+
+  async function checkOne(
+    key: string,
+    max: number,
+  ): Promise<{ blocked: true; retryAfterSeconds: number } | { blocked: false }> {
+    const rows = await db.select().from(rateLimitsTable).where(eq(rateLimitsTable.key, key)).limit(1);
+    const row  = rows[0];
+    const windowExpired = !row || (now.getTime() - row.windowStart.getTime()) >= windowMs;
+
+    if (windowExpired) {
+      /* Reset (or create) the window and count this as 1 request */
+      await db
+        .insert(rateLimitsTable)
+        .values({ key, attempts: 1, windowStart: now, updatedAt: now })
+        .onConflictDoUpdate({
+          target: rateLimitsTable.key,
+          set:    { attempts: 1, windowStart: now, updatedAt: now },
+        });
+      return { blocked: false };
+    }
+
+    if (row.attempts >= max) {
+      const windowEndsAt       = row.windowStart.getTime() + windowMs;
+      const retryAfterSeconds  = Math.max(1, Math.ceil((windowEndsAt - now.getTime()) / 1000));
+      return { blocked: true, retryAfterSeconds };
+    }
+
+    await db
+      .update(rateLimitsTable)
+      .set({ attempts: row.attempts + 1, updatedAt: now })
+      .where(eq(rateLimitsTable.key, key));
+    return { blocked: false };
+  }
+
+  /* 1. Per-account limit */
+  const acctResult = await checkOne(`otp_acct:${params.identifier}`, maxPerAcct);
+  if (acctResult.blocked) return { blocked: true, retryAfterSeconds: acctResult.retryAfterSeconds, reason: "account" };
+
+  /* 2. Per-IP limit */
+  const ipResult = await checkOne(`otp_ip:${params.ip}`, maxPerIp);
+  if (ipResult.blocked) return { blocked: true, retryAfterSeconds: ipResult.retryAfterSeconds, reason: "ip" };
+
+  return { blocked: false };
 }
 
 function isAuthMethodEnabledStrict(settings: Record<string, string>, newKey: string, legacyKey: string, role?: string): boolean {

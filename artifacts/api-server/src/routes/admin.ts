@@ -449,7 +449,10 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "recaptcha_site_key",            value: "",    label: "reCAPTCHA v3 Site Key",                category: "auth" },
   { key: "recaptcha_secret_key",          value: "",    label: "reCAPTCHA v3 Secret Key",              category: "auth" },
   { key: "recaptcha_min_score",           value: "0.5", label: "reCAPTCHA Minimum Score Threshold",    category: "auth" },
-  { key: "security_otp_cooldown_sec",     value: "60",  label: "OTP Resend Cooldown (seconds)",        category: "auth" },
+  { key: "security_otp_cooldown_sec",     value: "60",  label: "OTP Resend Cooldown (seconds)",                   category: "auth" },
+  { key: "security_otp_max_per_phone",    value: "5",   label: "Max OTP Sends Per Phone/Email (per window)",      category: "auth" },
+  { key: "security_otp_max_per_ip",       value: "10",  label: "Max OTP Sends Per IP Address (per window)",       category: "auth" },
+  { key: "security_otp_window_min",       value: "60",  label: "OTP Rate Limit Window (minutes)",                 category: "auth" },
   { key: "auth_social_google",            value: "off",  label: "Google Social Login (legacy toggle)",  category: "auth" },
   { key: "auth_social_facebook",          value: "off",  label: "Facebook Social Login (legacy toggle)",category: "auth" },
   { key: "google_client_id",             value: "",     label: "Google OAuth Client ID",               category: "auth" },
@@ -1579,6 +1582,7 @@ const NUMERIC_SETTING_KEYS = new Set([
   "finance_gst_pct", "customer_signup_bonus",
   "payment_min_online", "payment_max_online",
   "security_login_max_attempts", "security_lockout_minutes", "security_otp_cooldown_sec",
+  "security_otp_max_per_phone", "security_otp_max_per_ip", "security_otp_window_min",
   "auth_trusted_device_days", "order_refund_days",
 ]);
 
