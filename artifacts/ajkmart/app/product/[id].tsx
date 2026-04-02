@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 import { CartSwitchModal } from "@/components/CartSwitchModal";
-import { SkeletonBlock } from "@/components/user-shared";
+import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
 import { useGetProduct, useGetProducts, type Product } from "@workspace/api-client-react";
 
 const C = Colors.light;

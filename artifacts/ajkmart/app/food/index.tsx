@@ -217,9 +217,9 @@ function FoodScreenInner() {
               <View key={i} style={styles.skeletonCard}>
                 <View style={styles.skeletonImg} />
                 <View style={{ flex: 1, padding: 14, gap: 8 }}>
-                  <View style={{ height: 14, width: "70%", backgroundColor: "#FEF3C7", borderRadius: 6 }} />
+                  <View style={{ height: 14, width: "70%", backgroundColor: C.amberSoft, borderRadius: 6 }} />
                   <View style={{ height: 10, width: "45%", backgroundColor: "#FFF7ED", borderRadius: 5 }} />
-                  <View style={{ height: 12, width: "35%", backgroundColor: "#FEF3C7", borderRadius: 6 }} />
+                  <View style={{ height: 12, width: "35%", backgroundColor: C.amberSoft, borderRadius: 6 }} />
                 </View>
               </View>
             ))}
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
 
   catScroll: { marginTop: 12 },
   catContent: { paddingHorizontal: 16, gap: 8, flexDirection: "row" },
-  catChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, backgroundColor: "#FEF3C7", borderWidth: 1.5, borderColor: "#FDE68A" },
+  catChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, backgroundColor: C.amberSoft, borderWidth: 1.5, borderColor: "#FDE68A" },
   catChipActive: { backgroundColor: C.food, borderColor: C.food },
   catChipText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.food },
   catChipTextActive: { color: "#fff" },
@@ -294,14 +294,14 @@ const styles = StyleSheet.create({
 
   foodList: { paddingHorizontal: 16, paddingTop: 4, gap: 12 },
   foodCard: { backgroundColor: C.surface, borderRadius: 18, flexDirection: "row", overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },
-  foodImageBox: { width: 110, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  foodImageBox: { width: 110, backgroundColor: C.amberSoft, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   timeBadge: { position: "absolute", bottom: 8, left: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
   timeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#fff" },
   foodInfo: { flex: 1, padding: 14, justifyContent: "center" },
   foodName: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text, marginBottom: 3 },
   foodVendor: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, marginBottom: 8 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
-  ratingPill: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
+  ratingPill: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: C.amberSoft, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   ratingText: { fontFamily: "Inter_700Bold", fontSize: 12, color: "#92400E" },
   reviewCount: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
   foodFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
   addBtn: { width: 34, height: 34, borderRadius: 11, backgroundColor: C.food, alignItems: "center", justifyContent: "center", shadowColor: C.food, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
   addBtnAdded: { backgroundColor: C.success },
   stepperRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  stepperBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#FFE5E3", alignItems: "center", justifyContent: "center" },
+  stepperBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.dangerSoft, alignItems: "center", justifyContent: "center" },
   stepperQty: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, minWidth: 18, textAlign: "center" },
 
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80, gap: 12 },

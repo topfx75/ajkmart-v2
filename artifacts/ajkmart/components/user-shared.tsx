@@ -103,33 +103,7 @@ export function SectionHeader({
   );
 }
 
-export function SkeletonBlock({ w, h, r = radii.lg, style }: { w: number | string; h: number; r?: number; style?: StyleProp<ViewStyle> }) {
-  const op = useRef(new Animated.Value(0.35)).current;
-  useEffect(() => {
-    const blink = Animated.loop(
-      Animated.sequence([
-        Animated.timing(op, { toValue: 0.7, duration: 700, useNativeDriver: true }),
-        Animated.timing(op, { toValue: 0.35, duration: 700, useNativeDriver: true }),
-      ])
-    );
-    blink.start();
-    return () => blink.stop();
-  }, []);
-  return (
-    <Animated.View
-      style={[
-        {
-          width: w as any,
-          height: h,
-          borderRadius: r,
-          backgroundColor: "#CBD5E1",
-          opacity: op,
-        },
-        style,
-      ]}
-    />
-  );
-}
+export { SkeletonBlock } from "@/components/ui/SkeletonBlock";
 
 export function SkeletonRows({ count = 3 }: { count?: number }) {
   return (

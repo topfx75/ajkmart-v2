@@ -29,14 +29,14 @@ const { width } = Dimensions.get("window");
 const FLASH_CARD_W = (width - 16 * 2 - 12) / 2;
 const PRODUCT_CARD_W = (width - 16 * 2 - 12) / 2;
 
-function QuantityStepper({ quantity, onIncrement, onDecrement }: { quantity: number; onIncrement: (e?: any) => void; onDecrement: (e?: any) => void }) {
+function QuantityStepper({ quantity, onIncrement, onDecrement }: { quantity: number; onIncrement: () => void; onDecrement: () => void }) {
   return (
     <View style={styles.stepperRow}>
-      <Pressable onPress={(e) => { e?.stopPropagation?.(); onDecrement(e); }} style={styles.stepperBtn}>
+      <Pressable onPress={(e) => { e?.stopPropagation?.(); onDecrement(); }} style={styles.stepperBtn}>
         <Ionicons name={quantity <= 1 ? "trash-outline" : "remove"} size={14} color={C.danger} />
       </Pressable>
       <Text style={styles.stepperQty}>{quantity}</Text>
-      <Pressable onPress={(e) => { e?.stopPropagation?.(); onIncrement(e); }} style={[styles.stepperBtn, { backgroundColor: C.primarySoft }]}>
+      <Pressable onPress={(e) => { e?.stopPropagation?.(); onIncrement(); }} style={[styles.stepperBtn, { backgroundColor: C.primarySoft }]}>
         <Ionicons name="add" size={14} color={C.primary} />
       </Pressable>
     </View>
@@ -46,7 +46,7 @@ function QuantityStepper({ quantity, onIncrement, onDecrement }: { quantity: num
 function AddToCartButton({ onPress, added }: { onPress: () => void; added: boolean }) {
   const scale = useRef(new Animated.Value(1)).current;
 
-  const handlePress = (e: any) => {
+  const handlePress = (e: { stopPropagation?: () => void }) => {
     e?.stopPropagation?.();
     Animated.sequence([
       Animated.timing(scale, { toValue: 0.85, duration: 80, useNativeDriver: true }),
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   secTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text },
   itemCountBadge: { backgroundColor: C.primary, borderRadius: 10, minWidth: 24, height: 24, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
   itemCountTxt: { fontFamily: "Inter_700Bold", fontSize: 11, color: "#fff" },
-  timerBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#FEE2E2", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  timerBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.redSoft, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   timerTxt: { fontFamily: "Inter_700Bold", fontSize: 11, color: C.red },
 
   flashGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16, gap: 12, marginBottom: 8 },
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   addBtn: { width: 34, height: 34, borderRadius: 11, backgroundColor: C.primary, alignItems: "center", justifyContent: "center", shadowColor: C.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
   addBtnDone: { backgroundColor: C.success },
   stepperRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  stepperBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#FFE5E3", alignItems: "center", justifyContent: "center" },
+  stepperBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.dangerSoft, alignItems: "center", justifyContent: "center" },
   stepperQty: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, minWidth: 18, textAlign: "center" },
   ratingBadge: { position: "absolute", bottom: 8, right: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
   ratingTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#fff" },
