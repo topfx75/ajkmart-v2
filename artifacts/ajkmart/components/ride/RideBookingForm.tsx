@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
@@ -643,7 +644,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     <View style={{ flex: 1, backgroundColor: C.background }}>
       <View
         style={{
-          backgroundColor: "#fff",
+          backgroundColor: C.surface,
           paddingTop: topPad + 12,
           paddingHorizontal: 20,
           paddingBottom: 18,
@@ -658,7 +659,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text
               style={{
-                fontFamily: "Inter_700Bold",
+                fontFamily: Font.bold,
                 fontSize: 20,
                 color: C.text,
               }}
@@ -667,7 +668,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             </Text>
             <Text
               style={{
-                fontFamily: "Inter_400Regular",
+                fontFamily: Font.regular,
                 fontSize: 12,
                 color: C.textMuted,
                 marginTop: 2,
@@ -722,14 +723,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               <Ionicons
                 name="locate-outline"
                 size={14}
-                color={locDenied ? "#DC2626" : C.primary}
+                color={locDenied ? C.red : C.primary}
               />
             )}
             <Text
               style={{
-                fontFamily: "Inter_500Medium",
+                fontFamily: Font.medium,
                 fontSize: 12,
-                color: locDenied ? "#DC2626" : C.primary,
+                color: locDenied ? C.red : C.primary,
               }}
             >
               {locLoading
@@ -749,12 +750,12 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 gap: 6,
               }}
             >
-              <Ionicons name="warning-outline" size={12} color="#DC2626" />
+              <Ionicons name="warning-outline" size={12} color={C.red} />
               <Text
                 style={{
-                  fontFamily: "Inter_400Regular",
+                  fontFamily: Font.regular,
                   fontSize: 11,
-                  color: "#DC2626",
+                  color: C.red,
                   flex: 1,
                 }}
               >
@@ -775,7 +776,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 width: 10,
                 height: 10,
                 borderRadius: 5,
-                backgroundColor: "#10B981",
+                backgroundColor: C.emerald,
               }}
             />
             <TextInput
@@ -791,7 +792,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               placeholderTextColor={C.textMuted}
               style={{
                 flex: 1,
-                fontFamily: "Inter_400Regular",
+                fontFamily: Font.regular,
                 fontSize: 15,
                 color: C.text,
                 paddingVertical: 10,
@@ -812,8 +813,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
           {pickup !== "" && !pickupObj && pickupError ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4, marginLeft: 20 }}>
-              <Ionicons name="alert-circle-outline" size={12} color="#EF4444" />
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#EF4444" }}>{pickupError}</Text>
+              <Ionicons name="alert-circle-outline" size={12} color={C.red} />
+              <Text style={{ ...Typ.small, color: C.red }}>{pickupError}</Text>
             </View>
           ) : null}
 
@@ -839,7 +840,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     <Ionicons
                       name="location-outline"
                       size={14}
-                      color="#10B981"
+                      color={C.emerald}
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={rs.suggTxt}>{pred.mainText}</Text>
@@ -879,7 +880,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 width: 28,
                 height: 28,
                 borderRadius: 8,
-                backgroundColor: "#fff",
+                backgroundColor: C.surface,
                 alignItems: "center",
                 justifyContent: "center",
                 borderWidth: 1,
@@ -909,7 +910,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 width: 10,
                 height: 10,
                 borderRadius: 5,
-                backgroundColor: "#EF4444",
+                backgroundColor: C.red,
               }}
             />
             <TextInput
@@ -924,7 +925,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               placeholderTextColor={C.textMuted}
               style={{
                 flex: 1,
-                fontFamily: "Inter_400Regular",
+                fontFamily: Font.regular,
                 fontSize: 15,
                 color: C.text,
                 paddingVertical: 10,
@@ -947,7 +948,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               {dropLoading && (
                 <ActivityIndicator
                   size="small"
-                  color="#EF4444"
+                  color={C.red}
                   style={{ padding: 8 }}
                 />
               )}
@@ -964,7 +965,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     <Ionicons
                       name="location-outline"
                       size={14}
-                      color="#EF4444"
+                      color={C.red}
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={rs.suggTxt}>{pred.mainText}</Text>
@@ -1023,12 +1024,12 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     justifyContent: "center",
                   }}
                 >
-                  <Ionicons name="warning" size={18} color="#DC2626" />
+                  <Ionicons name="warning" size={18} color={C.red} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 14,
                       color: "#991B1B",
                     }}
@@ -1037,7 +1038,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   </Text>
                   <Text
                     style={{
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: Font.regular,
                       fontSize: 12,
                       color: "#B91C1C",
                       marginTop: 2,
@@ -1061,17 +1062,17 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 6,
-                backgroundColor: "#DC2626",
+                backgroundColor: C.red,
                 borderRadius: 12,
                 paddingVertical: 12,
               }}
             >
-              <Ionicons name="wallet-outline" size={16} color="#fff" />
+              <Ionicons name="wallet-outline" size={16} color={C.textInverse} />
               <Text
                 style={{
-                  fontFamily: "Inter_700Bold",
+                  fontFamily: Font.bold,
                   fontSize: 13,
-                  color: "#fff",
+                  color: C.textInverse,
                 }}
               >
                 Pay Now
@@ -1084,7 +1085,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           <>
             <Text
               style={{
-                fontFamily: "Inter_700Bold",
+                fontFamily: Font.bold,
                 fontSize: 15,
                 color: C.text,
                 marginBottom: 10,
@@ -1106,7 +1107,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     flexDirection: "row",
                     alignItems: "center",
                     gap: 6,
-                    backgroundColor: "#fff",
+                    backgroundColor: C.surface,
                     paddingHorizontal: 14,
                     paddingVertical: 9,
                     borderRadius: 12,
@@ -1117,7 +1118,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   <Text style={{ fontSize: 12 }}>{spot.icon || "📍"}</Text>
                   <Text
                     style={{
-                      fontFamily: "Inter_500Medium",
+                      fontFamily: Font.medium,
                       fontSize: 12,
                       color: C.text,
                     }}
@@ -1161,7 +1162,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               <Text
                 style={{
                   fontSize: 14,
-                  fontFamily: "Inter_700Bold",
+                  fontFamily: Font.bold,
                   color: "#1D4ED8",
                 }}
               >
@@ -1170,7 +1171,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               <Text
                 style={{
                   fontSize: 12,
-                  fontFamily: "Inter_400Regular",
+                  fontFamily: Font.regular,
                   color: "#3B82F6",
                   marginTop: 2,
                 }}
@@ -1212,7 +1213,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               <Text
                 style={{
                   fontSize: 13,
-                  fontFamily: "Inter_700Bold",
+                  fontFamily: Font.bold,
                   color: "#C2410C",
                 }}
               >
@@ -1221,7 +1222,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               <Text
                 style={{
                   fontSize: 11,
-                  fontFamily: "Inter_400Regular",
+                  fontFamily: Font.regular,
                   color: "#9A3412",
                 }}
               >
@@ -1234,7 +1235,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
         <Text
           style={{
-            fontFamily: "Inter_700Bold",
+            fontFamily: Font.bold,
             fontSize: 15,
             color: C.text,
             marginBottom: 10,
@@ -1278,7 +1279,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         : C.border,
                       backgroundColor: active
                         ? `${svc.color ?? C.primary}08`
-                        : "#fff",
+                        : C.textInverse,
                       overflow: "hidden",
                     },
                   ]}
@@ -1300,7 +1301,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   </View>
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 16,
                       color: C.text,
                     }}
@@ -1312,7 +1313,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       style={{
                         fontSize: 11,
                         color: C.textMuted,
-                        fontFamily: "Inter_400Regular",
+                        fontFamily: Font.regular,
                       }}
                     >
                       {svc.nameUrdu}
@@ -1320,7 +1321,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   ) : null}
                   <Text
                     style={{
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: Font.regular,
                       fontSize: 12,
                       color: C.textMuted,
                       marginTop: 2,
@@ -1347,7 +1348,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         />
                         <Text
                           style={{
-                            fontFamily: "Inter_400Regular",
+                            fontFamily: Font.regular,
                             fontSize: 11,
                             color: C.textSecondary,
                           }}
@@ -1373,7 +1374,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               marginBottom: 14,
               borderWidth: 1,
               borderColor: C.border,
-              backgroundColor: "#fff",
+              backgroundColor: C.surface,
             }}
           >
             {pickupObj && dropObj && (
@@ -1390,8 +1391,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   resizeMode="cover"
                 />
                 <View style={{ position: "absolute", bottom: 6, right: 8, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Ionicons name="navigate-outline" size={11} color="#fff" />
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#fff" }}>Open in Maps</Text>
+                  <Ionicons name="navigate-outline" size={11} color={C.textInverse} />
+                  <Text style={{ ...Typ.smallMedium, fontSize: 10, color: C.textInverse }}>Open in Maps</Text>
                 </View>
               </Pressable>
             )}
@@ -1399,7 +1400,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               {estimateAgeMinutes >= 5 && (
                 <View style={{ backgroundColor: "#FEF9C3", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 10, flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Ionicons name="time-outline" size={13} color="#CA8A04" />
-                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#CA8A04", flex: 1 }}>
+                  <Text style={{ fontFamily: Font.medium, fontSize: 12, color: "#CA8A04", flex: 1 }}>
                     Estimate is {estimateAgeMinutes} min old — prices may have changed
                   </Text>
                 </View>
@@ -1414,7 +1415,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               >
                 <Text
                   style={{
-                    fontFamily: "Inter_700Bold",
+                    fontFamily: Font.bold,
                     fontSize: 15,
                     color: C.text,
                   }}
@@ -1447,7 +1448,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     style={{
                       fontSize: 11,
                       color: "#4285F4",
-                      fontFamily: "Inter_600SemiBold",
+                      fontFamily: Font.semiBold,
                     }}
                   >
                     Route
@@ -1460,7 +1461,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 <View style={{ flex: 1, alignItems: "center" }}>
                   <Text
                     style={{
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: Font.regular,
                       fontSize: 11,
                       color: C.textMuted,
                     }}
@@ -1469,7 +1470,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   </Text>
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 16,
                       color: C.text,
                       marginTop: 3,
@@ -1488,7 +1489,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 <View style={{ flex: 1, alignItems: "center" }}>
                   <Text
                     style={{
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: Font.regular,
                       fontSize: 11,
                       color: C.textMuted,
                     }}
@@ -1497,7 +1498,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   </Text>
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 16,
                       color: C.text,
                       marginTop: 3,
@@ -1516,7 +1517,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 <View style={{ flex: 1, alignItems: "center" }}>
                   <Text
                     style={{
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: Font.regular,
                       fontSize: 11,
                       color: C.textMuted,
                     }}
@@ -1525,7 +1526,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   </Text>
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 20,
                       color: C.success,
                       marginTop: 3,
@@ -1574,7 +1575,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
-                backgroundColor: showBargain ? "#FFF7ED" : "#fff",
+                backgroundColor: showBargain ? "#FFF7ED" : C.textInverse,
                 borderWidth: 1.5,
                 borderColor: showBargain ? "#FB923C" : C.border,
                 borderRadius: 16,
@@ -1609,7 +1610,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 <View>
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 14,
                       color: showBargain ? "#C2410C" : C.text,
                     }}
@@ -1618,7 +1619,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   </Text>
                   <Text
                     style={{
-                      fontFamily: "Inter_400Regular",
+                      fontFamily: Font.regular,
                       fontSize: 11,
                       color: showBargain ? "#EA580C" : C.textMuted,
                     }}
@@ -1651,7 +1652,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               >
                 <Text
                   style={{
-                    fontFamily: "Inter_500Medium",
+                    fontFamily: Font.medium,
                     fontSize: 12,
                     color: "#92400E",
                   }}
@@ -1663,7 +1664,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    backgroundColor: "#fff",
+                    backgroundColor: C.surface,
                     borderWidth: 1.5,
                     borderColor: "#FB923C",
                     borderRadius: 14,
@@ -1673,7 +1674,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 >
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 16,
                       color: C.textSecondary,
                       marginRight: 4,
@@ -1689,7 +1690,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     placeholderTextColor="#D1D5DB"
                     style={{
                       flex: 1,
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 20,
                       color: C.text,
                       paddingVertical: 10,
@@ -1711,12 +1712,12 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   placeholder="Note (optional)"
                   placeholderTextColor="#D1D5DB"
                   style={{
-                    backgroundColor: "#fff",
+                    backgroundColor: C.surface,
                     borderWidth: 1,
                     borderColor: "#FED7AA",
                     borderRadius: 12,
                     padding: 12,
-                    fontFamily: "Inter_400Regular",
+                    fontFamily: Font.regular,
                     fontSize: 13,
                     color: C.text,
                   }}
@@ -1726,7 +1727,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     fontSize: 11,
                     color: "#9A3412",
                     lineHeight: 16,
-                    fontFamily: "Inter_400Regular",
+                    fontFamily: Font.regular,
                   }}
                 >
                   The rider can accept, counter, or reject your offer.
@@ -1738,7 +1739,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
         <Text
           style={{
-            fontFamily: "Inter_700Bold",
+            fontFamily: Font.bold,
             fontSize: 15,
             color: C.text,
             marginBottom: 10,
@@ -1776,7 +1777,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   borderRadius: 16,
                   borderWidth: 1.5,
                   borderColor: active ? pmColor : C.border,
-                  backgroundColor: active ? `${pmColor}08` : "#fff",
+                  backgroundColor: active ? `${pmColor}08` : C.textInverse,
                   gap: 6,
                 }}
               >
@@ -1809,7 +1810,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </Text>
                 <Text
                   style={{
-                    fontFamily: "Inter_400Regular",
+                    fontFamily: Font.regular,
                     fontSize: 11,
                     color: insufficient ? C.danger : C.textMuted,
                   }}
@@ -1830,7 +1831,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       justifyContent: "center",
                     }}
                   >
-                    <Ionicons name="checkmark" size={12} color="#fff" />
+                    <Ionicons name="checkmark" size={12} color={C.textInverse} />
                   </View>
                 )}
               </Pressable>
@@ -1861,7 +1862,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               fontSize: 11,
               color: C.textSecondary,
               flex: 1,
-              fontFamily: "Inter_400Regular",
+              fontFamily: Font.regular,
             }}
           >
             Rs. {rideCfg.cancellationFee} fee applies if you cancel after
@@ -1889,7 +1890,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           />
           <Text
             style={{
-              fontFamily: "Inter_400Regular",
+              fontFamily: Font.regular,
               fontSize: 12,
               color: "#065F46",
             }}
@@ -1916,14 +1917,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           ]}
         >
           {booking ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={C.textInverse} />
           ) : (
             <>
               {showBargain && offeredFare ? (
                 <Ionicons
                   name="chatbubble-ellipses"
                   size={20}
-                  color="#fff"
+                  color={C.textInverse}
                 />
               ) : (
                 <Text style={{ fontSize: 20 }}>
@@ -1932,9 +1933,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               )}
               <Text
                 style={{
-                  fontFamily: "Inter_700Bold",
+                  fontFamily: Font.bold,
                   fontSize: 16,
-                  color: "#fff",
+                  color: C.textInverse,
                 }}
               >
                 {showBargain && offeredFare
@@ -1961,14 +1962,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               alignItems: "center",
               justifyContent: "space-between",
               padding: 20,
-              backgroundColor: "#fff",
+              backgroundColor: C.surface,
               borderBottomWidth: 1,
               borderBottomColor: C.border,
             }}
           >
             <Text
               style={{
-                fontFamily: "Inter_700Bold",
+                fontFamily: Font.bold,
                 fontSize: 18,
                 color: C.text,
               }}
@@ -2021,7 +2022,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               </View>
               <Text
                 style={{
-                  fontFamily: "Inter_600SemiBold",
+                  fontFamily: Font.semiBold,
                   fontSize: 15,
                   color: C.text,
                 }}
@@ -2030,7 +2031,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               </Text>
               <Text
                 style={{
-                  fontFamily: "Inter_400Regular",
+                  fontFamily: Font.regular,
                   fontSize: 13,
                   color: C.textMuted,
                 }}
@@ -2046,7 +2047,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 <View
                   key={ride.id || i}
                   style={{
-                    backgroundColor: "#fff",
+                    backgroundColor: C.surface,
                     borderRadius: 16,
                     padding: 16,
                     borderWidth: 1,
@@ -2083,7 +2084,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
-                        fontFamily: "Inter_500Medium",
+                        fontFamily: Font.medium,
                         fontSize: 13,
                         color: C.text,
                       }}
@@ -2093,7 +2094,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     </Text>
                     <Text
                       style={{
-                        fontFamily: "Inter_400Regular",
+                        fontFamily: Font.regular,
                         fontSize: 11,
                         color: C.textMuted,
                         marginTop: 3,
@@ -2111,7 +2112,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   >
                     <Text
                       style={{
-                        fontFamily: "Inter_700Bold",
+                        fontFamily: Font.bold,
                         fontSize: 14,
                         color: C.text,
                       }}
@@ -2133,13 +2134,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     >
                       <Text
                         style={{
-                          fontFamily: "Inter_500Medium",
+                          fontFamily: Font.medium,
                           fontSize: 10,
                           color:
                             ride.status === "completed"
                               ? "#059669"
                               : ride.status === "cancelled"
-                                ? "#DC2626"
+                                ? C.red
                                 : "#D97706",
                         }}
                       >
@@ -2179,7 +2180,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               flexDirection: "row",
               alignItems: "center",
               padding: 20,
-              backgroundColor: "#fff",
+              backgroundColor: C.surface,
               borderBottomWidth: 1,
               borderBottomColor: C.border,
             }}
@@ -2187,7 +2188,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             <Text
               style={{
                 fontSize: 18,
-                fontFamily: "Inter_700Bold",
+                fontFamily: Font.bold,
                 flex: 1,
                 color: C.text,
               }}
@@ -2214,7 +2215,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           >
             <Text
               style={{
-                fontFamily: "Inter_600SemiBold",
+                fontFamily: Font.semiBold,
                 fontSize: 14,
                 color: C.text,
                 marginBottom: 4,
@@ -2225,7 +2226,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             {schoolRoutes.length === 0 ? (
               <View
                 style={{
-                  backgroundColor: "#fff",
+                  backgroundColor: C.surface,
                   borderRadius: 16,
                   padding: 24,
                   alignItems: "center",
@@ -2248,7 +2249,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </View>
                 <Text
                   style={{
-                    fontFamily: "Inter_600SemiBold",
+                    fontFamily: Font.semiBold,
                     color: C.textSecondary,
                   }}
                 >
@@ -2281,7 +2282,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     backgroundColor:
                       selectedRoute?.id === r.id
                         ? `${C.primary}06`
-                        : "#fff",
+                        : C.textInverse,
                   }}
                 >
                   <View
@@ -2306,7 +2307,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          fontFamily: "Inter_700Bold",
+                          fontFamily: Font.bold,
                           fontSize: 14,
                           color: C.text,
                         }}
@@ -2353,7 +2354,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                           <Text
                             style={{
                               fontSize: 11,
-                              fontFamily: "Inter_700Bold",
+                              fontFamily: Font.bold,
                               color: "#16A34A",
                             }}
                           >
@@ -2443,7 +2444,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 />
                 <Text
                   style={{
-                    fontFamily: "Inter_600SemiBold",
+                    fontFamily: Font.semiBold,
                     fontSize: 14,
                     color: C.text,
                   }}
@@ -2457,7 +2458,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         fontSize: 12,
                         color: C.textSecondary,
                         marginBottom: 6,
-                        fontFamily: "Inter_500Medium",
+                        fontFamily: Font.medium,
                       }}
                     >
                       Student Name *
@@ -2469,7 +2470,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         borderRadius: 14,
                         paddingHorizontal: 14,
                         paddingVertical: 12,
-                        backgroundColor: "#fff",
+                        backgroundColor: C.surface,
                       }}
                     >
                       <TextInput
@@ -2477,7 +2478,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         onChangeText={setSchoolStudent}
                         placeholder="e.g. Ali Khan"
                         style={{
-                          fontFamily: "Inter_400Regular",
+                          fontFamily: Font.regular,
                           fontSize: 14,
                           color: C.text,
                         }}
@@ -2491,7 +2492,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         fontSize: 12,
                         color: C.textSecondary,
                         marginBottom: 6,
-                        fontFamily: "Inter_500Medium",
+                        fontFamily: Font.medium,
                       }}
                     >
                       Class / Grade *
@@ -2503,7 +2504,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         borderRadius: 14,
                         paddingHorizontal: 14,
                         paddingVertical: 12,
-                        backgroundColor: "#fff",
+                        backgroundColor: C.surface,
                       }}
                     >
                       <TextInput
@@ -2511,7 +2512,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         onChangeText={setSchoolClass}
                         placeholder="e.g. 7th Grade"
                         style={{
-                          fontFamily: "Inter_400Regular",
+                          fontFamily: Font.regular,
                           fontSize: 14,
                           color: C.text,
                         }}
@@ -2520,7 +2521,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     </View>
                   </View>
                   <View>
-                    <Text style={{ fontSize: 12, color: C.textSecondary, marginBottom: 6, fontFamily: "Inter_500Medium" }}>
+                    <Text style={{ fontSize: 12, color: C.textSecondary, marginBottom: 6, fontFamily: Font.medium }}>
                       Shift
                     </Text>
                     <View style={{ flexDirection: "row", gap: 8 }}>
@@ -2530,48 +2531,48 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                           onPress={() => setSchoolShift(s)}
                           style={{
                             flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center",
-                            backgroundColor: schoolShift === s ? C.primary : "#fff",
+                            backgroundColor: schoolShift === s ? C.primary : C.textInverse,
                             borderWidth: 1.5, borderColor: schoolShift === s ? C.primary : C.border,
                           }}
                         >
-                          <Text style={{ fontSize: 12, fontFamily: "Inter_600SemiBold", color: schoolShift === s ? "#fff" : C.textSecondary, textTransform: "capitalize" }}>{s}</Text>
+                          <Text style={{ fontSize: 12, fontFamily: Font.semiBold, color: schoolShift === s ? "#fff" : C.textSecondary, textTransform: "capitalize" }}>{s}</Text>
                         </Pressable>
                       ))}
                     </View>
                     {selectedRoute?.morningTime && schoolShift !== "afternoon" ? (
-                      <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 4, fontFamily: "Inter_400Regular" }}>
+                      <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 4, fontFamily: Font.regular }}>
                         AM pickup: {selectedRoute.morningTime}
                       </Text>
                     ) : null}
                     {selectedRoute?.afternoonTime && schoolShift !== "morning" ? (
-                      <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 2, fontFamily: "Inter_400Regular" }}>
+                      <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 2, fontFamily: Font.regular }}>
                         PM pickup: {selectedRoute.afternoonTime}
                       </Text>
                     ) : null}
                   </View>
                   <View>
-                    <Text style={{ fontSize: 12, color: C.textSecondary, marginBottom: 6, fontFamily: "Inter_500Medium" }}>
+                    <Text style={{ fontSize: 12, color: C.textSecondary, marginBottom: 6, fontFamily: Font.medium }}>
                       Start Date
                     </Text>
-                    <View style={{ borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: "#fff" }}>
+                    <View style={{ borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: C.surface }}>
                       <TextInput
                         value={schoolStartDate}
                         onChangeText={v => setSchoolStartDate(v)}
                         placeholder="YYYY-MM-DD"
-                        style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.text }}
+                        style={{ fontFamily: Font.regular, fontSize: 14, color: C.text }}
                         placeholderTextColor={C.textMuted}
                         keyboardType="numbers-and-punctuation"
                         maxLength={10}
                       />
                     </View>
-                    <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 3, fontFamily: "Inter_400Regular" }}>
+                    <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 3, fontFamily: Font.regular }}>
                       Subscription starts on this date (today or later)
                     </Text>
                   </View>
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontFamily: "Inter_500Medium", color: C.text }}>Auto-Renew Monthly</Text>
-                      <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "Inter_400Regular" }}>Renew subscription every 30 days</Text>
+                      <Text style={{ fontSize: 14, fontFamily: Font.medium, color: C.text }}>Auto-Renew Monthly</Text>
+                      <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: Font.regular }}>Renew subscription every 30 days</Text>
                     </View>
                     <Pressable
                       onPress={() => setSchoolRecurring(r => !r)}
@@ -2582,7 +2583,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       }}
                     >
                       <View style={{
-                        width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff",
+                        width: 20, height: 20, borderRadius: 10, backgroundColor: C.surface,
                         alignSelf: schoolRecurring ? "flex-end" : "flex-start",
                       }} />
                     </Pressable>
@@ -2593,7 +2594,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         fontSize: 12,
                         color: C.textSecondary,
                         marginBottom: 6,
-                        fontFamily: "Inter_500Medium",
+                        fontFamily: Font.medium,
                       }}
                     >
                       Notes (Optional)
@@ -2605,7 +2606,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         borderRadius: 14,
                         paddingHorizontal: 14,
                         paddingVertical: 12,
-                        backgroundColor: "#fff",
+                        backgroundColor: C.surface,
                         minHeight: 72,
                       }}
                     >
@@ -2614,7 +2615,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         onChangeText={setSchoolNotes}
                         placeholder="e.g. Drop off at gate B, allergies, etc."
                         style={{
-                          fontFamily: "Inter_400Regular",
+                          fontFamily: Font.regular,
                           fontSize: 14,
                           color: C.text,
                         }}
@@ -2639,7 +2640,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     style={{
                       fontSize: 12,
                       color: "#92400E",
-                      fontFamily: "Inter_500Medium",
+                      fontFamily: Font.medium,
                     }}
                   >
                     First month: Rs.{" "}
@@ -2667,9 +2668,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 >
                   <Text
                     style={{
-                      fontFamily: "Inter_700Bold",
+                      fontFamily: Font.bold,
                       fontSize: 15,
-                      color: "#fff",
+                      color: C.textInverse,
                     }}
                   >
                     {subscribing
@@ -2702,7 +2703,7 @@ const rs = StyleSheet.create({
     justifyContent: "center",
   },
   sugg: {
-    backgroundColor: "#fff",
+    backgroundColor: C.surface,
     borderRadius: 12,
     marginTop: 6,
     borderWidth: 1,
@@ -2719,12 +2720,12 @@ const rs = StyleSheet.create({
     borderBottomColor: C.borderLight,
   },
   suggTxt: {
-    fontFamily: "Inter_400Regular",
+    fontFamily: Font.regular,
     fontSize: 13,
     color: C.text,
   },
   suggSub: {
-    fontFamily: "Inter_400Regular",
+    fontFamily: Font.regular,
     fontSize: 11,
     color: C.textMuted,
     marginTop: 1,

@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
-import Colors from "@/constants/colors";
+import Colors, { spacing, radii } from "@/constants/colors";
 import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -1167,9 +1167,20 @@ export default function OrdersScreen() {
   const renderContent = () => {
     if (isLoading && totalCount === 0) {
       return (
-        <View style={styles.center}>
-          <ActivityIndicator color={C.primary} size="large" />
-          <Text style={styles.loadingText}>{T("loading")}</Text>
+        <View style={{ padding: spacing.lg, gap: spacing.md }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ backgroundColor: C.surface, borderRadius: radii.md, padding: spacing.lg, gap: spacing.sm }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <SkeletonBlock w={120} h={14} r={6} />
+                <SkeletonBlock w={60} h={14} r={6} />
+              </View>
+              <SkeletonBlock w="80%" h={12} r={6} />
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs }}>
+                <SkeletonBlock w={90} h={12} r={6} />
+                <SkeletonBlock w={70} h={24} r={radii.sm} />
+              </View>
+            </View>
+          ))}
         </View>
       );
     }

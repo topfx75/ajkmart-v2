@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 
 const C = Colors.light;
 export { C as userColors };
@@ -145,8 +146,8 @@ export function FilterChip({
       accessibilityState={{ selected: active }}
       accessibilityLabel={label}
     >
-      {icon ? <Ionicons name={icon} size={14} color={active ? "#fff" : C.textSecondary} /> : null}
-      <Text style={[us.chipText, active && { color: "#fff" }]}>{label}</Text>
+      {icon ? <Ionicons name={icon} size={14} color={active ? C.textInverse : C.textSecondary} /> : null}
+      <Text style={[us.chipText, active && { color: C.textInverse }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -403,9 +404,9 @@ export function CategoryPill({
       accessibilityState={{ selected: isActive }}
     >
       <View style={[us.catPillIcon, { backgroundColor: isActive ? color : bg }]}>
-        <Ionicons name={icon} size={22} color={isActive ? "#fff" : color} />
+        <Ionicons name={icon} size={22} color={isActive ? C.textInverse : color} />
       </View>
-      <Text style={[us.catPillLabel, isActive && { color, fontFamily: "Inter_600SemiBold" }]} numberOfLines={1}>
+      <Text style={[us.catPillLabel, isActive && { color, fontFamily: Font.semiBold }]} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -608,7 +609,7 @@ const us = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#fff",
+    backgroundColor: C.surface,
     borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: 11,
@@ -669,12 +670,12 @@ const us = StyleSheet.create({
     alignItems: "center",
   },
   countdownDigit: {
-    fontFamily: "Inter_700Bold",
+    fontFamily: Font.bold,
     fontSize: 13,
     color: C.danger,
   },
   countdownSep: {
-    fontFamily: "Inter_700Bold",
+    fontFamily: Font.bold,
     fontSize: 13,
     color: C.danger,
   },
