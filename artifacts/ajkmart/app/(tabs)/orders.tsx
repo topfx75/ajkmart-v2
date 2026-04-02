@@ -190,11 +190,22 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
         </View>
       )}
 
-      {canCancel && (
+      {canCancel ? (
         <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)} accessibilityRole="button" accessibilityLabel={`${T("cancelOrder")}, ${cancelMinsLeft} minutes left`}>
           <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
           <Text style={styles.cancelBtnText}>{T("cancelOrder")} ({cancelMinsLeft}m left)</Text>
         </Pressable>
+      ) : isActive && (
+        <View style={styles.cancelDisabledBar}>
+          <Ionicons name="information-circle-outline" size={13} color={C.textMuted} />
+          <Text style={styles.cancelDisabledText}>
+            {["preparing", "ready", "picked_up"].includes(order.status)
+              ? "Order is being prepared"
+              : order.status === "out_for_delivery"
+              ? "Order is on the way"
+              : "Cancellation window passed"}
+          </Text>
+        </View>
       )}
 
       {canRate && (
@@ -398,6 +409,25 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
           <Ionicons name="star" size={13} color="#F59E0B" />
           <Text style={styles.reviewedText}>{T("reviewedThanks")}</Text>
         </View>
+      )}
+
+      {(isCompleted || ride.status === "cancelled") && (
+        <Pressable
+          style={styles.bookAgainBtn}
+          onPress={() => router.push({
+            pathname: "/ride",
+            params: {
+              prefillPickup: ride.pickupAddress || "",
+              prefillDrop: ride.dropAddress || "",
+              prefillType: ride.type || "car",
+            },
+          })}
+          accessibilityRole="button"
+          accessibilityLabel="Book this ride again"
+        >
+          <Ionicons name="repeat-outline" size={14} color={C.primary} />
+          <Text style={styles.bookAgainBtnText}>Book Again</Text>
+        </Pressable>
       )}
 
       {showStepper && (
@@ -613,6 +643,25 @@ function ParcelCard({ booking }: { booking: any }) {
             </Text>
           </View>
         </View>
+      )}
+
+      {(booking.status === "completed" || booking.status === "cancelled") && (
+        <Pressable
+          style={styles.bookAgainBtn}
+          onPress={() => router.push({
+            pathname: "/parcel",
+            params: {
+              prefillPickup: booking.pickupAddress || "",
+              prefillDrop: booking.dropAddress || "",
+              prefillType: booking.parcelType || "",
+            },
+          })}
+          accessibilityRole="button"
+          accessibilityLabel="Send parcel again"
+        >
+          <Ionicons name="repeat-outline" size={14} color={C.primary} />
+          <Text style={styles.bookAgainBtnText}>Send Again</Text>
+        </Pressable>
       )}
 
       <View style={styles.tapHint}>
@@ -1529,6 +1578,18 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: "#BFDBFE",
   },
   reorderBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.primary },
+  cancelDisabledBar: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
+    backgroundColor: C.surfaceSecondary, borderWidth: 1, borderColor: C.border,
+  },
+  cancelDisabledText: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, flex: 1 },
+  bookAgainBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    marginTop: 10, paddingVertical: 10, borderRadius: 14, backgroundColor: "#EFF6FF",
+    borderWidth: 1.5, borderColor: "#BFDBFE",
+  },
+  bookAgainBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.primary },
 
   tapHint: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,

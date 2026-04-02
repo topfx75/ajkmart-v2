@@ -29,6 +29,20 @@ const { width } = Dimensions.get("window");
 const FLASH_CARD_W = (width - 16 * 2 - 12) / 2;
 const PRODUCT_CARD_W = (width - 16 * 2 - 12) / 2;
 
+function QuantityStepper({ quantity, onIncrement, onDecrement }: { quantity: number; onIncrement: (e?: any) => void; onDecrement: (e?: any) => void }) {
+  return (
+    <View style={styles.stepperRow}>
+      <Pressable onPress={(e) => { e?.stopPropagation?.(); onDecrement(e); }} style={styles.stepperBtn}>
+        <Ionicons name={quantity <= 1 ? "trash-outline" : "remove"} size={14} color={C.danger} />
+      </Pressable>
+      <Text style={styles.stepperQty}>{quantity}</Text>
+      <Pressable onPress={(e) => { e?.stopPropagation?.(); onIncrement(e); }} style={[styles.stepperBtn, { backgroundColor: C.primarySoft }]}>
+        <Ionicons name="add" size={14} color={C.primary} />
+      </Pressable>
+    </View>
+  );
+}
+
 function AddToCartButton({ onPress, added }: { onPress: () => void; added: boolean }) {
   const scale = useRef(new Animated.Value(1)).current;
 
@@ -115,13 +129,16 @@ function FlashCard({ product }: { product: any }) {
 }
 
 function ProductCard({ product }: { product: any }) {
-  const { addItem, cartType, itemCount, clearCart } = useCart();
+  const { addItem, cartType, itemCount, clearCart, items, updateQuantity, removeItem } = useCart();
   const [added, setAdded] = useState(false);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origPrice = Number(product.originalPrice) || 0;
   const discount = origPrice > 0
     ? Math.round(((origPrice - product.price) / origPrice) * 100)
     : 0;
+
+  const cartItem = items.find(i => i.productId === product.id);
+  const qtyInCart = cartItem?.quantity ?? 0;
 
   useEffect(() => () => { if (addedTimerRef.current) clearTimeout(addedTimerRef.current); }, []);
 
@@ -177,7 +194,15 @@ function ProductCard({ product }: { product: any }) {
               <Text style={styles.productOrigPrice}>Rs. {product.originalPrice}</Text>
             )}
           </View>
-          <AddToCartButton onPress={handleAdd} added={added} />
+          {qtyInCart > 0 ? (
+            <QuantityStepper
+              quantity={qtyInCart}
+              onIncrement={() => updateQuantity(product.id, qtyInCart + 1)}
+              onDecrement={() => qtyInCart <= 1 ? removeItem(product.id) : updateQuantity(product.id, qtyInCart - 1)}
+            />
+          ) : (
+            <AddToCartButton onPress={handleAdd} added={added} />
+          )}
         </View>
       </View>
     </Pressable>
@@ -437,6 +462,9 @@ const styles = StyleSheet.create({
   productOrigPrice: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, textDecorationLine: "line-through" },
   addBtn: { width: 34, height: 34, borderRadius: 11, backgroundColor: C.primary, alignItems: "center", justifyContent: "center", shadowColor: C.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
   addBtnDone: { backgroundColor: C.success },
+  stepperRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  stepperBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#FFE5E3", alignItems: "center", justifyContent: "center" },
+  stepperQty: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, minWidth: 18, textAlign: "center" },
   ratingBadge: { position: "absolute", bottom: 8, right: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
   ratingTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: "#fff" },
 

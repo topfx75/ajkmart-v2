@@ -19,15 +19,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 import { CartSwitchModal } from "@/components/CartSwitchModal";
+import { SkeletonBlock } from "@/components/user-shared";
 import { useGetProduct, useGetProducts, type Product } from "@workspace/api-client-react";
 
 const C = Colors.light;
 const { width: SCREEN_W } = Dimensions.get("window");
 const IMAGE_H = SCREEN_W * 0.85;
-
-function SkeletonBlock({ w, h, r = 8, style }: { w: number | string; h: number; r?: number; style?: any }) {
-  return <View style={[{ width: w, height: h, borderRadius: r, backgroundColor: C.surfaceSecondary }, style]} />;
-}
 
 function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   const stars = [];
@@ -61,10 +58,13 @@ export default function ProductDetailScreen() {
 
   const productType = product?.type || "mart";
   const { data: relatedData } = useGetProducts(
-    { type: productType },
+    { type: productType, category: product?.category },
     { query: { enabled: !!product } }
   );
-  const relatedProducts = (relatedData?.products || []).filter((p: Product) => p.id !== id).slice(0, 4);
+  const relatedProducts = (relatedData?.products || [])
+    .filter((p: Product) => p.id !== id)
+    .sort((a: Product, b: Product) => (b.rating ?? 0) - (a.rating ?? 0))
+    .slice(0, 4);
 
   useEffect(() => {
     return () => {

@@ -26,10 +26,13 @@ import { CartSwitchModal } from "@/components/CartSwitchModal";
 const C = Colors.light;
 
 function FoodCard({ item }: { item: any }) {
-  const { addItem, cartType, itemCount, clearCart } = useCart();
+  const { addItem, cartType, itemCount, clearCart, items, updateQuantity, removeItem } = useCart();
   const [added, setAdded] = useState(false);
   const scale = useRef(new Animated.Value(1)).current;
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cartItem = items.find(i => i.productId === item.id);
+  const qtyInCart = cartItem?.quantity ?? 0;
 
   useEffect(() => () => { if (addedTimerRef.current) clearTimeout(addedTimerRef.current); }, []);
 
@@ -91,11 +94,23 @@ function FoodCard({ item }: { item: any }) {
         )}
         <View style={styles.foodFooter}>
           <Text style={styles.foodPrice}>Rs. {item.price}</Text>
-          <Animated.View style={{ transform: [{ scale }] }}>
-            <Pressable onPress={(e) => handleAdd(e)} style={[styles.addBtn, added && styles.addBtnAdded]}>
-              <Ionicons name={added ? "checkmark" : "add"} size={16} color="#fff" />
-            </Pressable>
-          </Animated.View>
+          {qtyInCart > 0 ? (
+            <View style={styles.stepperRow}>
+              <Pressable onPress={(e) => { e?.stopPropagation?.(); qtyInCart <= 1 ? removeItem(item.id) : updateQuantity(item.id, qtyInCart - 1); }} style={styles.stepperBtn}>
+                <Ionicons name={qtyInCart <= 1 ? "trash-outline" : "remove"} size={14} color="#DC2626" />
+              </Pressable>
+              <Text style={styles.stepperQty}>{qtyInCart}</Text>
+              <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.id, qtyInCart + 1); }} style={[styles.stepperBtn, { backgroundColor: "#FFF4E5" }]}>
+                <Ionicons name="add" size={14} color="#D97706" />
+              </Pressable>
+            </View>
+          ) : (
+            <Animated.View style={{ transform: [{ scale }] }}>
+              <Pressable onPress={(e) => handleAdd(e)} style={[styles.addBtn, added && styles.addBtnAdded]}>
+                <Ionicons name={added ? "checkmark" : "add"} size={16} color="#fff" />
+              </Pressable>
+            </Animated.View>
+          )}
         </View>
       </View>
     </Pressable>
@@ -293,6 +308,9 @@ const styles = StyleSheet.create({
   foodPrice: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text },
   addBtn: { width: 34, height: 34, borderRadius: 11, backgroundColor: C.food, alignItems: "center", justifyContent: "center", shadowColor: C.food, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
   addBtnAdded: { backgroundColor: C.success },
+  stepperRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  stepperBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#FFE5E3", alignItems: "center", justifyContent: "center" },
+  stepperQty: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, minWidth: 18, textAlign: "center" },
 
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80, gap: 12 },
   errorIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },
