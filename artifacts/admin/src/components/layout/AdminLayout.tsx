@@ -29,6 +29,7 @@ import {
   Navigation,
   AlertTriangle,
   Star,
+  BadgeCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -79,6 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "navUserManagement",
     items: [
       { nameKey: "navUsers",        href: "/users",        icon: Users },
+      { nameKey: "navKyc",          href: "/kyc",          icon: BadgeCheck },
     ],
   },
   {

@@ -478,3 +478,33 @@ All changes are client-side only (`artifacts/ajkmart/`):
 - **Mapping APIs:** Google Maps Platform (or similar) for autocomplete, geocoding, and distance calculations (gated by `maps_places_autocomplete`, `maps_geocoding`, `maps_distance_matrix` settings).
 - **Sentry:** For error tracking and performance monitoring (configured via `sentry_dsn`, `sentry_env`, etc.).
 - **Analytics Platform:** For tracking user behavior (configured via `analytics_platform`, `tracking_id`).
+
+### KYC (Know Your Customer) System — Completed
+
+#### Database
+- **`lib/db/src/schema/kyc_verifications.ts`**: `kyc_verifications` table. Fields: `id`, `userId`, `status` (`pending|approved|rejected|resubmit`), personal info (`fullName`, `cnic`, `dateOfBirth`, `gender`, `address`, `city`), document photos (`frontIdPhoto`, `backIdPhoto`, `selfiePhoto`), review fields (`rejectionReason`, `reviewedBy`, `reviewedAt`), timestamps. Migrated via `pnpm --filter @workspace/db push`.
+
+#### Backend (`artifacts/api-server/src/routes/kyc.ts`)
+- `GET  /api/kyc/status` — Customer: returns current KYC status + submitted record details
+- `POST /api/kyc/submit` — Customer: multipart form with personal info + 3 photos (CNIC front/back, selfie). Saves to `uploads/kyc/`. Validates CNIC is 13 digits. Updates `users.kycStatus = "pending"`.
+- `GET  /api/kyc/admin/list` — Admin: paginated list with status filter, joined with user data
+- `GET  /api/kyc/admin/:id` — Admin: full detail of one record with photo URLs
+- `POST /api/kyc/admin/:id/approve` — Admin: sets status `approved`, syncs `users.kycStatus = "verified"`, copies CNIC/name/city to users table
+- `POST /api/kyc/admin/:id/reject` — Admin: sets status `rejected` with reason, updates `users.kycStatus = "rejected"`
+
+#### Customer Portal (`artifacts/customer/src/pages/Profile.tsx`)
+- New **KYC tab** (4th tab, with red `!` badge if not verified or rejected)
+- **Step 0**: Status view — shows verified badge, pending review message, rejection reason, benefit list, or start button
+- **Step 1**: Personal Info form (fullName, CNIC, DOB, gender, address, city)
+- **Step 2**: CNIC front + back photo upload with preview
+- **Step 3**: Selfie with CNIC photo upload
+- **Step 4**: Review all data + submit
+- `KycSection` component fetches status from `GET /api/kyc/status`, submits via `FormData` to `POST /api/kyc/submit`
+
+#### Admin Panel (`artifacts/admin/src/pages/kyc.tsx` + `App.tsx` + `AdminLayout.tsx`)
+- Route `/kyc` added to `App.tsx`
+- **KYC** nav item added under "User Management" in sidebar (`AdminLayout.tsx`, uses `BadgeCheck` icon)
+- `navKyc` translation key added to all 3 language blocks in `lib/i18n/src/index.ts`
+- Admin page: stats cards (Total/Pending/Approved/Rejected), filter tabs, sortable table with user info + CNIC + status + submission date
+- Click row → slide-in detail panel with personal details, zoomable document photos (fullscreen modal), approve/reject buttons
+- Reject modal with quick-select rejection reasons + custom reason textarea

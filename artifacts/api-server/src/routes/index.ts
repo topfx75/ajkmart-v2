@@ -29,6 +29,7 @@ import recommendationsRouter from "./recommendations.js";
 import bannersRouter from "./banners.js";
 import variantsRouter from "./variants.js";
 import pushRouter from "./push.js";
+import kycRouter from "./kyc.js";
 
 const router: IRouter = Router();
 
@@ -62,5 +63,6 @@ router.use("/recommendations", recommendationsRouter);
 router.use("/banners", bannersRouter);
 router.use("/variants", variantsRouter);
 router.use("/push", pushRouter);
+router.use("/kyc", kycRouter);
 
 export default router;
