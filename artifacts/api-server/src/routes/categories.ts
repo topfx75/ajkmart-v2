@@ -45,7 +45,6 @@ router.get("/", async (req, res) => {
   const countRows = await db
     .select({
       category: productsTable.category,
-      productType: productsTable.type,
       count: sql<number>`count(*)::int`,
     })
     .from(productsTable)
@@ -55,19 +54,14 @@ router.get("/", async (req, res) => {
         eq(productsTable.approvalStatus, "approved"),
       )
     )
-    .groupBy(productsTable.category, productsTable.type);
+    .groupBy(productsTable.category);
 
-  const countByCategory = new Map<string, number>();
-  const countByType = new Map<string, number>();
-  for (const r of countRows) {
-    countByCategory.set(r.category, (countByCategory.get(r.category) ?? 0) + r.count);
-    countByType.set(r.productType, (countByType.get(r.productType) ?? 0) + r.count);
-  }
+  const countMap = new Map(countRows.map((r) => [r.category, r.count]));
 
   res.json({
     categories: categories.map((c) => ({
       ...c,
-      productCount: countByCategory.get(c.id) ?? countByType.get(c.type) ?? 0,
+      productCount: countMap.get(c.id) ?? 0,
     })),
   });
 });
