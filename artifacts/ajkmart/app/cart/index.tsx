@@ -105,6 +105,7 @@ function AddressPickerModal({
       const created: SavedAddress = d.address || d;
       onAddressCreated(created);
       resetForm();
+      onClose();
     } catch (e: any) {
       setFormError(e.message || "Could not save address");
     }
