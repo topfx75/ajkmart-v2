@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useToast } from "@/context/ToastContext";
@@ -368,8 +369,8 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
               <Text style={styles.fareValue}>Rs. {gst.toLocaleString()}</Text>
             </View>
             <View style={[styles.fareRow, { borderTopWidth: 1, borderTopColor: C.borderLight, paddingTop: 6, marginTop: 2 }]}>
-              <Text style={[styles.fareLabel, { fontFamily: "Inter_700Bold", color: C.text }]}>{T("fare")}</Text>
-              <Text style={[styles.fareValue, { fontFamily: "Inter_700Bold" }]}>Rs. {totalFare.toLocaleString()}</Text>
+              <Text style={[styles.fareLabel, { fontFamily: Font.bold, color: C.text }]}>{T("fare")}</Text>
+              <Text style={[styles.fareValue, { fontFamily: Font.bold }]}>Rs. {totalFare.toLocaleString()}</Text>
             </View>
             <View style={styles.fareRow}>
               <Text style={styles.fareLabel}>{T("paymentMethod") || "Payment"}</Text>
@@ -449,7 +450,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
                         ? <Ionicons name="checkmark" size={10} color={C.textInverse} />
                         : <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: C.slate }} />}
                     </View>
-                    <Text style={[styles.rideStepLabel, done && { color: C.text }, active && { fontFamily: "Inter_700Bold" }]}>
+                    <Text style={[styles.rideStepLabel, done && { color: C.text }, active && { fontFamily: Font.bold }]}>
                       {RIDE_STEP_LABELS[i]}
                     </Text>
                   </View>
@@ -851,27 +852,27 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
 }
 
 const rm = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, backgroundColor: C.overlayDark50, justifyContent: "flex-end" },
   sheet:    { backgroundColor: C.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40, maxHeight: "90%" },
   handle:   { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: 20 },
   headerIconWrap: { alignItems: "center", marginBottom: 14 },
   headerIcon: { width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  title:    { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text, textAlign: "center", marginBottom: 4 },
-  sub:      { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, textAlign: "center", marginBottom: 16 },
-  sectionLabel: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textSecondary, textAlign: "center", marginTop: 4, marginBottom: 2 },
+  title:    { ...Typ.h2, color: C.text, textAlign: "center", marginBottom: 4 },
+  sub:      { ...Typ.body, fontSize: 13, color: C.textSecondary, textAlign: "center", marginBottom: 16 },
+  sectionLabel: { ...Typ.buttonSmall, color: C.textSecondary, textAlign: "center", marginTop: 4, marginBottom: 2 },
   divider:  { height: 1, backgroundColor: C.border, marginVertical: 12 },
-  ratingLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.amberBrown, textAlign: "center", marginBottom: 4, marginTop: 2 },
+  ratingLabel: { ...Typ.bodySemiBold, color: C.amberBrown, textAlign: "center", marginBottom: 4, marginTop: 2 },
   input: {
     borderWidth: 1.5, borderColor: C.border, borderRadius: 16,
-    padding: 14, fontFamily: "Inter_400Regular", fontSize: 14, color: C.text,
+    padding: 14, ...Typ.body, color: C.text,
     minHeight: 72, textAlignVertical: "top", marginTop: 8, marginBottom: 8, backgroundColor: C.surfaceSecondary,
   },
-  error:    { fontFamily: "Inter_400Regular", fontSize: 13, color: C.red, textAlign: "center", marginBottom: 8 },
+  error:    { ...Typ.body, fontSize: 13, color: C.red, textAlign: "center", marginBottom: 8 },
   btns:     { flexDirection: "row", gap: 12, marginTop: 8 },
   cancelBtn: { flex: 1, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, paddingVertical: 15, alignItems: "center" },
-  cancelText:{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textSecondary },
+  cancelText:{ ...Typ.bodySemiBold, color: C.textSecondary },
   submitBtn: { flex: 2, backgroundColor: C.primary, borderRadius: 16, paddingVertical: 15, alignItems: "center", justifyContent: "center", shadowColor: C.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
-  submitText:{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.textInverse },
+  submitText:{ ...Typ.body, fontFamily: Font.bold, color: C.textInverse },
 });
 
 
@@ -1342,7 +1343,7 @@ export default function OrdersScreen() {
                 accessibilityLabel={`Load more, ${anyPast - historyLimit} remaining`}
               >
                 <Ionicons name="chevron-down" size={16} color={C.primary} />
-                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.primary }}>
+                <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>
                   Load More ({anyPast - historyLimit} remaining)
                 </Text>
               </Pressable>
@@ -1396,7 +1397,7 @@ export default function OrdersScreen() {
                 />
                 <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{T(tab.labelKey)}</Text>
                 {count > 0 && (
-                  <View style={[styles.tabBadge, isActive && { backgroundColor: "rgba(255,255,255,0.3)" }]}>
+                  <View style={[styles.tabBadge, isActive && { backgroundColor: C.overlayLight30 }]}>
                     <Text style={[styles.tabBadgeText, isActive && { color: C.textInverse }]}>{count}</Text>
                   </View>
                 )}
@@ -1456,8 +1457,8 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 16 },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 24, color: C.textInverse, marginBottom: 4 },
-  headerSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.8)" },
+  headerTitle: { ...Typ.h2, fontSize: 24, color: C.textInverse, marginBottom: 4 },
+  headerSub: { ...Typ.body, fontSize: 13, color: C.overlayLight80 },
 
   tabsWrap: { backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border },
   tabs: { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
@@ -1467,31 +1468,31 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceSecondary, borderWidth: 1, borderColor: C.border,
   },
   tabActive: { backgroundColor: C.primary, borderColor: C.primary },
-  tabLabel: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.textSecondary },
+  tabLabel: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.textSecondary },
   tabLabelActive: { color: C.textInverse },
   tabBadge: {
     backgroundColor: C.border, borderRadius: 9,
     minWidth: 18, height: 18, alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
   },
-  tabBadgeText: { fontFamily: "Inter_700Bold", fontSize: 10, color: C.textMuted },
+  tabBadgeText: { ...Typ.tiny, color: C.textMuted },
 
   scroll: { paddingBottom: 0 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, padding: 24 },
-  loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted },
+  loadingText: { ...Typ.body, color: C.textMuted },
 
   emptyIcon: { width: 96, height: 96, borderRadius: 28, backgroundColor: C.blueSoft, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   emptyFilterIcon: { width: 72, height: 72, borderRadius: 22, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, textAlign: "center" },
-  emptyText: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, textAlign: "center" },
+  emptyTitle: { ...Typ.title, color: C.text, textAlign: "center" },
+  emptyText: { ...Typ.body, fontSize: 13, color: C.textSecondary, textAlign: "center" },
   emptyBtns: { flexDirection: "row", gap: 10, marginTop: 8 },
   emptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 16, paddingVertical: 11, borderRadius: 14 },
-  emptyBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textInverse },
+  emptyBtnText: { ...Typ.buttonSmall, color: C.textInverse },
 
   secRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 },
   activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.emeraldDot },
-  secTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, flex: 1 },
+  secTitle: { ...Typ.h3, fontSize: 16, color: C.text, flex: 1 },
   countBadge: { borderRadius: 10, minWidth: 24, height: 24, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  countText: { fontFamily: "Inter_700Bold", fontSize: 11, color: C.textInverse },
+  countText: { ...Typ.smallBold, color: C.textInverse },
 
   card: {
     backgroundColor: C.surface, borderRadius: 20,
@@ -1501,46 +1502,46 @@ const styles = StyleSheet.create({
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 22 },
-  chipText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
-  cardId: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textMuted },
+  chipText: { ...Typ.captionMedium, fontFamily: Font.semiBold },
+  cardId: { ...Typ.captionMedium, color: C.textMuted },
 
   cardItems: { marginBottom: 12, gap: 6 },
   itemRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   itemDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.border },
-  itemText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary },
-  itemPrice: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.text },
-  moreItems: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.primary },
+  itemText: { flex: 1, ...Typ.body, fontSize: 13, color: C.textSecondary },
+  itemPrice: { ...Typ.buttonSmall, color: C.text },
+  moreItems: { ...Typ.captionMedium, color: C.primary },
   expandRow: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: 14, paddingVertical: 4 },
 
   noteRow: { flexDirection: "row", gap: 8, alignItems: "flex-start", marginBottom: 12, padding: 10, backgroundColor: C.purpleBg, borderRadius: 12, borderWidth: 1, borderColor: C.purpleSoft },
-  noteText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: C.purpleDeep },
+  noteText: { flex: 1, ...Typ.caption, color: C.purpleDeep },
 
   rideRoute: { marginBottom: 12, gap: 4 },
   ridePoint: { flexDirection: "row", alignItems: "center", gap: 10 },
   routeDot: { width: 10, height: 10, borderRadius: 5 },
   routeLine: { width: 2, height: 16, backgroundColor: C.border, marginLeft: 4 },
-  rideAddr: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: C.text },
+  rideAddr: { flex: 1, ...Typ.bodyMedium, fontSize: 13, color: C.text },
 
   cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   statusChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 22 },
-  statusText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  statusText: { ...Typ.captionMedium, fontFamily: Font.semiBold },
   totalWrap: { alignItems: "flex-end" },
-  totalLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
-  totalAmount: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
+  totalLabel: { ...Typ.small, color: C.textMuted },
+  totalAmount: { ...Typ.h3, color: C.text },
 
   etaBar: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.borderLight },
-  etaText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
+  etaText: { flex: 1, ...Typ.caption, color: C.textMuted },
   payBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
-  payText: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
+  payText: { ...Typ.small, color: C.textMuted },
 
   fareBreakdownBar: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.borderLight, gap: 6 },
   fareRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" } as const,
-  fareLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
-  fareValue: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.text },
+  fareLabel: { ...Typ.caption, color: C.textMuted },
+  fareValue: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.text },
   riderBar: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.borderLight },
   riderIconWrap: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.brandBlueSoft, alignItems: "center", justifyContent: "center" },
-  riderName: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.text },
-  riderPhone: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 1 },
+  riderName: { ...Typ.buttonSmall, color: C.text },
+  riderPhone: { ...Typ.caption, color: C.textMuted, marginTop: 1 },
   callBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.brandBlue, alignItems: "center", justifyContent: "center" },
 
   cancelBtn: {
@@ -1548,54 +1549,54 @@ const styles = StyleSheet.create({
     marginTop: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: C.redBg,
     borderWidth: 1.5, borderColor: C.redBorder,
   },
-  cancelBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.red },
+  cancelBtnText: { ...Typ.buttonSmall, color: C.red },
   rateBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: C.amberBg,
     borderWidth: 1.5, borderColor: C.amberBorder,
   },
-  rateBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.amberBrown },
+  rateBtnText: { ...Typ.buttonSmall, color: C.amberBrown },
   reviewedBadge: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.borderLight,
   },
-  reviewedText: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.amberDark },
+  reviewedText: { ...Typ.captionMedium, color: C.amberDark },
   refundBar: {
     flexDirection: "row", alignItems: "center", gap: 6,
     marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
     backgroundColor: C.emeraldSoft, borderWidth: 1, borderColor: C.emeraldBorder,
   },
-  refundText: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.emeraldDark },
+  refundText: { ...Typ.caption, color: C.emeraldDark },
   refundRequestBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 10, paddingVertical: 10, borderRadius: 14, backgroundColor: C.purpleBg,
     borderWidth: 1.5, borderColor: C.purpleBorder,
   },
-  refundRequestBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.purple },
+  refundRequestBtnText: { ...Typ.buttonSmall, color: C.purple },
   reorderBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 10, paddingVertical: 10, borderRadius: 14, backgroundColor: C.blueSoft,
     borderWidth: 1.5, borderColor: C.blueBorder,
   },
-  reorderBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.primary },
+  reorderBtnText: { ...Typ.buttonSmall, color: C.primary },
   cancelDisabledBar: {
     flexDirection: "row", alignItems: "center", gap: 8,
     marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12,
     backgroundColor: C.surfaceSecondary, borderWidth: 1, borderColor: C.border,
   },
-  cancelDisabledText: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, flex: 1 },
+  cancelDisabledText: { ...Typ.small, color: C.textMuted, flex: 1 },
   bookAgainBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     marginTop: 10, paddingVertical: 10, borderRadius: 14, backgroundColor: C.blueSoft,
     borderWidth: 1.5, borderColor: C.blueBorder,
   },
-  bookAgainBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.primary },
+  bookAgainBtnText: { ...Typ.buttonSmall, color: C.primary },
 
   tapHint: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5,
     marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.borderLight,
   },
-  tapHintText: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
+  tapHintText: { ...Typ.small, color: C.textMuted },
 
   rideStepperWrap: { marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.borderLight },
   rideStepperRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "center" },
@@ -1604,7 +1605,7 @@ const styles = StyleSheet.create({
     width: 22, height: 22, borderRadius: 11, backgroundColor: C.slateBorder,
     alignItems: "center", justifyContent: "center", marginBottom: 4,
   },
-  rideStepLabel: { fontFamily: "Inter_500Medium", fontSize: 9, color: C.textMuted, textAlign: "center" },
+  rideStepLabel: { ...Typ.smallMedium, fontSize: 9, color: C.textMuted, textAlign: "center" },
   rideStepLine: { flex: 1, height: 2, backgroundColor: C.slateBorder, marginTop: 10 },
 
   sectionErrBanner: {
@@ -1612,6 +1613,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.redBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
     borderWidth: 1, borderColor: C.redBorder, marginBottom: 8,
   },
-  sectionErrTxt: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: C.redDark },
-  sectionErrRetry: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.red },
+  sectionErrTxt: { flex: 1, ...Typ.bodyMedium, fontSize: 13, color: C.redDark },
+  sectionErrRetry: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.red },
 });

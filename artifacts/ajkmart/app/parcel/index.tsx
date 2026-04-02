@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
@@ -370,7 +371,7 @@ function ParcelScreenInner() {
           <Text style={{ fontSize: 52 }}>🔧</Text>
           <Text style={[ss.confirmTitle, { color: C.amber }]}>{T("underMaintenance")}</Text>
           <Text style={ss.confirmSub}>{platformConfig.content.maintenanceMsg}</Text>
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, textAlign: "center", marginTop: 8 }}>
+          <Text style={{ ...Typ.caption, color: C.textMuted, textAlign: "center", marginTop: 8 }}>
             {T("maintenanceApology")}
           </Text>
         </View>
@@ -465,7 +466,7 @@ function ParcelScreenInner() {
               multiline
             />
             {geoError === "pickup" && (
-              <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: C.danger, marginTop: 4 }}>
+              <Text style={{ ...Typ.captionMedium, color: C.danger, marginTop: 4 }}>
                 Could not locate this address. Try a more specific address or use the map selector.
               </Text>
             )}
@@ -497,7 +498,7 @@ function ParcelScreenInner() {
               multiline
             />
             {geoError === "drop" && (
-              <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: C.danger, marginTop: 4 }}>
+              <Text style={{ ...Typ.captionMedium, color: C.danger, marginTop: 4 }}>
                 Could not locate this address. Try a more specific address or use the map selector.
               </Text>
             )}
@@ -546,9 +547,9 @@ function ParcelScreenInner() {
               </View>
               {volumetricWeight > 0 && (
                 <View style={{ backgroundColor: C.amberSoft, borderRadius: 10, padding: 10, marginTop: 4, gap: 4 }}>
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.amberDark }}>Weight Breakdown</Text>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.amberDark }}>Actual: {actualWeight.toFixed(1)} kg  •  Volumetric: {volumetricWeight.toFixed(2)} kg</Text>
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.amber }}>Chargeable: {chargeableWeight.toFixed(2)} kg</Text>
+                  <Text style={{ ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.amberDark }}>Weight Breakdown</Text>
+                  <Text style={{ ...Typ.small, color: C.amberDark }}>Actual: {actualWeight.toFixed(1)} kg  •  Volumetric: {volumetricWeight.toFixed(2)} kg</Text>
+                  <Text style={{ ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.amber }}>Chargeable: {chargeableWeight.toFixed(2)} kg</Text>
                 </View>
               )}
               <Text style={ss.label}>{T("descriptionOptional")}</Text>
@@ -620,11 +621,11 @@ function ParcelScreenInner() {
               <Text style={ss.summaryTitle}>{T("bookingSummary")}</Text>
               <View style={ss.summaryRow}>
                 <View style={[ss.summaryDot, { backgroundColor: C.emeraldDot }]} />
-                <Text style={ss.summaryTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>{T("pickup")}:</Text> {pickupAddress}</Text>
+                <Text style={ss.summaryTxt}><Text style={{ fontFamily: Font.semiBold }}>{T("pickup")}:</Text> {pickupAddress}</Text>
               </View>
               <View style={ss.summaryRow}>
                 <View style={[ss.summaryDot, { backgroundColor: C.redBright }]} />
-                <Text style={ss.summaryTxt}><Text style={{ fontFamily: "Inter_600SemiBold" }}>{T("dropOff")}:</Text> {dropAddress}</Text>
+                <Text style={ss.summaryTxt}><Text style={{ fontFamily: Font.semiBold }}>{T("dropOff")}:</Text> {dropAddress}</Text>
               </View>
               <View style={ss.summaryRow}>
                 <Ionicons name="person-outline" size={14} color={C.textMuted} />
@@ -770,82 +771,82 @@ const ss = StyleSheet.create({
 
   header: { paddingHorizontal: 16, paddingBottom: 16 },
   hdrRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  hdrTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.textInverse },
-  hdrSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.85)", marginTop: 2 },
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.overlayLight20, alignItems: "center", justifyContent: "center" },
+  hdrTitle: { ...Typ.title, color: C.textInverse },
+  hdrSub: { ...Typ.caption, color: C.overlayLight85, marginTop: 2 },
 
   steps: { flexDirection: "row", alignItems: "center", paddingHorizontal: 4 },
   stepItem: { alignItems: "center", gap: 4 },
-  stepDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.3)", alignItems: "center", justifyContent: "center" },
+  stepDot: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.overlayLight30, alignItems: "center", justifyContent: "center" },
   stepDotActive: { backgroundColor: C.amber },
-  stepNum: { fontFamily: "Inter_700Bold", fontSize: 11, color: "rgba(255,255,255,0.7)" },
-  stepLbl: { fontFamily: "Inter_500Medium", fontSize: 9, color: "rgba(255,255,255,0.8)" },
-  stepLine: { flex: 1, height: 2, backgroundColor: "rgba(255,255,255,0.3)", marginBottom: 16 },
+  stepNum: { ...Typ.smallBold, color: C.overlayLight70 },
+  stepLbl: { ...Typ.smallMedium, fontSize: 9, color: C.overlayLight80 },
+  stepLine: { flex: 1, height: 2, backgroundColor: C.overlayLight30, marginBottom: 16 },
   stepLineActive: { backgroundColor: C.amber },
 
   scroll: { padding: 16, paddingBottom: 24 },
   card: { backgroundColor: C.surface, borderRadius: 18, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: C.border, shadowColor: C.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  cardTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text, marginBottom: 14 },
+  cardTitle: { ...Typ.price, color: C.text, marginBottom: 14 },
 
-  label: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginBottom: 6, marginTop: 12 },
-  input: { borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontFamily: "Inter_400Regular", fontSize: 13, color: C.text, backgroundColor: C.surfaceSecondary },
+  label: { ...Typ.bodyMedium, fontSize: 13, color: C.text, marginBottom: 6, marginTop: 12 },
+  input: { borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, ...Typ.body, fontSize: 13, color: C.text, backgroundColor: C.surfaceSecondary },
   locInput: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: C.surfaceSecondary },
-  locInputTxt: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: C.text },
+  locInputTxt: { flex: 1, ...Typ.body, fontSize: 13, color: C.text },
 
   typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 4 },
   typeCard: { width: "46%", padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: C.border, alignItems: "center", gap: 6, backgroundColor: C.surfaceSecondary },
   typeCardActive: { borderColor: C.amber, backgroundColor: C.amberBg },
-  typeLabel: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.text },
-  typeDesc: { fontFamily: "Inter_400Regular", fontSize: 10, color: C.textMuted, textAlign: "center" },
-  typeFare: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.primary },
-  weightNote: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.amber, marginTop: 6 },
+  typeLabel: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.text },
+  typeDesc: { ...Typ.small, fontSize: 10, color: C.textMuted, textAlign: "center" },
+  typeFare: { ...Typ.captionBold, color: C.primary },
+  weightNote: { ...Typ.small, color: C.amber, marginTop: 6 },
 
   fareCard: { backgroundColor: C.amberBg, borderRadius: 16, padding: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: C.amberBorder, marginHorizontal: 0, marginBottom: 12 },
-  fareLbl2: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.amberDark },
-  fareNote: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.amberBrown, marginTop: 2 },
-  fareAmt: { fontFamily: "Inter_700Bold", fontSize: 24, color: C.amber },
+  fareLbl2: { ...Typ.bodySemiBold, color: C.amberDark },
+  fareNote: { ...Typ.small, color: C.amberBrown, marginTop: 2 },
+  fareAmt: { ...Typ.h2, fontSize: 24, color: C.amber },
 
   payOpt: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, borderWidth: 1.5, borderColor: C.border, marginBottom: 10 },
   payOptActive: { borderColor: C.amber, backgroundColor: C.amberBg },
   payIcon: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  payLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
-  paySub: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginTop: 2 },
+  payLabel: { ...Typ.bodySemiBold, color: C.text },
+  paySub: { ...Typ.small, color: C.textMuted, marginTop: 2 },
 
   summaryCard: { backgroundColor: C.surface, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: C.border, shadowColor: C.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  summaryTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, marginBottom: 14 },
+  summaryTitle: { ...Typ.h3, fontSize: 16, color: C.text, marginBottom: 14 },
   summaryRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 10 },
   summaryDot: { width: 10, height: 10, borderRadius: 5, marginTop: 3 },
-  summaryTxt: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, lineHeight: 18 },
-  summaryTotal: { flex: 1, fontFamily: "Inter_700Bold", fontSize: 16, color: C.text },
-  summaryFare: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.amber },
+  summaryTxt: { flex: 1, ...Typ.body, fontSize: 13, color: C.textSecondary, lineHeight: 18 },
+  summaryTotal: { flex: 1, ...Typ.h3, fontSize: 16, color: C.text },
+  summaryFare: { ...Typ.title, color: C.amber },
 
   navBar: { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.surface, paddingHorizontal: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.border, shadowColor: C.text, shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 5 },
   prevBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 14, backgroundColor: C.surfaceSecondary },
-  prevBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
+  prevBtnTxt: { ...Typ.bodySemiBold, color: C.text },
   nextBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 15, borderRadius: 16, backgroundColor: C.amber, shadowColor: C.amber, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
-  nextBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.textInverse },
+  nextBtnTxt: { ...Typ.body, fontFamily: Font.bold, color: C.textInverse },
 
   locModal: { flex: 1, backgroundColor: C.surface },
   locModalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  locModalTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text },
+  locModalTitle: { ...Typ.price, color: C.text },
   locCloseBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
   locSearchRow: { flexDirection: "row", alignItems: "center", gap: 10, margin: 12, backgroundColor: C.surfaceSecondary, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: C.borderLight },
-  locSearchInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 14, color: C.text, paddingVertical: 0 },
+  locSearchInput: { flex: 1, ...Typ.body, color: C.text, paddingVertical: 0 },
   locOption: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.borderLight },
-  locOptionTxt: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.text },
+  locOptionTxt: { ...Typ.bodyMedium, color: C.text },
   locIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.blueSoft, alignItems: "center", justifyContent: "center" },
 
   confirmCard: { backgroundColor: C.surface, borderRadius: 24, padding: 28, alignItems: "center", width: "100%", borderWidth: 1, borderColor: C.border, gap: 12, shadowColor: C.text, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 5 },
   confirmIconCircle: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  confirmTitle: { fontFamily: "Inter_700Bold", fontSize: 24, color: C.text },
-  confirmSub: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 21 },
+  confirmTitle: { ...Typ.h2, fontSize: 24, color: C.text },
+  confirmSub: { ...Typ.body, color: C.textMuted, textAlign: "center", lineHeight: 21 },
   confirmRow: { flexDirection: "row", alignItems: "center", gap: 8, width: "100%" },
   confirmInfoBox: { flex: 1, backgroundColor: C.surfaceSecondary, borderRadius: 14, padding: 12 },
-  confirmInfoLbl: { fontFamily: "Inter_500Medium", fontSize: 10, color: C.textMuted, marginBottom: 4 },
-  confirmInfoVal: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.text },
+  confirmInfoLbl: { ...Typ.smallMedium, fontSize: 10, color: C.textMuted, marginBottom: 4 },
+  confirmInfoVal: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.text },
   fareBox: { width: "100%", backgroundColor: C.amberBg, borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  fareLbl: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.amberDark },
-  fareVal: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.amber },
+  fareLbl: { ...Typ.bodyMedium, fontSize: 13, color: C.amberDark },
+  fareVal: { ...Typ.h2, color: C.amber },
   doneBtn: { backgroundColor: C.amber, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 24, alignItems: "center", justifyContent: "center", flexDirection: "row" },
-  doneBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.textInverse },
+  doneBtnTxt: { ...Typ.body, fontFamily: Font.bold, color: C.textInverse },
 });

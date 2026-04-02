@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
@@ -289,12 +290,12 @@ export default function OrderDetailScreen() {
         <View style={s.loadingWrap}>
           <Ionicons name="alert-circle-outline" size={48} color={C.textMuted} />
           <Text style={s.loadingText}>{isParcel ? "Parcel not found" : isRide ? "Ride not found" : "Order not found"}</Text>
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 4 }}>This order may have been removed or you may not have access.</Text>
+          <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginTop: 4 }}>This order may have been removed or you may not have access.</Text>
           <Pressable
             onPress={() => router.replace("/(tabs)")}
             style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: C.primary, borderRadius: 14 }}
           >
-            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textInverse }}>Go to Home</Text>
+            <Text style={{ ...Typ.bodySemiBold, color: C.textInverse }}>Go to Home</Text>
           </Pressable>
         </View>
       </View>
@@ -377,7 +378,7 @@ export default function OrderDetailScreen() {
             {trackFailed && (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderBottomWidth: 1, borderBottomColor: C.amberBorder, paddingHorizontal: 14, paddingVertical: 10 }}>
                 <Ionicons name="warning-outline" size={15} color={C.amber} />
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.amberDark, flex: 1 }}>Live tracking is temporarily unavailable. Your order is still on the way.</Text>
+                <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>Live tracking is temporarily unavailable. Your order is still on the way.</Text>
               </View>
             )}
             {/* Static map showing rider position */}
@@ -394,15 +395,15 @@ export default function OrderDetailScreen() {
                   <Ionicons name="navigate-outline" size={20} color={C.textInverse} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.emeraldDeep }}>
+                  <Text style={{ ...Typ.body, fontFamily: Font.bold, color: C.emeraldDeep }}>
                     {order.status === "in_transit" ? "In Transit" : "On the Way to You"}
                   </Text>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.emeraldDark, marginTop: 2 }}>
+                  <Text style={{ ...Typ.caption, color: C.emeraldDark, marginTop: 2 }}>
                     {etaMinutes !== null ? `ETA: ~${etaMinutes} min` : "Your delivery is heading your way"}
                   </Text>
                 </View>
                 <View style={{ backgroundColor: C.emerald, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 11, color: C.textInverse }}>LIVE</Text>
+                  <Text style={{ ...Typ.smallBold, color: C.textInverse }}>LIVE</Text>
                 </View>
               </View>
               {order.deliveryAddress ? (
@@ -419,7 +420,7 @@ export default function OrderDetailScreen() {
                   style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.surface, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: C.emeraldBorder }}
                 >
                   <Ionicons name="location-outline" size={16} color={C.emerald} />
-                  <Text style={{ flex: 1, fontFamily: "Inter_400Regular", fontSize: 12, color: C.emeraldDeep }} numberOfLines={1}>
+                  <Text style={{ flex: 1, ...Typ.caption, color: C.emeraldDeep }} numberOfLines={1}>
                     {order.deliveryAddress}
                   </Text>
                   <Ionicons name="open-outline" size={14} color={C.emerald} />
@@ -449,7 +450,7 @@ export default function OrderDetailScreen() {
                           ? <Ionicons name="checkmark" size={13} color={C.textInverse} />
                           : <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.slate }} />}
                       </View>
-                      <Text style={[s.stepLabel, done && { color: C.text }, active && { fontFamily: "Inter_700Bold" }]}>
+                      <Text style={[s.stepLabel, done && { color: C.text }, active && { fontFamily: Font.bold }]}>
                         {activeStepLabels[i]}
                       </Text>
                     </View>
@@ -475,26 +476,26 @@ export default function OrderDetailScreen() {
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.emeraldDot, marginTop: 4 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Pickup</Text>
-                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 }}>{order.pickupAddress || "—"}</Text>
+                  <Text style={{ ...Typ.small, color: C.textMuted }}>Pickup</Text>
+                  <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text, marginTop: 2 }}>{order.pickupAddress || "—"}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.redBright, marginTop: 4 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Drop-off</Text>
-                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, marginTop: 2 }}>{order.dropAddress || "—"}</Text>
+                  <Text style={{ ...Typ.small, color: C.textMuted }}>Drop-off</Text>
+                  <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text, marginTop: 2 }}>{order.dropAddress || "—"}</Text>
                 </View>
               </View>
               {order.distance ? (
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <View style={{ flex: 1, backgroundColor: C.surfaceSecondary, borderRadius: 10, padding: 10, alignItems: "center" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Distance</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, marginTop: 2 }}>{Number.isFinite(parseFloat(order.distance)) ? parseFloat(order.distance).toFixed(1) : "—"} km</Text>
+                    <Text style={{ ...Typ.small, color: C.textMuted }}>Distance</Text>
+                    <Text style={{ ...Typ.body, fontFamily: Font.bold, color: C.text, marginTop: 2 }}>{Number.isFinite(parseFloat(order.distance)) ? parseFloat(order.distance).toFixed(1) : "—"} km</Text>
                   </View>
                   <View style={{ flex: 1, backgroundColor: C.surfaceSecondary, borderRadius: 10, padding: 10, alignItems: "center" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Fare</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.amber, marginTop: 2 }}>Rs. {Number.isFinite(parseFloat(order.fare)) ? parseFloat(order.fare).toLocaleString() : "0"}</Text>
+                    <Text style={{ ...Typ.small, color: C.textMuted }}>Fare</Text>
+                    <Text style={{ ...Typ.body, fontFamily: Font.bold, color: C.amber, marginTop: 2 }}>Rs. {Number.isFinite(parseFloat(order.fare)) ? parseFloat(order.fare).toLocaleString() : "0"}</Text>
                   </View>
                 </View>
               ) : (
@@ -530,7 +531,7 @@ export default function OrderDetailScreen() {
             {isPharmacy && order.prescriptionNote ? (
               <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: C.purpleLight, borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.purpleBorder }}>
                 <Ionicons name="document-text-outline" size={16} color={C.purple} style={{ marginTop: 1 }} />
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.purpleDeep, flex: 1, lineHeight: 19 }}>{order.prescriptionNote}</Text>
+                <Text style={{ ...Typ.body, fontSize: 13, color: C.purpleDeep, flex: 1, lineHeight: 19 }}>{order.prescriptionNote}</Text>
               </View>
             ) : null}
 
@@ -703,77 +704,77 @@ const s = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
   backBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
+  headerTitle: { ...Typ.h3, color: C.text },
   loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loadingText: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted },
+  loadingText: { ...Typ.body, color: C.textMuted },
   scroll: { padding: 16, gap: 14 },
   statusCard: {
     backgroundColor: C.surface, borderRadius: 20, padding: 24, alignItems: "center",
     borderWidth: 1.5, gap: 8,
   },
   statusIcon: { width: 56, height: 56, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  statusLabel: { fontFamily: "Inter_700Bold", fontSize: 20 },
-  orderId: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.textMuted },
+  statusLabel: { ...Typ.title },
+  orderId: { ...Typ.bodyMedium, fontSize: 13, color: C.textMuted },
   etaChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.amberSoft, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginTop: 4 },
-  etaText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.amberDark },
+  etaText: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.amberDark },
   stepperCard: { backgroundColor: C.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border },
-  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.text, marginBottom: 14 },
+  sectionTitle: { ...Typ.body, fontFamily: Font.bold, color: C.text, marginBottom: 14 },
   stepperRow: { flexDirection: "row", alignItems: "flex-start", overflow: "hidden" },
   stepItem: { alignItems: "center", flex: 1, gap: 6, minWidth: 0 },
   stepDot: {
     width: 28, height: 28, borderRadius: 14, backgroundColor: C.background,
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
-  stepLabel: { fontSize: 9, textAlign: "center", color: C.textMuted, fontFamily: "Inter_400Regular", maxWidth: "100%", flexShrink: 1 },
+  stepLabel: { ...Typ.small, fontSize: 9, textAlign: "center", color: C.textMuted, maxWidth: "100%", flexShrink: 1 },
   stepLine: { height: 2, flex: 0.3, backgroundColor: C.background, marginTop: 13, borderRadius: 1, flexShrink: 1 },
   card: { backgroundColor: C.surface, borderRadius: 20, padding: 18, borderWidth: 1, borderColor: C.border },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
   typeChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
-  typeChipText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
-  vendorName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
+  typeChipText: { ...Typ.captionMedium, fontFamily: Font.semiBold },
+  vendorName: { ...Typ.bodySemiBold, color: C.text },
   itemRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.borderLight },
   itemQty: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  itemQtyText: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.primary },
-  itemName: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: C.text },
-  itemPrice: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.text },
+  itemQtyText: { ...Typ.captionBold, color: C.primary },
+  itemName: { flex: 1, ...Typ.bodyMedium, fontSize: 13, color: C.text },
+  itemPrice: { ...Typ.buttonSmall, color: C.text },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 14, borderTopWidth: 1.5, borderTopColor: C.border },
-  totalLabel: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text },
-  totalAmount: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.success },
-  addressText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: C.text, lineHeight: 20 },
+  totalLabel: { ...Typ.button, fontFamily: Font.bold, color: C.text },
+  totalAmount: { ...Typ.title, color: C.success },
+  addressText: { flex: 1, ...Typ.bodyMedium, fontSize: 13, color: C.text, lineHeight: 20 },
   riderRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   riderAvatar: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.blueSoft, alignItems: "center", justifyContent: "center" },
-  riderInitial: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.primary },
-  riderName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
-  riderPhone: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
+  riderInitial: { ...Typ.h3, color: C.primary },
+  riderName: { ...Typ.bodySemiBold, color: C.text },
+  riderPhone: { ...Typ.caption, color: C.textMuted, marginTop: 2 },
   callBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.primary, alignItems: "center", justifyContent: "center" },
-  paymentText: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.text },
+  paymentText: { ...Typ.bodyMedium, color: C.text },
   cancelOrderBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     paddingVertical: 14, borderRadius: 16, backgroundColor: C.redBg,
     borderWidth: 1.5, borderColor: C.redBorder,
   },
-  cancelOrderBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.red },
+  cancelOrderBtnText: { ...Typ.button, color: C.red },
   refundSection: {
     backgroundColor: C.orangeBg, borderRadius: 16, padding: 18,
     borderWidth: 1.5, borderColor: C.orangeBorder, gap: 8,
   },
-  refundTitle: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.orangeDark },
-  refundDesc: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.orangeDark, lineHeight: 20 },
+  refundTitle: { ...Typ.button, fontFamily: Font.bold, color: C.orangeDark },
+  refundDesc: { ...Typ.body, fontSize: 13, color: C.orangeDark, lineHeight: 20 },
   refundBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     paddingVertical: 12, borderRadius: 12, backgroundColor: C.orangeBrand, marginTop: 4,
   },
-  refundBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textInverse },
+  refundBtnText: { ...Typ.bodySemiBold, color: C.textInverse },
   refundSuccessBox: {
     flexDirection: "row", alignItems: "center", gap: 10,
     backgroundColor: C.emeraldSoft, borderRadius: 16, padding: 16,
     borderWidth: 1.5, borderColor: C.emeraldBorder,
   },
-  refundSuccessText: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.emeraldDeep, flex: 1 },
+  refundSuccessText: { ...Typ.bodyMedium, fontSize: 13, color: C.emeraldDeep, flex: 1 },
   cancelDisabledBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: C.surfaceSecondary,
     borderWidth: 1, borderColor: C.border, opacity: 0.65,
   },
-  cancelDisabledBtnText: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.textMuted },
+  cancelDisabledBtnText: { ...Typ.bodyMedium, fontSize: 13, color: C.textMuted },
 });

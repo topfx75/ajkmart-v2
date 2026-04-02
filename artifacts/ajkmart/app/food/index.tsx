@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Colors, { typography } from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
 import { useCart } from "@/context/CartContext";
 import { withServiceGuard } from "@/components/ServiceGuard";
@@ -178,14 +179,14 @@ function FoodScreenInner() {
         <View style={{ backgroundColor: C.indigoSoft, flexDirection: "row", alignItems: "center", padding: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: C.indigoBorder }}>
           <Ionicons name="warning-outline" size={18} color={C.indigoDark} />
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: C.indigoDarkest }}>{cartType === "pharmacy" ? "Pharmacy cart active" : cartType === "mart" ? "Mart cart active" : "Another cart active"}</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.indigoDarkest }}>Adding Food items will clear your existing cart</Text>
+            <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.indigoDarkest }}>{cartType === "pharmacy" ? "Pharmacy cart active" : cartType === "mart" ? "Mart cart active" : "Another cart active"}</Text>
+            <Text style={{ ...Typ.caption, color: C.indigoDarkest }}>Adding Food items will clear your existing cart</Text>
           </View>
           <Pressable
             onPress={() => setClearBannerConfirm(true)}
             style={{ backgroundColor: C.indigoDark, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
           >
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: C.textInverse }}>Clear Cart</Text>
+            <Text style={{ ...Typ.captionBold, color: C.textInverse }}>Clear Cart</Text>
           </Pressable>
         </View>
       )}
@@ -272,12 +273,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
   header: { paddingHorizontal: 16, paddingBottom: 16 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.overlayLight20, alignItems: "center", justifyContent: "center" },
   headerTitle: { ...typography.h3, fontSize: 20, color: C.textInverse },
-  headerSub: { ...typography.caption, color: "rgba(255,255,255,0.8)", marginTop: 2 },
-  cartBtn: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  headerSub: { ...typography.caption, color: C.overlayLight80, marginTop: 2 },
+  cartBtn: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.overlayLight20, alignItems: "center", justifyContent: "center" },
   cartBadge: { position: "absolute", top: -4, right: -4, backgroundColor: C.red, borderRadius: 9, minWidth: 18, height: 18, alignItems: "center", justifyContent: "center", paddingHorizontal: 4, borderWidth: 2, borderColor: C.amber },
-  cartBadgeTxt: { ...typography.small, fontFamily: "Inter_700Bold", color: C.textInverse },
+  cartBadgeTxt: { ...typography.small, fontFamily: Font.bold, color: C.textInverse },
   searchBar: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, shadowColor: C.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
   searchInput: { flex: 1, ...typography.body, color: C.text, padding: 0 },
 
@@ -291,19 +292,19 @@ const styles = StyleSheet.create({
   secRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginTop: 18, marginBottom: 12 },
   secTitle: { ...typography.h3, fontSize: 17, color: C.text },
   countBadge: { backgroundColor: C.food, borderRadius: 10, minWidth: 24, height: 24, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
-  countBadgeTxt: { ...typography.small, fontFamily: "Inter_700Bold", color: C.textInverse },
+  countBadgeTxt: { ...typography.small, fontFamily: Font.bold, color: C.textInverse },
 
   foodList: { paddingHorizontal: 16, paddingTop: 4, gap: 12 },
   foodCard: { backgroundColor: C.surface, borderRadius: 18, flexDirection: "row", overflow: "hidden", shadowColor: C.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 3 },
   foodImageBox: { width: 110, backgroundColor: C.amberSoft, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  timeBadge: { position: "absolute", bottom: 8, left: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  timeText: { fontFamily: "Inter_600SemiBold", fontSize: 10, color: C.textInverse },
+  timeBadge: { position: "absolute", bottom: 8, left: 8, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: C.overlayDark60, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  timeText: { ...Typ.smallMedium, fontSize: 10, color: C.textInverse },
   foodInfo: { flex: 1, padding: 14, justifyContent: "center" },
-  foodName: { ...typography.button, fontFamily: "Inter_700Bold", color: C.text, marginBottom: 3 },
+  foodName: { ...typography.button, fontFamily: Font.bold, color: C.text, marginBottom: 3 },
   foodVendor: { ...typography.caption, color: C.textSecondary, marginBottom: 8 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
   ratingPill: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: C.amberSoft, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  ratingText: { ...typography.caption, fontFamily: "Inter_700Bold", color: C.amberDark },
+  ratingText: { ...typography.caption, fontFamily: Font.bold, color: C.amberDark },
   reviewCount: { ...typography.small, color: C.textMuted },
   foodFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   foodPrice: { ...typography.h3, fontSize: 17, color: C.text },
@@ -311,14 +312,14 @@ const styles = StyleSheet.create({
   addBtnAdded: { backgroundColor: C.success },
   stepperRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   stepperBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.dangerSoft, alignItems: "center", justifyContent: "center" },
-  stepperQty: { ...typography.body, fontFamily: "Inter_700Bold", color: C.text, minWidth: 18, textAlign: "center" },
+  stepperQty: { ...typography.body, fontFamily: Font.bold, color: C.text, minWidth: 18, textAlign: "center" },
 
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80, gap: 12 },
   errorIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   errorTitle: { ...typography.h3, color: C.text },
   errorSub: { ...typography.body, fontSize: 13, color: C.textMuted },
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.food, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, marginTop: 4 },
-  retryBtnTxt: { ...typography.body, fontFamily: "Inter_700Bold", color: C.textInverse },
+  retryBtnTxt: { ...typography.body, fontFamily: Font.bold, color: C.textInverse },
   loadingText: { ...typography.body, fontSize: 13, color: C.textMuted, marginTop: 10 },
   skeletonList: { paddingHorizontal: 16, paddingTop: 12, gap: 12 },
   skeletonCard: { flexDirection: "row", backgroundColor: C.surface, borderRadius: 18, overflow: "hidden", height: 110 },

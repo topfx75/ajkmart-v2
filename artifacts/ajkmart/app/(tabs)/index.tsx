@@ -21,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 
 import Colors, { spacing, radii, shadows, typography, getFontFamily } from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -261,13 +262,13 @@ const riderS = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   statusSection: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  statusLabel: { fontFamily: "Inter_700Bold", fontSize: 13, color: C.textInverse },
-  statusSub: { fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 1 },
-  permDenied: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.redMist, marginTop: 2 },
+  statusLabel: { ...Typ.buttonSmall, fontFamily: Font.bold, color: C.textInverse },
+  statusSub: { ...Typ.small, color: C.overlayLight75, marginTop: 1 },
+  permDenied: { ...Typ.smallMedium, color: C.redMist, marginTop: 2 },
   toggleBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.lg, minWidth: 90, alignItems: "center" },
   toggleOn: { backgroundColor: C.emeraldDot },
-  toggleOff: { backgroundColor: "rgba(255,255,255,0.2)" },
-  toggleTxt: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.textInverse },
+  toggleOff: { backgroundColor: C.overlayLight20 },
+  toggleTxt: { ...Typ.captionBold, color: C.textInverse },
 });
 
 function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: number; onPress: () => void; appName?: string }) {
@@ -403,7 +404,7 @@ function BannerCarousel({ features }: { features: Record<string, boolean> }) {
                 </View>
               </View>
               <View style={styles.bannerIconWrap}>
-                <Ionicons name={b.icon} size={56} color="rgba(255,255,255,0.15)" />
+                <Ionicons name={b.icon} size={56} color={C.overlayLight15} />
               </View>
             </LinearGradient>
           </Pressable>
@@ -573,7 +574,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="Dismiss announcement"
           >
-            <Ionicons name="close" size={16} color="rgba(255,255,255,0.8)" />
+            <Ionicons name="close" size={16} color={C.overlayLight80} />
           </Pressable>
         </View>
       )}
@@ -596,7 +597,7 @@ export default function HomeScreen() {
               </Text>
               <Text style={urduBold(styles.hdrTitle)} accessibilityRole="header">{T("whatDoYouWant")}</Text>
               <View style={styles.locRow}>
-                <Ionicons name="location" size={12} color="rgba(255,255,255,0.7)" />
+                <Ionicons name="location" size={12} color={C.overlayLight70} />
                 <Text style={styles.locTxt}>{platformConfig.platform.businessAddress}</Text>
               </View>
             </View>
@@ -733,7 +734,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: C.overlayLight30,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -753,19 +754,19 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: H_PAD, paddingBottom: spacing.lg },
   hdrRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: spacing.lg },
   hdrActions: { flexDirection: "row", gap: spacing.sm },
-  greeting: { ...typography.caption, color: "rgba(255,255,255,0.8)", marginBottom: 2 },
+  greeting: { ...typography.caption, color: C.overlayLight80, marginBottom: 2 },
   hdrTitle: { ...typography.h2, color: C.textInverse, marginBottom: Platform.OS === "web" ? 2 : 5 },
   locRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  locTxt: { ...typography.small, color: "rgba(255,255,255,0.7)" },
+  locTxt: { ...typography.small, color: C.overlayLight70 },
   cartBtn: {
     width: 44,
     height: 44,
     borderRadius: radii.lg,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: C.overlayLight15,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: C.overlayLight10,
   },
   cartBadge: {
     position: "absolute",
@@ -781,7 +782,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: C.surface,
   },
-  cartBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 9, color: C.textInverse },
+  cartBadgeTxt: { ...Typ.tiny, fontSize: 9, color: C.textInverse },
 
   announceBar: {
     backgroundColor: C.primary,
@@ -795,7 +796,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: C.overlayLight20,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -856,12 +857,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radii.lg,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: C.overlayLight15,
     alignItems: "center",
     justifyContent: "center",
   },
-  walletLbl: { ...typography.caption, color: "rgba(255,255,255,0.8)", marginBottom: 2 },
-  walletBal: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.textInverse },
+  walletLbl: { ...typography.caption, color: C.overlayLight80, marginBottom: 2 },
+  walletBal: { ...Typ.title, color: C.textInverse },
   walletTopUp: {
     flexDirection: "row",
     alignItems: "center",
@@ -885,20 +886,20 @@ const styles = StyleSheet.create({
   },
   bannerTagRow: { marginBottom: 7 },
   bannerTagChip: {
-    backgroundColor: "rgba(255,255,255,0.22)",
+    backgroundColor: C.overlayLight22,
     alignSelf: "flex-start",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: radii.full,
   },
   bannerTagTxt: { ...typography.smallMedium, color: C.textInverse },
-  bannerTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.textInverse, marginBottom: 5 },
-  bannerDesc: { ...typography.caption, color: "rgba(255,255,255,0.9)", lineHeight: 17, marginBottom: spacing.md },
+  bannerTitle: { ...Typ.title, color: C.textInverse, marginBottom: 5 },
+  bannerDesc: { ...typography.caption, color: C.overlayLight90, lineHeight: 17, marginBottom: spacing.md },
   bannerCta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: C.overlayLight20,
     alignSelf: "flex-start",
     paddingHorizontal: 14,
     paddingVertical: 8,

@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useToast } from "@/context/ToastContext";
@@ -68,8 +69,8 @@ function AddressPickerModal({
           {addresses.length === 0 ? (
             <View style={{ alignItems: "center", paddingVertical: 28, gap: 10 }}>
               <Ionicons name="location-outline" size={40} color={C.textMuted} />
-              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.text }}>No saved addresses</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, textAlign: "center" }}>
+              <Text style={{ ...Typ.button, color: C.text }}>No saved addresses</Text>
+              <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, textAlign: "center" }}>
                 Add a delivery address to continue
               </Text>
             </View>
@@ -749,22 +750,22 @@ export default function CartScreen() {
           <View style={styles.handle} />
           <View style={{ alignItems: "center", marginBottom: 20 }}>
             <Text style={{ fontSize: 36, marginBottom: 8 }}>{gwLogo}</Text>
-            <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: C.text }}>Pay with {gwName}</Text>
+            <Text style={{ ...Typ.h3, color: C.text }}>Pay with {gwName}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-              <Text style={{ fontSize: 13, fontFamily: "Inter_500Medium", color: C.textSecondary }}>Rs. {grandTotal.toLocaleString()}</Text>
+              <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.textSecondary }}>Rs. {grandTotal.toLocaleString()}</Text>
             </View>
           </View>
 
           {gwStep === "input" && (
             <>
-              <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: C.text, marginBottom: 8 }}>
+              <Text style={{ ...Typ.buttonSmall, color: C.text, marginBottom: 8 }}>
                 {gwName} Mobile Number
               </Text>
               <View style={{ borderWidth: 1.5, borderColor: C.border, borderRadius: 14, flexDirection: "row", alignItems: "center", paddingHorizontal: 14, marginBottom: 16, backgroundColor: C.surfaceSecondary }}>
                 <Text style={{ fontSize: 16, color: C.textSecondary, marginRight: 8 }}>{gwLogo}</Text>
-                <Text style={{ fontSize: 14, fontFamily: "Inter_400Regular", color: C.textSecondary, marginRight: 4 }}>+92</Text>
+                <Text style={{ ...Typ.body, color: C.textSecondary, marginRight: 4 }}>+92</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontFamily: "Inter_500Medium", color: gwMobile ? C.text : C.textSecondary, paddingVertical: 14 }}>
+                  <Text style={{ ...Typ.bodyMedium, fontSize: 15, color: gwMobile ? C.text : C.textSecondary, paddingVertical: 14 }}>
                     {gwMobile || "03XX-XXXXXXX"}
                   </Text>
                 </View>
@@ -782,14 +783,14 @@ export default function CartScreen() {
                           borderWidth: 1, borderColor: btn.isOk ? "transparent" : C.border,
                         }}
                       >
-                        <Text style={{ fontSize: 20, fontFamily: "Inter_700Bold", color: btn.isOk ? C.textInverse : C.text }}>{btn.label}</Text>
+                        <Text style={{ ...Typ.title, color: btn.isOk ? C.textInverse : C.text }}>{btn.label}</Text>
                       </Pressable>
                     ))}
                   </View>
                 ))}
               </View>
               <Pressable onPress={() => { if (!gwPaying) setShowGwModal(false); }} style={{ marginTop: 12, paddingVertical: 12, alignItems: "center" }}>
-                <Text style={{ fontSize: 14, fontFamily: "Inter_500Medium", color: C.textSecondary }}>Cancel</Text>
+                <Text style={{ ...Typ.bodyMedium, color: C.textSecondary }}>Cancel</Text>
               </Pressable>
             </>
           )}
@@ -799,8 +800,8 @@ export default function CartScreen() {
               {gwBackgrounded ? (
                 <>
                   <Ionicons name="pause-circle-outline" size={48} color={C.textMuted} />
-                  <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text, marginTop: 16 }}>Polling Paused</Text>
-                  <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
+                  <Text style={{ ...Typ.h3, fontSize: 16, color: C.text, marginTop: 16 }}>Polling Paused</Text>
+                  <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
                     The app was moved to the background. Resume polling to check if your payment went through.
                   </Text>
                   <Pressable
@@ -839,14 +840,14 @@ export default function CartScreen() {
                     style={{ marginTop: 16, backgroundColor: C.primary, borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 8 }}
                   >
                     <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
-                    <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: C.textInverse }}>Check Payment Status</Text>
+                    <Text style={{ fontSize: 14, fontFamily: Font.semiBold, color: C.textInverse }}>Check Payment Status</Text>
                   </Pressable>
                 </>
               ) : (
                 <>
                   <ActivityIndicator size="large" color={gwColor} />
-                  <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.text, marginTop: 20 }}>Payment Processing...</Text>
-                  <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
+                  <Text style={{ ...Typ.h3, fontSize: 16, color: C.text, marginTop: 20 }}>Payment Processing...</Text>
+                  <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 8, textAlign: "center" }}>
                     {`A ${gwName} notification will be sent to ${gwMobile} — please approve`}
                   </Text>
                 </>
@@ -857,8 +858,8 @@ export default function CartScreen() {
           {gwStep === "done" && (
             <View style={{ alignItems: "center", paddingVertical: 24 }}>
               <Text style={{ fontSize: 48 }}>✅</Text>
-              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: C.greenBright, marginTop: 12 }}>Payment Successful!</Text>
-              <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: C.textSecondary, marginTop: 6 }}>Placing your order...</Text>
+              <Text style={{ ...Typ.h3, fontSize: 16, color: C.greenBright, marginTop: 12 }}>Payment Successful!</Text>
+              <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 6 }}>Placing your order...</Text>
             </View>
           )}
         </Pressable>
@@ -873,21 +874,21 @@ export default function CartScreen() {
           <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: C.yellowLightBg, justifyContent: "center", alignItems: "center", marginBottom: 20 }}>
             <Ionicons name="warning-outline" size={32} color={C.amberBrown} />
           </View>
-          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: C.text, textAlign: "center" }}>Taking longer than expected</Text>
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 10, textAlign: "center", lineHeight: 20 }}>
+          <Text style={{ ...Typ.h3, color: C.text, textAlign: "center" }}>Taking longer than expected</Text>
+          <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginTop: 10, textAlign: "center", lineHeight: 20 }}>
             Your order was placed but we haven't received server confirmation yet. Check your orders list to see if it appears.
           </Text>
           <Pressable
             onPress={() => router.push("/(tabs)/orders")}
             style={{ marginTop: 24, backgroundColor: C.primary, borderRadius: 14, paddingHorizontal: 28, paddingVertical: 14 }}
           >
-            <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.textInverse }}>View My Orders</Text>
+            <Text style={{ ...Typ.button, color: C.textInverse }}>View My Orders</Text>
           </Pressable>
           <Pressable
             onPress={dismissAck}
             style={{ marginTop: 12, paddingVertical: 10 }}
           >
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Dismiss</Text>
+            <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Dismiss</Text>
           </Pressable>
         </View>
       );
@@ -895,8 +896,8 @@ export default function CartScreen() {
     return (
       <View style={[styles.container, { backgroundColor: C.background, justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color={C.primary} />
-        <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 16, color: C.text, marginTop: 16 }}>Confirming your order…</Text>
-        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginTop: 6, textAlign: "center", maxWidth: 260 }}>
+        <Text style={{ ...Typ.subtitle, color: C.text, marginTop: 16 }}>Confirming your order…</Text>
+        <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginTop: 6, textAlign: "center", maxWidth: 260 }}>
           Waiting for server confirmation. Please wait.
         </Text>
       </View>
@@ -919,7 +920,7 @@ export default function CartScreen() {
           <Text style={styles.successAddr} numberOfLines={2}>{deliveryLine}</Text>
           <Text style={styles.successEta}>ETA: {orderSuccess.time}</Text>
           <View style={{ backgroundColor: C.greenBg, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, marginTop: 6, borderWidth: 1, borderColor: C.greenBorder }}>
-            <Text style={{ fontSize: 13, fontFamily: "Inter_600SemiBold", color: C.greenDeep, textAlign: "center" }}>
+            <Text style={{ ...Typ.buttonSmall, color: C.greenDeep, textAlign: "center" }}>
               Payment: {methodLabel[orderSuccess.payMethod || "cash"] || orderSuccess.payMethod}
             </Text>
           </View>
@@ -1143,7 +1144,7 @@ export default function CartScreen() {
                 </View>
                 {isGateway && sel && (
                   <View style={{ backgroundColor: clr.tint, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
-                    <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: C.textInverse }}>Enter No. →</Text>
+                    <Text style={{ ...Typ.smallBold, color: C.textInverse }}>Enter No. →</Text>
                   </View>
                 )}
                 {!isGateway && (
@@ -1164,8 +1165,8 @@ export default function CartScreen() {
                 <View style={{ flex: 1, backgroundColor: C.emeraldBg, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
                   <Text style={{ fontSize: 18 }}>🏷️</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontFamily: "Inter_700Bold", color: C.emeraldDeep }}>{promoCode}</Text>
-                    <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: C.emerald }}>Rs. {promoDiscount.toLocaleString()} discount applied!</Text>
+                    <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.emeraldDeep }}>{promoCode}</Text>
+                    <Text style={{ ...Typ.caption, color: C.emerald }}>Rs. {promoDiscount.toLocaleString()} discount applied!</Text>
                   </View>
                 </View>
                 <Pressable onPress={removePromo} style={{ padding: 8 }}>
@@ -1185,7 +1186,7 @@ export default function CartScreen() {
                       flex: 1, borderWidth: 1.5, borderColor: promoError ? C.red : C.border,
                       borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11,
                       fontSize: 14, color: C.text, backgroundColor: C.surfaceSecondary,
-                      fontFamily: "Inter_500Medium", letterSpacing: 1,
+                      fontFamily: Font.medium, letterSpacing: 1,
                     }}
                   />
                   <Pressable
@@ -1198,12 +1199,12 @@ export default function CartScreen() {
                   >
                     {promoLoading
                       ? <ActivityIndicator size="small" color={C.textInverse} />
-                      : <Text style={{ color: C.textInverse, fontFamily: "Inter_700Bold", fontSize: 13 }}>Apply</Text>
+                      : <Text style={{ color: C.textInverse, ...Typ.buttonSmall, fontFamily: Font.bold }}>Apply</Text>
                     }
                   </Pressable>
                 </View>
                 {promoError && (
-                  <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: C.red, marginTop: 6, marginLeft: 2 }}>{promoError}</Text>
+                  <Text style={{ ...Typ.caption, color: C.red, marginTop: 6, marginLeft: 2 }}>{promoError}</Text>
                 )}
               </View>
             )}
@@ -1242,16 +1243,16 @@ export default function CartScreen() {
             {finance.cashbackEnabled && cashbackAmt > 0 && (
               <View style={{ marginTop: 10, backgroundColor: C.emeraldBg, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Text style={{ fontSize: 16 }}>🎁</Text>
-                <Text style={{ fontSize: 12, fontFamily: "Inter_500Medium", color: C.emeraldDeep, flex: 1 }}>
-                  Earn <Text style={{ fontFamily: "Inter_700Bold" }}>Rs. {cashbackAmt}</Text> wallet cashback on this order!
+                <Text style={{ ...Typ.captionMedium, color: C.emeraldDeep, flex: 1 }}>
+                  Earn <Text style={{ fontFamily: Font.bold }}>Rs. {cashbackAmt}</Text> wallet cashback on this order!
                 </Text>
               </View>
             )}
             {walletCashbackAmt > 0 && (
               <View style={{ marginTop: 6, backgroundColor: C.blueSoft, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Text style={{ fontSize: 16 }}>💰</Text>
-                <Text style={{ fontSize: 12, fontFamily: "Inter_500Medium", color: C.navyDeep, flex: 1 }}>
-                  Wallet bonus: Earn <Text style={{ fontFamily: "Inter_700Bold" }}>Rs. {walletCashbackAmt}</Text> ({customer.walletCashbackPct}%) back!
+                <Text style={{ ...Typ.captionMedium, color: C.navyDeep, flex: 1 }}>
+                  Wallet bonus: Earn <Text style={{ fontFamily: Font.bold }}>Rs. {walletCashbackAmt}</Text> ({customer.walletCashbackPct}%) back!
                 </Text>
               </View>
             )}
@@ -1305,7 +1306,7 @@ export default function CartScreen() {
       {showUndoClear && (
         <View style={{ position: "absolute", bottom: 90, left: 16, right: 16, backgroundColor: C.slateDeep, borderRadius: 14, flexDirection: "row", alignItems: "center", padding: 14, gap: 10, shadowColor: C.text, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 10 }}>
           <Ionicons name="trash-outline" size={18} color={C.textMuted} />
-          <Text style={{ flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, color: C.surfaceSecondary }}>Cart cleared</Text>
+          <Text style={{ flex: 1, ...Typ.bodyMedium, fontSize: 13, color: C.surfaceSecondary }}>Cart cleared</Text>
           <Pressable onPress={() => {
             if (undoSnapshot) {
               restoreCart(undoSnapshot);
@@ -1314,7 +1315,7 @@ export default function CartScreen() {
             setUndoSnapshot(null);
             if (undoClearTimerRef.current) clearTimeout(undoClearTimerRef.current);
           }}>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: C.primary }}>Undo</Text>
+            <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.primary }}>Undo</Text>
           </Pressable>
         </View>
       )}
@@ -1327,101 +1328,101 @@ const styles = StyleSheet.create({
 
   header: { paddingHorizontal: 16, paddingBottom: 14 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.textInverse },
-  headerSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 2 },
-  clearBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.15)", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
-  clearText: { fontFamily: "Inter_500Medium", fontSize: 12, color: "rgba(255,255,255,0.9)" },
-  clearConfirm: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 14, padding: 12, marginTop: 10 },
-  clearConfirmTxt: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.textInverse },
-  clearNo: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.2)" },
-  clearNoTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textInverse },
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.overlayLight15, alignItems: "center", justifyContent: "center" },
+  headerTitle: { ...Typ.title, color: C.textInverse },
+  headerSub: { ...Typ.caption, color: C.overlayLight75, marginTop: 2 },
+  clearBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.overlayLight15, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
+  clearText: { ...Typ.captionMedium, color: C.overlayLight90 },
+  clearConfirm: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: C.overlayLight15, borderRadius: 14, padding: 12, marginTop: 10 },
+  clearConfirmTxt: { ...Typ.bodyMedium, fontSize: 13, color: C.textInverse },
+  clearNo: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: C.overlayLight20 },
+  clearNoTxt: { ...Typ.captionMedium, color: C.textInverse },
   clearYes: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, backgroundColor: C.red },
-  clearYesTxt: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.textInverse },
+  clearYesTxt: { ...Typ.captionBold, color: C.textInverse },
 
   scroll: { flex: 1 },
   section: { paddingHorizontal: 16, paddingTop: 18 },
-  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text, marginBottom: 12 },
+  sectionTitle: { ...Typ.h3, fontSize: 16, color: C.text, marginBottom: 12 },
 
   cartItem: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: C.surface, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: C.borderLight, shadowColor: C.text, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   itemThumb: { width: 56, height: 56, borderRadius: 14, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   itemInfo: { flex: 1 },
-  itemName: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text, marginBottom: 3 },
-  itemUnit: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
+  itemName: { ...Typ.bodySemiBold, color: C.text, marginBottom: 3 },
+  itemUnit: { ...Typ.caption, color: C.textMuted },
   qtyControl: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.surfaceSecondary, borderRadius: 12, paddingHorizontal: 4, paddingVertical: 4 },
   qtyBtn: { width: 30, height: 30, borderRadius: 9, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: C.border },
-  qtyText: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text, minWidth: 20, textAlign: "center" },
-  itemTotal: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.text, minWidth: 60, textAlign: "right" },
+  qtyText: { ...Typ.button, fontFamily: Font.bold, color: C.text, minWidth: 20, textAlign: "center" },
+  itemTotal: { ...Typ.button, fontFamily: Font.bold, color: C.text, minWidth: 60, textAlign: "right" },
 
   addrCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: C.surface, borderRadius: 16, borderWidth: 1.5, borderColor: C.border },
   addrCardIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.blueSoft, alignItems: "center", justifyContent: "center" },
-  addrCardLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
-  addrCardValue: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
+  addrCardLabel: { ...Typ.bodySemiBold, color: C.text },
+  addrCardValue: { ...Typ.caption, color: C.textMuted, marginTop: 2 },
   changeBtn: { flexDirection: "row", alignItems: "center", gap: 2 },
-  changeBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.primary },
+  changeBtnText: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.primary },
 
   etaRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.greenBg, marginHorizontal: 16, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: C.greenBorder },
   etaIconWrap: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.emeraldSoft, alignItems: "center", justifyContent: "center" },
-  etaText: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.emeraldDeep, flex: 1 },
+  etaText: { ...Typ.bodyMedium, fontSize: 13, color: C.emeraldDeep, flex: 1 },
 
   payOption: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: C.surface, borderRadius: 16, marginBottom: 8, borderWidth: 1.5, borderColor: C.border },
   payIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  payLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textSecondary },
-  paySub: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
+  payLabel: { ...Typ.bodySemiBold, color: C.textSecondary },
+  paySub: { ...Typ.caption, color: C.textMuted, marginTop: 2 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: C.border, alignItems: "center", justifyContent: "center" },
   radioDot: { width: 12, height: 12, borderRadius: 6 },
 
   summaryCard: { backgroundColor: C.surface, borderRadius: 18, padding: 16, borderWidth: 1, borderColor: C.border },
   summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 10 },
-  summaryLabel: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary },
-  summaryValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.text },
+  summaryLabel: { ...Typ.body, fontSize: 13, color: C.textSecondary },
+  summaryValue: { ...Typ.buttonSmall, color: C.text },
   summaryDivider: { borderTopWidth: 1, borderTopColor: C.border, paddingTop: 12, marginTop: 4 },
-  grandLabel: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.text },
-  grandValue: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.primary },
+  grandLabel: { ...Typ.h3, fontSize: 16, color: C.text },
+  grandValue: { ...Typ.h3, color: C.primary },
 
   checkoutBar: { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: C.surface, paddingHorizontal: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.border, shadowColor: C.text, shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 8 },
-  checkoutTotal: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.text },
-  checkoutItems: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
+  checkoutTotal: { ...Typ.title, color: C.text },
+  checkoutItems: { ...Typ.caption, color: C.textMuted },
   checkoutBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.primary, paddingHorizontal: 28, paddingVertical: 15, borderRadius: 16, shadowColor: C.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
-  checkoutBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 15, color: C.textInverse },
+  checkoutBtnTxt: { ...Typ.button, fontFamily: Font.bold, color: C.textInverse },
   minOrderWrap: { flex: 1, marginLeft: 16, gap: 6 },
-  minOrderTxt: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.amber },
+  minOrderTxt: { ...Typ.captionMedium, color: C.amber },
   minOrderBar: { height: 6, backgroundColor: C.amberSoft, borderRadius: 3, overflow: "hidden" as const },
   minOrderFill: { height: 6, backgroundColor: C.gold, borderRadius: 3 },
 
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  overlay: { flex: 1, backgroundColor: C.overlayDark50, justifyContent: "flex-end" },
   sheet: { backgroundColor: C.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 32 },
   handle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: 18 },
-  sheetTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text, marginBottom: 16 },
+  sheetTitle: { ...Typ.h3, color: C.text, marginBottom: 16 },
 
   addrOpt: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, borderWidth: 1.5, borderColor: C.border, marginBottom: 8 },
   addrOptSel: { borderColor: C.primary, backgroundColor: C.blueSoft },
   addrOptIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  addrOptLabel: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text },
-  addrOptAddress: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 },
-  addrOptCity: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
+  addrOptLabel: { ...Typ.bodySemiBold, color: C.text },
+  addrOptAddress: { ...Typ.caption, color: C.textMuted, marginTop: 2 },
+  addrOptCity: { ...Typ.small, color: C.textMuted },
   defaultTag: { backgroundColor: C.primary, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  defaultTagText: { fontFamily: "Inter_700Bold", fontSize: 9, color: C.textInverse },
+  defaultTagText: { ...Typ.tiny, fontSize: 9, color: C.textInverse },
   cancelBtn: { paddingVertical: 14, alignItems: "center", marginTop: 8 },
-  cancelBtnText: { fontFamily: "Inter_500Medium", fontSize: 14, color: C.textSecondary },
+  cancelBtnText: { ...Typ.bodyMedium, color: C.textSecondary },
 
   successWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
   successCircle: { width: 80, height: 80, borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 20 },
-  successTitle: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text, marginBottom: 8, textAlign: "center" },
-  successId: { fontFamily: "Inter_600SemiBold", fontSize: 16, color: C.primary, marginBottom: 4 },
-  successAddr: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 4 },
-  successEta: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.success, marginBottom: 6 },
+  successTitle: { ...Typ.h2, color: C.text, marginBottom: 8, textAlign: "center" },
+  successId: { ...Typ.subtitle, color: C.primary, marginBottom: 4 },
+  successAddr: { ...Typ.body, fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 4 },
+  successEta: { ...Typ.bodySemiBold, color: C.success, marginBottom: 6 },
   successBtns: { flexDirection: "row", gap: 12, marginTop: 20, width: "100%" },
   trackBtn: { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.primary, borderRadius: 16, paddingVertical: 15, shadowColor: C.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 3 },
-  trackBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.textInverse },
+  trackBtnTxt: { ...Typ.body, fontFamily: Font.bold, color: C.textInverse },
   homeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: C.blueSoft, borderRadius: 16, paddingVertical: 15 },
-  homeBtnTxt: { fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.primary },
+  homeBtnTxt: { ...Typ.bodySemiBold, color: C.primary },
 
   emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
   emptyIconBox: { width: 88, height: 88, borderRadius: 28, backgroundColor: C.blueSoft, alignItems: "center", justifyContent: "center", marginBottom: 20 },
-  emptyTitle: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, marginBottom: 8 },
-  emptyText: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, marginBottom: 20 },
+  emptyTitle: { ...Typ.title, color: C.text, marginBottom: 8 },
+  emptyText: { ...Typ.body, color: C.textSecondary, marginBottom: 20 },
   emptyBtns: { flexDirection: "row", gap: 12 },
   emptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14 },
-  emptyBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textInverse },
+  emptyBtnText: { ...Typ.buttonSmall, color: C.textInverse },
 });

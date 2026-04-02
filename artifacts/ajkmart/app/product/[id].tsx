@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useCart } from "@/context/CartContext";
 import { CartSwitchModal } from "@/components/CartSwitchModal";
 import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
@@ -472,7 +473,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingBottom: 8,
   },
   headerBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.35)",
+    width: 40, height: 40, borderRadius: 20, backgroundColor: C.overlayDark35,
     alignItems: "center", justifyContent: "center",
   },
   stickyHeader: {
@@ -487,54 +488,54 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 12, backgroundColor: C.surfaceSecondary,
     alignItems: "center", justifyContent: "center",
   },
-  stickyTitle: { flex: 1, fontFamily: "Inter_700Bold", fontSize: 16, color: C.text },
+  stickyTitle: { flex: 1, ...Typ.h3, fontSize: 16, color: C.text },
   cartBadge: {
     position: "absolute", top: -4, right: -4, backgroundColor: C.danger,
     borderRadius: 9, minWidth: 18, height: 18, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 4,
   },
-  cartBadgeTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: C.textInverse },
+  cartBadgeTxt: { ...Typ.tiny, color: C.textInverse },
 
   imageContainer: { position: "relative" },
   placeholderImage: { width: SCREEN_W, alignItems: "center", justifyContent: "center" },
   dotRow: { position: "absolute", bottom: 16, alignSelf: "center", flexDirection: "row", gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.5)" },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.overlayLight50 },
   dotActive: { backgroundColor: C.surface, width: 20 },
   discountBadge: {
     position: "absolute", top: 16, left: 16, backgroundColor: C.danger,
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
   },
-  discountTxt: { fontFamily: "Inter_700Bold", fontSize: 13, color: C.textInverse },
+  discountTxt: { ...Typ.buttonSmall, fontFamily: Font.bold, color: C.textInverse },
 
   contentContainer: { backgroundColor: C.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -24, paddingTop: 24, paddingHorizontal: 16 },
 
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 8 },
-  productName: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text, lineHeight: 28 },
-  unit: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textSecondary, marginTop: 4 },
+  productName: { ...Typ.h2, color: C.text, lineHeight: 28 },
+  unit: { ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 4 },
   stockBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.successSoft, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   stockDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.success },
-  stockTxt: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: C.emerald },
+  stockTxt: { ...Typ.smallMedium, fontFamily: Font.semiBold, color: C.emerald },
 
   priceRow: { flexDirection: "row", alignItems: "baseline", gap: 10, marginBottom: 12 },
-  price: { fontFamily: "Inter_700Bold", fontSize: 26, color: C.primary },
-  origPrice: { fontFamily: "Inter_400Regular", fontSize: 16, color: C.textMuted, textDecorationLine: "line-through" },
+  price: { ...Typ.h1, fontSize: 26, color: C.primary },
+  origPrice: { ...Typ.body, fontSize: 16, color: C.textMuted, textDecorationLine: "line-through" },
 
   ratingSection: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
-  ratingNum: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.amberDark },
-  reviewCount: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted },
+  ratingNum: { ...Typ.body, fontFamily: Font.bold, color: C.amberDark },
+  reviewCount: { ...Typ.body, fontSize: 13, color: C.textMuted },
 
   divider: { height: 1, backgroundColor: C.border, marginVertical: 16 },
 
   vendorSection: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 4 },
   vendorIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center" },
-  vendorLabel: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
-  vendorName: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.text, marginTop: 1 },
+  vendorLabel: { ...Typ.caption, color: C.textMuted },
+  vendorName: { ...Typ.button, color: C.text, marginTop: 1 },
   deliveryBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.successSoft, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  deliveryTime: { fontFamily: "Inter_600SemiBold", fontSize: 11, color: C.emerald },
+  deliveryTime: { ...Typ.smallMedium, fontFamily: Font.semiBold, color: C.emerald },
 
   descSection: {},
-  sectionTitle: { fontFamily: "Inter_700Bold", fontSize: 17, color: C.text, marginBottom: 12 },
-  descText: { fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, lineHeight: 22 },
+  sectionTitle: { ...Typ.price, color: C.text, marginBottom: 12 },
+  descText: { ...Typ.body, color: C.textSecondary, lineHeight: 22 },
 
   specsSection: {},
   specGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
@@ -543,17 +544,17 @@ const styles = StyleSheet.create({
     width: "47%", backgroundColor: C.surfaceSecondary, borderRadius: 12,
     padding: 12,
   },
-  specLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
-  specValue: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.text, marginTop: 1 },
+  specLabel: { ...Typ.small, color: C.textMuted },
+  specValue: { ...Typ.buttonSmall, color: C.text, marginTop: 1 },
 
   reviewsSection: {},
   ratingOverview: { flexDirection: "row", gap: 20, alignItems: "center" },
   ratingBig: { alignItems: "center", gap: 6 },
-  ratingBigNum: { fontFamily: "Inter_700Bold", fontSize: 40, color: C.text },
-  ratingBigSub: { fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted },
+  ratingBigNum: { ...Typ.h1, fontSize: 40, color: C.text },
+  ratingBigSub: { ...Typ.caption, color: C.textMuted },
   ratingBars: { flex: 1, gap: 4 },
   ratingBarRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  ratingBarLabel: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.textSecondary, width: 12, textAlign: "right" },
+  ratingBarLabel: { ...Typ.captionMedium, color: C.textSecondary, width: 12, textAlign: "right" },
   ratingBarTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: C.surfaceSecondary },
   ratingBarFill: { height: 6, borderRadius: 3, backgroundColor: C.gold },
 
@@ -565,10 +566,10 @@ const styles = StyleSheet.create({
   },
   relatedImg: { height: 100, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   relatedDiscBadge: { position: "absolute", top: 6, left: 6, backgroundColor: C.danger, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  relatedDiscTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: C.textInverse },
+  relatedDiscTxt: { ...Typ.tiny, color: C.textInverse },
   relatedBody: { padding: 10 },
-  relatedName: { fontFamily: "Inter_500Medium", fontSize: 12, color: C.text, marginBottom: 4, minHeight: 30 },
-  relatedPrice: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.primary },
+  relatedName: { ...Typ.captionMedium, color: C.text, marginBottom: 4, minHeight: 30 },
+  relatedPrice: { ...Typ.body, fontFamily: Font.bold, color: C.primary },
 
   stickyFooter: {
     position: "absolute", bottom: 0, left: 0, right: 0,
@@ -578,8 +579,8 @@ const styles = StyleSheet.create({
     shadowColor: C.text, shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 10,
   },
   footerPriceCol: {},
-  footerPriceLabel: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted },
-  footerPrice: { fontFamily: "Inter_700Bold", fontSize: 20, color: C.text },
+  footerPriceLabel: { ...Typ.small, color: C.textMuted },
+  footerPrice: { ...Typ.title, color: C.text },
   addToCartBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16,
@@ -587,12 +588,12 @@ const styles = StyleSheet.create({
   },
   addToCartBtnDone: { backgroundColor: C.success },
   addToCartBtnDisabled: { backgroundColor: C.textMuted, shadowOpacity: 0 },
-  addToCartTxt: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.textInverse },
+  addToCartTxt: { ...Typ.h3, fontSize: 16, color: C.textInverse },
 
   errorCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   errorIconWrap: { width: 80, height: 80, borderRadius: 24, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  errorTitle: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
-  errorSub: { fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted },
+  errorTitle: { ...Typ.h3, color: C.text },
+  errorSub: { ...Typ.body, fontSize: 13, color: C.textMuted },
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, marginTop: 4 },
-  retryBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 14, color: C.textInverse },
+  retryBtnTxt: { ...Typ.body, fontFamily: Font.bold, color: C.textInverse },
 });

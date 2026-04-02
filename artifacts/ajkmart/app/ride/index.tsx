@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -88,7 +89,7 @@ function RideScreenInner() {
           </View>
           <Text
             style={{
-              fontFamily: "Inter_700Bold",
+              fontFamily: Font.bold,
               fontSize: 20,
               color: C.amber,
               marginBottom: 8,
@@ -99,7 +100,7 @@ function RideScreenInner() {
           </Text>
           <Text
             style={{
-              fontFamily: "Inter_400Regular",
+              fontFamily: Font.regular,
               fontSize: 14,
               color: C.textMuted,
               textAlign: "center",
@@ -160,7 +161,7 @@ function RideScreenInner() {
           </View>
           <Text
             style={{
-              fontFamily: "Inter_700Bold",
+              fontFamily: Font.bold,
               fontSize: 20,
               color: C.redBright,
               marginBottom: 8,
@@ -171,7 +172,7 @@ function RideScreenInner() {
           </Text>
           <Text
             style={{
-              fontFamily: "Inter_400Regular",
+              fontFamily: Font.regular,
               fontSize: 14,
               color: C.textMuted,
               textAlign: "center",
@@ -193,7 +194,7 @@ function RideScreenInner() {
           >
             <Text
               style={{
-                fontFamily: "Inter_700Bold",
+                fontFamily: Font.bold,
                 fontSize: 15,
                 color: C.redBright,
               }}
@@ -231,7 +232,7 @@ function RideScreenInner() {
           <Ionicons name="alert-circle-outline" size={48} color={C.redBright} style={{ marginBottom: 16 }} />
           <Text
             style={{
-              fontFamily: "Inter_700Bold",
+              fontFamily: Font.bold,
               fontSize: 18,
               color: C.redBright,
               marginBottom: 8,
@@ -242,7 +243,7 @@ function RideScreenInner() {
           </Text>
           <Text
             style={{
-              fontFamily: "Inter_400Regular",
+              fontFamily: Font.regular,
               fontSize: 14,
               color: C.textMuted,
               textAlign: "center",
@@ -263,7 +264,7 @@ function RideScreenInner() {
             }}
             onPress={() => { setRetryNonce(n => n + 1); }}
           >
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.textInverse }}>
+            <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.textInverse }}>
               {T("tryAgain")}
             </Text>
           </Pressable>
@@ -277,7 +278,7 @@ function RideScreenInner() {
             }}
             onPress={() => router.back()}
           >
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.redBright }}>
+            <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.redBright }}>
               {T("backToHome")}
             </Text>
           </Pressable>

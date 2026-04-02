@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import QRCode from "react-native-qrcode-svg";
 import Colors from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
@@ -104,7 +105,7 @@ function TxItem({ tx }: { tx: any }) {
         <Text style={[ws.txAmt, { color: amtColor }]}>
           {prefix}Rs. {Number(tx.amount).toLocaleString()}
         </Text>
-        {suffix ? <Text style={{ fontSize: 9, color: amtColor, fontFamily: "Inter_500Medium" }}>{suffix}</Text> : null}
+        {suffix ? <Text style={{ fontSize: 9, color: amtColor, fontFamily: Font.medium }}>{suffix}</Text> : null}
       </View>
     </View>
   );
@@ -187,21 +188,21 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: C.redSoft, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
                   <Ionicons name="arrow-up-circle" size={40} color={C.danger} />
                 </View>
-                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, marginBottom: 8 }}>Request Submitted!</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>Your withdrawal will be processed within 1-2 business days.</Text>
+                <Text style={{ ...Typ.title, color: C.text, marginBottom: 8 }}>Request Submitted!</Text>
+                <Text style={{ ...Typ.body, color: C.textMuted, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>Your withdrawal will be processed within 1-2 business days.</Text>
                 <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 16, width: "100%", marginTop: 20, gap: 10, borderWidth: 1, borderColor: C.border }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Method</Text>
-                    <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text }}>{WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Method</Text>
+                    <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label}</Text>
                   </View>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Account</Text>
-                    <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text }}>{accountNumber}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Account</Text>
+                    <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{accountNumber}</Text>
                   </View>
                   <View style={{ height: 1, backgroundColor: C.border }} />
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Amount</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: C.danger }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Amount</Text>
+                    <Text style={{ ...Typ.h2, color: C.danger }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
                   </View>
                 </View>
                 <Pressable onPress={onClose} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 16, width: "100%" }]} accessibilityRole="button" accessibilityLabel="Done">
@@ -213,7 +214,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
             {step === "method" && (
               <View>
                 <Text style={ws.sheetTitle}>Withdraw Money</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, marginBottom: 18 }}>Choose your withdrawal method</Text>
+                <Text style={{ ...Typ.body, color: C.textMuted, marginBottom: 18 }}>Choose your withdrawal method</Text>
                 <View style={{ gap: 10 }}>
                   {WITHDRAW_METHODS.map(m => (
                     <Pressable key={m.id} onPress={() => { setSelectedMethod(m.id); setErr(""); setStep("details"); }} style={{ flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, padding: 16, backgroundColor: C.surface }} accessibilityRole="button" accessibilityLabel={`Withdraw via ${m.label}`}>
@@ -221,8 +222,8 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                         <MethodIcon id={m.id} size={26} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.text }}>{m.label}</Text>
-                        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 }}>Withdraw to your {m.label} account</Text>
+                        <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.text }}>{m.label}</Text>
+                        <Text style={{ ...Typ.caption, color: C.textMuted, marginTop: 2 }}>Withdraw to your {m.label} account</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
                     </Pressable>
@@ -261,7 +262,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 14, backgroundColor: C.amberSoft, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: C.amberBorder }}>
                   <Ionicons name="wallet-outline" size={14} color={C.amber} />
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.amberDark, flex: 1 }}>Available: Rs. {balance.toLocaleString()}</Text>
+                  <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>Available: Rs. {balance.toLocaleString()}</Text>
                 </View>
 
                 <Text style={ws.sheetLbl}>Your {WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label} Account *</Text>
@@ -290,7 +291,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 {err ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: C.redBg, padding: 10, borderRadius: 10 }}>
                     <Ionicons name="alert-circle-outline" size={14} color={C.danger} />
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.danger, flex: 1 }}>{err}</Text>
+                    <Text style={{ ...Typ.caption, color: C.danger, flex: 1 }}>{err}</Text>
                   </View>
                 ) : null}
 
@@ -443,7 +444,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                   <View key={i} style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: i <= stepIdx ? C.primary : C.border }} />
                 ))}
               </View>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, textAlign: "right", marginTop: 6 }}>Step {stepIdx + 1} of {STEPS.length}</Text>
+              <Text style={{ ...Typ.small, color: C.textMuted, textAlign: "right", marginTop: 6 }}>Step {stepIdx + 1} of {STEPS.length}</Text>
             </View>
           )}
 
@@ -454,21 +455,21 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                 <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: C.emeraldSoft, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
                   <Ionicons name="checkmark-circle" size={40} color={C.success} />
                 </View>
-                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, marginBottom: 8 }}>Request Submitted!</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>Your wallet will be credited within 1-2 hours after verification.</Text>
+                <Text style={{ ...Typ.title, color: C.text, marginBottom: 8 }}>Request Submitted!</Text>
+                <Text style={{ ...Typ.body, color: C.textMuted, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>Your wallet will be credited within 1-2 hours after verification.</Text>
                 <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 16, width: "100%", marginTop: 20, gap: 10, borderWidth: 1, borderColor: C.border }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Method</Text>
-                    <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text }}>{selectedMethod?.label}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Method</Text>
+                    <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{selectedMethod?.label}</Text>
                   </View>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Transaction ID</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: C.text }}>{txId}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Transaction ID</Text>
+                    <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.text }}>{txId}</Text>
                   </View>
                   <View style={{ height: 1, backgroundColor: C.border }} />
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Amount</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: C.success }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Amount</Text>
+                    <Text style={{ ...Typ.h2, color: C.success }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
                   </View>
                 </View>
                 <Pressable onPress={onClose} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 16, width: "100%" }]} accessibilityRole="button" accessibilityLabel="Done">
@@ -480,14 +481,14 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
             {step === "method" && (
               <View>
                 <Text style={ws.sheetTitle}>Add Money</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, marginBottom: 18 }}>Choose your deposit method</Text>
+                <Text style={{ ...Typ.body, color: C.textMuted, marginBottom: 18 }}>Choose your deposit method</Text>
                 {loadingMethods ? (
                   <ActivityIndicator color={C.primary} style={{ marginTop: 24 }} />
                 ) : methodsError ? (
                   <View style={{ backgroundColor: C.redBg, borderRadius: 16, padding: 24, alignItems: "center", gap: 10, borderWidth: 1, borderColor: C.redSoft }}>
                     <Ionicons name="alert-circle-outline" size={28} color={C.danger} />
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.text }}>Methods Unavailable</Text>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center" }}>Could not load payment methods. Please try again.</Text>
+                    <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.text }}>Methods Unavailable</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, textAlign: "center" }}>Could not load payment methods. Please try again.</Text>
                     <Pressable onPress={() => {
                       setMethodsError(false);
                       setLoadingMethods(true);
@@ -502,7 +503,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                         .finally(() => setLoadingMethods(false));
                     }} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 }} accessibilityRole="button" accessibilityLabel="Try again to load payment methods">
                       <Ionicons name="refresh-outline" size={15} color={C.textInverse} />
-                      <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textInverse }}>Try Again</Text>
+                      <Text style={{ ...Typ.buttonSmall, color: C.textInverse }}>Try Again</Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -513,9 +514,9 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                           <MethodIcon id={m.id} size={26} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.text }}>{m.label}</Text>
-                          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, marginTop: 2 }}>{m.description || `Deposit via ${m.label}`}</Text>
-                          {m.manualNumber && <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: C.primary, marginTop: 3 }}>{m.manualNumber}</Text>}
+                          <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.text }}>{m.label}</Text>
+                          <Text style={{ ...Typ.caption, color: C.textMuted, marginTop: 2 }}>{m.description || `Deposit via ${m.label}`}</Text>
+                          {m.manualNumber && <Text style={{ ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.primary, marginTop: 3 }}>{m.manualNumber}</Text>}
                         </View>
                         <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
                       </Pressable>
@@ -528,49 +529,49 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
             {step === "details" && selectedMethod && (
               <View>
                 <Text style={ws.sheetTitle}>{selectedMethod.label}</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, marginBottom: 18 }}>Send payment to the account below</Text>
+                <Text style={{ ...Typ.body, color: C.textMuted, marginBottom: 18 }}>Send payment to the account below</Text>
 
                 <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 4, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
                   {selectedMethod.manualNumber && (
                     <Pressable onPress={() => copyToClipboard(selectedMethod.manualNumber!)} style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }} accessibilityRole="button" accessibilityLabel={`Copy account number ${selectedMethod.manualNumber}`}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Account Number</Text>
-                        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.text, marginTop: 2 }}>{selectedMethod.manualNumber}</Text>
+                        <Text style={{ ...Typ.small, color: C.textMuted }}>Account Number</Text>
+                        <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.text, marginTop: 2 }}>{selectedMethod.manualNumber}</Text>
                       </View>
                       <Ionicons name="copy-outline" size={18} color={C.primary} />
                     </Pressable>
                   )}
                   {selectedMethod.manualName && (
                     <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }}>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Account Title</Text>
-                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 14, color: C.text, marginTop: 2 }}>{selectedMethod.manualName}</Text>
+                      <Text style={{ ...Typ.small, color: C.textMuted }}>Account Title</Text>
+                      <Text style={{ ...Typ.bodyMedium, color: C.text, marginTop: 2 }}>{selectedMethod.manualName}</Text>
                     </View>
                   )}
                   {selectedMethod.iban && (
                     <Pressable onPress={() => copyToClipboard(selectedMethod.iban!)} style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }} accessibilityRole="button" accessibilityLabel="Copy IBAN">
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>IBAN</Text>
-                        <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: C.text, marginTop: 2 }}>{selectedMethod.iban}</Text>
+                        <Text style={{ ...Typ.small, color: C.textMuted }}>IBAN</Text>
+                        <Text style={{ ...Typ.captionMedium, color: C.text, marginTop: 2 }}>{selectedMethod.iban}</Text>
                       </View>
                       <Ionicons name="copy-outline" size={18} color={C.primary} />
                     </Pressable>
                   )}
                   {selectedMethod.bankName && (
                     <View style={{ padding: 14, borderBottomWidth: selectedMethod.manualInstructions ? 1 : 0, borderBottomColor: C.border }}>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted }}>Bank</Text>
-                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 14, color: C.text, marginTop: 2 }}>{selectedMethod.bankName}</Text>
+                      <Text style={{ ...Typ.small, color: C.textMuted }}>Bank</Text>
+                      <Text style={{ ...Typ.bodyMedium, color: C.text, marginTop: 2 }}>{selectedMethod.bankName}</Text>
                     </View>
                   )}
                   {selectedMethod.manualInstructions && (
                     <View style={{ padding: 14 }}>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary }}>{selectedMethod.manualInstructions}</Text>
+                      <Text style={{ ...Typ.caption, color: C.textSecondary }}>{selectedMethod.manualInstructions}</Text>
                     </View>
                   )}
                 </View>
 
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.blueSoft, borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.brandBlueSoft }}>
                   <Ionicons name="information-circle-outline" size={16} color={C.primary} />
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textSecondary, flex: 1 }}>After payment, enter the Transaction ID in the next step</Text>
+                  <Text style={{ ...Typ.caption, color: C.textSecondary, flex: 1 }}>After payment, enter the Transaction ID in the next step</Text>
                 </View>
 
                 <View style={{ flexDirection: "row", gap: 12 }}>
@@ -588,7 +589,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
             {step === "amount" && selectedMethod && (
               <View>
                 <Text style={ws.sheetTitle}>Transaction Details</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, marginBottom: 18 }}>Enter your payment details</Text>
+                <Text style={{ ...Typ.body, color: C.textMuted, marginBottom: 18 }}>Enter your payment details</Text>
 
                 <Text style={ws.sheetLbl}>Amount (PKR) *</Text>
                 <View style={ws.amtWrap}>
@@ -646,7 +647,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                 {err ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: C.redBg, padding: 10, borderRadius: 10 }}>
                     <Ionicons name="alert-circle-outline" size={14} color={C.danger} />
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.danger, flex: 1 }}>{err}</Text>
+                    <Text style={{ ...Typ.caption, color: C.danger, flex: 1 }}>{err}</Text>
                   </View>
                 ) : null}
 
@@ -664,45 +665,45 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
             {step === "confirm" && selectedMethod && (
               <View>
                 <Text style={ws.sheetTitle}>Confirm Request</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted, marginBottom: 18 }}>Review before submitting</Text>
+                <Text style={{ ...Typ.body, color: C.textMuted, marginBottom: 18 }}>Review before submitting</Text>
 
                 <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 16, gap: 10, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Method</Text>
-                    <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text }}>{selectedMethod.label}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Method</Text>
+                    <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{selectedMethod.label}</Text>
                   </View>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Transaction ID</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: C.text, fontVariant: ["tabular-nums"] as any }}>{txId}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Transaction ID</Text>
+                    <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.text, fontVariant: ["tabular-nums"] as any }}>{txId}</Text>
                   </View>
                   {senderAcNo ? (
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Sender</Text>
-                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text }}>{senderAcNo}</Text>
+                      <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Sender</Text>
+                      <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{senderAcNo}</Text>
                     </View>
                   ) : null}
                   {note ? (
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Note</Text>
-                      <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.text }}>{note}</Text>
+                      <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Note</Text>
+                      <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{note}</Text>
                     </View>
                   ) : null}
                   <View style={{ height: 1, backgroundColor: C.border, marginVertical: 4 }} />
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.textMuted }}>Amount</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: C.success }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
+                    <Text style={{ ...Typ.buttonSmall, color: C.textMuted }}>Amount</Text>
+                    <Text style={{ ...Typ.h2, fontSize: 24, color: C.success }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
                   </View>
                 </View>
 
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.amberBorder }}>
                   <Ionicons name="alert-circle-outline" size={16} color={C.amber} />
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.amberDark, flex: 1 }}>An incorrect TxID may cause rejection. Enter the real transaction ID.</Text>
+                  <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>An incorrect TxID may cause rejection. Enter the real transaction ID.</Text>
                 </View>
 
                 {err ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: C.redBg, padding: 10, borderRadius: 10 }}>
                     <Ionicons name="alert-circle-outline" size={14} color={C.danger} />
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.danger, flex: 1 }}>{err}</Text>
+                    <Text style={{ ...Typ.caption, color: C.danger, flex: 1 }}>{err}</Text>
                   </View>
                 ) : null}
 
@@ -937,8 +938,8 @@ export default function WalletScreen() {
             <Pressable onPress={() => refetch()} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.redSoft, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: C.redMist }} accessibilityRole="button" accessibilityLabel="No network connection, tap to retry">
               <Ionicons name="cloud-offline-outline" size={20} color={C.red} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: C.redDeep }}>No network connection</Text>
-                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.redDeepest, marginTop: 2 }}>Showing last known balance. Tap to retry.</Text>
+                <Text style={{ ...Typ.body, fontFamily: Font.bold, color: C.redDeep }}>No network connection</Text>
+                <Text style={{ ...Typ.caption, color: C.redDeepest, marginTop: 2 }}>Showing last known balance. Tap to retry.</Text>
               </View>
               <Ionicons name="refresh-outline" size={16} color={C.red} />
             </Pressable>
@@ -949,28 +950,28 @@ export default function WalletScreen() {
               <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: C.amberSoft, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="lock-closed" size={36} color={C.amber} />
               </View>
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: C.amberDark }}>Wallet Frozen</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.amberDark, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>
+              <Text style={{ ...Typ.title, color: C.amberDark }}>Wallet Frozen</Text>
+              <Text style={{ ...Typ.body, color: C.amberDark, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>
                 Your wallet has been temporarily frozen. Please contact support to resolve this issue.
               </Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.amberBorder, width: "100%", marginTop: 4 }}>
                 <Ionicons name="headset-outline" size={16} color={C.amber} />
-                <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: C.amberDark, flex: 1 }}>Contact support to unfreeze your wallet</Text>
+                <Text style={{ ...Typ.captionMedium, color: C.amberDark, flex: 1 }}>Contact support to unfreeze your wallet</Text>
               </View>
             </View>
           ) : (
             <>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginBottom: 4 }}>{appName} {T("wallet")}</Text>
+              <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginBottom: 4 }}>{appName} {T("wallet")}</Text>
               {isLoading && !data ? (
                 <View style={{ marginBottom: 4 }}>
                   <View style={{ height: 44, width: 180, borderRadius: 8, backgroundColor: C.border, opacity: 0.7 }} />
                 </View>
               ) : (
-                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 40, color: C.text, marginBottom: 4 }}>
+                <Text style={{ fontFamily: Font.bold, fontSize: 40, color: C.text, marginBottom: 4 }}>
                   {`Rs. ${balance.toLocaleString()}`}
                 </Text>
               )}
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, marginBottom: 24 }}>{T("availableBalance")}</Text>
+              <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginBottom: 24 }}>{T("availableBalance")}</Text>
 
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <Pressable onPress={() => setShowDeposit(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel={T("topUp")}>
@@ -1004,7 +1005,7 @@ export default function WalletScreen() {
               {pendingTopups.count > 0 && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderRadius: 12, marginTop: 16, padding: 12, borderWidth: 1, borderColor: C.amberBorder }}>
                   <Ionicons name="time-outline" size={14} color={C.amber} />
-                  <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: C.amberDark, flex: 1 }}>
+                  <Text style={{ ...Typ.captionMedium, color: C.amberDark, flex: 1 }}>
                     {pendingTopups.count} pending ({`Rs. ${pendingTopups.total.toLocaleString()}`}) — awaiting approval
                   </Text>
                 </View>
@@ -1039,7 +1040,7 @@ export default function WalletScreen() {
 
         <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 17, color: C.text }}>{T("transactionHistory")}</Text>
+            <Text style={{ ...Typ.price, color: C.text }}>{T("transactionHistory")}</Text>
             {transactions.length > 0 && (
               <View style={{ flexDirection: "row", gap: 6 }}>
                 {(["all", "credit", "debit"] as TxFilter[]).map(f => (
@@ -1071,8 +1072,8 @@ export default function WalletScreen() {
               <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="receipt-outline" size={26} color={C.textMuted} />
               </View>
-              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.text }}>{transactions.length === 0 ? T("noTransactionLabel") : T("filterNoResultsLabel")}</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>{transactions.length === 0 ? T("noTransactionSub") : T("changeFilterLabel")}</Text>
+              <Text style={{ ...Typ.button, color: C.text }}>{transactions.length === 0 ? T("noTransactionLabel") : T("filterNoResultsLabel")}</Text>
+              <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>{transactions.length === 0 ? T("noTransactionSub") : T("changeFilterLabel")}</Text>
               {transactions.length === 0 && (
                 <Pressable
                   onPress={() => router.replace("/(tabs)")}
@@ -1080,7 +1081,7 @@ export default function WalletScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Explore services"
                 >
-                  <Text style={{ color: C.textInverse, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Explore Services</Text>
+                  <Text style={{ color: C.textInverse, ...Typ.bodySemiBold }}>Explore Services</Text>
                 </Pressable>
               )}
             </View>
@@ -1143,7 +1144,7 @@ export default function WalletScreen() {
                     maxLength={10}
                   />
                 </View>
-                {sendPhoneError ? <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.redBright, marginTop: 2, marginBottom: 6 }}>{sendPhoneError}</Text> : null}
+                {sendPhoneError ? <Text style={{ ...Typ.caption, color: C.redBright, marginTop: 2, marginBottom: 6 }}>{sendPhoneError}</Text> : null}
 
                 <Text style={ws.sheetLbl}>Amount (PKR)</Text>
                 <View style={ws.amtWrap}>
@@ -1158,7 +1159,7 @@ export default function WalletScreen() {
 
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16, marginTop: 4 }}>
                   <Ionicons name="wallet-outline" size={14} color={C.primary} />
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {minTransfer.toLocaleString()}</Text>
+                  <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {minTransfer.toLocaleString()}</Text>
                 </View>
 
                 <Pressable onPress={handleSendContinue} disabled={!sendPhone || !sendAmount || sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, (!sendPhone || !sendAmount || sendLoading) && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel="Continue to confirm send" accessibilityState={{ disabled: !sendPhone || !sendAmount || sendLoading }}>
@@ -1181,26 +1182,26 @@ export default function WalletScreen() {
 
                 <View style={{ backgroundColor: C.surface, borderRadius: 12, padding: 16, marginBottom: 16, gap: 12 }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>To</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>To</Text>
                     <View style={{ alignItems: "flex-end" }}>
-                      {sendReceiverName ? <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.text }}>{sendReceiverName}</Text> : null}
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: sendReceiverName ? C.textMuted : C.text }}>+92 {sendPhone.trim()}</Text>
+                      {sendReceiverName ? <Text style={{ ...Typ.bodySemiBold, color: C.text }}>{sendReceiverName}</Text> : null}
+                      <Text style={{ ...Typ.body, fontSize: 13, color: sendReceiverName ? C.textMuted : C.text }}>+92 {sendPhone.trim()}</Text>
                     </View>
                   </View>
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Amount</Text>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: C.purple }}>Rs. {parseFloat(sendAmount || "0").toLocaleString()}</Text>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Amount</Text>
+                    <Text style={{ ...Typ.h3, fontSize: 16, color: C.purple }}>Rs. {parseFloat(sendAmount || "0").toLocaleString()}</Text>
                   </View>
                   {sendNote ? (
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>Note</Text>
-                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.text }}>{sendNote}</Text>
+                      <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Note</Text>
+                      <Text style={{ ...Typ.body, fontSize: 13, color: C.text }}>{sendNote}</Text>
                     </View>
                   ) : null}
                 </View>
 
                 <Pressable onPress={() => setSendStep("input")} style={{ alignSelf: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Edit transfer details">
-                  <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: C.primary }}>Edit Details</Text>
+                  <Text style={{ ...Typ.buttonSmall, color: C.primary }}>Edit Details</Text>
                 </Pressable>
 
                 <Pressable onPress={handleSendConfirm} disabled={sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, sendLoading && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={`Send Rs. ${parseFloat(sendAmount || "0").toLocaleString()}`} accessibilityState={{ disabled: sendLoading }}>
@@ -1221,7 +1222,7 @@ export default function WalletScreen() {
         <Pressable style={[ws.overlay, { justifyContent: "center", paddingHorizontal: 32 }]} onPress={() => setShowQR(false)}>
           <Pressable style={[ws.sheet, { borderRadius: 24, paddingVertical: 28 }]} onPress={e => e.stopPropagation()}>
             <Text style={[ws.sheetTitle, { textAlign: "center" }]}>Receive Money</Text>
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 20 }}>
+            <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 20 }}>
               Scan this QR code or share your phone number
             </Text>
 
@@ -1234,13 +1235,13 @@ export default function WalletScreen() {
                   backgroundColor={C.surface}
                 />
               </View>
-              <Text style={{ fontFamily: "Inter_700Bold", fontSize: 17, color: C.text }}>{user?.name || "AJKMart User"}</Text>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textMuted }}>+92 {user?.phone}</Text>
+              <Text style={{ ...Typ.price, color: C.text }}>{user?.name || "AJKMart User"}</Text>
+              <Text style={{ ...Typ.body, color: C.textMuted }}>+92 {user?.phone}</Text>
             </View>
 
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16 }}>
               <Ionicons name="shield-checkmark-outline" size={14} color={C.success} />
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted, flex: 1 }}>{appName} users can send directly to your wallet</Text>
+              <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>{appName} users can send directly to your wallet</Text>
             </View>
 
             <Pressable onPress={() => setShowQR(false)} style={[ws.actionBtn, { backgroundColor: C.primary }]} accessibilityRole="button" accessibilityLabel="Close QR code">
@@ -1257,45 +1258,45 @@ export default function WalletScreen() {
 const ws = StyleSheet.create({
   actionCard: { flex: 1, alignItems: "center", gap: 8 },
   actionCardIcon: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  actionCardTxt: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.textSecondary, textAlign: "center" },
+  actionCardTxt: { ...Typ.smallMedium, color: C.textSecondary, textAlign: "center" },
 
   statCard: { flex: 1, backgroundColor: C.surface, borderRadius: 16, padding: 14, alignItems: "center", gap: 6, borderWidth: 1, borderColor: C.border },
   statIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  statLbl: { fontFamily: "Inter_400Regular", fontSize: 10, color: C.textMuted },
-  statAmt: { fontFamily: "Inter_700Bold", fontSize: 13 },
+  statLbl: { ...Typ.small, fontSize: 10, color: C.textMuted },
+  statAmt: { ...Typ.buttonSmall, fontFamily: Font.bold },
 
   filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: C.surfaceSecondary },
   filterChipActive: { backgroundColor: C.primary },
-  filterTxt: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.textMuted },
+  filterTxt: { ...Typ.smallMedium, color: C.textMuted },
   filterTxtActive: { color: C.textInverse },
 
   txRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.borderLight },
   txIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  txDesc: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.text },
-  txDate: { fontFamily: "Inter_400Regular", fontSize: 11, color: C.textMuted, marginTop: 2 },
-  txAmt: { fontFamily: "Inter_700Bold", fontSize: 14 },
+  txDesc: { ...Typ.bodyMedium, fontSize: 13, color: C.text },
+  txDate: { ...Typ.small, color: C.textMuted, marginTop: 2 },
+  txAmt: { ...Typ.body, fontFamily: Font.bold },
 
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  overlay: { flex: 1, backgroundColor: C.overlayDark50, justifyContent: "flex-end" },
   sheet: { backgroundColor: C.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingBottom: Platform.OS === "web" ? 40 : 48, paddingTop: 12 },
   handle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: "center", marginBottom: 20 },
-  sheetTitle: { fontFamily: "Inter_700Bold", fontSize: 22, color: C.text, marginBottom: 4 },
-  sheetLbl: { fontFamily: "Inter_500Medium", fontSize: 13, color: C.textSecondary, marginBottom: 8 },
+  sheetTitle: { ...Typ.h2, color: C.text, marginBottom: 4 },
+  sheetLbl: { ...Typ.bodyMedium, fontSize: 13, color: C.textSecondary, marginBottom: 8 },
 
   amtWrap: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 16, marginBottom: 18 },
-  rupee: { fontFamily: "Inter_600SemiBold", fontSize: 22, color: C.textSecondary, marginRight: 8 },
-  amtInput: { flex: 1, fontFamily: "Inter_700Bold", fontSize: 28, color: C.text, paddingVertical: 14 },
+  rupee: { ...Typ.h2, fontFamily: Font.semiBold, color: C.textSecondary, marginRight: 8 },
+  amtInput: { flex: 1, ...Typ.h1, color: C.text, paddingVertical: 14 },
 
   quickRow: { flexDirection: "row", gap: 8, marginBottom: 18 },
   quickBtn: { flex: 1, borderWidth: 1.5, borderColor: C.border, borderRadius: 12, paddingVertical: 11, alignItems: "center" },
   quickBtnActive: { borderColor: C.primary, backgroundColor: C.blueSoft },
-  quickTxt: { fontFamily: "Inter_500Medium", fontSize: 11, color: C.textSecondary },
-  quickTxtActive: { color: C.primary, fontFamily: "Inter_700Bold" },
+  quickTxt: { ...Typ.smallMedium, color: C.textSecondary },
+  quickTxtActive: { color: C.primary, fontFamily: Font.bold },
 
   inputWrap: { flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: C.border, borderRadius: 14, marginBottom: 14, overflow: "hidden" },
   phonePrefix: { backgroundColor: C.surfaceSecondary, paddingHorizontal: 14, paddingVertical: 14, borderRightWidth: 1, borderRightColor: C.border },
-  phonePrefixTxt: { fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.text },
-  sendInput: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 15, color: C.text, paddingHorizontal: 14, paddingVertical: 13 },
+  phonePrefixTxt: { ...Typ.button, color: C.text },
+  sendInput: { flex: 1, ...Typ.body, fontSize: 15, color: C.text, paddingHorizontal: 14, paddingVertical: 13 },
 
   actionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 16, paddingVertical: 16, marginTop: 4 },
-  actionBtnTxt: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.textInverse },
+  actionBtnTxt: { ...Typ.h3, fontSize: 16, color: C.textInverse },
 });

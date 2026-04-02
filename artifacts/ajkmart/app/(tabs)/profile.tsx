@@ -23,6 +23,7 @@ import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
@@ -210,7 +211,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
             {avatarError && pendingAsset && (
               <Pressable onPress={() => uploadAvatar(pendingAsset)} disabled={avatarUploading} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.redSoft, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: C.redMist }} accessibilityRole="button" accessibilityLabel="Retry avatar upload">
                 <Ionicons name="refresh-outline" size={13} color={C.danger} />
-                <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: C.danger }}>Retry Upload</Text>
+                <Text style={{ ...Typ.smallMedium, fontFamily: Font.semiBold, color: C.danger }}>Retry Upload</Text>
               </Pressable>
             )}
           </View>
@@ -269,7 +270,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
           {cnicError ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
               <Ionicons name="alert-circle-outline" size={13} color={C.danger} />
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: C.danger }}>{cnicError}</Text>
+              <Text style={{ ...Typ.small, color: C.danger }}>{cnicError}</Text>
             </View>
           ) : (
             <Text style={fld.hint}>For verification (optional)</Text>
@@ -430,7 +431,7 @@ function NotificationsModal({ visible, userId, token, onClose }: {
                     {!n.isRead && <View style={notifItem.dot} />}
                   </View>
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={[notifItem.title, !n.isRead && { fontFamily: "Inter_700Bold" }]}>{n.title}</Text>
+                    <Text style={[notifItem.title, !n.isRead && { fontFamily: Font.bold }]}>{n.title}</Text>
                     <Text style={notifItem.body} numberOfLines={2}>{n.body}</Text>
                     <Text style={notifItem.time}>{relativeTime(n.createdAt)}</Text>
                   </View>
@@ -521,7 +522,7 @@ function DeleteAccountRow({ token }: { token?: string }) {
               style={{
                 borderWidth: 1.5, borderColor: confirmText.toLowerCase() === "delete" ? C.danger : C.border,
                 borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-                fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.text, textAlign: "center",
+                ...Typ.button, color: C.text, textAlign: "center",
                 marginBottom: spacing.lg,
               }}
             />
@@ -536,13 +537,13 @@ function DeleteAccountRow({ token }: { token?: string }) {
             >
               {deleting
                 ? <ActivityIndicator color={C.textInverse} size="small" />
-                : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.textInverse }}>Delete My Account</Text>}
+                : <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.textInverse }}>Delete My Account</Text>}
             </Pressable>
             <Pressable
               onPress={() => { setConfirmVisible(false); setConfirmText(""); }}
               style={{ borderRadius: radii.md, paddingVertical: spacing.md, alignItems: "center", backgroundColor: C.surfaceSecondary }}
             >
-              <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.textSecondary }}>Cancel</Text>
+              <Text style={{ ...Typ.button, color: C.textSecondary }}>Cancel</Text>
             </Pressable>
           </View>
         </View>
@@ -984,7 +985,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                 style={{ marginTop: spacing.lg, alignItems: "center" }}
                 accessibilityRole="button" accessibilityLabel="Lost access to authenticator app, contact support"
               >
-                <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: C.primary }}>
+                <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.primary }}>
                   Lost access to authenticator app?
                 </Text>
               </Pressable>
@@ -1432,11 +1433,11 @@ export default function ProfileScreen() {
 
           <View style={ph.statsStrip}>
             {statsLoading ? (
-              <ActivityIndicator color="rgba(255,255,255,0.8)" />
+              <ActivityIndicator color={C.overlayLight80} />
             ) : statsError ? (
               <Pressable onPress={() => { setStatsLoading(true); setStatsError(false); fetchAll(); }} style={{ flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button" accessibilityLabel="Could not load stats, tap to retry">
-                <Ionicons name="refresh-outline" size={16} color="rgba(255,255,255,0.8)" />
-                <Text style={{ fontFamily: "Inter_500Medium", fontSize: 13, color: "rgba(255,255,255,0.8)" }}>Could not load stats — tap to retry</Text>
+                <Ionicons name="refresh-outline" size={16} color={C.overlayLight80} />
+                <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.overlayLight80 }}>Could not load stats — tap to retry</Text>
               </Pressable>
             ) : (
               <>
@@ -1781,7 +1782,7 @@ export default function ProfileScreen() {
 const lvl = StyleSheet.create({
   strip: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginHorizontal: spacing.lg, marginTop: spacing.md, backgroundColor: C.surface, borderRadius: radii.xl, padding: spacing.md, borderWidth: 1, borderColor: C.borderLight, ...shadows.sm },
   badge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radii.full, borderWidth: 1.5 },
-  badgeTxt: { fontFamily: "Inter_700Bold", fontSize: 12 },
+  badgeTxt: { ...Typ.captionBold },
   progressWrap: { flex: 1 },
   progressRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
   progressLabel: { ...typography.captionMedium, color: C.text },
@@ -1809,27 +1810,27 @@ const pi = StyleSheet.create({
 
 const ph = StyleSheet.create({
   card: { paddingHorizontal: spacing.lg, paddingBottom: 0, overflow: "hidden" },
-  blob: { position: "absolute", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.1)" },
-  avatar: { width: 68, height: 68, borderRadius: radii.xl, backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(255,255,255,0.4)" },
-  avatarTxt: { fontFamily: "Inter_700Bold", fontSize: 26, color: C.textInverse },
+  blob: { position: "absolute", borderRadius: 999, backgroundColor: C.overlayLight10 },
+  avatar: { width: 68, height: 68, borderRadius: radii.xl, backgroundColor: C.overlayLight25, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: C.overlayLight40 },
+  avatarTxt: { fontFamily: Font.bold, fontSize: 26, color: C.textInverse },
   name: { ...typography.h3, color: C.textInverse, marginBottom: 2 },
-  phone: { ...typography.captionMedium, color: "rgba(255,255,255,0.85)" },
-  email: { ...typography.caption, color: "rgba(255,255,255,0.7)", marginTop: 1 },
-  roleBadge: { backgroundColor: "rgba(255,255,255,0.22)", paddingHorizontal: 10, paddingVertical: 3, borderRadius: radii.full, alignSelf: "flex-start", marginTop: 6 },
+  phone: { ...typography.captionMedium, color: C.overlayLight85 },
+  email: { ...typography.caption, color: C.overlayLight70, marginTop: 1 },
+  roleBadge: { backgroundColor: C.overlayLight22, paddingHorizontal: 10, paddingVertical: 3, borderRadius: radii.full, alignSelf: "flex-start", marginTop: 6 },
   roleTxt: { ...typography.smallMedium, color: C.textInverse },
-  editBtn: { width: 38, height: 38, borderRadius: radii.md, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  statsStrip: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.15)", borderRadius: radii.lg, marginTop: spacing.lg, marginBottom: spacing.lg, padding: spacing.md },
+  editBtn: { width: 38, height: 38, borderRadius: radii.md, backgroundColor: C.overlayLight20, alignItems: "center", justifyContent: "center" },
+  statsStrip: { flexDirection: "row", alignItems: "center", backgroundColor: C.overlayDark15, borderRadius: radii.lg, marginTop: spacing.lg, marginBottom: spacing.lg, padding: spacing.md },
   stat: { flex: 1, alignItems: "center" },
-  statVal: { fontFamily: "Inter_700Bold", fontSize: 16, color: C.textInverse },
-  statLbl: { ...typography.small, color: "rgba(255,255,255,0.75)", marginTop: 2 },
-  statDiv: { width: 1, height: 28, backgroundColor: "rgba(255,255,255,0.25)" },
+  statVal: { ...Typ.h3, fontSize: 16, color: C.textInverse },
+  statLbl: { ...typography.small, color: C.overlayLight75, marginTop: 2 },
+  statDiv: { width: 1, height: 28, backgroundColor: C.overlayLight25 },
 });
 
 const wb = StyleSheet.create({
   wrap: { flexDirection: "row", alignItems: "center", backgroundColor: C.surface, marginHorizontal: spacing.lg, marginTop: spacing.lg, borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1, borderColor: C.borderLight, ...shadows.sm },
   grad: { width: 42, height: 42, borderRadius: radii.md, alignItems: "center", justifyContent: "center" },
   lbl: { ...typography.small, color: C.textMuted, marginBottom: 2 },
-  amt: { fontFamily: "Inter_700Bold", fontSize: 18, color: C.text },
+  amt: { ...Typ.h3, color: C.text },
   btn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.primarySoft, paddingHorizontal: 10, paddingVertical: 7, borderRadius: radii.md },
   btnTxt: { ...typography.captionMedium, color: C.primary },
 });
@@ -1843,12 +1844,12 @@ const rc = StyleSheet.create({
   codeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   codeLabel: { ...typography.smallMedium, color: C.textMuted },
   codePill: { backgroundColor: C.indigoBorder, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.full },
-  code: { fontFamily: "Inter_700Bold", fontSize: 12, color: C.info, letterSpacing: 1 },
+  code: { ...Typ.captionBold, color: C.info, letterSpacing: 1 },
 });
 
 const sec = StyleSheet.create({
   wrap: { paddingHorizontal: spacing.lg, marginTop: spacing.xl },
-  title: { fontFamily: "Inter_700Bold", fontSize: 10, color: C.textMuted, letterSpacing: 1, marginBottom: 6 },
+  title: { ...Typ.tiny, color: C.textMuted, letterSpacing: 1, marginBottom: 6 },
   card: { backgroundColor: C.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: C.borderLight, overflow: "hidden", ...shadows.sm },
   secureBadge: { backgroundColor: C.successSoft, paddingHorizontal: 7, paddingVertical: 3, borderRadius: radii.full },
   secureTxt: { ...typography.smallMedium, color: C.success },
@@ -1860,7 +1861,7 @@ const row = StyleSheet.create({
   label: { ...typography.bodyMedium, color: C.text },
   sub: { ...typography.small, color: C.textMuted, marginTop: 1 },
   badge: { backgroundColor: C.danger, borderRadius: 10, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 5, marginRight: 4 },
-  badgeTxt: { fontFamily: "Inter_700Bold", fontSize: 10, color: C.textInverse },
+  badgeTxt: { ...Typ.tiny, color: C.textInverse },
 });
 
 const appInfo = StyleSheet.create({
@@ -1923,7 +1924,7 @@ const primaryBtn = StyleSheet.create({
 });
 
 const otpStyle = StyleSheet.create({
-  input: { paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, fontFamily: "Inter_700Bold", fontSize: 24, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, textAlign: "center", letterSpacing: 8 },
+  input: { paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, ...Typ.h2, fontSize: 24, color: C.text, borderWidth: 1.5, borderColor: C.border, borderRadius: radii.lg, textAlign: "center", letterSpacing: 8 },
 });
 
 const modalHdr = StyleSheet.create({

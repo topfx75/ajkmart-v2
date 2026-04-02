@@ -104,6 +104,26 @@ const redDeep = "#7F1D1D";
 const blueDeep = "#2B6CB0";
 const greenVivid = "#1B8E3D";
 
+const overlayLight10 = "rgba(255,255,255,0.1)";
+const overlayLight15 = "rgba(255,255,255,0.15)";
+const overlayLight20 = "rgba(255,255,255,0.2)";
+const overlayLight22 = "rgba(255,255,255,0.22)";
+const overlayLight25 = "rgba(255,255,255,0.25)";
+const overlayLight30 = "rgba(255,255,255,0.3)";
+const overlayLight40 = "rgba(255,255,255,0.4)";
+const overlayLight50 = "rgba(255,255,255,0.5)";
+const overlayLight70 = "rgba(255,255,255,0.7)";
+const overlayLight75 = "rgba(255,255,255,0.75)";
+const overlayLight80 = "rgba(255,255,255,0.8)";
+const overlayLight85 = "rgba(255,255,255,0.85)";
+const overlayLight90 = "rgba(255,255,255,0.9)";
+const overlayDark15 = "rgba(0,0,0,0.15)";
+const overlayDark35 = "rgba(0,0,0,0.35)";
+const overlayDark40 = "rgba(0,0,0,0.4)";
+const overlayDark50 = "rgba(0,0,0,0.5)";
+const overlayDark60 = "rgba(0,0,0,0.6)";
+const overlayPurple85 = "rgba(124,58,237,0.85)";
+
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -325,5 +345,24 @@ export default {
     pharmacyLight: "#F5E6FF",
     parcel: "#FF6B35",
     parcelLight: "#FFF0EB",
+    overlayLight10,
+    overlayLight15,
+    overlayLight20,
+    overlayLight22,
+    overlayLight25,
+    overlayLight30,
+    overlayLight40,
+    overlayLight50,
+    overlayLight70,
+    overlayLight75,
+    overlayLight80,
+    overlayLight85,
+    overlayLight90,
+    overlayDark15,
+    overlayDark35,
+    overlayDark40,
+    overlayDark50,
+    overlayDark60,
+    overlayPurple85,
   },
 };
