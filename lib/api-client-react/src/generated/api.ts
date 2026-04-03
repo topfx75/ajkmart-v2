@@ -47,6 +47,7 @@ import type {
   PaymentMethodsResponse,
   PharmacyOrderResponse,
   Product,
+  ProductDetail,
   ProductListResponse,
   Ride,
   RideHistoryResponse,
@@ -692,8 +693,8 @@ export const getGetProductUrl = (id: string) => {
 export const getProduct = async (
   id: string,
   options?: RequestInit,
-): Promise<Product> => {
-  return customFetch<Product>(getGetProductUrl(id), {
+): Promise<ProductDetail> => {
+  return customFetch<ProductDetail>(getGetProductUrl(id), {
     ...options,
     method: "GET",
   });

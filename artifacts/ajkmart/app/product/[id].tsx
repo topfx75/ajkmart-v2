@@ -29,8 +29,8 @@ import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
 import {
   useGetProduct, useGetProducts, getProductVariants, trackInteraction,
   addToWishlist, removeFromWishlist, checkWishlist,
-  getProductReviews, getProductReviewSummary, submitProductReview, uploadImage,
-  type Product, type ProductReview, type ReviewSummary,
+  getProductReviews, submitProductReview, uploadImage,
+  type Product, type ProductReview,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -430,13 +430,6 @@ export default function ProductDetailScreen() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const { data: reviewSummary, refetch: refetchSummary } = useQuery({
-    queryKey: ["product-review-summary", id],
-    queryFn: () => getProductReviewSummary(id || ""),
-    enabled: !!id,
-    staleTime: 2 * 60 * 1000,
-  });
-
   useEffect(() => {
     if (id) {
       trackInteraction({ productId: id, type: "view" }).catch(() => {});
@@ -506,7 +499,6 @@ export default function ProductDetailScreen() {
 
   const handleReviewSuccess = () => {
     refetchReviews();
-    refetchSummary();
   };
 
   if (isLoading) {
@@ -557,7 +549,12 @@ export default function ProductDetailScreen() {
   const serviceLabel = productType === "food" ? "Food" : productType === "pharmacy" ? "Pharmacy" : "Mart";
   const currentServiceLabel = cartType === "pharmacy" ? "Pharmacy" : cartType === "food" ? "Food" : cartType === "mart" ? "Mart" : "Another service";
 
-  const summary: ReviewSummary = reviewSummary || { average: 0, total: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
+  const reviewsSummary = product?.reviewsSummary;
+  const summary = {
+    average: reviewsSummary?.average ?? 0,
+    total: reviewsSummary?.total ?? 0,
+    distribution: reviewsSummary?.breakdown ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  };
   const reviews: ProductReview[] = reviewsData?.reviews || [];
 
   return (
