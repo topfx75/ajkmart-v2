@@ -839,6 +839,7 @@ export function NegotiationScreen({
                     keyboardType="numeric"
                     placeholder={String(Math.ceil(offeredFare * 1.1))}
                     placeholderTextColor="rgba(255,255,255,0.2)"
+                    maxLength={7}
                     style={{
                       flex: 1,
                       fontFamily: "Inter_700Bold",

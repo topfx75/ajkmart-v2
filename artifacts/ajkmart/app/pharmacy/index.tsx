@@ -456,6 +456,7 @@ function PharmacyScreenInner() {
             placeholder={T("searchMedicines")}
             placeholderTextColor={C.textMuted}
             style={s.searchInput}
+            maxLength={200}
           />
           {search.length > 0 && (
             <Pressable onPress={() => setSearch("")}>
@@ -586,6 +587,7 @@ function PharmacyScreenInner() {
               style={s.input}
               multiline
               numberOfLines={2}
+              maxLength={500}
             />
             <Text style={s.label}>{T("contactNumber")} *</Text>
             <TextInput
@@ -595,6 +597,7 @@ function PharmacyScreenInner() {
               placeholderTextColor={C.textMuted}
               style={s.input}
               keyboardType="phone-pad"
+              maxLength={20}
             />
             <Text style={s.label}>{T("prescriptionNote")}</Text>
             <TextInput
@@ -605,6 +608,7 @@ function PharmacyScreenInner() {
               style={[s.input, { minHeight: 72 }]}
               multiline
               numberOfLines={3}
+              maxLength={500}
             />
             <Pressable onPress={pickPrescriptionPhoto} style={s.photoPickerBtn}>
               <Ionicons name="camera-outline" size={18} color={C.purple} />

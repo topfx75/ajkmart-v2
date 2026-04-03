@@ -529,6 +529,10 @@ router.post("/", customerAuth, async (req, res) => {
     }
   }
 
+  if (Math.abs(pickupLat - dropLat) < 0.0001 && Math.abs(pickupLng - dropLng) < 0.0001) {
+    sendValidationError(res, "Pickup and drop locations cannot be the same"); return;
+  }
+
   let distance: number;
   let baseFare: number, gstAmount: number, platformFare: number;
   try {

@@ -148,6 +148,9 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
 
   const save = async () => {
     if (!name.trim()) { setError("Name is required"); return; }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Please enter a valid email address"); return;
+    }
     if (cnic.trim()) {
       const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
       if (!cnicRegex.test(cnic.trim())) {
@@ -233,7 +236,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               <Ionicons name="person-outline" size={16} color={C.primary} />
             </View>
             <TextInput style={fld.input} value={name} onChangeText={setName}
-              placeholder="Enter your name" placeholderTextColor={C.textMuted} autoCapitalize="words" />
+              placeholder="Enter your name" placeholderTextColor={C.textMuted} autoCapitalize="words" maxLength={100} />
           </View>
 
           <Text style={[fld.label, { marginTop: spacing.md }]}>Email Address</Text>
@@ -1119,7 +1122,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
               ))}
             </View>
             <View style={addrAdd.fld}>
-              <TextInput value={addr} onChangeText={setAddr} placeholder="Enter full address..." placeholderTextColor={C.textMuted} style={addrAdd.fldTxt} multiline />
+              <TextInput value={addr} onChangeText={setAddr} placeholder="Enter full address..." placeholderTextColor={C.textMuted} style={addrAdd.fldTxt} multiline maxLength={500} />
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
               <View style={{ flexDirection: "row", gap: 6 }}>
@@ -1166,7 +1169,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                         </View>
                       </ScrollView>
                       <View style={[addrAdd.fld, { marginBottom: spacing.sm }]}>
-                        <TextInput value={editAddr} onChangeText={setEditAddr} placeholder="Enter full address..." placeholderTextColor={C.textMuted} style={addrAdd.fldTxt} multiline />
+                        <TextInput value={editAddr} onChangeText={setEditAddr} placeholder="Enter full address..." placeholderTextColor={C.textMuted} style={addrAdd.fldTxt} multiline maxLength={500} />
                       </View>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
                         <View style={{ flexDirection: "row", gap: 6 }}>

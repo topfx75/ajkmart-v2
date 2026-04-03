@@ -167,6 +167,7 @@ function FoodScreenInner() {
             onChangeText={setSearch}
             placeholder="Search food, restaurants..."
             placeholderTextColor={C.textMuted}
+            maxLength={200}
           />
           {search.length > 0 && (
             <Pressable onPress={() => setSearch("")}>

@@ -321,6 +321,16 @@ function ParcelScreenInner() {
       }
       setGeoError(null);
 
+      // Block booking if pickup and drop are the same location
+      if (
+        Math.abs(finalPickupLat - finalDropLat) < 0.0001 &&
+        Math.abs(finalPickupLng - finalDropLng) < 0.0001
+      ) {
+        showToast("Pickup and drop-off locations cannot be the same", "error");
+        setLoading(false);
+        return;
+      }
+
       const w = chargeableWeight > 0 ? chargeableWeight : (parseFloat(weight) || undefined);
       const payload: ParcelBookingPayload = {
         senderName, senderPhone: normalizePhone(senderPhone), pickupAddress,
@@ -445,9 +455,9 @@ function ParcelScreenInner() {
           <View style={ss.card}>
             <Text style={ss.cardTitle}>📍 {T("senderDetails")}</Text>
             <Text style={ss.label}>{T("yourName")} *</Text>
-            <TextInput value={senderName} onChangeText={setSenderName} placeholder={T("fullName")} placeholderTextColor={C.textMuted} style={ss.input} />
+            <TextInput value={senderName} onChangeText={setSenderName} placeholder={T("fullName")} placeholderTextColor={C.textMuted} style={ss.input} maxLength={100} />
             <Text style={ss.label}>{T("yourPhone")} *</Text>
-            <TextInput value={senderPhone} onChangeText={setSenderPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" />
+            <TextInput value={senderPhone} onChangeText={setSenderPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" maxLength={20} />
             <Text style={ss.label}>{T("pickupAddress")} *</Text>
             <Pressable onPress={() => setShowLocPicker("pickup")} style={ss.locInput}>
               <Ionicons name="location-outline" size={16} color={pickupAddress ? C.text : C.textMuted} />
@@ -464,6 +474,7 @@ function ParcelScreenInner() {
               placeholderTextColor={C.textMuted}
               style={[ss.input, geoError === "pickup" && { borderColor: C.danger, borderWidth: 1.5 }]}
               multiline
+              maxLength={500}
             />
             {geoError === "pickup" && (
               <Text style={{ ...Typ.captionMedium, color: C.danger, marginTop: 4 }}>
@@ -477,9 +488,9 @@ function ParcelScreenInner() {
           <View style={ss.card}>
             <Text style={ss.cardTitle}>📬 {T("receiverDetails")}</Text>
             <Text style={ss.label}>{T("receiverName")} *</Text>
-            <TextInput value={receiverName} onChangeText={setReceiverName} placeholder={T("fullName")} placeholderTextColor={C.textMuted} style={ss.input} />
+            <TextInput value={receiverName} onChangeText={setReceiverName} placeholder={T("fullName")} placeholderTextColor={C.textMuted} style={ss.input} maxLength={100} />
             <Text style={ss.label}>{T("receiverPhone")} *</Text>
-            <TextInput value={receiverPhone} onChangeText={setReceiverPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" />
+            <TextInput value={receiverPhone} onChangeText={setReceiverPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" maxLength={20} />
             <Text style={ss.label}>{T("dropAddress")} *</Text>
             <Pressable onPress={() => setShowLocPicker("drop")} style={ss.locInput}>
               <Ionicons name="location-outline" size={16} color={dropAddress ? C.text : C.textMuted} />
@@ -496,6 +507,7 @@ function ParcelScreenInner() {
               placeholderTextColor={C.textMuted}
               style={[ss.input, geoError === "drop" && { borderColor: C.danger, borderWidth: 1.5 }]}
               multiline
+              maxLength={500}
             />
             {geoError === "drop" && (
               <Text style={{ ...Typ.captionMedium, color: C.danger, marginTop: 4 }}>
@@ -560,6 +572,7 @@ function ParcelScreenInner() {
                 placeholderTextColor={C.textMuted}
                 style={[ss.input, { minHeight: 60 }]}
                 multiline
+                maxLength={500}
               />
             </View>
             {parcelType && (

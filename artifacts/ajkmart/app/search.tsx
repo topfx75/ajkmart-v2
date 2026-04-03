@@ -290,6 +290,7 @@ export default function UniversalSearchScreen() {
             returnKeyType="search"
             autoCapitalize="none"
             autoFocus
+            maxLength={200}
             onSubmitEditing={() => { if (query.trim()) fetchResults(query, true); }}
           />
           {query.length > 0 && (

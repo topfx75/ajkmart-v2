@@ -285,6 +285,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                     placeholder="Any additional info..."
                     placeholderTextColor={C.textMuted}
                     style={[ws.sendInput, { paddingVertical: 0 }]}
+                    maxLength={500}
                   />
                 </View>
 
@@ -326,6 +327,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
   const [note, setNote]               = useState("");
   const [submitting, setSubmitting]   = useState(false);
   const [submittedTxIds, setSubmittedTxIds] = useState<Set<string>>(new Set());
+  const [idempotencyKey, setIdempotencyKey] = useState<string>("");
   const [err, setErr]                 = useState("");
   const { showToast } = useToast();
 
@@ -369,13 +371,15 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
     setStep("amount");
   };
 
-  const goToConfirm = () => {
+  const goToConfirm = async () => {
     const amt = parseFloat(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setErr("Please enter a valid amount"); return; }
     if (amt < minTopup) { setErr(`Minimum deposit amount is Rs. ${minTopup.toLocaleString()}`); return; }
     if (amt > maxTopup) { setErr(`Maximum deposit amount is Rs. ${maxTopup.toLocaleString()}`); return; }
     if (!txId.trim()) { setErr("Transaction ID is required"); return; }
     setErr("");
+    const { randomUUID } = await import("expo-crypto");
+    setIdempotencyKey(randomUUID());
     setStep("confirm");
   };
 
@@ -386,6 +390,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
       setErr("This transaction ID has already been submitted. Please check your wallet history.");
       return;
     }
+    if (!idempotencyKey) return;
     setSubmitting(true);
     setErr("");
     try {
@@ -399,6 +404,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
           amount: parseFloat(amount),
           paymentMethod: selectedMethod!.id,
           transactionId: normalizedTxId,
+          idempotencyKey,
           accountNumber: senderAcNo.trim() || undefined,
           note: note.trim() || undefined,
         }),
@@ -621,6 +627,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                     placeholder="e.g. T12345678"
                     placeholderTextColor={C.textMuted}
                     style={[ws.sendInput, { paddingVertical: 0 }]}
+                    maxLength={100}
                   />
                 </View>
 
@@ -632,6 +639,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                     placeholder={selectedMethod.id === "bank" ? "Your IBAN" : "03XX-XXXXXXX"}
                     placeholderTextColor={C.textMuted}
                     style={[ws.sendInput, { paddingVertical: 0 }]}
+                    maxLength={50}
                   />
                 </View>
 
@@ -643,6 +651,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                     placeholder="Any additional info..."
                     placeholderTextColor={C.textMuted}
                     style={[ws.sendInput, { paddingVertical: 0 }]}
+                    maxLength={500}
                   />
                 </View>
 
@@ -1173,7 +1182,7 @@ export default function WalletScreen() {
 
                 <Text style={ws.sheetLbl}>Note (Optional)</Text>
                 <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
-                  <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} />
+                  <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} maxLength={500} />
                 </View>
 
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16, marginTop: 4 }}>

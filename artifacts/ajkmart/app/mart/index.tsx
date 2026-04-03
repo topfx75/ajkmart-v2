@@ -274,6 +274,7 @@ function MartScreenInner() {
             onChangeText={setSearch}
             placeholder="Search groceries..."
             placeholderTextColor={C.textMuted}
+            maxLength={200}
           />
           {search.length > 0 && (
             <Pressable onPress={() => setSearch("")}>

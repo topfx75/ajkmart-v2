@@ -542,6 +542,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         return;
       }
     }
+    if (
+      pickupObj && dropObj &&
+      Math.abs(pickupObj.lat - dropObj.lat) < 0.0001 &&
+      Math.abs(pickupObj.lng - dropObj.lng) < 0.0001
+    ) {
+      showToast("Pickup and drop locations cannot be the same", "error");
+      return;
+    }
     if (!estimate) {
       showToast("Fare estimate is being calculated. Please wait.", "error");
       return;
@@ -1746,6 +1754,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   onChangeText={setBargainNote}
                   placeholder="Note (optional)"
                   placeholderTextColor={C.silverBg}
+                  maxLength={500}
                   style={{
                     backgroundColor: C.surface,
                     borderWidth: 1,

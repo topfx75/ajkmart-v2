@@ -517,7 +517,13 @@ export default function CartScreen() {
         setPromoCode(null);
         setPromoDiscount(0);
         setPromoApplied(false);
-        setPromoError(data.error || T("promoInvalid"));
+        const serverErrLower: string = (data.error ?? "").toLowerCase();
+        let friendlyErr = T("promoInvalid");
+        if (serverErrLower.includes("expire"))                               friendlyErr = T("promoExpired") ?? T("promoInvalid");
+        else if (serverErrLower.includes("limit") || serverErrLower.includes("usedcount")) friendlyErr = T("promoLimitReached") ?? T("promoInvalid");
+        else if (serverErrLower.includes("minimum"))                         friendlyErr = T("promoMinOrder") ?? T("promoInvalid");
+        else if (serverErrLower.includes("sirf") || serverErrLower.includes("ke liye"))    friendlyErr = T("promoWrongType") ?? T("promoInvalid");
+        setPromoError(friendlyErr);
       }
     } catch {
       setPromoError(T("promoNetworkErrRetry"));
@@ -1189,6 +1195,7 @@ export default function CartScreen() {
                     placeholder="Enter promo code"
                     placeholderTextColor={C.textSecondary}
                     autoCapitalize="characters"
+                    maxLength={30}
                     style={{
                       flex: 1, borderWidth: 1.5, borderColor: promoError ? C.red : C.border,
                       borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11,
