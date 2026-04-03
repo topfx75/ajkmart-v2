@@ -1390,10 +1390,14 @@ router.get("/:id/stream", customerAuth, async (req, res) => {
 
   req.on("close", cleanup);
 
-  /* Send current state immediately, then wire up updates + heartbeat */
+  /* Send current state immediately, then wire up updates + heartbeat.
+     Guard against terminal-state on first connect: if pushUpdate() already
+     called cleanup() (ride was completed/cancelled before connect), skip
+     subscription and timer so no resources are leaked. */
   await pushUpdate();
-  unsubscribeFn   = onRideUpdate(rideId, () => { pushUpdate().catch(() => {}); });
-  heartbeatTimer  = setInterval(() => {
+  if (cleaned) return;
+  unsubscribeFn  = onRideUpdate(rideId, () => { pushUpdate().catch(() => {}); });
+  heartbeatTimer = setInterval(() => {
     try { res.write(": heartbeat\n\n"); } catch {}
   }, SSE_HEARTBEAT_MS);
 });
