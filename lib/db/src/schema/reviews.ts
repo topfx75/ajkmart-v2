@@ -3,17 +3,16 @@ import { sql } from "drizzle-orm";
 import { check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const reviewsTable = pgTable("reviews", {
   id: text("id").primaryKey(),
   orderId: text("order_id").notNull(),
-  userId: text("user_id").notNull(),
-  vendorId: text("vendor_id"),
-  riderId: text("rider_id"),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  vendorId: text("vendor_id").references(() => usersTable.id, { onDelete: "set null" }),
+  riderId: text("rider_id").references(() => usersTable.id, { onDelete: "set null" }),
   orderType: text("order_type").notNull(),
-  /** Primary / vendor rating (always present) */
   rating: integer("rating").notNull(),
-  /** Separate rider rating — only set when a delivery rider is also being rated */
   riderRating: integer("rider_rating"),
   comment: text("comment"),
   photos: text("photos").array(),
@@ -31,6 +30,7 @@ export const reviewsTable = pgTable("reviews", {
   index("reviews_user_id_idx").on(t.userId),
   index("reviews_vendor_id_idx").on(t.vendorId),
   index("reviews_rider_id_idx").on(t.riderId),
+  index("reviews_product_id_idx").on(t.productId),
   check("reviews_rating_range",       sql`${t.rating}       BETWEEN 1 AND 5`),
   check("reviews_rider_rating_range", sql`${t.riderRating}  IS NULL OR ${t.riderRating} BETWEEN 1 AND 5`),
 ]);

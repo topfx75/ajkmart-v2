@@ -1,10 +1,10 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { usersTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, and, gte, sum, desc, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings, adminAuth } from "./admin.js";
-import { customerAuth } from "../middleware/security.js";
+import { customerAuth, checkAvailableRateLimit, getClientIp } from "../middleware/security.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO } from "../lib/socketio.js";
@@ -130,6 +130,12 @@ router.post("/topup", adminAuth, async (req, res) => {
 /* ── POST /wallet/deposit — Submit a manual deposit request (customer) ───── */
 router.post("/deposit", customerAuth, async (req, res) => {
   const userId = req.customerId!;
+  const ip = getClientIp(req);
+
+  const depositLimit = await checkAvailableRateLimit(`deposit:${ip}:${userId}`, 10, 15);
+  if (depositLimit.limited) {
+    res.status(429).json({ error: `Too many deposit requests. Try again in ${depositLimit.minutesLeft} minute(s).` }); return;
+  }
 
   const [depositUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (depositUser && isWalletFrozen(depositUser)) { res.status(403).json(WALLET_FROZEN_RESPONSE); return; }
@@ -324,7 +330,7 @@ router.post("/send", customerAuth, async (req, res) => {
 
   try {
     const result = await db.transaction(async (tx) => {
-      const [sender] = await tx.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
+      const [sender] = await tx.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1).for("update");
       if (!sender) throw new Error("Sender not found");
 
       const feeAmt = p2pFeePct > 0 ? Math.round(sendAmt * p2pFeePct) / 100 : 0;

@@ -1,10 +1,11 @@
 import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const savedAddressesTable = pgTable("saved_addresses", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   label: text("label").notNull(),
   address: text("address").notNull(),
   city: text("city").notNull().default("Muzaffarabad"),

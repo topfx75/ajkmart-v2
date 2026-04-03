@@ -1,8 +1,9 @@
 import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
+import { usersTable } from "./users";
 
 export const userSessionsTable = pgTable("user_sessions", {
   id:          text("id").primaryKey(),
-  userId:      text("user_id").notNull(),
+  userId:      text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   tokenHash:   text("token_hash").notNull(),
   deviceName:  text("device_name"),
   browser:     text("browser"),

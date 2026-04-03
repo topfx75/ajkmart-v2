@@ -1,10 +1,11 @@
 import { boolean, decimal, index, integer, pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const ridesTable = pgTable("rides", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
   status: text("status").notNull().default("searching"),
   pickupAddress: text("pickup_address").notNull(),
@@ -15,32 +16,27 @@ export const ridesTable = pgTable("rides", {
   dropLng: decimal("drop_lng", { precision: 10, scale: 6 }),
   fare: decimal("fare", { precision: 10, scale: 2 }).notNull(),
   distance: decimal("distance", { precision: 10, scale: 2 }).notNull(),
-  riderId: text("rider_id"),
+  riderId: text("rider_id").references(() => usersTable.id, { onDelete: "set null" }),
   riderName: text("rider_name"),
   riderPhone: text("rider_phone"),
   paymentMethod: text("payment_method").notNull(),
-  /* ── Bargaining fields ── */
   offeredFare:    decimal("offered_fare",   { precision: 10, scale: 2 }),
   counterFare:    decimal("counter_fare",   { precision: 10, scale: 2 }),
   bargainStatus:  text("bargain_status"),
   bargainRounds:  integer("bargain_rounds").default(0),
   bargainNote:    text("bargain_note"),
   cancellationReason: text("cancellation_reason"),
-  /* ── Dispatch engine fields ── */
-  dispatchedRiderId: text("dispatched_rider_id"),
+  dispatchedRiderId: text("dispatched_rider_id").references(() => usersTable.id, { onDelete: "set null" }),
   dispatchAttempts:  jsonb("dispatch_attempts").default([]),
   dispatchLoopCount: integer("dispatch_loop_count").default(0),
   dispatchedAt:      timestamp("dispatched_at"),
   expiresAt:         timestamp("expires_at"),
-  /* ── OTP start system ── */
   tripOtp:     text("trip_otp"),
   otpVerified: boolean("otp_verified").notNull().default(false),
-  /* ── Parcel delivery fields ── */
   isParcel:      boolean("is_parcel").notNull().default(false),
   receiverName:  text("receiver_name"),
   receiverPhone: text("receiver_phone"),
   packageType:   text("package_type"),
-  /* ── Precise event timestamps ── */
   acceptedAt:   timestamp("accepted_at"),
   arrivedAt:    timestamp("arrived_at"),
   startedAt:    timestamp("started_at"),
@@ -58,4 +54,3 @@ export const ridesTable = pgTable("rides", {
 export const insertRideSchema = createInsertSchema(ridesTable).omit({ createdAt: true, updatedAt: true });
 export type InsertRide = z.infer<typeof insertRideSchema>;
 export type Ride = typeof ridesTable.$inferSelect;
-

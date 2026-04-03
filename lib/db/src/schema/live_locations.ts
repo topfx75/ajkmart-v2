@@ -1,9 +1,10 @@
 import { decimal, index, pgTable, real, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const liveLocationsTable = pgTable("live_locations", {
-  userId:       text("user_id").primaryKey(),
+  userId:       text("user_id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }),
   latitude:     decimal("latitude",  { precision: 10, scale: 6 }).notNull(),
   longitude:    decimal("longitude", { precision: 10, scale: 6 }).notNull(),
   role:         text("role").notNull(),
@@ -13,11 +14,8 @@ export const liveLocationsTable = pgTable("live_locations", {
   onlineSince:  timestamp("online_since"),
   updatedAt:    timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
-  /* Supports "find all online riders" lookup */
   index("live_locations_role_idx").on(t.role),
-  /* Composite spatial index: supports bounding-box pre-filter for proximity queries */
   index("live_locations_lat_lng_idx").on(t.latitude, t.longitude),
-  /* Composite index: role + recency for fleet queries */
   index("live_locations_role_updated_idx").on(t.role, t.updatedAt),
 ]);
 

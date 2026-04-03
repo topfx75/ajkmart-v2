@@ -1,16 +1,10 @@
 import { boolean, decimal, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
-/**
- * vendor_profiles — stores all vendor/store-specific data, linked to users table by userId.
- * The users table only holds identity, auth, and wallet data.
- * Migrated from: users.storeName, storeCategory, storeBanner, storeDescription,
- *                storeHours, storeAnnouncement, storeMinOrder, storeDeliveryTime,
- *                storeIsOpen, storeAddress, businessType, businessName, ntn
- */
 export const vendorProfilesTable = pgTable("vendor_profiles", {
-  userId:            text("user_id").primaryKey(),
+  userId:            text("user_id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }),
   storeName:         text("store_name"),
   storeCategory:     text("store_category"),
   storeBanner:       text("store_banner"),

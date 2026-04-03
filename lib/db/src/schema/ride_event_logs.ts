@@ -1,9 +1,11 @@
 import { decimal, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { ridesTable } from "./rides";
+import { usersTable } from "./users";
 
 export const rideEventLogsTable = pgTable("ride_event_logs", {
   id:        text("id").primaryKey(),
-  rideId:    text("ride_id").notNull(),
-  riderId:   text("rider_id").notNull(),
+  rideId:    text("ride_id").notNull().references(() => ridesTable.id, { onDelete: "cascade" }),
+  riderId:   text("rider_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   event:     text("event").notNull(),
   lat:       decimal("lat", { precision: 10, scale: 6 }),
   lng:       decimal("lng", { precision: 10, scale: 6 }),

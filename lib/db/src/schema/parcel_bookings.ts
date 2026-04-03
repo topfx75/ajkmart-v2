@@ -1,10 +1,11 @@
 import { decimal, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const parcelBookingsTable = pgTable("parcel_bookings", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   senderName: text("sender_name").notNull(),
   senderPhone: text("sender_phone").notNull(),
   pickupAddress: text("pickup_address").notNull(),
@@ -18,7 +19,7 @@ export const parcelBookingsTable = pgTable("parcel_bookings", {
   paymentMethod: text("payment_method").notNull(),
   status: text("status").notNull().default("pending"),
   estimatedTime: text("estimated_time").default("45-60 min"),
-  riderId: text("rider_id"),
+  riderId: text("rider_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

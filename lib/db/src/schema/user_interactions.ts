@@ -1,11 +1,13 @@
 import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
+import { productsTable } from "./products";
 
 export const userInteractionsTable = pgTable("user_interactions", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  productId: text("product_id").notNull(),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  productId: text("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
   interactionType: text("interaction_type").notNull().default("view"),
   weight: integer("weight").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),

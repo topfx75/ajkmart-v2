@@ -1,10 +1,11 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { notificationsTable } from "@workspace/db/schema";
 import { usersTable } from "@workspace/db/schema";
 import { eq, desc, and, ne } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
-import { verifyUserJwt, verifyAdminJwt, getCachedSettings, type JwtUserPayload } from "../middleware/security.js";
+import { customerAuth, getCachedSettings } from "../middleware/security.js";
+import { adminAuth } from "./admin.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { emitSosNew, emitSosAcknowledged, emitSosResolved } from "../lib/socketio.js";
@@ -12,20 +13,13 @@ import { emitSosNew, emitSosAcknowledged, emitSosResolved } from "../lib/socketi
 const router: IRouter = Router();
 
 /* ── POST /sos — Customer or rider triggers SOS alert ─────────────────── */
-router.post("/", async (req, res) => {
+router.post("/", customerAuth, async (req, res) => {
   const settings = await getCachedSettings();
   if ((settings["feature_sos"] ?? "on") !== "on") {
     res.status(503).json({ error: "SOS feature is currently disabled" }); return;
   }
 
-  const authHeader  = req.headers["authorization"] as string | undefined;
-  const tokenHeader = req.headers["x-auth-token"]  as string | undefined;
-  const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
-  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
-  const payload = verifyUserJwt(raw);
-  if (!payload) { res.status(401).json({ error: "Invalid or expired session" }); return; }
-
-  const userId = payload.userId;
+  const userId = req.customerId!;
   const { rideId, lat, lng, message } = req.body;
 
   const [user] = await db.select({ name: usersTable.name, phone: usersTable.phone, role: usersTable.role })
@@ -67,20 +61,10 @@ router.post("/", async (req, res) => {
   res.json({ ok: true, alertId, message: "SOS alert sent. Help is on the way." });
 });
 
-/* ── Extract admin identity from request headers ── */
-function getAdminFromRequest(req: any): { adminId: string; adminName: string } | null {
-  const adminToken = req.headers["x-admin-token"] as string | undefined;
-  if (adminToken) {
-    const p = verifyAdminJwt(adminToken);
-    if (p) return { adminId: p.adminId ?? "admin", adminName: p.name ?? "Admin" };
-  }
-  const authHeader = req.headers["authorization"] as string | undefined;
-  const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (bearer) {
-    const p = verifyUserJwt(bearer);
-    if (p && p.role === "admin") return { adminId: p.userId, adminName: (p as JwtUserPayload & { name?: string }).name ?? "Admin" };
-  }
-  return null;
+function getAdminFromReq(req: Request): { adminId: string; adminName: string } {
+  const adminId = (req as Record<string, unknown>).adminId as string | undefined;
+  const adminName = (req as Record<string, unknown>).adminName as string | undefined;
+  return { adminId: adminId ?? "admin", adminName: adminName ?? "Admin" };
 }
 
 type SosAlertResponse = {
@@ -128,9 +112,8 @@ function serializeAlert(a: typeof notificationsTable.$inferSelect): SosAlertResp
 const ALLOWED_SOS_STATUSES = new Set(["pending", "acknowledged", "resolved"]);
 
 /* ── GET /sos/alerts — Admin: list SOS alerts with optional ?status= filter ── */
-router.get("/alerts", async (req, res) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin) { res.status(403).json({ error: "Admin access required" }); return; }
+router.get("/alerts", adminAuth, async (req, res) => {
+  const admin = getAdminFromReq(req);
 
   const page   = Math.max(1, parseInt(String(req.query["page"]  || "1"),  10));
   const limit  = Math.min(50, Math.max(1, parseInt(String(req.query["limit"] || "20"), 10)));
@@ -171,9 +154,8 @@ router.get("/alerts", async (req, res) => {
 });
 
 /* ── PATCH /sos/alerts/:id/acknowledge ── */
-router.patch("/alerts/:id/acknowledge", async (req, res) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin) { res.status(403).json({ error: "Admin access required" }); return; }
+router.patch("/alerts/:id/acknowledge", adminAuth, async (req, res) => {
+  const admin = getAdminFromReq(req);
 
   const alertId = req.params["id"];
   const [existing] = await db.select().from(notificationsTable)
@@ -200,9 +182,8 @@ router.patch("/alerts/:id/acknowledge", async (req, res) => {
 });
 
 /* ── PATCH /sos/alerts/:id/resolve ── */
-router.patch("/alerts/:id/resolve", async (req, res) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin) { res.status(403).json({ error: "Admin access required" }); return; }
+router.patch("/alerts/:id/resolve", adminAuth, async (req, res) => {
+  const admin = getAdminFromReq(req);
 
   const alertId = req.params["id"];
   const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : null;

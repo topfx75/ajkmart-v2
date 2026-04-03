@@ -1,12 +1,14 @@
 import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { ridesTable } from "./rides";
+import { usersTable } from "./users";
 
 export const rideRatingsTable = pgTable("ride_ratings", {
   id: text("id").primaryKey(),
-  rideId: text("ride_id").notNull(),
-  customerId: text("customer_id").notNull(),
-  riderId: text("rider_id").notNull(),
+  rideId: text("ride_id").notNull().references(() => ridesTable.id, { onDelete: "cascade" }),
+  customerId: text("customer_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  riderId: text("rider_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   stars: integer("stars").notNull(),
   comment: text("comment"),
   hidden: boolean("hidden").notNull().default(false),

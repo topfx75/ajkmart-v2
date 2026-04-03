@@ -2,6 +2,7 @@ import { boolean, check, decimal, index, integer, pgTable, text, timestamp } fro
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const productsTable = pgTable("products", {
   id: text("id").primaryKey(),
@@ -13,7 +14,7 @@ export const productsTable = pgTable("products", {
   type: text("type").notNull().default("mart"),
   image: text("image"),
   images: text("images").array(),
-  vendorId: text("vendor_id").notNull(),
+  vendorId: text("vendor_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   vendorName: text("vendor_name"),
   rating: decimal("rating", { precision: 3, scale: 1 }).default("4.0"),
   reviewCount: integer("review_count").default(0),

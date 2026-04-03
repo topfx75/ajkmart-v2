@@ -1,5 +1,6 @@
 import { boolean, decimal, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { usersTable } from "./users";
 
 export const schoolRoutesTable = pgTable("school_routes", {
   id:             text("id").primaryKey(),
@@ -28,8 +29,8 @@ export const schoolRoutesTable = pgTable("school_routes", {
 
 export const schoolSubscriptionsTable = pgTable("school_subscriptions", {
   id:              text("id").primaryKey(),
-  userId:          text("user_id").notNull(),
-  routeId:         text("route_id").notNull(),
+  userId:          text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  routeId:         text("route_id").notNull().references(() => schoolRoutesTable.id, { onDelete: "cascade" }),
   studentName:     text("student_name").notNull(),
   studentClass:    text("student_class").notNull(),
   monthlyAmount:   decimal("monthly_amount", { precision: 10, scale: 2 }).notNull(),

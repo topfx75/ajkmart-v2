@@ -1,10 +1,11 @@
 import { boolean, decimal, index, pgTable, real, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const locationLogsTable = pgTable("location_logs", {
   id:           text("id").primaryKey(),
-  userId:       text("user_id").notNull(),
+  userId:       text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   role:         text("role").notNull().default("rider"),
   latitude:     decimal("latitude",  { precision: 10, scale: 6 }).notNull(),
   longitude:    decimal("longitude", { precision: 10, scale: 6 }).notNull(),

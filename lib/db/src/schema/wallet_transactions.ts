@@ -2,10 +2,11 @@ import { check, decimal, index, pgTable, text, timestamp } from "drizzle-orm/pg-
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const walletTransactionsTable = pgTable("wallet_transactions", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   description: text("description").notNull(),
@@ -15,7 +16,7 @@ export const walletTransactionsTable = pgTable("wallet_transactions", {
 }, (t) => [
   index("wallet_txn_user_id_idx").on(t.userId),
   index("wallet_txn_created_at_idx").on(t.createdAt),
-  /* Transaction amounts must be non-negative (type field records debit/credit direction) */
+  index("wallet_txn_reference_idx").on(t.reference),
   check("wallet_txn_amount_non_negative", sql`${t.amount} >= 0`),
 ]);
 

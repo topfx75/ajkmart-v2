@@ -10,7 +10,7 @@ import { and, asc, eq, ne, sql, or, isNull, gte, count } from "drizzle-orm";
 import { z } from "zod";
 import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings, adminAuth } from "./admin.js";
-import { customerAuth, riderAuth, verifyUserJwt } from "../middleware/security.js";
+import { customerAuth, riderAuth } from "../middleware/security.js";
 import { loadRide, requireRideState, requireRideOwner } from "../middleware/ride-guards.js";
 import { getIO } from "../lib/socketio.js";
 
@@ -146,6 +146,12 @@ async function broadcastRide(rideId: string) {
         const vt = (user.vehicleType ?? "").trim();
         if (!vt || vt !== ride.type) continue;
       }
+
+      const activeRiderRides = await db.select({ id: ridesTable.id })
+        .from(ridesTable)
+        .where(and(eq(ridesTable.riderId, r.userId), sql`status IN ('accepted', 'arrived', 'in_transit')`))
+        .limit(1);
+      if (activeRiderRides.length > 0) continue;
 
       const etaMin = Math.max(1, Math.round((dist / avgSpeed) * 60));
       const fareStr = parseFloat(ride.fare ?? "0").toFixed(0);
@@ -546,7 +552,7 @@ router.post("/", customerAuth, async (req, res) => {
   const fareToStore  = platformFare.toFixed(2);
 
   try {
-    let rideRecord: any;
+    let rideRecord: typeof ridesTable.$inferSelect;
 
     if (paymentMethod === "wallet" && !isBargaining) {
       const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
@@ -979,14 +985,8 @@ router.get("/payment-methods", async (_req, res) => {
   res.json({ methods: methods.filter(m => m.enabled) });
 });
 
-router.get("/:id", async (req, res) => {
-  const authHeader  = req.headers["authorization"] as string | undefined;
-  const tokenHeader = req.headers["x-auth-token"]  as string | undefined;
-  const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
-  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
-  const payload = verifyUserJwt(raw);
-  if (!payload) { res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return; }
-  const callerId = payload.userId;
+router.get("/:id", customerAuth, async (req, res) => {
+  const callerId = req.customerId!;
 
   const rideId = String(req.params["id"]);
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -1074,14 +1074,8 @@ router.get("/:id", async (req, res) => {
   res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge, riderAvgRating, fareBreakdown });
 });
 
-router.get("/:id/track", async (req, res) => {
-  const authHeader  = req.headers["authorization"] as string | undefined;
-  const tokenHeader = req.headers["x-auth-token"]  as string | undefined;
-  const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
-  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
-  const payload = verifyUserJwt(raw);
-  if (!payload) { res.status(401).json({ error: "Invalid or expired session. Please log in again." }); return; }
-  const callerId = payload.userId;
+router.get("/:id/track", customerAuth, async (req, res) => {
+  const callerId = req.customerId!;
 
   const rideId = String(req.params["id"]);
   const [ride] = await db.select({

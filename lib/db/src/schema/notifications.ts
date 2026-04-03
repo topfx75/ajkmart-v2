@@ -1,10 +1,11 @@
 import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const notificationsTable = pgTable("notifications", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   body: text("body").notNull(),
   type: text("type").notNull().default("system"),
@@ -12,7 +13,6 @@ export const notificationsTable = pgTable("notifications", {
   icon: text("icon").default("notifications-outline"),
   link: text("link"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  /* SOS lifecycle fields — only populated for type='sos' rows */
   sosStatus: text("sos_status").default("pending"),
   acknowledgedAt: timestamp("acknowledged_at"),
   acknowledgedBy: text("acknowledged_by"),

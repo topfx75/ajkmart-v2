@@ -21,6 +21,34 @@ AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pak
 - **`artifacts/ajkmart/app/mart/index.tsx`**: Heart icons on FlashCard and ProductCard components.
 - **`artifacts/ajkmart/app/search.tsx`**: Heart icons on search result cards.
 
+### Critical Bug Fixes (Step 1) — Completed Changes
+
+#### D-01 & D-02: Foreign Key References + Cascade Deletes
+- **All schema files in `lib/db/src/schema/`**: Added `.references(() => usersTable.id, { onDelete: "cascade" })` to all `userId` columns across 25+ tables. Added ride/product/route FK references with appropriate cascade/set-null behavior.
+- **`lib/db/migrations/0018_add_foreign_keys.sql`**: SQL migration file for reference (schema was applied via `drizzle-kit push`).
+- Created `ajkmart_system` user record to satisfy products FK constraint for system-generated products.
+
+#### B-01: Ride Endpoint Auth Middleware
+- **`artifacts/api-server/src/routes/rides.ts`**: Replaced inline JWT parsing on `GET /:id` and `GET /:id/track` with standard `customerAuth` middleware. Removed unused `verifyUserJwt` import.
+
+#### B-02: SOS Admin Auth Guard
+- **`artifacts/api-server/src/routes/sos.ts`**: Replaced custom `getAdminFromRequest()` helper with proper `adminAuth` middleware from `admin.ts` on all admin endpoints (`GET /alerts`, `PATCH /acknowledge`, `PATCH /resolve`). Also converted `POST /` SOS trigger to use `customerAuth` middleware.
+
+#### B-03: Login Rate Limiting — Already Implemented
+- `handleUnifiedLogin` already uses `checkLockout`/`recordFailedAttempt`/`resetAttempts` from `security.ts`. No changes needed.
+
+#### B-04: Wallet Deposit Rate Limiting
+- **`artifacts/api-server/src/routes/wallet.ts`**: Added `checkAvailableRateLimit` (10 requests per 15 minutes, keyed by IP+userId) to `POST /deposit` endpoint.
+
+#### B-05: Ride Wallet Transaction Atomicity — Already Implemented
+- Wallet deduction + ride creation already wrapped in `db.transaction()`. Fixed `any` type on `rideRecord` to `typeof ridesTable.$inferSelect`.
+
+#### B-06: P2P Transfer Race Condition Fix
+- **`artifacts/api-server/src/routes/wallet.ts`**: Added `SELECT ... FOR UPDATE` on sender row in P2P transfer transaction to prevent concurrent overspend.
+
+#### B-07: BroadcastRide Skip Busy Riders
+- **`artifacts/api-server/src/routes/rides.ts`**: Added active-ride check in `broadcastRide()` to skip riders who already have an active ride (accepted/arrived/in_transit status).
+
 ### Pull-to-Refresh & UI Polish — Completed Changes
 
 #### PullToRefresh Component (All 3 Web Apps)

@@ -1,11 +1,12 @@
 import { decimal, index, json, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const pharmacyOrdersTable = pgTable("pharmacy_orders", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  riderId: text("rider_id"),
+  userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  riderId: text("rider_id").references(() => usersTable.id, { onDelete: "set null" }),
   items: json("items").notNull(),
   prescriptionNote: text("prescription_note"),
   deliveryAddress: text("delivery_address").notNull(),

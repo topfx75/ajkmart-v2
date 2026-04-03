@@ -1,6 +1,7 @@
 import { boolean, decimal, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { usersTable } from "./users";
 
 export const promoCodesTable = pgTable("promo_codes", {
   id:             text("id").primaryKey(),
@@ -14,7 +15,7 @@ export const promoCodesTable = pgTable("promo_codes", {
   usedCount:      integer("used_count").notNull().default(0),
   appliesTo:      text("applies_to").notNull().default("all"),
   expiresAt:      timestamp("expires_at"),
-  vendorId:       text("vendor_id"),
+  vendorId:       text("vendor_id").references(() => usersTable.id, { onDelete: "set null" }),
   isActive:       boolean("is_active").notNull().default(true),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
