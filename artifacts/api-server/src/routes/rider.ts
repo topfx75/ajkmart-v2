@@ -967,22 +967,24 @@ router.patch("/orders/:id/status", async (req, res) => {
       const orderTotal = safeNum(order.total);
       const loyaltyPts = Math.floor((orderTotal / 100) * loyaltyPtsPerHundred);
       if (loyaltyPts > 0) {
-        /* Store loyalty points as wallet bonus (1 pt = Re 1 equivalent) */
-        await db.update(usersTable)
-          .set({ walletBalance: sql`wallet_balance + ${loyaltyPts}`, updatedAt: new Date() })
-          .where(eq(usersTable.id, order.userId))
-          .catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
-        await db.insert(walletTransactionsTable).values({
-          id: generateId(), userId: order.userId, type: "loyalty",
-          amount: loyaltyPts.toFixed(2),
-          description: `Loyalty points (${loyaltyPtsPerHundred} pts/Rs.100) — Order #${order.id.slice(-6).toUpperCase()}`,
-        }).catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
-        const loyaltyLang = await getUserLanguage(order.userId);
-        await db.insert(notificationsTable).values({
-          id: generateId(), userId: order.userId,
-          title: t("notifLoyaltyEarned", loyaltyLang) + " ⭐", body: t("notifLoyaltyEarnedBody", loyaltyLang).replace("{points}", String(loyaltyPts)),
-          type: "wallet", icon: "star-outline",
-        }).catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
+        try {
+          await db.transaction(async (tx) => {
+            await tx.update(usersTable)
+              .set({ walletBalance: sql`wallet_balance + ${loyaltyPts}`, updatedAt: new Date() })
+              .where(eq(usersTable.id, order.userId));
+            await tx.insert(walletTransactionsTable).values({
+              id: generateId(), userId: order.userId, type: "loyalty",
+              amount: loyaltyPts.toFixed(2),
+              description: `Loyalty points (${loyaltyPtsPerHundred} pts/Rs.100) — Order #${order.id.slice(-6).toUpperCase()}`,
+            });
+          });
+          const loyaltyLang = await getUserLanguage(order.userId);
+          await db.insert(notificationsTable).values({
+            id: generateId(), userId: order.userId,
+            title: t("notifLoyaltyEarned", loyaltyLang) + " ⭐", body: t("notifLoyaltyEarnedBody", loyaltyLang).replace("{points}", String(loyaltyPts)),
+            type: "wallet", icon: "star-outline",
+          }).catch((err: Error) => { logger.error("[rider] loyalty notif failed:", err.message); });
+        } catch (err) { logger.error("[rider] loyalty credit tx failed:", err instanceof Error ? err.message : err); }
       }
     }
 
@@ -995,21 +997,24 @@ router.patch("/orders/:id/status", async (req, res) => {
       const rawCashback    = parseFloat((orderTotal * cashbackPct).toFixed(2));
       const cashbackAmt    = Math.min(rawCashback, cashbackMaxRs);
       if (cashbackAmt > 0) {
-        await db.update(usersTable)
-          .set({ walletBalance: sql`wallet_balance + ${cashbackAmt}`, updatedAt: new Date() })
-          .where(eq(usersTable.id, order.userId))
-          .catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
-        await db.insert(walletTransactionsTable).values({
-          id: generateId(), userId: order.userId, type: "cashback",
-          amount: cashbackAmt.toFixed(2),
-          description: `Cashback ${Math.round(cashbackPct * 100)}% — Order #${order.id.slice(-6).toUpperCase()}`,
-        }).catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
-        const cashbackLang = await getUserLanguage(order.userId);
-        await db.insert(notificationsTable).values({
-          id: generateId(), userId: order.userId,
-          title: t("notifCashbackCredited", cashbackLang) + " 🎁", body: t("notifCashbackCreditedBody", cashbackLang).replace("{amount}", cashbackAmt.toFixed(0)),
-          type: "wallet", icon: "wallet-outline",
-        }).catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
+        try {
+          await db.transaction(async (tx) => {
+            await tx.update(usersTable)
+              .set({ walletBalance: sql`wallet_balance + ${cashbackAmt}`, updatedAt: new Date() })
+              .where(eq(usersTable.id, order.userId));
+            await tx.insert(walletTransactionsTable).values({
+              id: generateId(), userId: order.userId, type: "cashback",
+              amount: cashbackAmt.toFixed(2),
+              description: `Cashback ${Math.round(cashbackPct * 100)}% — Order #${order.id.slice(-6).toUpperCase()}`,
+            });
+          });
+          const cashbackLang = await getUserLanguage(order.userId);
+          await db.insert(notificationsTable).values({
+            id: generateId(), userId: order.userId,
+            title: t("notifCashbackCredited", cashbackLang) + " 🎁", body: t("notifCashbackCreditedBody", cashbackLang).replace("{amount}", cashbackAmt.toFixed(0)),
+            type: "wallet", icon: "wallet-outline",
+          }).catch((err: Error) => { logger.error("[rider] cashback notif failed:", err.message); });
+        } catch (err) { logger.error("[rider] cashback credit tx failed:", err instanceof Error ? err.message : err); }
       }
     }
   } else {
@@ -1110,10 +1115,14 @@ router.post("/rides/:id/accept", async (req, res) => {
           acceptedAt,
           updatedAt: acceptedAt,
         })
-        .where(and(eq(ridesTable.id, rideId), isNull(ridesTable.riderId)))
+        .where(and(
+          eq(ridesTable.id, rideId),
+          isNull(ridesTable.riderId),
+          or(eq(ridesTable.status, "searching"), eq(ridesTable.status, "bargaining")),
+        ))
         .returning();
 
-      if (!accepted) return undefined; // another rider won the race
+      if (!accepted) return undefined; // another rider won the race or ride was cancelled
 
       /* Deduct wallet only if this rider won the accept race */
       if (isBargaining && targetRide.paymentMethod === "wallet") {
@@ -1265,8 +1274,8 @@ router.patch("/rides/:id/status", async (req, res) => {
       const riderShare  = parseFloat((fareAmt - platformFee).toFixed(2));
       let newRiderBalance = 0;
       updated = await db.transaction(async (tx) => {
-        const [statusRow] = await tx.update(ridesTable).set({ status, completedAt: new Date(), updatedAt: new Date() }).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).returning();
-        if (!statusRow) throw new Error("Ride not found or already updated");
+        const [statusRow] = await tx.update(ridesTable).set({ status, completedAt: new Date(), updatedAt: new Date() }).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId), eq(ridesTable.status, ride.status))).returning();
+        if (!statusRow) throw new Error("Ride not found or status already changed");
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId: riderId, type: "cash_collection",
           amount: fareAmt.toFixed(2),
@@ -1311,8 +1320,8 @@ router.patch("/rides/:id/status", async (req, res) => {
       const earnings = parseFloat((fareAmt * riderKeepPct).toFixed(2));
       const totalCredit = parseFloat((earnings + bonusPerTrip).toFixed(2));
       updated = await db.transaction(async (tx) => {
-        const [statusRow] = await tx.update(ridesTable).set({ status, completedAt: new Date(), updatedAt: new Date() }).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).returning();
-        if (!statusRow) throw new Error("Ride not found or already updated");
+        const [statusRow] = await tx.update(ridesTable).set({ status, completedAt: new Date(), updatedAt: new Date() }).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId), eq(ridesTable.status, ride.status))).returning();
+        if (!statusRow) throw new Error("Ride not found or status already changed");
         await tx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${totalCredit}`, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
         await tx.insert(walletTransactionsTable).values({
           id: generateId(), userId: riderId, type: "credit",
@@ -1363,9 +1372,9 @@ router.patch("/rides/:id/status", async (req, res) => {
       status === "cancelled"  ? { cancelledAt: now } : {};
     const [row] = await db.update(ridesTable)
       .set({ status, updatedAt: now, ...timestampFields })
-      .where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId)))
+      .where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId), eq(ridesTable.status, ride.status)))
       .returning();
-    if (!row) { sendNotFound(res, "Ride not found or not yours"); return; }
+    if (!row) { sendNotFound(res, "Ride not found, not yours, or status already changed"); return; }
     updated = row;
     /* Web Push: rider arrived at pickup */
     if (status === "arrived") {
@@ -2241,12 +2250,11 @@ router.post("/location/batch", async (req, res) => {
 
   let inserted = 0;
   let skipped  = 0;
-  /* Pings rejected explicitly as mock GPS (accuracy=0) — reported separately in response */
   let rejectedMock = 0;
-  /* Track the previous accepted point to detect speed spoofing within the batch */
   let prevBatchLat: number | null = null;
   let prevBatchLng: number | null = null;
   let prevBatchTs:  Date   | null = null;
+  const bulkRows: Array<typeof locationLogsTable.$inferInsert> = [];
 
   for (const loc of sorted) {
     const ts    = new Date(loc.timestamp);
@@ -2273,25 +2281,37 @@ router.post("/location/batch", async (req, res) => {
       }
     }
 
-    try {
-      await db.insert(locationLogsTable).values({
-        id: generateId(),
-        userId: riderId,
-        role: "rider",
-        latitude: loc.latitude.toString(),
-        longitude: loc.longitude.toString(),
-        accuracy: loc.accuracy ?? null,
-        speed: loc.speed ?? null,
-        heading: loc.heading ?? null,
-        batteryLevel: loc.batteryLevel ?? null,
-        isSpoofed: false,
-        createdAt: ts,
-      });
-      prevBatchLat = loc.latitude;
-      prevBatchLng = loc.longitude;
-      prevBatchTs  = ts;
-      inserted++;
-    } catch { /* skip invalid DB entries */ }
+    bulkRows.push({
+      id: generateId(),
+      userId: riderId,
+      role: "rider" as const,
+      latitude: loc.latitude.toString(),
+      longitude: loc.longitude.toString(),
+      accuracy: loc.accuracy ?? null,
+      speed: loc.speed ?? null,
+      heading: loc.heading ?? null,
+      batteryLevel: loc.batteryLevel ?? null,
+      isSpoofed: false,
+      createdAt: ts,
+    });
+    prevBatchLat = loc.latitude;
+    prevBatchLng = loc.longitude;
+    prevBatchTs  = ts;
+  }
+
+  if (bulkRows.length > 0) {
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < bulkRows.length; i += CHUNK_SIZE) {
+      const chunk = bulkRows.slice(i, i + CHUNK_SIZE);
+      try {
+        await db.insert(locationLogsTable).values(chunk);
+        inserted += chunk.length;
+      } catch {
+        for (const row of chunk) {
+          try { await db.insert(locationLogsTable).values(row); inserted++; } catch { skipped++; }
+        }
+      }
+    }
   }
 
   /* Only update live location and emit if at least one clean ping was inserted.
@@ -2520,16 +2540,22 @@ router.post("/sos", async (req, res) => {
   const sosBody   = `Phone: ${riderUser.phone || "N/A"}${rideStr}${locationStr}`;
   const sosLink   = rideId ? `/rides/${rideId}` : `/users/${riderId}`;
 
-  await db.insert(notificationsTable).values({
-    id: alertId,
-    userId: riderId,
-    title: sosTitle,
-    body:  sosBody,
-    type: "sos",
-    icon: "alert-circle-outline",
-    link: sosLink,
-    sosStatus: "pending",
-  });
+  try {
+    await db.insert(notificationsTable).values({
+      id: alertId,
+      userId: riderId,
+      title: sosTitle,
+      body:  sosBody,
+      type: "sos",
+      icon: "alert-circle-outline",
+      link: sosLink,
+      sosStatus: "pending",
+    });
+  } catch (err) {
+    logger.error("[rider] SOS notification insert failed — cannot persist SOS:", err instanceof Error ? err.message : err);
+    sendError(res, "SOS alert could not be saved. Please call emergency contacts directly.", 503);
+    return;
+  }
 
   const { emitRiderSOS, emitSosNew } = await import("../lib/socketio.js");
 
