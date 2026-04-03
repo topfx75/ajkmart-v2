@@ -36,6 +36,7 @@ import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri,
 import { sendVerificationEmail, sendPasswordResetEmail, sendMagicLinkEmail } from "../services/email.js";
 import { getUserLanguage, getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
+import { logger } from "../lib/logger.js";
 
 /* OTP rate limiting is handled per-account + per-IP inside the route handler
    using the admin-configurable settings (security_otp_max_per_phone,
@@ -1388,8 +1389,8 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
       /* In development, log OTP to console so developers can see it */
       console.log(`[EMAIL-OTP DEV] Email OTP for ${normalized}: ${otp} (SMTP not configured: ${emailResult.reason ?? "unknown"})`);
     } else {
-      /* In production, log a warning but still issue the OTP (client won't see it) */
-      console.warn(`[EMAIL-OTP] Failed to send OTP email to ${normalized}: ${emailResult.reason ?? "SMTP not configured"}`);
+      /* In production, use structured logger so the warning is captured properly */
+      logger.warn({ email: normalized, reason: emailResult.reason ?? "SMTP not configured" }, "[EMAIL-OTP] Failed to send OTP email");
     }
   }
 

@@ -438,14 +438,6 @@ router.post("/send", customerAuth, async (req, res) => {
   }
 });
 
-/* ── POST /wallet/p2p-topup — DEPRECATED: use /wallet/deposit instead ────── */
-router.post("/p2p-topup", customerAuth, async (_req, res) => {
-  res.status(410).json({
-    error: "This endpoint has been removed. Use POST /wallet/deposit to submit all deposit requests.",
-    useInstead: "/wallet/deposit",
-  });
-});
-
 /* ── POST /wallet/withdraw — Customer requests a withdrawal ─────────────── */
 router.post("/withdraw", customerAuth, async (req, res) => {
   const userId = req.customerId!;

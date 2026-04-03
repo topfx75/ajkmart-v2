@@ -21,10 +21,33 @@ import {
   customerCounterOffer as customerCounterOfferApi,
 } from "@workspace/api-client-react";
 
+interface RideBid {
+  id: string;
+  riderId: string;
+  riderName?: string;
+  fare: number;
+  status?: string;
+  createdAt?: string;
+}
+
+interface NegotiationRide {
+  id: string;
+  status: string;
+  fare?: number;
+  offeredFare?: number;
+  minOffer?: number;
+  paymentMethod?: string;
+  bids?: RideBid[];
+  riderId?: string;
+  riderName?: string;
+  pickupAddress?: string;
+  dropAddress?: string;
+}
+
 type NegotiationScreenProps = {
   rideId: string;
-  ride: any;
-  setRide: (updater: (r: any) => any) => void;
+  ride: NegotiationRide | null;
+  setRide: (updater: (r: NegotiationRide | null) => NegotiationRide | null) => void;
   elapsed: number;
   cancellationFee: number;
   token: string | null;
@@ -148,7 +171,7 @@ export function NegotiationScreen({
   }, [rideId, token, rideApiBase]);
 
   const offeredFare = ride?.offeredFare ?? 0;
-  const bids: any[] = ride?.bids ?? [];
+  const bids: RideBid[] = ride?.bids ?? [];
   const sortedBids = [...bids].sort((a, b) => a.fare - b.fare);
   const hasBids = bids.length > 0;
   const elapsedStr =
@@ -182,7 +205,7 @@ export function NegotiationScreen({
     setAcceptBidId(bidId);
     try {
       const d = await acceptRideBidApi(rideId, { bidId });
-      setRide(() => d as any);
+      setRide(() => d as unknown as NegotiationRide);
     } catch (e: any) {
       const msg =
         e?.response?.data?.error ||
@@ -205,7 +228,7 @@ export function NegotiationScreen({
     setOfferError("");
     try {
       const d = await customerCounterOfferApi(rideId, { offeredFare: amt });
-      setRide(() => d as any);
+      setRide(() => d as unknown as NegotiationRide);
       setUpdateOfferInput("");
       setShowUpdateOffer(false);
     } catch (e: any) {
@@ -552,7 +575,7 @@ export function NegotiationScreen({
                 {bids.length} Bid{bids.length > 1 ? "s" : ""} Received
               </Text>
             </View>
-            {sortedBids.map((bid: any) => (
+            {sortedBids.map((bid: RideBid) => (
               <View
                 key={bid.id}
                 style={{
@@ -899,7 +922,7 @@ export function NegotiationScreen({
           token={token}
           onClose={() => setCancelModalTarget(null)}
           onDone={(result) => {
-            setRide((r: any) =>
+            setRide((r: NegotiationRide | null) =>
               r ? { ...r, status: "cancelled" } : r,
             );
           }}

@@ -17,6 +17,29 @@ const fd = (d: string | Date) =>
 
 type StatusFilter = "all" | "pending" | "paid" | "rejected";
 
+interface WithdrawalUser {
+  role: string;
+  phone?: string;
+  name?: string;
+}
+
+interface Withdrawal {
+  id: string;
+  amount: string | number;
+  description: string;
+  status: "pending" | "paid" | "rejected";
+  paymentMethod?: string | null;
+  createdAt: string | Date;
+  user?: WithdrawalUser;
+  adminNote?: string;
+  refNo?: string;
+}
+
+interface BatchResult {
+  approved?: string[];
+  rejected?: string[];
+}
+
 function parseDesc(desc: string) {
   const parts = desc.replace("Withdrawal — ", "").split(" · ");
   return { bank: parts[0] || "—", account: parts[1] || "—", title: parts[2] || "—", note: parts[3] || "" };
@@ -45,7 +68,7 @@ function roleColor(role: string) {
   return "bg-blue-100 text-blue-700";
 }
 
-function ApproveModal({ w, onClose }: { w: any; onClose: () => void }) {
+function ApproveModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
   const [refNo, setRefNo] = useState("");
   const [note, setNote]   = useState("");
   const { toast } = useToast();
@@ -108,7 +131,7 @@ function ApproveModal({ w, onClose }: { w: any; onClose: () => void }) {
   );
 }
 
-function RejectModal({ w, onClose }: { w: any; onClose: () => void }) {
+function RejectModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const { toast } = useToast();
   const { language } = useLanguage();
@@ -182,13 +205,13 @@ export default function Withdrawals() {
   const batchReject  = useBatchRejectWithdrawals();
   const { toast } = useToast();
 
-  const withdrawals: any[] = data?.withdrawals || [];
+  const withdrawals: Withdrawal[] = data?.withdrawals || [];
 
   const filtered = statusFilter === "all" ? withdrawals : withdrawals.filter(w => w.status === statusFilter);
   const pendingFiltered = filtered.filter(w => w.status === "pending");
 
   const pendingCount   = withdrawals.filter(w => w.status === "pending").length;
-  const pendingAmt     = withdrawals.filter(w => w.status === "pending").reduce((s: number, w: any) => s + Number(w.amount), 0);
+  const pendingAmt     = withdrawals.filter(w => w.status === "pending").reduce((s: number, w: Withdrawal) => s + Number(w.amount), 0);
   const paidCount      = withdrawals.filter(w => w.status === "paid").length;
   const rejectedCount  = withdrawals.filter(w => w.status === "rejected").length;
 
@@ -198,20 +221,20 @@ export default function Withdrawals() {
     return next;
   });
   const toggleAll = () => {
-    const pendingIds = pendingFiltered.map((w: any) => w.id);
+    const pendingIds = pendingFiltered.map((w: Withdrawal) => w.id);
     setSelected(prev => prev.size === pendingIds.length ? new Set() : new Set(pendingIds));
   };
   const handleBatchApprove = () => {
     if (selected.size === 0) return;
     batchApprove.mutate([...selected], {
-      onSuccess: (r: any) => { toast({ title: `✅ Batch Approved ${r.approved?.length || selected.size} withdrawals` }); setSelected(new Set()); },
+      onSuccess: (r: BatchResult) => { toast({ title: `✅ Batch Approved ${r.approved?.length || selected.size} withdrawals` }); setSelected(new Set()); },
       onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };
   const handleBatchReject = () => {
     if (selected.size === 0) return;
     batchReject.mutate({ ids: [...selected], reason: batchRejectReason || "Batch rejected by admin" }, {
-      onSuccess: (r: any) => { toast({ title: `❌ Batch Rejected ${r.rejected?.length || selected.size} withdrawals` }); setSelected(new Set()); setBatchRejectReason(""); },
+      onSuccess: (r: BatchResult) => { toast({ title: `❌ Batch Rejected ${r.rejected?.length || selected.size} withdrawals` }); setSelected(new Set()); setBatchRejectReason(""); },
       onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };
@@ -313,7 +336,7 @@ export default function Withdrawals() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filtered.map((w: any) => {
+          {filtered.map((w: Withdrawal) => {
             const parsed = parseDesc(w.description || "");
             const expanded = expandedId === w.id;
             return (

@@ -17,6 +17,29 @@ const fd = (d: string | Date) =>
 
 type StatusFilter = "all" | "pending" | "approved" | "rejected";
 
+interface DepositUser {
+  role: string;
+  name?: string;
+  phone?: string;
+}
+
+interface Deposit {
+  id: string;
+  amount: string | number;
+  description: string;
+  status: "pending" | "approved" | "rejected";
+  paymentMethod?: string | null;
+  createdAt: string | Date;
+  user?: DepositUser;
+  txId?: string;
+  adminNote?: string;
+}
+
+interface BulkResult {
+  approved?: string[];
+  rejected?: string[];
+}
+
 function methodIcon(method: string | null) {
   if (!method) return "💳";
   const m = method.toLowerCase();
@@ -56,7 +79,7 @@ function roleColor(role: string) {
   return "bg-gray-100 text-gray-600";
 }
 
-function ApproveModal({ d, onClose }: { d: any; onClose: () => void }) {
+function ApproveModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
   const [refNo, setRefNo] = useState("");
   const [note, setNote]   = useState("");
   const { toast } = useToast();
@@ -123,7 +146,7 @@ function ApproveModal({ d, onClose }: { d: any; onClose: () => void }) {
   );
 }
 
-function RejectModal({ d, onClose }: { d: any; onClose: () => void }) {
+function RejectModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const { toast } = useToast();
   const { language } = useLanguage();
@@ -284,7 +307,7 @@ export default function DepositRequests() {
   const bulkApprove = useBulkApproveDeposits();
   const bulkReject = useBulkRejectDeposits();
 
-  const deposits: any[] = data?.deposits || [];
+  const deposits: Deposit[] = data?.deposits || [];
 
   const duplicateTxIds = useMemo(() => {
     const seen = new Map<string, number>();
@@ -300,12 +323,12 @@ export default function DepositRequests() {
 
   const filtered      = statusFilter === "all" ? deposits : deposits.filter(d => d.status === statusFilter);
   const pendingCount  = deposits.filter(d => d.status === "pending").length;
-  const pendingAmt    = deposits.filter(d => d.status === "pending").reduce((s: number, d: any) => s + Number(d.amount), 0);
+  const pendingAmt    = deposits.filter(d => d.status === "pending").reduce((s: number, d: Deposit) => s + Number(d.amount), 0);
   const approvedCount = deposits.filter(d => d.status === "approved").length;
   const rejectedCount = deposits.filter(d => d.status === "rejected").length;
 
-  const pendingInFiltered = useMemo(() => filtered.filter((d: any) => d.status === "pending" && d.user?.role === "customer"), [filtered]);
-  const allPendingSelected = pendingInFiltered.length > 0 && pendingInFiltered.every((d: any) => selectedIds.has(d.id));
+  const pendingInFiltered = useMemo(() => filtered.filter((d: Deposit) => d.status === "pending" && d.user?.role === "customer"), [filtered]);
+  const allPendingSelected = pendingInFiltered.length > 0 && pendingInFiltered.every((d: Deposit) => selectedIds.has(d.id));
 
   const selectedDeposits = useMemo(() => deposits.filter(d => selectedIds.has(d.id) && d.status === "pending" && d.user?.role === "customer"), [deposits, selectedIds]);
   const selectedTotal = useMemo(() => selectedDeposits.reduce((s, d) => s + Number(d.amount), 0), [selectedDeposits]);
@@ -322,13 +345,13 @@ export default function DepositRequests() {
     if (allPendingSelected) {
       setSelectedIds(prev => {
         const next = new Set(prev);
-        pendingInFiltered.forEach((d: any) => next.delete(d.id));
+        pendingInFiltered.forEach((d: Deposit) => next.delete(d.id));
         return next;
       });
     } else {
       setSelectedIds(prev => {
         const next = new Set(prev);
-        pendingInFiltered.forEach((d: any) => next.add(d.id));
+        pendingInFiltered.forEach((d: Deposit) => next.add(d.id));
         return next;
       });
     }
@@ -337,24 +360,24 @@ export default function DepositRequests() {
   const handleBulkApprove = (refNo?: string) => {
     const ids = Array.from(selectedIds).filter(id => deposits.find(d => d.id === id && d.status === "pending" && d.user?.role === "customer"));
     bulkApprove.mutate({ ids, refNo }, {
-      onSuccess: (data: any) => {
-        toast({ title: `✅ ${data.approved} deposits approved` });
+      onSuccess: (data: BulkResult) => {
+        toast({ title: `✅ ${data.approved?.length ?? 0} deposits approved` });
         setSelectedIds(new Set());
         setShowBulkApprove(false);
       },
-      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+      onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };
 
   const handleBulkReject = (reason: string) => {
     const ids = Array.from(selectedIds).filter(id => deposits.find(d => d.id === id && d.status === "pending" && d.user?.role === "customer"));
     bulkReject.mutate({ ids, reason }, {
-      onSuccess: (data: any) => {
-        toast({ title: `❌ ${data.rejected} deposits rejected` });
+      onSuccess: (data: BulkResult) => {
+        toast({ title: `❌ ${data.rejected?.length ?? 0} deposits rejected` });
         setSelectedIds(new Set());
         setShowBulkReject(false);
       },
-      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+      onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };
 
@@ -453,7 +476,7 @@ export default function DepositRequests() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filtered.map((d: any) => {
+          {filtered.map((d: Deposit) => {
             const parsed = parseDesc(d.description || "");
             const expanded = expandedId === d.id;
             const isPending = d.status === "pending";

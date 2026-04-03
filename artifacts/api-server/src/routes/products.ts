@@ -59,38 +59,6 @@ router.get("/flash-deals", async (req, res) => {
   });
 });
 
-router.get("/trending-searches", async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit as string) || 12, 30);
-
-  const fallbackTerms = ["Milk", "Rice", "Chicken Breast", "Bread", "Eggs", "Cooking Oil", "Sugar", "Butter", "Flour", "Tea", "Tomatoes", "Onions"];
-
-  try {
-    const results = await db
-      .select({
-        name: productsTable.name,
-      })
-      .from(productsTable)
-      .where(and(
-        eq(productsTable.approvalStatus, "approved"),
-        eq(productsTable.inStock, true),
-      ))
-      .orderBy(desc(productsTable.reviewCount), desc(productsTable.rating))
-      .limit(limit);
-
-    const terms = results.map(r => r.name);
-
-    res.json({
-      searches: terms.length > 0 ? terms : fallbackTerms.slice(0, limit),
-      total: terms.length || fallbackTerms.length,
-    });
-  } catch {
-    res.json({
-      searches: fallbackTerms.slice(0, limit),
-      total: Math.min(limit, fallbackTerms.length),
-    });
-  }
-});
-
 router.get("/search", async (req, res) => {
   const { q, type, sort, minPrice, maxPrice, minRating, category } = req.query;
   const page = Math.max(parseInt(req.query.page as string) || 1, 1);

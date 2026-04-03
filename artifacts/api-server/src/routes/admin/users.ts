@@ -83,22 +83,6 @@ router.get("/users/pending", async (_req, res) => {
   });
 });
 
-/* ── List users with 2FA enabled ── */
-router.get("/users/2fa-enabled", async (_req, res) => {
-  const users = await db.select().from(usersTable)
-    .where(eq(usersTable.totpEnabled, true))
-    .orderBy(desc(usersTable.createdAt));
-  res.json({
-    users: users.map(u => ({
-      ...stripUser(u),
-      walletBalance: parseFloat(u.walletBalance ?? "0"),
-      createdAt: u.createdAt.toISOString(),
-      updatedAt: u.updatedAt.toISOString(),
-    })),
-    total: users.length,
-  });
-});
-
 /* ── Approve User ── */
 router.post("/users/:id/approve", async (req, res) => {
   const { note, skipDocCheck } = req.body;

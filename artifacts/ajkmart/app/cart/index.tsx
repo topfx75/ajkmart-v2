@@ -51,6 +51,28 @@ interface SavedAddress {
   isDefault: boolean;
 }
 
+interface OrderResponse {
+  id: string;
+  total?: string | number;
+  estimatedTime?: string;
+  status?: string;
+}
+
+interface PaymentMethodRaw {
+  id: string;
+  label: string;
+  logo?: string;
+  available?: boolean;
+  description?: string;
+  mode?: string;
+}
+
+interface PaymentMethodsApiResponse {
+  payment: {
+    methods: PaymentMethodRaw[];
+  };
+}
+
 function AddressPickerModal({
   visible, addresses, selected, onSelect, onClose, onAddressCreated, token,
 }: {
@@ -370,9 +392,9 @@ export default function CartScreen() {
       .then(r => r.json())
       .then(d => {
         if (d.payment?.methods) {
-          const methods: PaymentMethod[] = d.payment.methods.map((m: any) => ({
-            id: m.id, label: m.label, logo: m.logo,
-            available: m.available, description: m.description, mode: m.mode,
+          const methods: PaymentMethod[] = (d as PaymentMethodsApiResponse).payment.methods.map((m: PaymentMethodRaw) => ({
+            id: m.id as PayMethod, label: m.label, logo: m.logo ?? "",
+            available: m.available ?? true, description: m.description ?? "", mode: m.mode,
           }));
           setAllPayMethods(methods);
         }
@@ -513,7 +535,7 @@ export default function CartScreen() {
   const placeOrder = async (finalPayMethod: PayMethod) => {
     const MAX_RETRIES = 3;
     let lastError: Error | null = null;
-    let order: any = null;
+    let order: OrderResponse | null = null;
     const idemKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setPendingAck(true);
 
@@ -551,7 +573,7 @@ export default function CartScreen() {
     }
 
     if (finalPayMethod === "wallet") {
-      const serverDeducted = parseFloat((order as any).total ?? grandTotal);
+      const serverDeducted = parseFloat(String(order?.total ?? grandTotal));
       updateUser({ walletBalance: (user!.walletBalance ?? 0) - serverDeducted });
     }
 
@@ -573,10 +595,10 @@ export default function CartScreen() {
       }
     })();
 
-    const orderId = (order as any).id as string | undefined;
+    const orderId = order?.id;
     const successData = {
       id: (orderId ?? "------").slice(-6).toUpperCase(),
-      time: (order as any).estimatedTime || "30-45 min",
+      time: order?.estimatedTime || "30-45 min",
       payMethod: finalPayMethod,
     };
 
@@ -693,7 +715,7 @@ export default function CartScreen() {
     try {
       const GW_MAX_RETRIES = 3;
       let gwLastError: Error | null = null;
-      let order: any = null;
+      let order: OrderResponse | null = null;
       const gwIdemKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       for (let attempt = 0; attempt < GW_MAX_RETRIES; attempt++) {
         try {
@@ -723,7 +745,7 @@ export default function CartScreen() {
       if (gwLastError || !order) {
         throw gwLastError ?? new Error("Order creation failed after retries");
       }
-      const realOrderId = (order as any).id;
+      const realOrderId = order?.id;
       if (!realOrderId) { throw new Error("Could not create order"); }
 
       const r = await fetch(`${API_BASE}/payments/initiate`, {

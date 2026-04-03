@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { getRide as getRideApi } from "@workspace/api-client-react";
+import { getRide as getRideApi, type Ride } from "@workspace/api-client-react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type RideStatusHookResult = {
-  ride: any;
-  setRide: React.Dispatch<React.SetStateAction<any>>;
+  ride: Ride | null;
+  setRide: React.Dispatch<React.SetStateAction<Ride | null>>;
   connectionType: "sse" | "polling" | "connecting";
   reconnect: () => void;
 };
@@ -14,7 +14,7 @@ const SSE_RETRY_DELAY = 3000;
 const POLL_INTERVAL = 5000;
 
 export function useRideStatus(rideId: string): RideStatusHookResult {
-  const [ride, setRide] = useState<any>(null);
+  const [ride, setRide] = useState<Ride | null>(null);
   const [connectionType, setConnectionType] =
     useState<"sse" | "polling" | "connecting">("connecting");
   const abortRef = useRef<AbortController | null>(null);
@@ -40,8 +40,8 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
       try {
         const d = await getRideApi(rideId);
         if (mountedRef.current) {
-          setRide(d as any);
-          const status = (d as any)?.status;
+          setRide(d);
+          const status = d?.status;
           if (status === "completed" || status === "cancelled") {
             stopPolling();
           }
@@ -117,7 +117,7 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
         for (const line of lines) {
           if (!line.startsWith("data:")) continue;
           try {
-            const data = JSON.parse(line.slice(5).trim());
+            const data = JSON.parse(line.slice(5).trim()) as Ride;
             if (!mountedRef.current) return;
             setRide(data);
             if (data?.status === "completed" || data?.status === "cancelled") {
