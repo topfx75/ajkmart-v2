@@ -23,6 +23,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PwaInstallBanner } from "@/components/PwaInstallBanner";
 import { registerServiceWorker } from "@/utils/register-service-worker";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
@@ -358,6 +359,7 @@ export default function RootLayout() {
                       <CartProvider>
                         <ToastProvider>
                           <RootLayoutNav />
+                          <PwaInstallBanner />
                         </ToastProvider>
                       </CartProvider>
                     </AuthProvider>

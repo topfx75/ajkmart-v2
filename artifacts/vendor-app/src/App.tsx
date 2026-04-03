@@ -6,6 +6,7 @@ import { usePlatformConfig } from "./lib/useConfig";
 import { useLanguage } from "./lib/useLanguage";
 import { registerPush } from "./lib/push";
 import { BottomNav } from "./components/BottomNav";
+import { PwaInstallBanner } from "./components/PwaInstallBanner";
 import { SideNav } from "./components/SideNav";
 import { BOTTOM_PADDING } from "./lib/ui";
 import { AnnouncementBar } from "./components/AnnouncementBar";
@@ -148,6 +149,7 @@ export default function App() {
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <AppRoutes />
           </WouterRouter>
+          <PwaInstallBanner />
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>

@@ -1,0 +1,56 @@
+import { useState, useEffect } from "react";
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+const DISMISSED_KEY = "rider_pwa_install_dismissed";
+
+export function usePwaInstall() {
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    try { return localStorage.getItem(DISMISSED_KEY) === "1"; } catch { return false; }
+  });
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as any).standalone === true;
+
+  useEffect(() => {
+    if (isStandalone) { setIsInstalled(true); return; }
+
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setIsInstallable(true);
+    };
+    const onInstalled = () => { setIsInstalled(true); setIsInstallable(false); };
+
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, [isStandalone]);
+
+  const promptInstall = async () => {
+    if (!deferredPrompt) return;
+    await deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") setIsInstalled(true);
+    setDeferredPrompt(null);
+    setIsInstallable(false);
+  };
+
+  const dismiss = () => {
+    setIsDismissed(true);
+    try { localStorage.setItem(DISMISSED_KEY, "1"); } catch {}
+  };
+
+  return { isInstallable, isInstalled, isIOS, isStandalone, isDismissed, promptInstall, dismiss };
+}

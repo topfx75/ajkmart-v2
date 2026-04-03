@@ -11,6 +11,7 @@ import { registerPush } from "./lib/push";
 import { api } from "./lib/api";
 import { BottomNav } from "./components/BottomNav";
 import { AnnouncementBar } from "./components/AnnouncementBar";
+import { PwaInstallBanner } from "./components/PwaInstallBanner";
 import { MaintenanceScreen } from "./components/MaintenanceScreen";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -129,6 +130,7 @@ function App() {
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <AppRoutes />
               </WouterRouter>
+              <PwaInstallBanner />
             </SocketProvider>
           </AuthProvider>
         </LanguageProvider>

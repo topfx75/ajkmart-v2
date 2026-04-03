@@ -62,50 +62,128 @@ function safeNavigate(route: string) {
   router.push(route as Href);
 }
 
-function ServiceGrid({ services, isGuest, T }: {
+type ViewMode = "grid" | "list";
+const SVC_VIEW_KEY = "svc_view_mode";
+
+const shortLabel: Record<string, string> = {
+  mart: "Mart", food: "Food", rides: "Ride", pharmacy: "Pharma", parcel: "Parcel",
+};
+
+function ServiceGridView({ services, isGuest }: { services: ServiceDefinition[]; isGuest: boolean }) {
+  const { width: winW } = useWindowDimensions();
+  const effectiveW = Math.min(winW, Platform.OS === "web" ? 430 : winW);
+  const itemW = (effectiveW - H_PAD * 2) / 5;
+  return (
+    <View style={sg.grid}>
+      {services.map((svc) => {
+        const label = shortLabel[svc.key] ?? svc.label;
+        return (
+          <Pressable
+            key={svc.key}
+            onPress={() => {
+              if (isGuest) { router.push("/auth" as Href); return; }
+              safeNavigate(String(svc.route));
+            }}
+            style={[sg.item, { width: itemW }]}
+            accessibilityRole="button"
+            accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
+          >
+            <LinearGradient colors={svc.iconGradient} style={sg.circle}>
+              <Ionicons name={svc.iconFocused} size={22} color="#fff" />
+              {isGuest && (
+                <View style={sg.lockBadge}>
+                  <Ionicons name="lock-closed" size={7} color="#fff" />
+                </View>
+              )}
+            </LinearGradient>
+            <Text style={sg.label} numberOfLines={1}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ServiceListView({ services, isGuest }: { services: ServiceDefinition[]; isGuest: boolean }) {
+  return (
+    <View style={sl.list}>
+      {services.map((svc) => {
+        const label = shortLabel[svc.key] ?? svc.label;
+        return (
+          <Pressable
+            key={svc.key}
+            onPress={() => {
+              if (isGuest) { router.push("/auth" as Href); return; }
+              safeNavigate(String(svc.route));
+            }}
+            style={sl.row}
+            accessibilityRole="button"
+            accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
+          >
+            <LinearGradient colors={svc.iconGradient} style={sl.circle}>
+              <Ionicons name={svc.iconFocused} size={20} color="#fff" />
+              {isGuest && (
+                <View style={sg.lockBadge}>
+                  <Ionicons name="lock-closed" size={7} color="#fff" />
+                </View>
+              )}
+            </LinearGradient>
+            <View style={sl.textWrap}>
+              <Text style={sl.name}>{label}</Text>
+              <Text style={sl.desc} numberOfLines={1}>{svc.description}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ServiceSection({ services, isGuest, viewMode, onToggle }: {
   services: ServiceDefinition[];
   isGuest: boolean;
-  T: (key: Parameters<typeof tDual>[0]) => string;
+  viewMode: ViewMode;
+  onToggle: (m: ViewMode) => void;
 }) {
-  const shortLabel: Record<string, string> = {
-    mart: "Mart", food: "Food", rides: "Ride", pharmacy: "Pharma", parcel: "Parcel",
-  };
-
   return (
     <View style={sg.wrap}>
-      <View style={sg.grid}>
-        {services.map((svc) => {
-          const label = shortLabel[svc.key] ?? svc.label;
-          return (
-            <Pressable
-              key={svc.key}
-              onPress={() => {
-                if (isGuest) { router.push("/auth" as Href); return; }
-                safeNavigate(String(svc.route));
-              }}
-              style={sg.item}
-              accessibilityRole="button"
-              accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
-            >
-              <LinearGradient colors={svc.iconGradient} style={sg.circle}>
-                <Ionicons name={svc.iconFocused} size={22} color="#fff" />
-                {isGuest && (
-                  <View style={sg.lockBadge}>
-                    <Ionicons name="lock-closed" size={7} color="#fff" />
-                  </View>
-                )}
-              </LinearGradient>
-              <Text style={sg.label} numberOfLines={1}>{label}</Text>
-            </Pressable>
-          );
-        })}
+      <View style={sg.header}>
+        <Text style={sg.headerTitle}>Services</Text>
+        <View style={sg.toggleRow}>
+          <Pressable
+            onPress={() => onToggle("grid")}
+            style={[sg.toggleBtn, viewMode === "grid" && sg.toggleBtnActive]}
+            accessibilityRole="button"
+            accessibilityLabel="Grid view"
+          >
+            <Ionicons name="grid" size={14} color={viewMode === "grid" ? "#fff" : C.textMuted} />
+          </Pressable>
+          <Pressable
+            onPress={() => onToggle("list")}
+            style={[sg.toggleBtn, viewMode === "list" && sg.toggleBtnActive]}
+            accessibilityRole="button"
+            accessibilityLabel="List view"
+          >
+            <Ionicons name="list" size={16} color={viewMode === "list" ? "#fff" : C.textMuted} />
+          </Pressable>
+        </View>
       </View>
+      {viewMode === "grid"
+        ? <ServiceGridView services={services} isGuest={isGuest} />
+        : <ServiceListView services={services} isGuest={isGuest} />
+      }
     </View>
   );
 }
 
 const sg = StyleSheet.create({
-  wrap: { paddingHorizontal: H_PAD, paddingTop: 14, paddingBottom: 6 },
+  wrap: { paddingHorizontal: H_PAD, paddingTop: 12, paddingBottom: 4 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  headerTitle: { fontFamily: Font.semiBold, fontSize: 13, color: C.textSecondary },
+  toggleRow: { flexDirection: "row", gap: 4, backgroundColor: C.surfaceSecondary, borderRadius: 8, padding: 2 },
+  toggleBtn: { width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" },
+  toggleBtnActive: { backgroundColor: C.primary },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", gap: 0 },
   item: {
     alignItems: "center", gap: 6,
@@ -125,6 +203,25 @@ const sg = StyleSheet.create({
     borderWidth: 2, borderColor: C.surface,
   },
   label: { fontFamily: Font.semiBold, color: C.text, fontSize: 11, textAlign: "center" },
+});
+
+const sl = StyleSheet.create({
+  list: { gap: 6 },
+  row: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    backgroundColor: C.surface, borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1, borderColor: C.borderLight,
+    ...shadows.sm,
+  },
+  circle: {
+    width: 44, height: 44, borderRadius: 14,
+    alignItems: "center", justifyContent: "center",
+    flexShrink: 0,
+  },
+  textWrap: { flex: 1 },
+  name: { fontFamily: Font.semiBold, fontSize: 14, color: C.text, marginBottom: 2 },
+  desc: { fontFamily: Font.regular, fontSize: 11, color: C.textMuted },
 });
 
 function GuestSignInStrip() {
@@ -756,6 +853,19 @@ export default function HomeScreen() {
     Animated.timing(hdOp, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, []);
 
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+
+  useEffect(() => {
+    AsyncStorage.getItem(SVC_VIEW_KEY).then((v) => {
+      if (v === "list" || v === "grid") setViewMode(v);
+    }).catch(() => {});
+  }, []);
+
+  const handleToggleView = (mode: ViewMode) => {
+    setViewMode(mode);
+    AsyncStorage.setItem(SVC_VIEW_KEY, mode).catch(() => {});
+  };
+
   const activeServices = getActiveServices(features);
   const noServicesActive = activeServices.length === 0;
   const isGuest = !user?.id;
@@ -852,7 +962,12 @@ export default function HomeScreen() {
           />
         ) : (
           <>
-            <ServiceGrid services={activeServices} isGuest={isGuest} T={T} />
+            <ServiceSection
+              services={activeServices}
+              isGuest={isGuest}
+              viewMode={viewMode}
+              onToggle={handleToggleView}
+            />
 
             {isGuest && <GuestSignInStrip />}
 
