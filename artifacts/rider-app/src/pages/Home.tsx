@@ -804,7 +804,7 @@ export default function Home() {
       {!socketConnected && effectiveOnline && (
         <div className="fixed top-0 left-0 right-0 z-40 bg-red-600 text-white text-xs font-bold text-center py-1.5 flex items-center justify-center gap-1.5 shadow-lg animate-pulse"
           style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 6px)" }}>
-          <WifiOff size={13}/> Connection lost — new requests may not appear
+          <WifiOff size={13}/> {T("connectionLost")}
         </div>
       )}
 
@@ -1220,7 +1220,7 @@ export default function Home() {
                       <div className="flex gap-2 mt-3">
                         {o.deliveryAddress && (
                           <a href={buildMapsDeepLink(null, null, o.deliveryAddress)}
-                            target="_blank" rel="noopener noreferrer"
+                            target="_blank" rel="noopener noreferrer" aria-label="Open delivery address in maps"
                             className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2.5 rounded-xl hover:bg-blue-100 transition-colors">
                             <MapPin size={14}/>
                           </a>
@@ -1228,12 +1228,12 @@ export default function Home() {
                         <button onClick={() => rejectOrderMut.mutate(o.id)}
                           disabled={rejectOrderMut.isPending}
                           className="border border-red-200 text-red-400 font-bold px-3 py-2.5 rounded-xl text-sm hover:bg-red-50 transition-colors flex items-center gap-1 disabled:opacity-60"
-                          title="Reject">
+                          title="Reject" aria-label="Reject order">
                           <XCircle size={14}/> Reject
                         </button>
                         <button onClick={() => dismiss(o.id)}
                           className="border border-gray-200 text-gray-400 font-bold px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors flex items-center"
-                          title="Ignore">
+                          title="Ignore" aria-label="Dismiss order">
                           <X size={16}/>
                         </button>
                         <button onClick={() => acceptOrderMut.mutate(o.id)}
@@ -1367,7 +1367,7 @@ export default function Home() {
 
                         {!isBargain && (
                           <div className="flex gap-2 mt-3">
-                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" aria-label="Open pickup location in maps"
                               className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2.5 rounded-xl hover:bg-blue-100 transition-colors">
                               <MapPin size={14}/>
                             </a>
@@ -1380,7 +1380,7 @@ export default function Home() {
                             ) : (
                               <button onClick={() => dismiss(r.id)}
                                 className="border border-gray-200 text-gray-400 font-bold px-3 py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors flex items-center"
-                                title="Ignore">
+                                title="Ignore" aria-label="Dismiss ride request">
                                 <X size={16}/>
                               </button>
                             )}
@@ -1490,12 +1490,13 @@ export default function Home() {
                               </div>
                             ) : (
                               <div className="flex gap-2">
-                                <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                                <a href={mapsUrl} target="_blank" rel="noopener noreferrer" aria-label="Open location in maps"
                                   className="flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold px-3 py-2.5 rounded-xl hover:bg-blue-100 transition-colors">
                                   <MapPin size={14}/>
                                 </a>
                                 <button onClick={() => rejectOfferMut.mutate(r.id)}
-                                  className="bg-gray-100 text-gray-400 font-bold px-3 py-2.5 rounded-xl text-sm flex items-center hover:bg-gray-200 transition-colors">
+                                  className="bg-gray-100 text-gray-400 font-bold px-3 py-2.5 rounded-xl text-sm flex items-center hover:bg-gray-200 transition-colors"
+                                  aria-label="Reject offer">
                                   <X size={16}/>
                                 </button>
                                 <button onClick={() => setShowCounter(prev => ({ ...prev, [r.id]: true }))}

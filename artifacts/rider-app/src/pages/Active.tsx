@@ -7,13 +7,31 @@ import {
 } from "lucide-react";
 import { api, apiFetch } from "../lib/api";
 import { logRideEvent } from "../lib/rideUtils";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Component, type ReactNode, type ErrorInfo } from "react";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useAuth } from "../lib/auth";
 import { useLanguage } from "../lib/useLanguage";
 import { useSocket } from "../lib/socket";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { enqueue, registerDrainHandler, type QueuedPing } from "../lib/gpsQueue";
+
+class MapErrorBoundary extends Component<{ children: ReactNode; fallbackMsg?: string }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(_: Error, info: ErrorInfo) { console.error("MapErrorBoundary caught:", _, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+          <AlertTriangle size={20} className="text-red-400 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-red-600">{this.props.fallbackMsg ?? "Map/route could not load"}</p>
+          <button onClick={() => this.setState({ hasError: false })} className="mt-2 text-xs text-indigo-500 font-bold underline">Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function SkeletonBlock({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded-xl ${className || ""}`} />;
@@ -144,7 +162,7 @@ function NavButton({ label, lat, lng, address, color = "blue" }: {
 
 const SOS_RESET_MS = 5 * 60 * 1000; /* 5 minutes — allow rider to re-send if still in danger */
 
-function SosButton({ rideId, riderPos }: { rideId?: string | null; riderPos?: { lat: number; lng: number } | null }) {
+function SosButton({ rideId, riderPos, T }: { rideId?: string | null; riderPos?: { lat: number; lng: number } | null; T: (key: TranslationKey) => string }) {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [noLocWarning, setNoLocWarning] = useState(false);
@@ -224,7 +242,7 @@ function SosButton({ rideId, riderPos }: { rideId?: string | null; riderPos?: { 
       className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all ${sent ? "bg-gray-200 text-gray-500 cursor-default" : "bg-red-600 text-white hover:bg-red-700 active:scale-[0.98]"}`}
     >
       <AlertTriangle size={15} />
-      {loading ? "Sending..." : sent ? "SOS Sent ✓" : "SOS — Emergency"}
+      {loading ? T("sending") : sent ? T("sosSent") : T("sosEmergency")}
     </button>
     </>
   );
@@ -249,6 +267,8 @@ function TurnByTurnPanel({ fromLat, fromLng, toLat, toLng, label, riderLat, ride
   fromLat: number; fromLng: number; toLat: number; toLng: number; label: string;
   riderLat?: number | null; riderLng?: number | null;
 }) {
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [route, setRoute] = useState<OsrmRoute | null>(null);
@@ -360,13 +380,13 @@ function TurnByTurnPanel({ fromLat, fromLng, toLat, toLng, label, riderLat, ride
           {loading && (
             <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
               <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-              Fetching route…
+              {T("fetchingRoute")}
             </div>
           )}
           {error && (
             <div className="py-3 text-sm text-red-500 flex items-center gap-2">
               <AlertTriangle size={13} /> {error}
-              <button onClick={() => fetchRoute()} className="underline text-indigo-500 ml-1">Retry</button>
+              <button onClick={() => fetchRoute()} className="underline text-indigo-500 ml-1">{T("retry")}</button>
             </div>
           )}
           {route && !loading && (
@@ -521,6 +541,20 @@ export default function Active() {
     sharedSocket.on("admin:chat", handler);
     return () => { sharedSocket.off("admin:chat", handler); };
   }, [sharedSocket]);
+
+  useEffect(() => {
+    if (!sharedSocket) return;
+    const onOrderUpdate = () => {
+      if (!isMountedRef.current) return;
+      qc.invalidateQueries({ queryKey: ["rider-active"] });
+    };
+    sharedSocket.on("order:update", onOrderUpdate);
+    sharedSocket.on("order:assigned", onOrderUpdate);
+    return () => {
+      sharedSocket.off("order:update", onOrderUpdate);
+      sharedSocket.off("order:assigned", onOrderUpdate);
+    };
+  }, [sharedSocket, qc]);
 
   type QueuedUpdate = { kind: "location" | "status"; run: () => Promise<unknown> };
   const pendingUpdatesRef                          = useRef<QueuedUpdate[]>([]);
@@ -1162,12 +1196,14 @@ export default function Active() {
                   </div>
 
                   {riderPos && order.vendorLat != null && order.vendorLng != null && (
-                    <TurnByTurnPanel
-                      fromLat={riderPos.lat} fromLng={riderPos.lng}
-                      toLat={order.vendorLat} toLng={order.vendorLng}
-                      label="Store"
-                      riderLat={riderPos.lat} riderLng={riderPos.lng}
-                    />
+                    <MapErrorBoundary>
+                      <TurnByTurnPanel
+                        fromLat={riderPos.lat} fromLng={riderPos.lng}
+                        toLat={order.vendorLat} toLng={order.vendorLng}
+                        label="Store"
+                        riderLat={riderPos.lat} riderLng={riderPos.lng}
+                      />
+                    </MapErrorBoundary>
                   )}
 
                   <button
@@ -1231,12 +1267,14 @@ export default function Active() {
                   </div>
 
                   {riderPos && order.deliveryLat != null && order.deliveryLng != null && (
-                    <TurnByTurnPanel
-                      fromLat={riderPos.lat} fromLng={riderPos.lng}
-                      toLat={order.deliveryLat} toLng={order.deliveryLng}
-                      label="Customer"
-                      riderLat={riderPos.lat} riderLng={riderPos.lng}
-                    />
+                    <MapErrorBoundary>
+                      <TurnByTurnPanel
+                        fromLat={riderPos.lat} fromLng={riderPos.lng}
+                        toLat={order.deliveryLat} toLng={order.deliveryLng}
+                        label="Customer"
+                        riderLat={riderPos.lat} riderLng={riderPos.lng}
+                      />
+                    </MapErrorBoundary>
                   )}
 
                   <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4">
@@ -1294,7 +1332,7 @@ export default function Active() {
                     <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
                       {proofUploading ? <RefreshCw size={18} className="animate-spin"/> : <CheckCircle size={20}/>}
                     </div>
-                    {proofUploading ? "Uploading photo…" : updateOrderMut.isPending ? T("updating") : proofPhoto ? T("confirmDeliveryWithProof") : T("markDelivered")}
+                    {proofUploading ? T("uploadingPhoto") : updateOrderMut.isPending ? T("updating") : proofPhoto ? T("confirmDeliveryWithProof") : T("markDelivered")}
                   </button>
 
                   <div>
@@ -1418,23 +1456,27 @@ export default function Active() {
               </div>
               {/* Turn-by-turn OSRM navigation */}
               {riderPos && ride.status === "accepted" && ride.pickupLat != null && ride.pickupLng != null && (
-                <TurnByTurnPanel
-                  fromLat={riderPos.lat} fromLng={riderPos.lng}
-                  toLat={ride.pickupLat} toLng={ride.pickupLng}
-                  label="Pickup"
-                  riderLat={riderPos.lat} riderLng={riderPos.lng}
-                />
+                <MapErrorBoundary>
+                  <TurnByTurnPanel
+                    fromLat={riderPos.lat} fromLng={riderPos.lng}
+                    toLat={ride.pickupLat} toLng={ride.pickupLng}
+                    label="Pickup"
+                    riderLat={riderPos.lat} riderLng={riderPos.lng}
+                  />
+                </MapErrorBoundary>
               )}
               {riderPos && (ride.status === "arrived" || ride.status === "in_transit") && ride.dropLat != null && ride.dropLng != null && (
-                <TurnByTurnPanel
-                  fromLat={riderPos.lat} fromLng={riderPos.lng}
-                  toLat={ride.dropLat} toLng={ride.dropLng}
-                  label="Drop-off"
-                  riderLat={riderPos.lat} riderLng={riderPos.lng}
-                />
+                <MapErrorBoundary>
+                  <TurnByTurnPanel
+                    fromLat={riderPos.lat} fromLng={riderPos.lng}
+                    toLat={ride.dropLat} toLng={ride.dropLng}
+                    label="Drop-off"
+                    riderLat={riderPos.lat} riderLng={riderPos.lng}
+                  />
+                </MapErrorBoundary>
               )}
               {config.features?.sos !== false && (
-                <SosButton rideId={ride.id} riderPos={riderPos} />
+                <SosButton rideId={ride.id} riderPos={riderPos} T={T} />
               )}
 
               <div className="flex gap-2 pt-1">

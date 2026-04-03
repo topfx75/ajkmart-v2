@@ -73,17 +73,16 @@ export default function DepositModal({
 
   const goToConfirm = () => {
     if (!txId.trim()) { setErr("Transaction ID daalna zaroori hai — without ID verify nahi ho sakta"); return; }
-    if (senderAcNo.trim()) {
-      if (selectedMethod?.id === "jazzcash" || selectedMethod?.id === "easypaisa") {
-        const cleanPhone = senderAcNo.replace(/[\s-]/g, "");
-        if (!/^0[3]\d{9}$/.test(cleanPhone)) { setErr("Valid Pakistani mobile number daalen (e.g. 03XX-XXXXXXX, 11 digits)"); return; }
-      }
-      if (selectedMethod?.id === "bank") {
-        const cleaned = senderAcNo.replace(/[\s-]/g, "");
-        const isIban = /^PK\d{2}[A-Z]{4}\d{16}$/i.test(cleaned);
-        const isAccountNo = /^\d{8,20}$/.test(cleaned);
-        if (!isIban && !isAccountNo) { setErr("Valid IBAN (e.g. PK36SCBL0000001234567801) ya 8-20 digit account number daalen"); return; }
-      }
+    if (!senderAcNo.trim()) { setErr("Sender account / mobile number zaroori hai — admin verify karne ke liye chahiye"); return; }
+    if (selectedMethod?.id === "jazzcash" || selectedMethod?.id === "easypaisa") {
+      const cleanPhone = senderAcNo.replace(/[\s-]/g, "");
+      if (!/^0[3]\d{9}$/.test(cleanPhone)) { setErr("Valid Pakistani mobile number daalen (e.g. 03XX-XXXXXXX, 11 digits)"); return; }
+    }
+    if (selectedMethod?.id === "bank") {
+      const cleaned = senderAcNo.replace(/[\s-]/g, "");
+      const isIban = /^PK\d{2}[A-Z]{4}\d{16}$/i.test(cleaned);
+      const isAccountNo = /^\d{8,20}$/.test(cleaned);
+      if (!isIban && !isAccountNo) { setErr("Valid IBAN (e.g. PK36SCBL0000001234567801) ya 8-20 digit account number daalen"); return; }
     }
     setErr(""); setStep("confirm");
   };
