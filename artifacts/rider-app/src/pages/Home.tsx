@@ -360,6 +360,7 @@ export default function Home() {
     setToggling(true);
     const newStatus = !effectiveOnline;
     setOptimisticOnline(newStatus);
+    let succeeded = false;
     try {
       const result = await api.setOnline(newStatus);
       if (!isMountedRef.current) return;
@@ -370,13 +371,17 @@ export default function Home() {
       }
       await refreshUser().catch(() => {});
       if (!isMountedRef.current) return;
+      succeeded = true;
       showToast(newStatus ? T("youAreNowOnline") : T("youAreNowOffline"), "success");
     } catch (e: unknown) {
       if (!isMountedRef.current) return;
       setOptimisticOnline(!newStatus);
       showToast(e instanceof Error ? e.message : T("somethingWentWrong"), "error");
     } finally {
-      if (isMountedRef.current) { setOptimisticOnline(null); setToggling(false); }
+      if (isMountedRef.current) {
+        if (succeeded) setOptimisticOnline(null);
+        setToggling(false);
+      }
     }
   };
 
@@ -398,12 +403,14 @@ export default function Home() {
     queryKey: ["rider-earnings"],
     queryFn: () => api.getEarnings(),
     refetchInterval: tabVisible ? 60000 : false,
+    enabled: effectiveOnline && tabVisible,
   });
 
   const { data: activeData } = useQuery({
     queryKey: ["rider-active"],
     queryFn: () => api.getActive(),
     refetchInterval: tabVisible ? 8000 : false,
+    enabled: effectiveOnline && tabVisible,
   });
   const hasActiveTask = !!(activeData?.order || activeData?.ride);
 
@@ -411,6 +418,7 @@ export default function Home() {
     queryKey: ["rider-requests"],
     queryFn: () => api.getRequests(),
     refetchInterval: tabVisible ? (user?.isOnline ? 12000 : 60000) : false,
+    enabled: effectiveOnline && tabVisible,
   });
 
   const { data: cancelStatsData } = useQuery({
@@ -475,6 +483,32 @@ export default function Home() {
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
   }, []);
+
+  /* Wake Lock: keep screen awake while the rider is online so GPS and socket
+     stay alive in the foreground. Re-acquire whenever the tab becomes visible
+     again (covers both release-on-hide and cases where no release event fires).
+     Released when going offline or unmounting. */
+  useEffect(() => {
+    if (!effectiveOnline || !tabVisible) return;
+    if (!('wakeLock' in navigator)) return;
+
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+
+    const acquire = async () => {
+      try {
+        if (cancelled || document.hidden) return;
+        sentinel = await (navigator as Navigator & { wakeLock: { request(type: string): Promise<WakeLockSentinel> } }).wakeLock.request('screen');
+      } catch { /* unsupported or permission denied — fail silently */ }
+    };
+
+    acquire();
+
+    return () => {
+      cancelled = true;
+      sentinel?.release().catch(() => {});
+    };
+  }, [effectiveOnline, tabVisible]);
 
   /* Clear dismissed set when rider logs out so stale entries don't persist */
   useEffect(() => {

@@ -26,7 +26,7 @@ import Notifications from "./pages/Notifications";
 import SecuritySettings from "./pages/SecuritySettings";
 import NotFound from "./pages/not-found";
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, networkMode: 'offlineFirst' } } });
 
 function AppRoutes() {
   const { user, loading } = useAuth();
