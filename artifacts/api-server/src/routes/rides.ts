@@ -596,6 +596,16 @@ router.post("/", customerAuth, async (req, res) => {
       if (!walletEnabled) { sendValidationError(res, "Wallet payments are currently disabled"); return; }
 
       rideRecord = await db.transaction(async (tx) => {
+        /* Re-check for active ride inside transaction to prevent race condition */
+        const [activeConflict] = await tx.select({ id: ridesTable.id, status: ridesTable.status })
+          .from(ridesTable)
+          .where(and(eq(ridesTable.userId, userId), sql`status IN ('searching', 'bargaining', 'accepted', 'arrived', 'in_transit')`))
+          .for("update")
+          .limit(1);
+        if (activeConflict) {
+          throw new RideApiError("Aapki ek ride pehle se active hai. Naye ride ke liye pehle wali complete ya cancel karein.", "ACTIVE_RIDE_EXISTS", 409);
+        }
+
         const [deducted] = await tx.update(usersTable)
           .set({ walletBalance: sql`wallet_balance - ${fareToCharge.toFixed(2)}` })
           .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, fareToCharge.toFixed(2))))
@@ -624,23 +634,34 @@ router.post("/", customerAuth, async (req, res) => {
         return ride!;
       });
     } else {
-      const [ride] = await db.insert(ridesTable).values({
-        id: generateId(), userId, type, status: rideStatus,
-        pickupAddress, dropAddress,
-        pickupLat: String(pickupLat), pickupLng: String(pickupLng),
-        dropLat: String(dropLat), dropLng: String(dropLng),
-        fare: fareToStore, distance: (Math.round(distance * 10) / 10).toString(), paymentMethod,
-        offeredFare:   isBargaining ? validatedOffer.toFixed(2) : null,
-        counterFare:   null,
-        bargainStatus: isBargaining ? "customer_offered" : null,
-        bargainRounds: isBargaining ? 1 : 0,
-        bargainNote:   bargainNote || null,
-        isParcel: isParcel ?? false,
-        receiverName: receiverName || null,
-        receiverPhone: receiverPhone || null,
-        packageType: packageType || null,
-      }).returning();
-      rideRecord = ride!;
+      rideRecord = await db.transaction(async (tx) => {
+        /* Re-check for active ride inside transaction to prevent race condition */
+        const [activeConflict] = await tx.select({ id: ridesTable.id })
+          .from(ridesTable)
+          .where(and(eq(ridesTable.userId, userId), sql`status IN ('searching', 'bargaining', 'accepted', 'arrived', 'in_transit')`))
+          .for("update")
+          .limit(1);
+        if (activeConflict) {
+          throw new RideApiError("Aapki ek ride pehle se active hai. Naye ride ke liye pehle wali complete ya cancel karein.", "ACTIVE_RIDE_EXISTS", 409);
+        }
+        const [ride] = await tx.insert(ridesTable).values({
+          id: generateId(), userId, type, status: rideStatus,
+          pickupAddress, dropAddress,
+          pickupLat: String(pickupLat), pickupLng: String(pickupLng),
+          dropLat: String(dropLat), dropLng: String(dropLng),
+          fare: fareToStore, distance: (Math.round(distance * 10) / 10).toString(), paymentMethod,
+          offeredFare:   isBargaining ? validatedOffer.toFixed(2) : null,
+          counterFare:   null,
+          bargainStatus: isBargaining ? "customer_offered" : null,
+          bargainRounds: isBargaining ? 1 : 0,
+          bargainNote:   bargainNote || null,
+          isParcel: isParcel ?? false,
+          receiverName: receiverName || null,
+          receiverPhone: receiverPhone || null,
+          packageType: packageType || null,
+        }).returning();
+        return ride!;
+      });
     }
 
     const bookLang = await getUserLanguage(userId);
@@ -986,11 +1007,18 @@ router.patch("/:id/customer-counter", bargainLimiter, customerAuth, requireRideS
 
 router.get("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
-  const rides = await db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(ridesTable.createdAt);
+  const statusFilter = req.query["status"] as string | undefined;
+
+  const baseQuery = db.select().from(ridesTable);
+  const rides = await (statusFilter === "active"
+    ? baseQuery.where(and(eq(ridesTable.userId, userId), sql`status IN ('searching', 'bargaining', 'accepted', 'arrived', 'in_transit')`))
+    : baseQuery.where(eq(ridesTable.userId, userId)).orderBy(ridesTable.createdAt)
+  );
+
   const formatted = await Promise.all(rides.map(async (r) => {
     const base = formatRide(r);
     let fareBreakdown: { baseFare: number; gstAmount: number } | null = null;
-    if (r.distance && r.type && ["completed", "dropped_off"].includes(r.status)) {
+    if (r.distance && r.type && ["completed", "dropped_off"].includes(r.status) && statusFilter !== "active") {
       try {
         const computed = await calcFare(parseFloat(String(r.distance)), r.type);
         fareBreakdown = { baseFare: computed.baseFare, gstAmount: computed.gstAmount };
@@ -998,9 +1026,11 @@ router.get("/", customerAuth, async (req, res) => {
     }
     return { ...base, fareBreakdown };
   }));
+
+  const result = statusFilter === "active" ? formatted : formatted.reverse();
   sendSuccess(res, {
-    rides: formatted.reverse(),
-    total: rides.length,
+    rides: result,
+    total: result.length,
   });
 });
 

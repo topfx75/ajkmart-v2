@@ -68,25 +68,42 @@ router.patch("/rides/:id/status", async (req, res) => {
   }
 
   // NOTE: Wallet already debited at ride booking (rides.ts).
-  // On completion, credit rider's earnings share.
+  // On completion, credit rider's earnings share (wallet rides only).
+  // For cash rides: rider already collected cash → deduct platform commission.
   if (status === "completed") {
     const fare = parseFloat(ride.fare);
     const s = await getPlatformSettings();
     const riderKeepPct = (Number(s["rider_keep_pct"]) || 80) / 100;
-    const riderEarning = parseFloat((fare * riderKeepPct).toFixed(2));
+    const commissionPct = 1 - riderKeepPct;
+
     if (ride.riderId) {
-      /* Atomic credit — uses sql`wallet_balance + X` to avoid clobbering
-         concurrent balance changes (same pattern as all other wallet mutations) */
-      await db.update(usersTable)
-        .set({ walletBalance: sql`wallet_balance + ${riderEarning}`, updatedAt: new Date() })
-        .where(eq(usersTable.id, ride.riderId));
-      await db.insert(walletTransactionsTable).values({
-        id: generateId(), userId: ride.riderId, type: "credit",
-        amount: String(riderEarning),
-        description: `Ride earnings — #${ride.id.slice(-6).toUpperCase()} (${Math.round(riderKeepPct * 100)}%)`,
-      });
-      const riderLang = await getUserLanguage(ride.riderId);
-      await sendUserNotification(ride.riderId, t("notifRidePaymentReceived", riderLang), t("notifRidePaymentReceivedBody", riderLang).replace("{amount}", String(riderEarning)), "ride", "wallet-outline");
+      if (ride.paymentMethod === "wallet") {
+        /* Wallet ride: customer pre-paid at booking → credit rider their share now */
+        const riderEarning = parseFloat((fare * riderKeepPct).toFixed(2));
+        await db.update(usersTable)
+          .set({ walletBalance: sql`wallet_balance + ${riderEarning}`, updatedAt: new Date() })
+          .where(eq(usersTable.id, ride.riderId));
+        await db.insert(walletTransactionsTable).values({
+          id: generateId(), userId: ride.riderId, type: "credit",
+          amount: String(riderEarning),
+          description: `Ride earnings — #${ride.id.slice(-6).toUpperCase()} (${Math.round(riderKeepPct * 100)}%)`,
+        });
+        const riderLang = await getUserLanguage(ride.riderId);
+        await sendUserNotification(ride.riderId, t("notifRidePaymentReceived", riderLang), t("notifRidePaymentReceivedBody", riderLang).replace("{amount}", String(riderEarning)), "ride", "wallet-outline");
+      } else {
+        /* Cash ride: rider collected fare directly → deduct platform commission */
+        const commission = parseFloat((fare * commissionPct).toFixed(2));
+        if (commission > 0) {
+          await db.update(usersTable)
+            .set({ walletBalance: sql`wallet_balance - ${commission}`, updatedAt: new Date() })
+            .where(eq(usersTable.id, ride.riderId));
+          await db.insert(walletTransactionsTable).values({
+            id: generateId(), userId: ride.riderId, type: "debit",
+            amount: String(commission),
+            description: `Platform commission — #${ride.id.slice(-6).toUpperCase()} (${Math.round(commissionPct * 100)}%)`,
+          });
+        }
+      }
     }
   }
 

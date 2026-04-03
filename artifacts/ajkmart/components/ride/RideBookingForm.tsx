@@ -209,6 +209,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const [estimateForType, setEstimateForType] = useState<string | null>(null);
   const [estimateAt, setEstimateAt] = useState<number | null>(null);
   const [estimateAgeMinutes, setEstimateAgeMinutes] = useState(0);
+  const [estimateNonce, setEstimateNonce] = useState(0);
 
   const { predictions: pickupPreds, loading: pickupLoading } =
     useMapsAutocomplete(pickupFocus ? pickup : "");
@@ -397,7 +398,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [pickupObj?.lat, pickupObj?.lng, dropObj?.lat, dropObj?.lng, rideType]);
+  }, [pickupObj?.lat, pickupObj?.lng, dropObj?.lat, dropObj?.lng, rideType, estimateNonce]);
 
   useEffect(() => {
     if (!estimateAt) return;
@@ -559,8 +560,10 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       return;
     }
     if (estimateAt && Date.now() - estimateAt > 5 * 60 * 1000) {
-      showToast("Your fare estimate has expired. Please wait a moment while it refreshes.", "error");
+      showToast("Fare estimate has expired — refreshing now, please try again in a moment.", "error");
       setEstimate(null);
+      setEstimateAt(null);
+      setEstimateNonce((n) => n + 1);
       return;
     }
 

@@ -401,6 +401,16 @@ function DynamicBannerCarousel() {
 
   const bannerThrottleRef = useRef<number | null>(null);
 
+  const getBannerCtaText = (b: Banner): string => {
+    if (b.linkType === "service" && b.linkValue) {
+      const svc = SERVICE_REGISTRY[b.linkValue as keyof typeof SERVICE_REGISTRY];
+      return svc?.heroConfig?.cta ?? "Book Now";
+    }
+    if (b.linkType === "url") return "Learn More";
+    if (b.linkType === "route") return "View Details";
+    return "Shop Now";
+  };
+
   const handleBannerPress = (b: Banner) => {
     const now = Date.now();
     if (bannerThrottleRef.current !== null && now - bannerThrottleRef.current < 300) {
@@ -481,7 +491,7 @@ function DynamicBannerCarousel() {
                       <Text style={ban.title}>{b.title}</Text>
                       {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
                       <View style={ban.cta}>
-                        <Text style={ban.ctaTxt}>Shop Now</Text>
+                        <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
                         <Ionicons name="arrow-forward" size={13} color="#fff" />
                       </View>
                     </View>
@@ -499,7 +509,7 @@ function DynamicBannerCarousel() {
                     <Text style={ban.title}>{b.title}</Text>
                     {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
                     <View style={ban.cta}>
-                      <Text style={ban.ctaTxt}>Shop Now</Text>
+                      <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
                       <Ionicons name="arrow-forward" size={13} color="#fff" />
                     </View>
                   </View>
@@ -532,8 +542,8 @@ const ban = StyleSheet.create({
   overlay: { position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16 },
   contentWrap: { flexDirection: "row" as const, alignItems: "center" as const, padding: 18, zIndex: 2 },
   blob: { position: "absolute" as const, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.1)" },
-  title: { fontFamily: Font.bold, fontSize: 17, color: "#fff", marginBottom: 4, textShadow: "0px 1px 3px rgba(0,0,0,0.3)" },
-  desc: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.9)", lineHeight: 17, marginBottom: 10, textShadow: "0px 1px 2px rgba(0,0,0,0.2)" },
+  title: { fontFamily: Font.bold, fontSize: 17, color: "#fff", marginBottom: 4, ...Platform.select({ native: { textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }, web: { textShadow: "0px 1px 3px rgba(0,0,0,0.3)" } as any }) },
+  desc: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.9)", lineHeight: 17, marginBottom: 10, ...Platform.select({ native: { textShadowColor: "rgba(0,0,0,0.2)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }, web: { textShadow: "0px 1px 2px rgba(0,0,0,0.2)" } as any }) },
   cta: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, backgroundColor: "rgba(255,255,255,0.25)", alignSelf: "flex-start" as const, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   ctaTxt: { fontFamily: Font.semiBold, fontSize: 12, color: "#fff" },
   iconWrap: { marginLeft: 10 },
