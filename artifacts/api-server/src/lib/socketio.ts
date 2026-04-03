@@ -165,10 +165,12 @@ async function isAuthorizedForRideRoom(
 }
 
 export function initSocketIO(httpServer: HttpServer): SocketIOServer {
+  const isDev = process.env.NODE_ENV !== "production";
   _io = new SocketIOServer(httpServer, {
     cors: {
-      origin: "*",
+      origin: isDev ? "*" : (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
       methods: ["GET", "POST"],
+      credentials: !isDev,
     },
     path: "/api/socket.io",
     transports: ["polling", "websocket"],

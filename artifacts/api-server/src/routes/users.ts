@@ -11,8 +11,10 @@ import { generateId } from "../lib/id.js";
 import { z } from "zod";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 
+const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
+
 const profileUpdateSchema = z.object({
-  name: z.string().min(1, "Name cannot be empty").max(100).optional(),
+  name: z.string().min(1, "Name cannot be empty").max(100).transform(stripHtml).optional(),
   email: z.string().email("Invalid email format").max(255).optional().or(z.literal("")),
   avatar: z.string().max(500).optional(),
   cnic: z.preprocess(

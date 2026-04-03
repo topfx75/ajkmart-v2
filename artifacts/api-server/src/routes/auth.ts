@@ -82,8 +82,14 @@ const checkIdentifierSchema = z.object({
   deviceId: z.string().max(256).optional(),
 }).strip();
 
+const phoneSchema = z
+  .string()
+  .min(7, "Phone number is required")
+  .max(20, "Phone number too long")
+  .regex(/^[\d\s\-()+]{7,20}$/, "Phone number must contain only digits, spaces, dashes, or parentheses");
+
 const sendOtpSchema = z.object({
-  phone: z.string().min(7, "Phone number is required"),
+  phone: phoneSchema,
   role: z.enum(["customer", "rider", "vendor"]).optional(),
   deviceId: z.string().max(256).optional(),
   preferredChannel: z.enum(["whatsapp", "sms", "email"]).optional(),
@@ -91,7 +97,7 @@ const sendOtpSchema = z.object({
 }).strip();
 
 const verifyOtpSchema = z.object({
-  phone: z.string().min(7, "Phone number is required"),
+  phone: phoneSchema,
   otp: z.string().length(6, "OTP must be exactly 6 digits").regex(/^\d{6}$/, "OTP must be 6 digits"),
   deviceFingerprint: z.string().max(512).optional(),
   deviceId: z.string().max(256).optional(),
@@ -183,7 +189,13 @@ function canonicalizePhone(raw: string): string {
   if (e164Match) return e164Match[1]!;
   const localMatch = cleaned.match(/^0(3\d{9})$/);
   if (localMatch) return localMatch[1]!;
+  const bareMatch = cleaned.match(/^(3\d{9})$/);
+  if (bareMatch) return bareMatch[1]!;
   return cleaned;
+}
+
+function isValidCanonicalPhone(phone: string): boolean {
+  return /^3\d{9}$/.test(phone);
 }
 
 const router: IRouter = Router();
@@ -507,6 +519,11 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
   const preferredChannel = body.preferredChannel;
   const phone = canonicalizePhone(rawPhone);
 
+  if (!isValidCanonicalPhone(phone)) {
+    res.status(400).json({ error: "Invalid phone number. Please enter a valid Pakistani mobile number (e.g. 03001234567).", field: "phone" });
+    return;
+  }
+
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
@@ -727,6 +744,12 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
   const body = validateBody(verifyOtpSchema, req, res);
   if (!body) return;
   const phone = canonicalizePhone(body.phone);
+
+  if (!isValidCanonicalPhone(phone)) {
+    res.status(400).json({ error: "Invalid phone number format.", field: "phone" });
+    return;
+  }
+
   const { otp } = body;
 
   const ip = getClientIp(req);
