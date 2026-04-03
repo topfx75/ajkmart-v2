@@ -296,8 +296,8 @@ export function RideTracker({
     return (
       <NegotiationScreen
         rideId={rideId}
-        ride={ride}
-        setRide={setRide}
+        ride={ride as any}
+        setRide={(updater) => setRide((prev) => updater(prev as any) as any)}
         elapsed={elapsed}
         cancellationFee={effectiveCancellationFee}
         token={token}
@@ -1102,7 +1102,7 @@ export function RideTracker({
               marginTop: 6,
             }}
           >
-            Rs. {ride?.fare} · {parseFloat(ride?.distance ?? "0").toFixed(1)} km
+            Rs. {ride?.fare} · {(ride?.distance ?? 0).toFixed(1)} km
           </Text>
         </View>
 
@@ -1303,7 +1303,7 @@ export function RideTracker({
                           ? "Rickshaw"
                           : rideType,
                 },
-                { lbl: "Distance", val: `${parseFloat(ride?.distance ?? "0").toFixed(1)} km` },
+                { lbl: "Distance", val: `${(ride?.distance ?? 0).toFixed(1)} km` },
                 {
                   lbl: "Payment",
                   val:
@@ -1995,7 +1995,7 @@ export function RideTracker({
                         {[1, 2, 3, 4, 5].map((s) => (
                           <Ionicons
                             key={s}
-                            name={s <= Math.round(ride.riderAvgRating) ? "star" : "star-outline"}
+                            name={s <= Math.round(ride.riderAvgRating ?? 0) ? "star" : "star-outline"}
                             size={11}
                             color="#F59E0B"
                           />
@@ -2199,7 +2199,7 @@ export function RideTracker({
                   <Pressable
                     onPress={() =>
                       Linking.openURL(
-                        `https://wa.me/92${ride.riderPhone.replace(/^(\+92|0)/, "")}`,
+                        `https://wa.me/92${ride.riderPhone?.replace(/^(\+92|0)/, "") ?? ""}`,
                       )
                     }
                     style={{

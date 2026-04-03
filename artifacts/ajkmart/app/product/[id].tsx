@@ -459,8 +459,9 @@ export default function ProductDetailScreen() {
   const doAdd = useCallback(() => {
     if (!product) return;
     const type = productType === "food" ? "food" : productType === "pharmacy" ? "pharmacy" : "mart";
-    const variantPrice = selectedVariant ? selectedVariant.price : product.price;
-    const variantLabel = selectedVariant ? ` (${selectedVariant.label})` : "";
+    const selectedVariantObj = variants?.find((v: any) => v.id === selectedVariant) ?? null;
+    const variantPrice = selectedVariantObj ? selectedVariantObj.price : product.price;
+    const variantLabel = selectedVariantObj ? ` (${selectedVariantObj.label})` : "";
     addItem({
       productId: product.id,
       name: product.name + variantLabel,

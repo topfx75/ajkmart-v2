@@ -61,6 +61,7 @@ export type ProductType = (typeof ProductType)[keyof typeof ProductType];
 export const ProductType = {
   mart: "mart",
   food: "food",
+  pharmacy: "pharmacy",
 } as const;
 
 export interface Product {
@@ -296,6 +297,7 @@ export type CreateParcelBookingRequestPaymentMethod =
 export const CreateParcelBookingRequestPaymentMethod = {
   cash: "cash",
   wallet: "wallet",
+  cod: "cod",
 } as const;
 
 export interface CreateParcelBookingRequest {
@@ -406,7 +408,8 @@ export interface RideBid {
   id: string;
   riderId: string;
   riderName?: string;
-  offer: number;
+  fare: number;
+  offer?: number;
   status: string;
   createdAt: string;
   ratingAvg?: number | null;

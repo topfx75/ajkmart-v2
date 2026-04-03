@@ -58,6 +58,8 @@ const EMPTY_BANNER = {
 
 const LINK_TYPES = [
   { value: "none", label: "No Link" },
+  { value: "service", label: "Service (Mart/Food/Ride…)" },
+  { value: "route", label: "In-App Route" },
   { value: "category", label: "Category" },
   { value: "product", label: "Product" },
   { value: "url", label: "External URL" },
@@ -490,7 +492,13 @@ export default function BannersPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold">Link Value</label>
                   <Input
-                    placeholder={form.linkType === "url" ? "https://..." : form.linkType === "category" ? "Category name" : "Product ID"}
+                    placeholder={
+                      form.linkType === "url" ? "https://..." :
+                      form.linkType === "category" ? "e.g. fruits" :
+                      form.linkType === "service" ? "mart | food | rides | pharmacy | parcel" :
+                      form.linkType === "route" ? "/mart  or  /food  or  /ride" :
+                      "Product ID"
+                    }
                     value={form.linkValue}
                     onChange={e => setForm(f => ({ ...f, linkValue: e.target.value }))}
                     className="h-11 rounded-xl"

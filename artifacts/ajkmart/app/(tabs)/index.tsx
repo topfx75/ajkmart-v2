@@ -412,6 +412,11 @@ function DynamicBannerCarousel() {
       router.push({ pathname: "/product/[id]", params: { id: b.linkValue } } as Href);
     } else if (b.linkType === "category" && b.linkValue) {
       router.push({ pathname: "/search", params: { category: b.linkValue } } as Href);
+    } else if (b.linkType === "service" && b.linkValue) {
+      const svc = Object.values(SERVICE_REGISTRY).find((s) => s.key === b.linkValue);
+      if (svc) safeNavigate(String(svc.route));
+    } else if (b.linkType === "route" && b.linkValue) {
+      safeNavigate(b.linkValue);
     } else if (b.linkType === "url" && b.linkValue) {
       /* Only https:// URLs are opened externally. All other schemes are discarded. */
       if (b.linkValue.startsWith("https://")) {

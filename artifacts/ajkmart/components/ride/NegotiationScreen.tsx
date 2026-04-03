@@ -26,8 +26,14 @@ interface RideBid {
   riderId: string;
   riderName?: string;
   fare: number;
+  offer?: number;
   status?: string;
   createdAt?: string;
+  ratingAvg?: number | null;
+  totalRides?: number;
+  vehiclePlate?: string | null;
+  vehicleType?: string | null;
+  note?: string | null;
 }
 
 interface NegotiationRide {
@@ -623,7 +629,7 @@ export function NegotiationScreen({
                           <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 11, color: "#FCD34D" }}>
                             {bid.ratingAvg.toFixed(1)}
                           </Text>
-                          {bid.totalRides > 0 && (
+                          {(bid.totalRides ?? 0) > 0 && (
                             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
                               ({bid.totalRides})
                             </Text>
