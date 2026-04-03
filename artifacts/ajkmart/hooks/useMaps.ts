@@ -100,6 +100,23 @@ export async function resolveLocation(
   }
 }
 
+/* ─── Reverse geocode lat/lng to human-readable address ─── */
+export async function reverseGeocodeCoords(
+  lat: number,
+  lng: number,
+  showError?: (msg: string) => void,
+): Promise<{ address: string; formattedAddress?: string } | null> {
+  try {
+    const r = await fetch(`${API}/reverse-geocode?lat=${lat}&lng=${lng}`);
+    if (!r.ok) throw new Error("reverse-geocode failed");
+    const d = await r.json();
+    return { address: d.address ?? d.formattedAddress ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`, formattedAddress: d.formattedAddress };
+  } catch {
+    showError?.("Could not resolve your current location. Please type the address manually.");
+    return null;
+  }
+}
+
 /* ─── Get directions between two coordinates ─── */
 export async function getDirections(
   oLat: number, oLng: number, dLat: number, dLng: number,

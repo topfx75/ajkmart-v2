@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { router } from "expo-router";
-import { useMapsAutocomplete, resolveLocation, staticMapUrl } from "@/hooks/useMaps";
+import { useMapsAutocomplete, resolveLocation, reverseGeocodeCoords, staticMapUrl } from "@/hooks/useMaps";
 import type { MapPrediction } from "@/hooks/useMaps";
 import { MapPickerModal } from "@/components/ride/MapPickerModal";
 import type { MapPickerResult } from "@/components/ride/MapPickerModal";
@@ -39,7 +39,6 @@ import {
   getRideHistory,
   getSchoolRoutes,
   subscribeSchoolRoute,
-  geocodeAddress,
   updateLocation,
 } from "@workspace/api-client-react";
 import type {
@@ -277,9 +276,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         if (cancelled) return;
         const { latitude: lat, longitude: lng } = pos.coords;
-        const data = await geocodeAddress({ address: `${lat},${lng}` });
+        const data = await reverseGeocodeCoords(lat, lng);
         if (cancelled) return;
-        const address = data?.formattedAddress ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        const address = data?.address ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
         setPickup(address);
         setPickupObj({ lat, lng, address });
       } catch (err) {
@@ -381,9 +380,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         accuracy: Location.Accuracy.Balanced,
       });
       const { latitude: lat, longitude: lng } = pos.coords;
-      const data = await geocodeAddress({ address: `${lat},${lng}` });
-      const address =
-        data?.formattedAddress ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      const data = await reverseGeocodeCoords(lat, lng);
+      const address = data?.address ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       setPickup(address);
       setPickupObj({ lat, lng, address });
       setLocDenied(false);

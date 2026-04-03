@@ -281,7 +281,28 @@ router.get("/reverse-geocode", async (req, res) => {
   const { key, enabled, geocoding } = await getKey();
 
   if (!enabled || !key || !geocoding) {
-    /* Closest AJK fallback location */
+    /* Try Nominatim OSM first (free, no key required) */
+    try {
+      const nomUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+      const nomRaw = await fetch(nomUrl, { headers: { "User-Agent": "AJKMart-Server/1.0" } });
+      if (nomRaw.ok) {
+        const nomData = await nomRaw.json() as any;
+        if (nomData?.display_name) {
+          const addr = nomData.address;
+          /* Build a concise address: road/suburb + city/town */
+          const parts: string[] = [];
+          if (addr?.road) parts.push(addr.road);
+          else if (addr?.suburb) parts.push(addr.suburb);
+          else if (addr?.village) parts.push(addr.village);
+          if (addr?.city || addr?.town || addr?.county) parts.push(addr.city ?? addr.town ?? addr.county);
+          const address = parts.length ? parts.join(", ") : nomData.display_name;
+          revGeoCacheSet(lat, lng, address);
+          res.json({ address, formattedAddress: nomData.display_name, source: "nominatim" }); return;
+        }
+      }
+    } catch { /* Nominatim unavailable — fall through to AJK city nearest-match */ }
+
+    /* Last resort: closest AJK fallback location */
     let closest = AJK_FALLBACK[0]!;
     let closestDist = Infinity;
     for (const loc of AJK_FALLBACK) {

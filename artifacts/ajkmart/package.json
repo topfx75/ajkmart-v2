@@ -73,6 +73,7 @@
     "expo-sharing": "^14.0.8",
     "expo-task-manager": "~14.0.9",
     "react-native-qrcode-svg": "^6.3.21",
+    "react-native-webview": "^13.16.1",
     "socket.io-client": "^4.8.3"
   }
 }
