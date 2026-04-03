@@ -40,21 +40,34 @@ function localRemove(): void {
 
 /* Read the access token — check sessionStorage first, fall back to localStorage
    for sessions that were stored under the legacy scheme (pre-sessionStorage migration).
-   On first successful read from localStorage the token is immediately migrated. */
+   On first successful read from localStorage the token is immediately migrated.
+   Scans ALL localStorage keys that match rider auth patterns so that tokens written
+   by any prior version of the app (regardless of key name) are picked up and cleaned. */
 function getToken(): string {
   const fromSession = sessionGet();
   if (fromSession) return fromSession;
 
-  /* Legacy migration: old code stored access tokens in localStorage under TOKEN_KEY or "rider_token" */
+  /* Legacy migration: scan every localStorage key that looks like a rider access token.
+     The REFRESH_KEY is explicitly skipped — it must stay in localStorage for persistence. */
   try {
-    const legacy = localStorage.getItem(TOKEN_KEY) || localStorage.getItem("rider_token") || "";
-    if (legacy) {
-      /* Migrate to sessionStorage and erase from localStorage */
-      sessionSet(legacy);
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem("rider_token");
-      return legacy;
+    let legacy = "";
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (key === REFRESH_KEY) continue;
+      if (key.startsWith("rider_") || key.startsWith("ajkmart_rider")) {
+        keysToRemove.push(key);
+        /* Use the first non-empty value found as the token to migrate */
+        if (!legacy) legacy = localStorage.getItem(key) ?? "";
+      }
     }
+    if (legacy) {
+      sessionSet(legacy);
+    }
+    /* Remove all matched legacy keys regardless of whether a token was found */
+    keysToRemove.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+    if (legacy) return legacy;
   } catch {}
   return "";
 }
@@ -142,7 +155,8 @@ async function _doRefresh(): Promise<boolean> {
     const data = await res.json();
     if (data.token) {
       sessionSet(data.token);
-      try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("rider_token"); } catch {}
+      /* Sweep all legacy rider keys — broader than two hardcoded names */
+      sweepLegacyTokens();
     }
     if (data.refreshToken) localSet(data.refreshToken);
     return true;
@@ -283,8 +297,8 @@ export const api = {
     /* Store access token in sessionStorage; refresh token in localStorage */
     sessionSet(token);
     if (refreshToken) localSet(refreshToken);
-    /* Erase any stale access token from localStorage (legacy migration) */
-    try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem("rider_token"); } catch {}
+    /* Sweep all stale legacy rider access keys from localStorage */
+    sweepLegacyTokens();
   },
   clearTokens,
   getToken,
