@@ -324,6 +324,7 @@ export const GLOBAL_QUICK_ACTIONS: Array<{
   service: ServiceKey | null;
 }> = [
   { icon: "time-outline", label: "Track", color: C.primary, bg: C.primarySoft, route: "/(tabs)/orders" as Href, service: null },
+  { icon: "bus-outline", label: "Van Service", color: "#6366F1", bg: "#EEF2FF", route: "/van" as Href, service: null },
 ];
 
 export function getActiveServices(

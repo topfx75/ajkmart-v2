@@ -1323,6 +1323,11 @@ export default function Home() {
                                   📦 Parcel
                                 </span>
                               )}
+                              {(r as any).isPoolRide && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 flex items-center gap-1 border border-violet-200">
+                                  👥 Pool
+                                </span>
+                              )}
                               <RequestAge createdAt={r.createdAt} />
                             </div>
                             {(r.riderDistanceKm != null || r.riderEtaMin != null) && (

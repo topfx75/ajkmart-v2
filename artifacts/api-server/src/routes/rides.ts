@@ -87,6 +87,18 @@ const bookRideSchema = z.object({
   receiverName: z.string().max(200).transform(stripHtml).optional(),
   receiverPhone: z.string().max(20).optional(),
   packageType: z.string().max(100).transform(stripHtml).optional(),
+  /* ── Scheduled ride ── */
+  isScheduled: z.boolean().optional().default(false),
+  scheduledAt: z.string().datetime().optional(),
+  /* ── Multi-stop ── */
+  stops: z.array(z.object({
+    address: z.string().max(500),
+    lat: z.number(),
+    lng: z.number(),
+    order: z.number().int(),
+  })).max(5).optional(),
+  /* ── Pool / shared ride ── */
+  isPoolRide: z.boolean().optional().default(false),
 });
 
 const cancelRideSchema = z.object({
@@ -500,7 +512,22 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
     pickupLat, pickupLng, dropLat, dropLng,
     paymentMethod, offeredFare, bargainNote,
     isParcel, receiverName, receiverPhone, packageType,
+    isScheduled, scheduledAt, stops, isPoolRide,
   } = parsed.data;
+
+  /* Validate scheduled ride time */
+  let scheduledAtDate: Date | undefined;
+  if (isScheduled && scheduledAt) {
+    scheduledAtDate = new Date(scheduledAt);
+    const minAdvanceMs = 5 * 60_000;
+    if (scheduledAtDate.getTime() - Date.now() < minAdvanceMs) {
+      sendError(res, "Scheduled ride must be at least 5 minutes in the future.", 400); return;
+    }
+    const maxAdvanceDays = 7;
+    if (scheduledAtDate.getTime() - Date.now() > maxAdvanceDays * 24 * 60 * 60 * 1000) {
+      sendError(res, "Scheduled ride cannot be more than 7 days in advance.", 400); return;
+    }
+  }
 
   const existingActive = await db.select({ id: ridesTable.id, status: ridesTable.status })
     .from(ridesTable)
@@ -608,6 +635,46 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
   const fareToCharge = isBargaining ? validatedOffer : platformFare;
   const fareToStore  = platformFare.toFixed(2);
 
+  /* ── Pool ride: find or create a pool group ── */
+  let resolvedPoolGroupId: string | undefined;
+  if (isPoolRide && !isBargaining && !isScheduled) {
+    const POOL_RADIUS_DEG = 0.005; // ~500m
+    const MAX_POOL_SIZE = 3;       // max riders sharing a pool
+    const POOL_WINDOW_MIN = 20;    // only pool with rides booked in last 20 min
+    const windowStart = new Date(Date.now() - POOL_WINDOW_MIN * 60_000);
+    const existingPools = await db.select({ poolGroupId: ridesTable.poolGroupId, id: ridesTable.id })
+      .from(ridesTable)
+      .where(and(
+        eq(ridesTable.isPoolRide, true),
+        eq(ridesTable.type, type),
+        sql`status IN ('searching', 'bargaining')`,
+        sql`pool_group_id IS NOT NULL`,
+        sql`created_at >= ${windowStart.toISOString()}`,
+        sql`ABS(CAST(pickup_lat AS FLOAT) - ${pickupLat}) < ${POOL_RADIUS_DEG}`,
+        sql`ABS(CAST(pickup_lng AS FLOAT) - ${pickupLng}) < ${POOL_RADIUS_DEG}`,
+        sql`ABS(CAST(drop_lat AS FLOAT) - ${dropLat}) < ${POOL_RADIUS_DEG}`,
+        sql`ABS(CAST(drop_lng AS FLOAT) - ${dropLng}) < ${POOL_RADIUS_DEG}`,
+      ))
+      .limit(10);
+
+    if (existingPools.length > 0) {
+      /* Find a group that is not full */
+      const groupIds = [...new Set(existingPools.map(r => r.poolGroupId).filter(Boolean))] as string[];
+      for (const gid of groupIds) {
+        const membersInGroup = await db.select({ id: ridesTable.id })
+          .from(ridesTable)
+          .where(and(eq(ridesTable.poolGroupId, gid), sql`status IN ('searching', 'bargaining')`));
+        if (membersInGroup.length < MAX_POOL_SIZE) {
+          resolvedPoolGroupId = gid;
+          break;
+        }
+      }
+    }
+    if (!resolvedPoolGroupId) {
+      resolvedPoolGroupId = generateId();
+    }
+  }
+
   try {
     let rideRecord: typeof ridesTable.$inferSelect;
 
@@ -648,8 +715,9 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
           description: `${type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, " ")} ride payment`,
           reference: `ride:${rideId}`,
         });
+        const scheduledStatus = isScheduled ? "scheduled" : rideStatus;
         const [ride] = await tx.insert(ridesTable).values({
-          id: rideId, userId, type, status: rideStatus,
+          id: rideId, userId, type, status: scheduledStatus,
           pickupAddress, dropAddress,
           pickupLat: String(pickupLat), pickupLng: String(pickupLng),
           dropLat: String(dropLat), dropLng: String(dropLng),
@@ -659,6 +727,11 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
           receiverName: receiverName || null,
           receiverPhone: receiverPhone || null,
           packageType: packageType || null,
+          isScheduled: isScheduled ?? false,
+          scheduledAt: scheduledAtDate ?? null,
+          stops: stops ? stops : null,
+          isPoolRide: isPoolRide ?? false,
+          poolGroupId: resolvedPoolGroupId ?? null,
         }).returning();
         return ride!;
       });
@@ -681,8 +754,9 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
         if (activeConflict) {
           throw new RideApiError("Aapki ek ride pehle se active hai. Naye ride ke liye pehle wali complete ya cancel karein.", "ACTIVE_RIDE_EXISTS", 409);
         }
+        const scheduledStatus2 = isScheduled ? "scheduled" : rideStatus;
         const [ride] = await tx.insert(ridesTable).values({
-          id: generateId(), userId, type, status: rideStatus,
+          id: generateId(), userId, type, status: scheduledStatus2,
           pickupAddress, dropAddress,
           pickupLat: String(pickupLat), pickupLng: String(pickupLng),
           dropLat: String(dropLat), dropLng: String(dropLng),
@@ -696,6 +770,11 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
           receiverName: receiverName || null,
           receiverPhone: receiverPhone || null,
           packageType: packageType || null,
+          isScheduled: isScheduled ?? false,
+          scheduledAt: scheduledAtDate ?? null,
+          stops: stops ? stops : null,
+          isPoolRide: isPoolRide ?? false,
+          poolGroupId: resolvedPoolGroupId ?? null,
         }).returning();
         return ride!;
       });
@@ -715,9 +794,11 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
       type: "ride", icon: ({ bike: "bicycle-outline", car: "car-outline", rickshaw: "car-outline", daba: "bus-outline", school_shift: "bus-outline" } as Record<string, string>)[type] ?? "car-outline", link: `/ride`,
     }).catch(() => {});
 
-    if (rideRecord) {
+    if (rideRecord && !isScheduled) {
       broadcastRide(rideRecord.id);
       emitRideDispatchUpdate({ rideId: rideRecord.id, action: "new", status: rideRecord.status });
+    } else if (rideRecord && isScheduled) {
+      emitRideDispatchUpdate({ rideId: rideRecord.id, action: "new", status: "scheduled" });
     }
 
     sendCreated(res, {
@@ -725,6 +806,8 @@ router.post("/", bookRideLimiter, customerAuth, async (req, res) => {
       baseFare, gstAmount,
       platformFare, effectiveFare: fareToCharge,
       isBargaining,
+      isScheduled: !!isScheduled,
+      scheduledAt: scheduledAtDate?.toISOString() ?? null,
     });
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 400;
@@ -1084,6 +1167,18 @@ router.get("/payment-methods", async (_req, res) => {
     { key: "easypaisa", label: "EasyPaisa",  enabled: rideAllowed("easypaisa_allowed_rides", "ride_payment_easypaisa", "off") && (s["easypaisa_enabled"] ?? "off") === "on" },
   ];
   sendSuccess(res, { methods: methods.filter(m => m.enabled) });
+});
+
+/* ── Pool group detail ── */
+router.get("/pool/:groupId", customerAuth, async (req, res) => {
+  const groupId = String(req.params["groupId"]);
+  const rides = await db.select({
+    id: ridesTable.id, userId: ridesTable.userId,
+    pickupAddress: ridesTable.pickupAddress, dropAddress: ridesTable.dropAddress,
+    status: ridesTable.status, fare: ridesTable.fare, paymentMethod: ridesTable.paymentMethod,
+    stops: ridesTable.stops, createdAt: ridesTable.createdAt,
+  }).from(ridesTable).where(eq(ridesTable.poolGroupId, groupId)).orderBy(ridesTable.createdAt);
+  sendSuccess(res, { groupId, rides, passengerCount: rides.length });
 });
 
 router.get("/:id", customerAuth, async (req, res) => {
@@ -1570,6 +1665,33 @@ export function startDispatchEngine() {
   dispatchInterval = setInterval(runDispatchCycle, 10_000);
   logger.info("[dispatch-engine] started (every 10s)");
   runDispatchCycle();
+}
+
+/* ── Scheduled ride dispatcher: runs every minute and broadcasts scheduled rides
+   that fall within the next 15 minutes so riders can accept them in advance. ── */
+export async function dispatchScheduledRides(): Promise<void> {
+  try {
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + 15 * 60_000);
+    const readyRides = await db.select({ id: ridesTable.id })
+      .from(ridesTable)
+      .where(and(
+        eq(ridesTable.status, "scheduled"),
+        sql`scheduled_at IS NOT NULL`,
+        sql`scheduled_at <= ${windowEnd.toISOString()}`,
+        sql`scheduled_at >= ${now.toISOString()}`,
+      ));
+    for (const ride of readyRides) {
+      await db.update(ridesTable)
+        .set({ status: "searching", updatedAt: new Date() })
+        .where(and(eq(ridesTable.id, ride.id), eq(ridesTable.status, "scheduled")));
+      broadcastRide(ride.id);
+      emitRideDispatchUpdate({ rideId: ride.id, action: "scheduled_dispatch", status: "searching" });
+      logger.info({ rideId: ride.id }, "[scheduled-dispatch] ride activated");
+    }
+  } catch (e) {
+    logger.error({ err: e }, "[scheduled-dispatch] error");
+  }
 }
 
 export default router;

@@ -31,6 +31,7 @@ import variantsRouter from "./variants.js";
 import pushRouter from "./push.js";
 import kycRouter from "./kyc.js";
 import wishlistRouter from "./wishlist.js";
+import vanRouter from "./van.js";
 
 const router: IRouter = Router();
 
@@ -66,5 +67,6 @@ router.use("/variants", variantsRouter);
 router.use("/push", pushRouter);
 router.use("/kyc", kycRouter);
 router.use("/wishlist", wishlistRouter);
+router.use("/van", vanRouter);
 
 export default router;

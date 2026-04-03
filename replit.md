@@ -701,3 +701,31 @@ Auth (OTP send/verify) → Profile (GET/PUT) → Products/Categories/Flash deals
 - Reviews: require `orderType` field; product reviews require delivered/completed order
 - Pharmacy: items must include `price` and `quantity` (digital pharmacy catalog model)
 - Notifications unread count: returned as `unreadCount` in `GET /api/notifications` response
+
+### Map Pin Location, Scheduled Rides, Van Service & Pool Rides — Completed
+
+#### T001: Map Pin Location Picker
+- **`artifacts/api-server/src/routes/maps.ts`**: `/api/maps/picker` serves a full HTML+Leaflet page with `window.parent.postMessage` for location selection.
+- **`artifacts/ajkmart/components/MapPickerModal.tsx`**: WebView-based modal wrapper that captures `postMessage` events from the map picker.
+- **`artifacts/ajkmart/components/ride/RideBookingForm.tsx`**: Integrated MapPickerModal for both pickup and drop location selection via map pins.
+
+#### T002: Scheduled Rides + Multi-Stop
+- **`artifacts/api-server/src/routes/rides.ts`**: Both wallet and cash ride INSERT calls persist `isScheduled`, `scheduledAt`, `stops`, `isPoolRide`; scheduled rides get status `"scheduled"`; broadcast skipped at booking.
+- **`dispatchScheduledRides()`**: Exported function activates scheduled rides within 15-minute window; cron in `index.ts` runs every minute.
+
+#### T003: Commercial Van Service (Full Stack)
+- **`artifacts/api-server/src/routes/van.ts`**: Complete van API — customer booking (`GET /routes`, `GET /routes/:id`, `GET /schedules/:id/availability`, `POST /bookings`, `GET /bookings`, `PATCH /bookings/:id/cancel`), rider driver endpoints (`GET /driver/today`, passenger manifest, board/complete), admin CRUD (routes/vehicles/schedules/bookings).
+- **`lib/db/src/schema/van_service.ts`**: Four tables: `vanRoutesTable`, `vanVehiclesTable`, `vanSchedulesTable`, `vanBookingsTable`.
+- **`artifacts/ajkmart/app/van/index.tsx`**: 5-step multi-step customer booking screen (routes → schedules → date → seats → confirm).
+- **`artifacts/ajkmart/app/van/bookings.tsx`**: My Van Bookings history screen with cancel support.
+- **`artifacts/ajkmart/app/van/_layout.tsx`**: Stack navigator for van screens.
+- **`artifacts/admin/src/pages/van.tsx`**: Admin van management page with 4 tabs (Routes/Schedules/Vehicles/Bookings).
+- **`artifacts/rider-app/src/pages/VanDriver.tsx`**: Rider van driver screen — today's schedules, passenger manifest, board/complete actions.
+- Van added to admin sidebar and customer home screen Quick Actions.
+
+#### T004: Ride Sharing / Pool Rides
+- **Pool matching logic** in `rides.ts`: On `isPoolRide=true` booking, searches within 500m radius and 20-min window for same-direction, same-type pool rides with under 3 passengers; groups them under shared `poolGroupId` or creates new group.
+- **`GET /api/rides/pool/:groupId`**: Returns all rides in a pool group with passenger count.
+- **`artifacts/rider-app/src/pages/Home.tsx`**: Pool ride requests show "👥 Pool" badge.
+- **`artifacts/rider-app/src/pages/Active.tsx`**: Active pool rides show "POOL" indicator badge in ride header.
+- Pool fields (`isPoolRide`, `poolGroupId`) included in all ride API responses via `formatRide` spread.

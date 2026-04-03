@@ -1,0 +1,137 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import Colors from "@/constants/colors";
+import { Font } from "@/constants/typography";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const C = Colors.light;
+
+export type MapPickerResult = {
+  lat: number;
+  lng: number;
+  address: string;
+};
+
+type Props = {
+  visible: boolean;
+  label?: string;
+  initialLat?: number;
+  initialLng?: number;
+  onConfirm: (result: MapPickerResult) => void;
+  onClose: () => void;
+};
+
+const PICKER_ORIGIN = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+
+export function MapPickerModal({ visible, label = "Location", initialLat, initialLng, onConfirm, onClose }: Props) {
+  const insets = useSafeAreaInsets();
+  const [loading, setLoading] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const lat  = initialLat ?? 33.7294;
+  const lng  = initialLng ?? 73.3872;
+  const src  = `${PICKER_ORIGIN}/api/maps/picker?lat=${lat}&lng=${lng}&zoom=14&label=${encodeURIComponent(label)}`;
+
+  useEffect(() => {
+    if (!visible) { setLoading(true); return; }
+
+    function handleMessage(e: MessageEvent) {
+      if (!e.data || e.data.type !== "MAP_PICKER_CONFIRM") return;
+      const { lat, lng, address } = e.data as { lat: number; lng: number; address: string; type: string };
+      if (typeof lat !== "number" || typeof lng !== "number") return;
+      onConfirm({ lat, lng, address: address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}` });
+    }
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [visible, onConfirm]);
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <Pressable onPress={onClose} hitSlop={12} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={C.text} />
+          </Pressable>
+          <Text style={styles.title}>Select {label}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.mapWrap}>
+          {loading && (
+            <View style={styles.loader}>
+              <ActivityIndicator size="large" color={C.primary} />
+              <Text style={styles.loaderTxt}>Loading map...</Text>
+            </View>
+          )}
+          {/* Web-specific iframe — compiled correctly by react-native-web */}
+          {(Platform as any).OS === "web" && (
+            <iframe
+              ref={iframeRef}
+              src={src}
+              style={{ width: "100%", height: "100%", border: "none", display: loading ? "none" : "block" }}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock"
+              onLoad={() => setLoading(false)}
+              title={`Map picker — ${label}`}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    backgroundColor: "#fff",
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: C.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: Font.bold,
+    fontSize: 17,
+    color: C.text,
+  },
+  mapWrap: {
+    flex: 1,
+    backgroundColor: C.surfaceSecondary,
+  },
+  loader: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loaderTxt: {
+    fontFamily: Font.medium,
+    fontSize: 14,
+    color: C.textMuted,
+  },
+});

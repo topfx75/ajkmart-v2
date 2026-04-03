@@ -54,6 +54,7 @@ function safeNavigate(route: string) {
   const knownRoutes = new Set<string>([
     ...Object.values(SERVICE_REGISTRY).map(s => String(s.route)),
     "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/cart", "/search",
+    "/van", "/van/bookings",
   ]);
   if (!route || (!knownRoutes.has(route) && !route.startsWith("/(tabs)"))) {
     router.push("/(tabs)" as Href);

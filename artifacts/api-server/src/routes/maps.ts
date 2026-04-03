@@ -452,4 +452,234 @@ router.get("/config", async (_req, res) => {
   });
 });
 
+/* ══════════════════════════════════════════════════════════
+   GET /api/maps/picker
+   Serves a full-screen interactive Leaflet map for pin-drop
+   location selection. Used by the customer app via iframe.
+   Query params:
+     lat   - initial latitude  (default: 33.73)
+     lng   - initial longitude (default: 73.39)
+     zoom  - initial zoom      (default: 13)
+     label - label shown in toolbar (e.g. "Pickup" / "Drop-off")
+     lang  - "en" | "ur"
+══════════════════════════════════════════════════════════ */
+router.get("/picker", (req, res) => {
+  const lat   = parseFloat(String(req.query.lat  ?? "33.7294"));
+  const lng   = parseFloat(String(req.query.lng  ?? "73.3872"));
+  const zoom  = parseInt(String(req.query.zoom   ?? "14"), 10);
+  const label = String(req.query.label ?? "Location");
+  const lang  = String(req.query.lang  ?? "en");
+
+  const isUrdu = lang === "ur";
+  const t = {
+    title:       isUrdu ? `${label} چنیں` : `Select ${label}`,
+    searchPH:    isUrdu ? "جگہ تلاش کریں..." : "Search location...",
+    pinHint:     isUrdu ? "پن کھینچ کر مقام تبدیل کریں" : "Drag pin to adjust location",
+    myLocation:  isUrdu ? "میری جگہ" : "My Location",
+    confirm:     isUrdu ? "مقام تصدیق کریں ✓" : "Confirm Location ✓",
+    loading:     isUrdu ? "مقام لوڈ ہو رہا ہے..." : "Loading address...",
+  };
+
+  const html = `<!DOCTYPE html>
+<html lang="${isUrdu ? "ur" : "en"}" dir="${isUrdu ? "rtl" : "ltr"}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>${t.title}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+    #toolbar{background:#fff;padding:10px 12px 0;z-index:1000;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+    #titlebar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+    #titlebar h2{font-size:15px;font-weight:700;color:#1a1a2e;flex:1}
+    #search-wrap{position:relative;margin-bottom:8px}
+    #search{width:100%;padding:9px 36px 9px 12px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;outline:none;transition:border-color .2s}
+    #search:focus{border-color:#4a90e2}
+    #search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#999;font-size:16px;display:none}
+    #suggestions{background:#fff;border:1px solid #e0e0e0;border-radius:8px;max-height:160px;overflow-y:auto;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:2000;display:none;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+    .suggestion{padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;transition:background .15s}
+    .suggestion:last-child{border-bottom:none}
+    .suggestion:hover,.suggestion:active{background:#f0f7ff}
+    .sug-main{font-weight:600;color:#1a1a2e}
+    .sug-sub{font-size:11px;color:#888;margin-top:1px}
+    #map{flex:1;z-index:1}
+    #address-bar{background:#fff;padding:8px 12px;z-index:1000;box-shadow:0 -2px 8px rgba(0,0,0,.08)}
+    #address-text{font-size:13px;color:#333;margin-bottom:6px;min-height:18px;font-weight:500}
+    #hint{font-size:11px;color:#888;margin-bottom:8px}
+    #btn-row{display:flex;gap:8px;padding-bottom:env(safe-area-inset-bottom,0px)}
+    #btn-locate{flex:0 0 auto;padding:11px 14px;background:#f0f0f0;border:none;border-radius:10px;cursor:pointer;font-size:13px;color:#555;font-weight:600;transition:background .2s}
+    #btn-locate:active{background:#e0e0e0}
+    #btn-confirm{flex:1;padding:11px;background:#4a90e2;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:background .2s}
+    #btn-confirm:active{background:#357abd}
+    #btn-confirm:disabled{background:#ccc;cursor:not-allowed}
+    .leaflet-control-attribution{display:none}
+    #crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);z-index:500;pointer-events:none;font-size:32px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+  </style>
+</head>
+<body>
+<div id="toolbar">
+  <div id="titlebar"><h2>${t.title}</h2></div>
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="${t.searchPH}" autocomplete="off"/>
+    <button id="search-clear">✕</button>
+    <div id="suggestions"></div>
+  </div>
+</div>
+<div id="map"></div>
+<div id="address-bar">
+  <div id="address-text">${t.loading}</div>
+  <div id="hint">${t.pinHint}</div>
+  <div id="btn-row">
+    <button id="btn-locate">📍 ${t.myLocation}</button>
+    <button id="btn-confirm" disabled>${t.confirm}</button>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<script>
+  const INITIAL_LAT = ${isNaN(lat) ? 33.7294 : lat};
+  const INITIAL_LNG = ${isNaN(lng) ? 73.3872 : lng};
+  const INITIAL_ZOOM = ${isNaN(zoom) ? 14 : zoom};
+  const API_BASE = window.location.origin;
+
+  const map = L.map('map', { zoomControl: true }).setView([INITIAL_LAT, INITIAL_LNG], INITIAL_ZOOM);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: ''
+  }).addTo(map);
+
+  const pinIcon = L.divIcon({
+    html: '<div style="font-size:36px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">📍</div>',
+    iconSize: [36,36], iconAnchor: [18,36], className: ''
+  });
+
+  let marker = L.marker([INITIAL_LAT, INITIAL_LNG], { icon: pinIcon, draggable: true }).addTo(map);
+  let currentLat = INITIAL_LAT, currentLng = INITIAL_LNG, currentAddress = '';
+  let addrTimer = null;
+
+  const addrEl = document.getElementById('address-text');
+  const confirmBtn = document.getElementById('btn-confirm');
+
+  function setLoading() {
+    addrEl.textContent = '${t.loading}';
+    confirmBtn.disabled = true;
+  }
+
+  async function reverseGeocode(lat, lng) {
+    setLoading();
+    try {
+      const r = await fetch(API_BASE + '/api/maps/reverse-geocode?lat=' + lat + '&lng=' + lng);
+      const d = await r.json();
+      currentAddress = d.address || d.formattedAddress || (lat.toFixed(5) + ', ' + lng.toFixed(5));
+    } catch {
+      currentAddress = lat.toFixed(5) + ', ' + lng.toFixed(5);
+    }
+    addrEl.textContent = currentAddress;
+    confirmBtn.disabled = false;
+  }
+
+  function onMarkerMoved(lat, lng) {
+    currentLat = lat; currentLng = lng;
+    if (addrTimer) clearTimeout(addrTimer);
+    addrTimer = setTimeout(() => reverseGeocode(lat, lng), 600);
+  }
+
+  marker.on('dragend', e => {
+    const pos = e.target.getLatLng();
+    onMarkerMoved(pos.lat, pos.lng);
+  });
+
+  map.on('click', e => {
+    marker.setLatLng(e.latlng);
+    onMarkerMoved(e.latlng.lat, e.latlng.lng);
+  });
+
+  reverseGeocode(INITIAL_LAT, INITIAL_LNG);
+
+  document.getElementById('btn-confirm').addEventListener('click', () => {
+    const payload = { type: 'MAP_PICKER_CONFIRM', lat: currentLat, lng: currentLng, address: currentAddress };
+    window.parent.postMessage(payload, '*');
+    if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+  });
+
+  document.getElementById('btn-locate').addEventListener('click', () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+      map.setView([lat, lng], 16);
+      marker.setLatLng([lat, lng]);
+      onMarkerMoved(lat, lng);
+    }, () => {});
+  });
+
+  /* Search autocomplete */
+  const searchEl = document.getElementById('search');
+  const clearEl = document.getElementById('search-clear');
+  const sugEl = document.getElementById('suggestions');
+  let searchTimer = null;
+
+  searchEl.addEventListener('input', () => {
+    const q = searchEl.value.trim();
+    clearEl.style.display = q ? 'block' : 'none';
+    if (searchTimer) clearTimeout(searchTimer);
+    if (!q) { sugEl.style.display = 'none'; return; }
+    searchTimer = setTimeout(async () => {
+      try {
+        const r = await fetch(API_BASE + '/api/maps/autocomplete?input=' + encodeURIComponent(q));
+        const d = await r.json();
+        const preds = d.predictions || [];
+        if (!preds.length) { sugEl.style.display = 'none'; return; }
+        sugEl.innerHTML = preds.slice(0, 8).map(p =>
+          '<div class="suggestion" data-lat="' + (p.lat||'') + '" data-lng="' + (p.lng||'') + '" data-pid="' + (p.placeId||'') + '" data-desc="' + encodeURIComponent(p.description||p.mainText||'') + '">'
+          + '<div class="sug-main">' + (p.mainText||p.description||'') + '</div>'
+          + (p.secondaryText ? '<div class="sug-sub">' + p.secondaryText + '</div>' : '')
+          + '</div>'
+        ).join('');
+        sugEl.style.display = 'block';
+      } catch { sugEl.style.display = 'none'; }
+    }, 300);
+  });
+
+  clearEl.addEventListener('click', () => {
+    searchEl.value = ''; clearEl.style.display = 'none'; sugEl.style.display = 'none';
+  });
+
+  sugEl.addEventListener('click', async e => {
+    const el = e.target.closest('.suggestion');
+    if (!el) return;
+    sugEl.style.display = 'none';
+    searchEl.value = '';
+    clearEl.style.display = 'none';
+
+    let lat = parseFloat(el.dataset.lat), lng = parseFloat(el.dataset.lng);
+    const desc = decodeURIComponent(el.dataset.desc || '');
+
+    if (!lat || !lng) {
+      try {
+        const pid = el.dataset.pid;
+        const r = await fetch(API_BASE + '/api/maps/geocode?place_id=' + encodeURIComponent(pid));
+        const d = await r.json();
+        lat = d.lat; lng = d.lng;
+      } catch { return; }
+    }
+    if (!lat || !lng) return;
+    map.setView([lat, lng], 16);
+    marker.setLatLng([lat, lng]);
+    currentLat = lat; currentLng = lng;
+    currentAddress = desc;
+    addrEl.textContent = desc;
+    confirmBtn.disabled = false;
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#search-wrap')) sugEl.style.display = 'none';
+  });
+</script>
+</body></html>`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.send(html);
+});
+
 export default router;

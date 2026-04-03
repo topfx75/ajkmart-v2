@@ -4,6 +4,8 @@ import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useMapsAutocomplete, resolveLocation, staticMapUrl } from "@/hooks/useMaps";
 import type { MapPrediction } from "@/hooks/useMaps";
+import { MapPickerModal } from "@/components/ride/MapPickerModal";
+import type { MapPickerResult } from "@/components/ride/MapPickerModal";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -210,6 +212,48 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const [estimateAt, setEstimateAt] = useState<number | null>(null);
   const [estimateAgeMinutes, setEstimateAgeMinutes] = useState(0);
   const [estimateNonce, setEstimateNonce] = useState(0);
+
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [mapPickerTarget, setMapPickerTarget] = useState<"pickup" | "drop" | number>("pickup");
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const [scheduledTime, setScheduledTime] = useState("08:00");
+  const [stops, setStops] = useState<Array<{ id: string; address: string; lat?: number; lng?: number }>>([]);
+  const [stopInputs, setStopInputs] = useState<Record<string, string>>({});
+  const [isPoolRide, setIsPoolRide] = useState(false);
+
+  const handleMapPickerConfirm = useCallback((result: MapPickerResult) => {
+    setShowMapPicker(false);
+    const { lat, lng, address } = result;
+    if (mapPickerTarget === "pickup") {
+      setPickup(address);
+      setPickupObj({ lat, lng, address });
+    } else if (mapPickerTarget === "drop") {
+      setDrop(address);
+      setDropObj({ lat, lng, address });
+    } else if (typeof mapPickerTarget === "number") {
+      setStops(prev => prev.map((s, i) => i === mapPickerTarget ? { ...s, address, lat, lng } : s));
+      setStopInputs(prev => ({ ...prev, [String(mapPickerTarget)]: address }));
+    }
+  }, [mapPickerTarget]);
+
+  const addStop = useCallback(() => {
+    const id = `stop_${Date.now()}`;
+    setStops(prev => [...prev, { id, address: "", lat: undefined, lng: undefined }]);
+    setStopInputs(prev => ({ ...prev, [String(stops.length)]: "" }));
+  }, [stops.length]);
+
+  const removeStop = useCallback((idx: number) => {
+    setStops(prev => prev.filter((_, i) => i !== idx));
+    setStopInputs(prev => {
+      const next = { ...prev };
+      delete next[String(idx)];
+      return next;
+    });
+  }, []);
 
   const { predictions: pickupPreds, loading: pickupLoading } =
     useMapsAutocomplete(pickupFocus ? pickup : "");
@@ -604,8 +648,28 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
     setBooking(true);
     try {
+      if (isScheduled) {
+        if (!scheduledDate || !scheduledTime) {
+          showToast("Please enter a valid scheduled date and time.", "error");
+          setBooking(false);
+          return;
+        }
+        const scheduledDt = new Date(`${scheduledDate}T${scheduledTime}:00`);
+        if (isNaN(scheduledDt.getTime()) || scheduledDt <= new Date()) {
+          showToast("Scheduled time must be in the future.", "error");
+          setBooking(false);
+          return;
+        }
+      }
+
       const selectedSvcForBook = services.find((s) => s.key === rideType);
       const parcelBooking = isParcelService(rideType, selectedSvcForBook);
+      const resolvedStops = stops.filter(s => s.lat !== undefined && s.lng !== undefined).map((s, i) => ({
+        address: s.address || stopInputs[String(i)] || "",
+        lat: s.lat!,
+        lng: s.lng!,
+        order: i + 1,
+      }));
       const rideData = await bookRide({
         type: rideType,
         pickupAddress: pickup,
@@ -620,6 +684,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         ...(parcelBooking && receiverName.trim() && { receiverName: receiverName.trim() }),
         ...(parcelBooking && receiverPhone.trim() && { receiverPhone: receiverPhone.trim() }),
         ...(parcelBooking && { isParcel: true }),
+        ...(isScheduled && { isScheduled: true, scheduledAt: new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString() }),
+        ...(resolvedStops.length > 0 && { stops: resolvedStops }),
+        ...(isPoolRide && { isPoolRide: true }),
       } as BookRideRequest);
       const bookedRide = rideData as BookedRide;
       if (payMethod === "wallet" && !bookedRide.isBargaining) {
@@ -854,6 +921,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 <Ionicons name="close-circle" size={16} color={C.textMuted} />
               </Pressable>
             )}
+            <Pressable
+              onPress={() => { setMapPickerTarget("pickup"); setShowMapPicker(true); }}
+              hitSlop={8}
+              style={{ marginLeft: 4, padding: 4 }}
+            >
+              <Ionicons name="map-outline" size={18} color={C.primary} />
+            </Pressable>
           </View>
 
           {pickup !== "" && !pickupObj && pickupError ? (
@@ -986,6 +1060,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 <Ionicons name="close-circle" size={16} color={C.textMuted} />
               </Pressable>
             )}
+            <Pressable
+              onPress={() => { setMapPickerTarget("drop"); setShowMapPicker(true); }}
+              hitSlop={8}
+              style={{ marginLeft: 4, padding: 4 }}
+            >
+              <Ionicons name="map-outline" size={18} color={C.red} />
+            </Pressable>
           </View>
 
           {dropFocus && (
@@ -1024,6 +1105,35 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 ))}
               </ScrollView>
             </View>
+          )}
+
+          {stops.map((stop, idx) => (
+            <View key={stop.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.amberBrown }} />
+              <TextInput
+                value={stopInputs[String(idx)] ?? stop.address}
+                onChangeText={v => setStopInputs(prev => ({ ...prev, [String(idx)]: v }))}
+                placeholder={`Stop ${idx + 1} location...`}
+                placeholderTextColor={C.textMuted}
+                style={{ flex: 1, fontFamily: Font.regular, fontSize: 14, color: C.text, paddingVertical: 8 }}
+              />
+              <Pressable onPress={() => { setMapPickerTarget(idx); setShowMapPicker(true); }} hitSlop={8} style={{ padding: 4 }}>
+                <Ionicons name="map-outline" size={16} color={C.amberBrown} />
+              </Pressable>
+              <Pressable onPress={() => removeStop(idx)} hitSlop={8} style={{ padding: 4 }}>
+                <Ionicons name="close-circle" size={16} color={C.textMuted} />
+              </Pressable>
+            </View>
+          ))}
+
+          {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && (
+            <Pressable
+              onPress={addStop}
+              style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, paddingVertical: 6, paddingHorizontal: 4 }}
+            >
+              <Ionicons name="add-circle-outline" size={16} color={C.primary} />
+              <Text style={{ fontFamily: Font.medium, fontSize: 12, color: C.primary }}>Add Stop</Text>
+            </Pressable>
           )}
         </View>
       </LinearGradient>
@@ -1825,6 +1935,91 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               }}
             />
           </View>
+        )}
+
+        {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && (
+          <View style={{ marginBottom: 14 }}>
+            <Pressable
+              onPress={() => setIsScheduled(v => !v)}
+              style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                backgroundColor: isScheduled ? "#EEF5FF" : C.textInverse,
+                borderWidth: 1.5, borderColor: isScheduled ? C.primary : C.border,
+                borderRadius: 16, padding: 16,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isScheduled ? C.blueBorder : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="calendar-outline" size={20} color={isScheduled ? C.primary : C.textSecondary} />
+                </View>
+                <View>
+                  <Text style={{ fontFamily: Font.bold, fontSize: 14, color: isScheduled ? C.primary : C.text }}>
+                    {isScheduled ? "Scheduled Ride" : "Schedule for Later"}
+                  </Text>
+                  <Text style={{ fontFamily: Font.regular, fontSize: 11, color: isScheduled ? C.primary : C.textMuted }}>
+                    {isScheduled ? `${scheduledDate} at ${scheduledTime}` : "Book a ride for a specific date & time"}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name={isScheduled ? "chevron-up" : "chevron-down"} size={18} color={isScheduled ? C.primary : C.textMuted} />
+            </Pressable>
+            {isScheduled && (
+              <View style={{ backgroundColor: "#EEF5FF", borderWidth: 1, borderColor: C.blueBorder, borderTopWidth: 0, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, padding: 16, gap: 12 }}>
+                <View>
+                  <Text style={{ fontFamily: Font.medium, fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Date</Text>
+                  <TextInput
+                    value={scheduledDate}
+                    onChangeText={setScheduledDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={C.textMuted}
+                    style={{ backgroundColor: C.textInverse, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontFamily: Font.regular, fontSize: 14, color: C.text }}
+                  />
+                </View>
+                <View>
+                  <Text style={{ fontFamily: Font.medium, fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Time</Text>
+                  <TextInput
+                    value={scheduledTime}
+                    onChangeText={setScheduledTime}
+                    placeholder="HH:MM (24h)"
+                    placeholderTextColor={C.textMuted}
+                    style={{ backgroundColor: C.textInverse, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontFamily: Font.regular, fontSize: 14, color: C.text }}
+                  />
+                </View>
+                <Text style={{ fontSize: 11, color: C.primary, fontFamily: Font.regular }}>
+                  Your ride will be sent to nearby riders 15 minutes before the scheduled time.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && !isScheduled && (
+          <Pressable
+            onPress={() => setIsPoolRide(v => !v)}
+            style={{
+              flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+              backgroundColor: isPoolRide ? "#F0FFF0" : C.textInverse,
+              borderWidth: 1.5, borderColor: isPoolRide ? C.success : C.border,
+              borderRadius: 16, padding: 16, marginBottom: 14,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isPoolRide ? "#D0F0D0" : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="people-outline" size={20} color={isPoolRide ? C.success : C.textSecondary} />
+              </View>
+              <View>
+                <Text style={{ fontFamily: Font.bold, fontSize: 14, color: isPoolRide ? C.success : C.text }}>
+                  {isPoolRide ? "Pool Ride ON" : "Share Ride (Pool)"}
+                </Text>
+                <Text style={{ fontFamily: Font.regular, fontSize: 11, color: isPoolRide ? C.success : C.textMuted }}>
+                  {isPoolRide ? "You may share this ride — cheaper fare" : "Share with others going the same way"}
+                </Text>
+              </View>
+            </View>
+            <View style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: isPoolRide ? C.success : C.border, padding: 3, justifyContent: "center", alignItems: isPoolRide ? "flex-end" : "flex-start" }}>
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" }} />
+            </View>
+          </Pressable>
         )}
 
         <Text
@@ -2777,6 +2972,22 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         visible={permGuideVisible}
         type="location"
         onClose={() => setPermGuideVisible(false)}
+      />
+      <MapPickerModal
+        visible={showMapPicker}
+        label={mapPickerTarget === "pickup" ? "Pickup" : mapPickerTarget === "drop" ? "Drop-off" : `Stop ${(mapPickerTarget as number) + 1}`}
+        initialLat={
+          mapPickerTarget === "pickup" ? (pickupObj?.lat ?? 33.7294)
+          : mapPickerTarget === "drop" ? (dropObj?.lat ?? 33.7294)
+          : 33.7294
+        }
+        initialLng={
+          mapPickerTarget === "pickup" ? (pickupObj?.lng ?? 73.3872)
+          : mapPickerTarget === "drop" ? (dropObj?.lng ?? 73.3872)
+          : 73.3872
+        }
+        onConfirm={handleMapPickerConfirm}
+        onClose={() => setShowMapPicker(false)}
       />
     </View>
   );

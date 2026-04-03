@@ -2,7 +2,7 @@ import http from "http";
 import cron from "node-cron";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { startDispatchEngine } from "./routes/rides.js";
+import { startDispatchEngine, dispatchScheduledRides } from "./routes/rides.js";
 import { migrateAdminSecrets } from "./services/adminSecretMigration.js";
 import { initSocketIO } from "./lib/socketio.js";
 import { ensureAuthMethodColumn } from "./routes/admin.js";
@@ -29,6 +29,11 @@ if (Number.isNaN(port) || port <= 0) {
 const httpServer = http.createServer(app);
 initSocketIO(httpServer);
 initVapid();
+
+/* ── Cron: dispatch scheduled rides every minute ── */
+cron.schedule("* * * * *", async () => {
+  await dispatchScheduledRides();
+}, { timezone: "Asia/Karachi" });
 
 /* ── Cron: cleanup jobs (runs at midnight) ── */
 cron.schedule("0 0 * * *", async () => {
