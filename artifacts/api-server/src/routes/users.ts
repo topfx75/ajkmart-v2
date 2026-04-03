@@ -8,6 +8,23 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import multer from "multer";
 import { generateId } from "../lib/id.js";
+import { z } from "zod";
+
+const profileUpdateSchema = z.object({
+  name: z.string().min(1, "Name cannot be empty").max(100).optional(),
+  email: z.string().email("Invalid email format").max(255).optional().or(z.literal("")),
+  avatar: z.string().max(500).optional(),
+  cnic: z.preprocess(
+    (v) => typeof v === "string" ? v.replace(/[-\s]/g, "") : v,
+    z.string().regex(/^\d{13}$/, "CNIC must be 13 digits (e.g. 3740512345678)").optional().or(z.literal(""))
+  ),
+  city: z.string().max(100).optional(),
+  address: z.string().max(500).optional(),
+}).strip();
+
+const deleteAccountSchema = z.object({
+  confirmation: z.literal("DELETE", { errorMap: () => ({ message: "You must type DELETE to confirm account deletion." }) }),
+});
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
 const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
@@ -189,28 +206,23 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
 
 router.put("/profile", async (req, res) => {
   const userId = req.customerId!;
-  const { userId: _ignored, name, email, avatar, cnic, city, address } = req.body;
 
-  if (name !== undefined && (typeof name !== "string" || !name.trim())) {
-    res.status(400).json({ error: "Name cannot be empty" });
-    return;
-  }
-  if (email !== undefined && email !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    res.status(400).json({ error: "Invalid email format" });
-    return;
-  }
-  if (cnic !== undefined && cnic !== "" && !/^\d{13}$/.test(cnic.replace(/[-\s]/g, ""))) {
-    res.status(400).json({ error: "CNIC must be 13 digits (e.g. 3740512345678)" });
+  const parsed = profileUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    res.status(400).json({ success: false, error: firstError, message: firstError });
     return;
   }
 
-  const updates: any = { updatedAt: new Date() };
-  if (name    !== undefined) updates.name    = String(name).trim();
-  if (email   !== undefined) updates.email   = String(email).trim();
+  const { name, email, avatar, cnic, city, address } = parsed.data;
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (name    !== undefined) updates.name    = name.trim();
+  if (email   !== undefined) updates.email   = email.trim();
   if (avatar  !== undefined) updates.avatar  = avatar;
-  if (cnic    !== undefined) updates.cnic    = String(cnic).replace(/[-\s]/g, "").trim();
-  if (city    !== undefined) updates.city    = String(city).trim();
-  if (address !== undefined) updates.address = String(address).trim();
+  if (cnic    !== undefined) updates.cnic    = cnic.replace(/[-\s]/g, "").trim();
+  if (city    !== undefined) updates.city    = city.trim();
+  if (address !== undefined) updates.address = address.trim();
 
   const [current] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!current) {
@@ -237,30 +249,35 @@ router.put("/profile", async (req, res) => {
     return;
   }
   res.json({
-    id: user.id,
-    phone: user.phone,
-    name: user.name,
-    email: user.email,
-    username: user.username,
-    role: user.role,
-    avatar: user.avatar,
-    walletBalance: parseFloat(user.walletBalance ?? "0"),
-    cnic: user.cnic,
-    city: user.city,
-    area: user.area,
-    address: user.address,
-    accountLevel: user.accountLevel,
-    kycStatus: user.kycStatus,
-    createdAt: user.createdAt.toISOString(),
+    success: true,
+    data: {
+      id: user.id,
+      phone: user.phone,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      avatar: user.avatar,
+      walletBalance: parseFloat(user.walletBalance ?? "0"),
+      cnic: user.cnic,
+      city: user.city,
+      area: user.area,
+      address: user.address,
+      accountLevel: user.accountLevel,
+      kycStatus: user.kycStatus,
+      createdAt: user.createdAt.toISOString(),
+    },
+    message: "Profile updated successfully",
   });
 });
 
 router.delete("/delete-account", async (req, res) => {
   const userId = req.customerId!;
-  const { confirmation } = req.body ?? {};
 
-  if (confirmation !== "DELETE") {
-    res.status(400).json({ error: "You must type DELETE to confirm account deletion." });
+  const parsed = deleteAccountSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    const msg = parsed.error.errors[0]?.message ?? "You must type DELETE to confirm account deletion.";
+    res.status(400).json({ success: false, error: msg, message: msg });
     return;
   }
 

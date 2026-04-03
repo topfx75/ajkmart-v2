@@ -27,18 +27,22 @@ const profileSchema = z.object({
   vehicleType: z.string().optional(),
   vehiclePlate: z.string().optional(),
   vehicleRegNo: z.string().optional(),
+  vehicleRegistration: z.string().optional(),
   drivingLicense: z.string().optional(),
   bankName: z.string().optional(),
   bankAccount: z.string().optional(),
   bankAccountTitle: z.string().optional(),
   avatar: z.string().optional(),
-  /* Document photo URLs — set separately via the document upload flow in Profile.tsx.
-     cnicDocUrl, licenseDocUrl, regDocUrl stored in the `documents` JSON column.
-     vehiclePhoto stored in the dedicated `vehicle_photo` column. */
   cnicDocUrl: z.string().optional(),
   licenseDocUrl: z.string().optional(),
   regDocUrl: z.string().optional(),
   vehiclePhoto: z.string().optional(),
+}).transform((data) => {
+  if (data.vehicleRegistration && !data.vehicleRegNo) {
+    data.vehicleRegNo = data.vehicleRegistration;
+  }
+  const { vehicleRegistration: _vr, ...rest } = data;
+  return rest;
 });
 
 const MAX_PROOF_PHOTO_BYTES = 5 * 1024 * 1024;

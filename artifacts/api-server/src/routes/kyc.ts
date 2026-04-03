@@ -83,6 +83,10 @@ router.post(
     { name: "frontIdPhoto", maxCount: 1 },
     { name: "backIdPhoto", maxCount: 1 },
     { name: "selfiePhoto", maxCount: 1 },
+    { name: "idFront", maxCount: 1 },
+    { name: "idBack", maxCount: 1 },
+    { name: "selfie", maxCount: 1 },
+    { name: "idPhoto", maxCount: 1 },
   ]),
   async (req, res) => {
     const userId = req.customerId!;
@@ -111,15 +115,18 @@ router.post(
     if (!gender)            { res.status(400).json({ error: "Gender is required" }); return; }
 
     const files = req.files as Record<string, Express.Multer.File[]> | undefined;
-    if (!files?.["frontIdPhoto"]?.[0]) { res.status(400).json({ error: "Front side of CNIC is required" }); return; }
-    if (!files?.["backIdPhoto"]?.[0])  { res.status(400).json({ error: "Back side of CNIC is required" }); return; }
-    if (!files?.["selfiePhoto"]?.[0])  { res.status(400).json({ error: "Selfie photo is required" }); return; }
+    const frontFile = files?.["frontIdPhoto"]?.[0] ?? files?.["idFront"]?.[0] ?? files?.["idPhoto"]?.[0];
+    const backFile  = files?.["backIdPhoto"]?.[0]  ?? files?.["idBack"]?.[0];
+    const selfieFile = files?.["selfiePhoto"]?.[0] ?? files?.["selfie"]?.[0];
+    if (!frontFile)  { res.status(400).json({ success: false, error: "Front side of CNIC is required" }); return; }
+    if (!backFile)   { res.status(400).json({ success: false, error: "Back side of CNIC is required" }); return; }
+    if (!selfieFile) { res.status(400).json({ success: false, error: "Selfie photo is required" }); return; }
 
     try {
       const [frontUrl, backUrl, selfieUrl] = await Promise.all([
-        saveKycPhoto(userId, "front", files["frontIdPhoto"][0].buffer, files["frontIdPhoto"][0].mimetype),
-        saveKycPhoto(userId, "back",  files["backIdPhoto"][0].buffer,  files["backIdPhoto"][0].mimetype),
-        saveKycPhoto(userId, "selfie",files["selfiePhoto"][0].buffer,  files["selfiePhoto"][0].mimetype),
+        saveKycPhoto(userId, "front", frontFile.buffer, frontFile.mimetype),
+        saveKycPhoto(userId, "back",  backFile.buffer,  backFile.mimetype),
+        saveKycPhoto(userId, "selfie", selfieFile.buffer, selfieFile.mimetype),
       ]);
 
       const id = randomUUID();

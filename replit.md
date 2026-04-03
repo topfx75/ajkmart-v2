@@ -46,6 +46,28 @@ AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pak
 - **`artifacts/ajkmart/app/mart/index.tsx`**: Heart icons on FlashCard and ProductCard components.
 - **`artifacts/ajkmart/app/search.tsx`**: Heart icons on search result cards.
 
+### Step 2: API & Frontend Sync — Completed Changes
+
+#### C-06: Payment Status Route Alias
+- **`artifacts/api-server/src/routes/payments.ts`**: Added `GET /:orderId/status` route alias alongside legacy `GET /order-status/:orderId`. Customer app calls `/payments/{orderId}/status` — now correctly routed. Both paths share `handleOrderPaymentStatus()` handler.
+
+#### S-02: Vehicle Registration Field Alias
+- **`artifacts/api-server/src/routes/rider.ts`**: `profileSchema` now accepts `vehicleRegistration` as alias for `vehicleRegNo`. Uses Zod `.transform()` to normalize.
+
+#### S-03: KYC Photo Field Aliases
+- **`artifacts/api-server/src/routes/kyc.ts`**: `POST /kyc/submit` now accepts photo fields under multiple names: `frontIdPhoto`/`idFront`/`idPhoto`, `backIdPhoto`/`idBack`, `selfiePhoto`/`selfie`. Resolves mismatch between different clients.
+
+#### S-04: Pharmacy Prescription — Already Working
+- Customer app sends `prescriptionPhotoUri` which matches backend expectation. No fix needed.
+
+#### Zod Validation Added
+- **`users.ts`**: `profileUpdateSchema` with CNIC preprocess (strips dashes/spaces before validating 13 digits), `deleteAccountSchema`.
+- **`wallet.ts`**: `depositSchema`, `sendSchema`, `withdrawSchema` — validates amount, paymentMethod, transactionId, receiverPhone, accountNumber.
+- **`payments.ts`**: `paymentInitiateSchema` — validates gateway, amount, orderId.
+
+#### Response Standardization
+- Profile update, payment status endpoints now return `{ success: true, ... }` alongside flat fields for backward compatibility.
+
 ### Critical Bug Fixes (Step 1) — Completed Changes
 
 #### D-01 & D-02: Foreign Key References + Cascade Deletes

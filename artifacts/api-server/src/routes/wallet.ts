@@ -8,6 +8,28 @@ import { customerAuth, checkAvailableRateLimit, getClientIp } from "../middlewar
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO } from "../lib/socketio.js";
+import { z } from "zod";
+
+const depositSchema = z.object({
+  amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
+  paymentMethod: z.string().min(1, "paymentMethod required"),
+  transactionId: z.string().min(1, "transactionId required"),
+  accountNumber: z.string().optional(),
+  note: z.string().max(500).optional(),
+});
+
+const sendSchema = z.object({
+  receiverPhone: z.string().min(1, "receiverPhone is required"),
+  amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
+  note: z.string().max(500).optional(),
+});
+
+const withdrawSchema = z.object({
+  amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
+  paymentMethod: z.enum(["jazzcash", "easypaisa", "bank"], { errorMap: () => ({ message: "paymentMethod must be jazzcash, easypaisa, or bank" }) }),
+  accountNumber: z.string().min(1, "accountNumber required"),
+  note: z.string().max(500).optional(),
+});
 
 function broadcastWalletUpdate(userId: string, newBalance: number) {
   const io = getIO();
@@ -134,20 +156,19 @@ router.post("/deposit", customerAuth, async (req, res) => {
 
   const depositLimit = await checkAvailableRateLimit(`deposit:${ip}:${userId}`, 10, 15);
   if (depositLimit.limited) {
-    res.status(429).json({ error: `Too many deposit requests. Try again in ${depositLimit.minutesLeft} minute(s).` }); return;
+    res.status(429).json({ success: false, error: `Too many deposit requests. Try again in ${depositLimit.minutesLeft} minute(s).` }); return;
   }
 
   const [depositUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (depositUser && isWalletFrozen(depositUser)) { res.status(403).json(WALLET_FROZEN_RESPONSE); return; }
 
-  const { amount, paymentMethod, transactionId, accountNumber, note } = req.body;
+  const parsed = depositSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    res.status(400).json({ success: false, error: firstError, message: firstError }); return;
+  }
 
-  if (!amount)          { res.status(400).json({ error: "amount required" }); return; }
-  if (!paymentMethod)   { res.status(400).json({ error: "paymentMethod required" }); return; }
-  if (!transactionId)   { res.status(400).json({ error: "transactionId required" }); return; }
-
-  const amt = parseFloat(String(amount));
-  if (isNaN(amt) || amt <= 0) { res.status(400).json({ error: "Invalid amount" }); return; }
+  const { amount: amt, paymentMethod, transactionId, accountNumber, note } = parsed.data;
 
   /* ── Duplicate Transaction ID check ──
      Normalize TxID (trim + uppercase) both on check and on storage
@@ -288,15 +309,13 @@ router.post("/send", customerAuth, async (req, res) => {
   const [sendUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
   if (sendUser && isWalletFrozen(sendUser)) { res.status(403).json(WALLET_FROZEN_RESPONSE); return; }
 
-  const { receiverPhone, amount, note } = req.body;
-  if (!receiverPhone || !amount) {
-    res.status(400).json({ error: "receiverPhone and amount are required" }); return;
+  const parsed = sendSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    res.status(400).json({ success: false, error: firstError, message: firstError }); return;
   }
 
-  const sendAmt = parseFloat(amount);
-  if (isNaN(sendAmt) || sendAmt <= 0) {
-    res.status(400).json({ error: "Invalid amount" }); return;
-  }
+  const { receiverPhone, amount: sendAmt, note } = parsed.data;
 
   const s = await getPlatformSettings();
   const walletEnabled  = (s["feature_wallet"]      ?? "on") === "on";
@@ -432,21 +451,16 @@ router.post("/withdraw", customerAuth, async (req, res) => {
 
   const [withdrawUser] = await db.select({ blockedServices: usersTable.blockedServices, walletBalance: usersTable.walletBalance })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!withdrawUser) { res.status(404).json({ error: "User not found" }); return; }
+  if (!withdrawUser) { res.status(404).json({ success: false, error: "User not found" }); return; }
   if (isWalletFrozen(withdrawUser)) { res.status(403).json(WALLET_FROZEN_RESPONSE); return; }
 
-  const { amount, paymentMethod, accountNumber, note } = req.body;
-
-  const ALLOWED_WITHDRAWAL_METHODS = ["jazzcash", "easypaisa", "bank"] as const;
-  if (!amount)        { res.status(400).json({ error: "amount required" }); return; }
-  if (!paymentMethod) { res.status(400).json({ error: "paymentMethod required" }); return; }
-  if (!(ALLOWED_WITHDRAWAL_METHODS as readonly string[]).includes(paymentMethod)) {
-    res.status(400).json({ error: `Invalid paymentMethod. Must be one of: ${ALLOWED_WITHDRAWAL_METHODS.join(", ")}` }); return;
+  const parsed = withdrawSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    res.status(400).json({ success: false, error: firstError, message: firstError }); return;
   }
-  if (!accountNumber) { res.status(400).json({ error: "accountNumber required" }); return; }
 
-  const amt = parseFloat(String(amount));
-  if (isNaN(amt) || amt <= 0) { res.status(400).json({ error: "Invalid amount" }); return; }
+  const { amount: amt, paymentMethod, accountNumber, note } = parsed.data;
 
   const s = await getPlatformSettings();
   const walletEnabled  = (s["feature_wallet"]        ?? "on") === "on";

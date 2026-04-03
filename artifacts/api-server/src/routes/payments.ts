@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { getPlatformSettings, adminAuth } from "./admin.js";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
+import { z } from "zod";
 import {
   buildJazzCashHash, buildEasyPaisaHash,
   txnDateTime, txnExpiry,
@@ -21,6 +22,13 @@ import {
 } from "../lib/payment-providers.js";
 
 const router: IRouter = Router();
+
+const paymentInitiateSchema = z.object({
+  gateway: z.string().min(1, "gateway is required"),
+  amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
+  orderId: z.string().min(1, "orderId is required"),
+  mobileNumber: z.string().optional(),
+});
 
 const PAYMENT_TTL_MS = 30 * 60 * 1000;
 
@@ -239,13 +247,17 @@ router.get("/test-connection/:gateway", adminAuth, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 router.post("/initiate", customerAuth, async (req, res) => {
   const callerId = req.customerId!;
-  const { gateway, amount, orderId, mobileNumber } = req.body;
-  if (!gateway || !amount || !orderId) {
-    res.status(400).json({ error: "gateway, amount and orderId are required" }); return;
+
+  const parsed = paymentInitiateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    res.status(400).json({ success: false, error: firstError, message: firstError }); return;
   }
 
+  const { gateway, amount, orderId, mobileNumber } = parsed.data;
+
   if (!isSupportedGateway(gateway)) {
-    res.status(400).json({ error: `Unsupported gateway. Supported: ${SUPPORTED_GATEWAYS.join(", ")}` }); return;
+    res.status(400).json({ success: false, error: `Unsupported gateway. Supported: ${SUPPORTED_GATEWAYS.join(", ")}` }); return;
   }
 
   /* Verify the order belongs to the authenticated user */
@@ -651,11 +663,10 @@ router.get("/status/:txnRef", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  GET /api/payments/order-status/:orderId
-//  Check payment status by orderId — used by client as an HTTP fallback when
-//  socket acknowledgment is missed (e.g., after app backgrounding)
+//  GET /api/payments/:orderId/status   (C-06 fix: path the customer app uses)
+//  GET /api/payments/order-status/:orderId   (legacy path, kept for compat)
 // ═══════════════════════════════════════════════════════════════════════════════
-router.get("/order-status/:orderId", customerAuth, async (req, res) => {
+async function handleOrderPaymentStatus(req: import("express").Request, res: import("express").Response) {
   const orderId = req.params["orderId"]!;
   const callerId = req.customerId!;
 
@@ -694,14 +705,23 @@ router.get("/order-status/:orderId", customerAuth, async (req, res) => {
     : paymentStatus;
 
   res.json({
+    success: true,
     orderId: order.id,
     orderStatus: order.status,
     paymentMethod: order.paymentMethod,
     paymentStatus: effectivePaymentStatus,
+    status: effectivePaymentStatus,
     total: order.total ? parseFloat(String(order.total)) : null,
     txnRef: order.txnRef,
     confirmed: order.status !== "pending" || isWalletOrCash,
+    message: effectivePaymentStatus === "settled" || effectivePaymentStatus === "success"
+      ? "Payment confirmed" : effectivePaymentStatus === "expired"
+      ? "Payment session expired" : effectivePaymentStatus === "failed"
+      ? "Payment failed or was cancelled" : "Awaiting payment confirmation",
   });
-});
+}
+
+router.get("/:orderId/status", customerAuth, handleOrderPaymentStatus);
+router.get("/order-status/:orderId", customerAuth, handleOrderPaymentStatus);
 
 export default router;
