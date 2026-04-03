@@ -10,7 +10,7 @@
       },
       "env": {
         "VITE_CAPACITOR": "true",
-        "VITE_API_BASE_URL": "https://your-production-api.ajkmart.com"
+        "VITE_API_BASE_URL": "https://001c86cc-e06f-401b-95e8-80967dc32efb-00-3ke7uiudyokv1.pike.replit.dev"
       }
     },
     "production": {
@@ -20,7 +20,7 @@
       },
       "env": {
         "VITE_CAPACITOR": "true",
-        "VITE_API_BASE_URL": "https://your-production-api.ajkmart.com"
+        "VITE_API_BASE_URL": "https://001c86cc-e06f-401b-95e8-80967dc32efb-00-3ke7uiudyokv1.pike.replit.dev"
       }
     }
   },
