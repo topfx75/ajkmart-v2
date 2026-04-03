@@ -3,26 +3,36 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   FlatList,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Colors from "@/constants/colors";
 import { T as Typ, Font } from "@/constants/typography";
+import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { CartSwitchModal } from "@/components/CartSwitchModal";
 import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
-import { useGetProduct, useGetProducts, getProductVariants, trackInteraction, type Product } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
+import {
+  useGetProduct, useGetProducts, getProductVariants, trackInteraction,
+  addToWishlist, removeFromWishlist, checkWishlist,
+  getProductReviews, getProductReviewSummary, submitProductReview, uploadImage,
+  type Product, type ProductReview, type ReviewSummary,
+} from "@workspace/api-client-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const C = Colors.light;
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -42,21 +52,354 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   return <View style={{ flexDirection: "row", gap: 1 }}>{stars}</View>;
 }
 
+function StarPicker({ rating, onRate, size = 32 }: { rating: number; onRate: (r: number) => void; size?: number }) {
+  return (
+    <View style={{ flexDirection: "row", gap: 6 }}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <Pressable key={i} onPress={() => onRate(i)}>
+          <Ionicons name={i <= rating ? "star" : "star-outline"} size={size} color={C.gold} />
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function ReviewCard({ review }: { review: ProductReview }) {
+  const [fullScreenPhoto, setFullScreenPhoto] = useState<string | null>(null);
+  const dateStr = new Date(review.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  const initial = (review.userName || "C").charAt(0).toUpperCase();
+
+  return (
+    <View style={rs.card}>
+      <View style={rs.cardHeader}>
+        <View style={rs.avatar}>
+          <Text style={rs.avatarTxt}>{initial}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={rs.userName}>{review.userName}</Text>
+          <Text style={rs.date}>{dateStr}</Text>
+        </View>
+        <StarRating rating={review.rating} size={12} />
+      </View>
+      {review.comment ? <Text style={rs.comment}>{review.comment}</Text> : null}
+      {review.photos && review.photos.length > 0 && (
+        <View style={rs.photoRow}>
+          {review.photos.map((photo, i) => (
+            <Pressable key={i} onPress={() => setFullScreenPhoto(photo)}>
+              <Image source={{ uri: photo }} style={rs.photoThumb} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {review.vendorReply && (
+        <View style={rs.vendorReplyWrap}>
+          <View style={rs.vendorReplyHeader}>
+            <Ionicons name="storefront-outline" size={12} color={C.primary} />
+            <Text style={rs.vendorReplyLabel}>Seller Response</Text>
+          </View>
+          <Text style={rs.vendorReplyText}>{review.vendorReply}</Text>
+        </View>
+      )}
+      <Modal visible={!!fullScreenPhoto} transparent animationType="fade" onRequestClose={() => setFullScreenPhoto(null)}>
+        <Pressable style={rs.fullScreenOverlay} onPress={() => setFullScreenPhoto(null)}>
+          <Pressable onPress={() => setFullScreenPhoto(null)} style={rs.fullScreenClose}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+          {fullScreenPhoto && (
+            <Image source={{ uri: fullScreenPhoto }} style={rs.fullScreenImg} resizeMode="contain" />
+          )}
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+function WriteReviewModal({
+  visible, onClose, productId, onSuccess,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  productId: string;
+  onSuccess: () => void;
+}) {
+  const { token } = useAuth();
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const pickPhoto = async () => {
+    if (photos.length >= 3) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+      base64: true,
+      allowsMultipleSelection: true,
+      selectionLimit: 3 - photos.length,
+    });
+    if (!result.canceled && result.assets) {
+      const newPhotos = result.assets
+        .filter(a => a.base64)
+        .map(a => ({ uri: a.uri, base64: a.base64! }));
+      setPhotos(prev => [...prev, ...newPhotos].slice(0, 3));
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async () => {
+    if (rating === 0) { setError("Please select a star rating"); return; }
+    setSubmitting(true);
+    setError("");
+    try {
+      const photoUrls: string[] = [];
+      for (const photo of photos) {
+        const uploadRes = await uploadImage(photo.base64, "image/jpeg");
+        if (uploadRes.url) photoUrls.push(uploadRes.url);
+      }
+
+      await submitProductReview({
+        orderType: "product",
+        rating,
+        comment: comment.trim() || undefined,
+        productId,
+        photos: photoUrls.length > 0 ? photoUrls : undefined,
+      });
+
+      setRating(0);
+      setComment("");
+      setPhotos([]);
+      onSuccess();
+      onClose();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e || "Failed to submit review");
+      if (msg.includes("purchased")) {
+        setError("You can only review products you have purchased.");
+      } else if (msg.includes("Already reviewed")) {
+        setError("You have already reviewed this product.");
+      } else {
+        setError(msg);
+      }
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={wr.overlay}>
+        <View style={wr.sheet}>
+          <View style={wr.handle} />
+          <View style={wr.header}>
+            <Text style={wr.title}>Write a Review</Text>
+            <Pressable onPress={onClose} style={wr.closeBtn}>
+              <Ionicons name="close" size={22} color={C.text} />
+            </Pressable>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text style={wr.label}>Your Rating</Text>
+            <View style={wr.starRow}>
+              <StarPicker rating={rating} onRate={setRating} />
+            </View>
+
+            <Text style={wr.label}>Your Review (Optional)</Text>
+            <TextInput
+              style={wr.textInput}
+              value={comment}
+              onChangeText={setComment}
+              placeholder="Share your experience with this product..."
+              placeholderTextColor={C.textMuted}
+              multiline
+              maxLength={500}
+              textAlignVertical="top"
+            />
+            <Text style={wr.charCount}>{comment.length}/500</Text>
+
+            <Text style={wr.label}>Photos (Optional, up to 3)</Text>
+            <View style={wr.photoRow}>
+              {photos.map((p, i) => (
+                <View key={i} style={wr.photoWrap}>
+                  <Image source={{ uri: p.uri }} style={wr.photoPreview} />
+                  <Pressable onPress={() => removePhoto(i)} style={wr.photoRemove}>
+                    <Ionicons name="close-circle" size={20} color={C.danger} />
+                  </Pressable>
+                </View>
+              ))}
+              {photos.length < 3 && (
+                <Pressable onPress={pickPhoto} style={wr.addPhotoBtn}>
+                  <Ionicons name="camera-outline" size={24} color={C.primary} />
+                  <Text style={wr.addPhotoTxt}>Add</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {error ? <Text style={wr.error}>{error}</Text> : null}
+
+            <Pressable
+              onPress={handleSubmit}
+              disabled={submitting || rating === 0}
+              style={[wr.submitBtn, (submitting || rating === 0) && wr.submitBtnDisabled]}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={wr.submitBtnTxt}>Submit Review</Text>
+              )}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const SCREEN_H = Dimensions.get("window").height;
+
+function ZoomableImage({ uri }: { uri: string }) {
+  const scrollRef = useRef<ScrollView>(null);
+
+  const handleDoubleTap = useCallback(() => {
+    scrollRef.current?.scrollResponderZoomTo({
+      x: 0, y: 0,
+      width: SCREEN_W,
+      height: SCREEN_H,
+      animated: true,
+    });
+  }, []);
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={{ width: SCREEN_W, height: SCREEN_H }}
+      contentContainerStyle={{ alignItems: "center", justifyContent: "center", minHeight: SCREEN_H }}
+      maximumZoomScale={4}
+      minimumZoomScale={1}
+      showsHorizontalScrollIndicator={false}
+      showsVerticalScrollIndicator={false}
+      centerContent
+      bouncesZoom
+    >
+      <Pressable onPress={handleDoubleTap}>
+        <Image
+          source={{ uri }}
+          style={{ width: SCREEN_W, height: SCREEN_W }}
+          resizeMode="contain"
+        />
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+function FullScreenImageViewer({
+  visible, images, initialIndex, onClose,
+}: {
+  visible: boolean;
+  images: string[];
+  initialIndex: number;
+  onClose: () => void;
+}) {
+  const [activeIdx, setActiveIdx] = useState(initialIndex);
+
+  useEffect(() => {
+    if (visible) setActiveIdx(initialIndex);
+  }, [visible, initialIndex]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={fs.overlay}>
+        <Pressable onPress={onClose} style={fs.closeBtn}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </Pressable>
+        <Text style={fs.zoomHint}>Pinch to zoom</Text>
+        <FlatList
+          data={images}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={initialIndex}
+          getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+          onMomentumScrollEnd={(e) => {
+            setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W));
+          }}
+          renderItem={({ item }) => (
+            <ZoomableImage uri={item} />
+          )}
+          keyExtractor={(_, i) => String(i)}
+        />
+        {images.length > 1 && (
+          <View style={fs.dotRow}>
+            {images.map((_, i) => (
+              <View key={i} style={[fs.dot, i === activeIdx && fs.dotActive]} />
+            ))}
+          </View>
+        )}
+        <Text style={fs.counter}>{activeIdx + 1} / {images.length}</Text>
+      </View>
+    </Modal>
+  );
+}
+
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 20 : insets.top;
   const bottomPad = Math.max(insets.bottom, Platform.OS === "web" ? 20 : 16);
 
+  const { user, token } = useAuth();
+  const isLoggedIn = !!user && !!token;
+  const queryClient = useQueryClient();
   const { addItem, cartType, itemCount, clearCart } = useCart();
   const [added, setAdded] = useState(false);
   const [showSwitchModal, setShowSwitchModal] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [showFullScreen, setShowFullScreen] = useState(false);
+  const [showWriteReview, setShowWriteReview] = useState(false);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scale = useRef(new Animated.Value(1)).current;
+  const heartScale = useRef(new Animated.Value(1)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const { data: product, isLoading, isError, refetch } = useGetProduct(id || "");
+
+  const [isInWishlist, setIsInWishlist] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+
+  useEffect(() => {
+    if (isLoggedIn && id) {
+      checkWishlist(id).then(setIsInWishlist).catch(() => {});
+    }
+  }, [isLoggedIn, id]);
+
+  const toggleWishlist = useCallback(async () => {
+    if (!isLoggedIn) {
+      router.push("/auth");
+      return;
+    }
+    if (!id || wishlistLoading) return;
+    setWishlistLoading(true);
+    const wasInWishlist = isInWishlist;
+    setIsInWishlist(!wasInWishlist);
+    Animated.sequence([
+      Animated.timing(heartScale, { toValue: 1.3, duration: 100, useNativeDriver: true }),
+      Animated.spring(heartScale, { toValue: 1, useNativeDriver: true, friction: 4 }),
+    ]).start();
+    try {
+      if (wasInWishlist) {
+        await removeFromWishlist(id);
+      } else {
+        await addToWishlist(id);
+      }
+      queryClient.invalidateQueries({ queryKey: ["wishlist"] });
+    } catch {
+      setIsInWishlist(wasInWishlist);
+    }
+    setWishlistLoading(false);
+  }, [isLoggedIn, id, isInWishlist, wishlistLoading, queryClient]);
 
   const productType = product?.type || "mart";
   const { data: relatedData } = useGetProducts(
@@ -80,6 +423,20 @@ export default function ProductDetailScreen() {
   });
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
 
+  const { data: reviewsData, refetch: refetchReviews } = useQuery({
+    queryKey: ["product-reviews", id],
+    queryFn: () => getProductReviews(id || "", { limit: 5 }),
+    enabled: !!id,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const { data: reviewSummary, refetch: refetchSummary } = useQuery({
+    queryKey: ["product-review-summary", id],
+    queryFn: () => getProductReviewSummary(id || ""),
+    enabled: !!id,
+    staleTime: 2 * 60 * 1000,
+  });
+
   useEffect(() => {
     if (id) {
       trackInteraction({ productId: id, type: "view" }).catch(() => {});
@@ -98,7 +455,13 @@ export default function ProductDetailScreen() {
     ? Math.round(((origPrice - price) / origPrice) * 100)
     : 0;
 
-  const images = product?.image ? [product.image] : [];
+  const images: string[] = [];
+  if (product?.image) images.push(product.image);
+  if (product?.images && Array.isArray(product.images)) {
+    for (const img of product.images) {
+      if (img && !images.includes(img)) images.push(img);
+    }
+  }
 
   const doAdd = useCallback(() => {
     if (!product) return;
@@ -140,6 +503,11 @@ export default function ProductDetailScreen() {
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
+
+  const handleReviewSuccess = () => {
+    refetchReviews();
+    refetchSummary();
+  };
 
   if (isLoading) {
     return (
@@ -189,6 +557,9 @@ export default function ProductDetailScreen() {
   const serviceLabel = productType === "food" ? "Food" : productType === "pharmacy" ? "Pharmacy" : "Mart";
   const currentServiceLabel = cartType === "pharmacy" ? "Pharmacy" : cartType === "food" ? "Food" : cartType === "mart" ? "Mart" : "Another service";
 
+  const summary: ReviewSummary = reviewSummary || { average: 0, total: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
+  const reviews: ProductReview[] = reviewsData?.reviews || [];
+
   return (
     <View style={styles.container}>
       <CartSwitchModal
@@ -197,6 +568,20 @@ export default function ProductDetailScreen() {
         currentService={currentServiceLabel}
         onCancel={() => setShowSwitchModal(false)}
         onConfirm={() => { setShowSwitchModal(false); clearCart(); doAdd(); }}
+      />
+
+      <WriteReviewModal
+        visible={showWriteReview}
+        onClose={() => setShowWriteReview(false)}
+        productId={id || ""}
+        onSuccess={handleReviewSuccess}
+      />
+
+      <FullScreenImageViewer
+        visible={showFullScreen}
+        images={images}
+        initialIndex={activeImageIndex}
+        onClose={() => setShowFullScreen(false)}
       />
 
       <Animated.View style={[styles.stickyHeader, { paddingTop: topPad + 8, opacity: headerOpacity }]}>
@@ -221,6 +606,11 @@ export default function ProductDetailScreen() {
           <Ionicons name="arrow-back" size={22} color={C.textInverse} />
         </Pressable>
         <View style={{ flexDirection: "row", gap: 8 }}>
+          <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+            <Pressable onPress={toggleWishlist} style={styles.headerBtn}>
+              <Ionicons name={isInWishlist ? "heart" : "heart-outline"} size={22} color={isInWishlist ? C.danger : C.textInverse} />
+            </Pressable>
+          </Animated.View>
           <Pressable onPress={() => router.push("/cart")} style={styles.headerBtn}>
             <Ionicons name="bag-outline" size={22} color={C.textInverse} />
             {itemCount > 0 && (
@@ -251,18 +641,23 @@ export default function ProductDetailScreen() {
                 const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
                 setActiveImageIndex(idx);
               }}
-              renderItem={({ item }) => (
-                <Image source={{ uri: item }} style={{ width: SCREEN_W, height: IMAGE_H }} resizeMode="cover" />
+              renderItem={({ item, index }) => (
+                <Pressable onPress={() => { setActiveImageIndex(index); setShowFullScreen(true); }}>
+                  <Image source={{ uri: item }} style={{ width: SCREEN_W, height: IMAGE_H }} resizeMode="cover" />
+                </Pressable>
               )}
               keyExtractor={(_, i) => String(i)}
             />
           ) : (
             <LinearGradient colors={[C.background, C.border]} style={[styles.placeholderImage, { height: IMAGE_H }]}>
-              <Ionicons
-                name={productType === "food" ? "restaurant-outline" : productType === "pharmacy" ? "medical-outline" : "basket-outline"}
-                size={64}
-                color={C.textMuted}
-              />
+              <View style={styles.placeholderIconWrap}>
+                <Ionicons
+                  name={productType === "food" ? "restaurant-outline" : productType === "pharmacy" ? "medical-outline" : "basket-outline"}
+                  size={48}
+                  color={C.textMuted}
+                />
+              </View>
+              <Text style={styles.placeholderText}>No image available</Text>
             </LinearGradient>
           )}
 
@@ -407,37 +802,68 @@ export default function ProductDetailScreen() {
             </View>
           </View>
 
-          {(product.rating != null) && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.reviewsSection}>
-                <Text style={styles.sectionTitle}>Ratings & Reviews</Text>
-                <View style={styles.ratingOverview}>
-                  <View style={styles.ratingBig}>
-                    <Text style={styles.ratingBigNum}>{(product.rating || 0).toFixed(1)}</Text>
-                    <StarRating rating={product.rating || 0} size={18} />
-                    <Text style={styles.ratingBigSub}>
-                      {product.reviewCount || 0} review{(product.reviewCount || 0) !== 1 ? "s" : ""}
-                    </Text>
-                  </View>
-                  <View style={styles.ratingBars}>
-                    {[5, 4, 3, 2, 1].map(star => {
-                      const pct = star === 5 ? 60 : star === 4 ? 25 : star === 3 ? 10 : star === 2 ? 3 : 2;
-                      return (
-                        <View key={star} style={styles.ratingBarRow}>
-                          <Text style={styles.ratingBarLabel}>{star}</Text>
-                          <Ionicons name="star" size={10} color={C.gold} />
-                          <View style={styles.ratingBarTrack}>
-                            <View style={[styles.ratingBarFill, { width: `${pct}%` }]} />
-                          </View>
+          <View style={styles.divider} />
+
+          <View style={styles.reviewsSection}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <Text style={styles.sectionTitle}>Ratings & Reviews</Text>
+              <Pressable
+                onPress={() => isLoggedIn ? setShowWriteReview(true) : router.push("/auth")}
+                style={rs.writeBtn}
+              >
+                <Ionicons name="create-outline" size={14} color={C.primary} />
+                <Text style={rs.writeBtnTxt}>Write Review</Text>
+              </Pressable>
+            </View>
+
+            {(summary.total > 0 || (product.rating != null)) && (
+              <View style={styles.ratingOverview}>
+                <View style={styles.ratingBig}>
+                  <Text style={styles.ratingBigNum}>{summary.total > 0 ? summary.average.toFixed(1) : (product.rating || 0).toFixed(1)}</Text>
+                  <StarRating rating={summary.total > 0 ? summary.average : (product.rating || 0)} size={18} />
+                  <Text style={styles.ratingBigSub}>
+                    {summary.total > 0 ? summary.total : (product.reviewCount || 0)} review{(summary.total > 0 ? summary.total : (product.reviewCount || 0)) !== 1 ? "s" : ""}
+                  </Text>
+                </View>
+                <View style={styles.ratingBars}>
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const count = summary.distribution[star] || 0;
+                    const pct = summary.total > 0 ? Math.round((count / summary.total) * 100) : (star === 5 ? 60 : star === 4 ? 25 : star === 3 ? 10 : star === 2 ? 3 : 2);
+                    return (
+                      <View key={star} style={styles.ratingBarRow}>
+                        <Text style={styles.ratingBarLabel}>{star}</Text>
+                        <Ionicons name="star" size={10} color={C.gold} />
+                        <View style={styles.ratingBarTrack}>
+                          <View style={[styles.ratingBarFill, { width: `${pct}%` }]} />
                         </View>
-                      );
-                    })}
-                  </View>
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
-            </>
-          )}
+            )}
+
+            {reviews.length > 0 && (
+              <View style={{ marginTop: 16, gap: 12 }}>
+                {reviews.map(r => (
+                  <ReviewCard key={r.id} review={r} />
+                ))}
+              </View>
+            )}
+
+            {reviews.length === 0 && summary.total === 0 && (
+              <View style={rs.emptyReviews}>
+                <Ionicons name="chatbubble-outline" size={32} color={C.textMuted} />
+                <Text style={rs.emptyTitle}>No reviews yet</Text>
+                <Text style={rs.emptySub}>Be the first to review this product</Text>
+                {!isLoggedIn && (
+                  <Pressable onPress={() => router.push("/auth")} style={rs.loginBtn}>
+                    <Text style={rs.loginBtnTxt}>Sign in to review</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+          </View>
 
           {relatedProducts.length > 0 && (
             <>
@@ -504,6 +930,65 @@ export default function ProductDetailScreen() {
   );
 }
 
+const rs = StyleSheet.create({
+  card: { backgroundColor: C.surfaceSecondary, borderRadius: 14, padding: 14, gap: 8 },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center" },
+  avatarTxt: { fontFamily: Font.bold, fontSize: 14, color: C.primary },
+  userName: { fontFamily: Font.semiBold, fontSize: 13, color: C.text },
+  date: { fontFamily: Font.regular, fontSize: 11, color: C.textMuted, marginTop: 1 },
+  comment: { fontFamily: Font.regular, fontSize: 13, color: C.textSecondary, lineHeight: 19 },
+  photoRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  photoThumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: C.border },
+  vendorReplyWrap: { backgroundColor: C.surface, borderRadius: 10, padding: 10, marginTop: 4, borderLeftWidth: 3, borderLeftColor: C.primary },
+  vendorReplyHeader: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 },
+  vendorReplyLabel: { fontFamily: Font.semiBold, fontSize: 11, color: C.primary },
+  vendorReplyText: { fontFamily: Font.regular, fontSize: 12, color: C.textSecondary, lineHeight: 17 },
+  fullScreenOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center", alignItems: "center" },
+  fullScreenClose: { position: "absolute", top: 60, right: 20, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  fullScreenImg: { width: SCREEN_W, height: SCREEN_W },
+  writeBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.primarySoft, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
+  writeBtnTxt: { fontFamily: Font.semiBold, fontSize: 12, color: C.primary },
+  emptyReviews: { alignItems: "center", paddingVertical: 24, gap: 8 },
+  emptyTitle: { fontFamily: Font.semiBold, fontSize: 15, color: C.text },
+  emptySub: { fontFamily: Font.regular, fontSize: 13, color: C.textMuted },
+  loginBtn: { marginTop: 8, backgroundColor: C.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  loginBtnTxt: { fontFamily: Font.semiBold, fontSize: 13, color: C.textInverse },
+});
+
+const wr = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: C.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 40, maxHeight: "85%" },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: "center", marginTop: 10, marginBottom: 8 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  title: { fontFamily: Font.bold, fontSize: 18, color: C.text },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
+  label: { fontFamily: Font.semiBold, fontSize: 14, color: C.text, marginTop: 16, marginBottom: 8 },
+  starRow: { alignItems: "center", paddingVertical: 8 },
+  textInput: { backgroundColor: C.surfaceSecondary, borderRadius: 14, padding: 14, fontFamily: Font.regular, fontSize: 14, color: C.text, minHeight: 100, borderWidth: 1, borderColor: C.border },
+  charCount: { fontFamily: Font.regular, fontSize: 11, color: C.textMuted, textAlign: "right", marginTop: 4 },
+  photoRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
+  photoWrap: { position: "relative" },
+  photoPreview: { width: 72, height: 72, borderRadius: 12, backgroundColor: C.border },
+  photoRemove: { position: "absolute", top: -6, right: -6 },
+  addPhotoBtn: { width: 72, height: 72, borderRadius: 12, borderWidth: 1.5, borderColor: C.border, borderStyle: "dashed", alignItems: "center", justifyContent: "center", gap: 4 },
+  addPhotoTxt: { fontFamily: Font.medium, fontSize: 11, color: C.primary },
+  error: { fontFamily: Font.medium, fontSize: 13, color: C.danger, marginTop: 12, textAlign: "center" },
+  submitBtn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, alignItems: "center", marginTop: 20 },
+  submitBtnDisabled: { backgroundColor: C.textMuted, opacity: 0.6 },
+  submitBtnTxt: { fontFamily: Font.bold, fontSize: 15, color: C.textInverse },
+});
+
+const fs = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "#000", justifyContent: "center" },
+  closeBtn: { position: "absolute", top: 60, right: 20, zIndex: 10, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
+  zoomHint: { position: "absolute", top: 68, alignSelf: "center", zIndex: 10, fontFamily: Font.medium, fontSize: 12, color: "rgba(255,255,255,0.5)" },
+  dotRow: { position: "absolute", bottom: 60, alignSelf: "center", flexDirection: "row", gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.4)" },
+  dotActive: { backgroundColor: "#fff", width: 20 },
+  counter: { position: "absolute", bottom: 30, alignSelf: "center", fontFamily: Font.medium, fontSize: 13, color: "rgba(255,255,255,0.7)" },
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },
 
@@ -538,6 +1023,8 @@ const styles = StyleSheet.create({
 
   imageContainer: { position: "relative" },
   placeholderImage: { width: SCREEN_W, alignItems: "center", justifyContent: "center" },
+  placeholderIconWrap: { width: 80, height: 80, borderRadius: 24, backgroundColor: "rgba(0,0,0,0.05)", alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  placeholderText: { fontFamily: Font.medium, fontSize: 13, color: C.textMuted },
   dotRow: { position: "absolute", bottom: 16, alignSelf: "center", flexDirection: "row", gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.overlayLight50 },
   dotActive: { backgroundColor: C.surface, width: 20 },

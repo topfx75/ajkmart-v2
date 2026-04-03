@@ -23,6 +23,7 @@ import { useCart } from "@/context/CartContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { withServiceGuard } from "@/components/ServiceGuard";
 import { useGetProducts, useGetCategories } from "@workspace/api-client-react";
+import { WishlistHeart } from "@/components/WishlistHeart";
 import { CartSwitchModal } from "@/components/CartSwitchModal";
 
 const C = Colors.light;
@@ -113,6 +114,7 @@ function FlashCard({ product }: { product: any }) {
             <Text style={styles.flashBadgeSub}>OFF</Text>
           </View>
         )}
+        <WishlistHeart productId={product.id} size={14} style={{ position: "absolute", top: 6, right: 6 }} />
       </View>
       <View style={styles.flashBody}>
         <Text style={styles.flashName} numberOfLines={2}>{product.name}</Text>
@@ -184,6 +186,7 @@ function ProductCard({ product }: { product: any }) {
             <Text style={styles.ratingTxt}>{product.rating}</Text>
           </View>
         )}
+        <WishlistHeart productId={product.id} size={14} style={{ position: "absolute", top: 6, right: 6 }} />
       </View>
       <View style={styles.productBody}>
         <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>

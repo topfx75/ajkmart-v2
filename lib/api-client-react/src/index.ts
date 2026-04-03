@@ -14,5 +14,12 @@ export {
   getBanners, getTrending, getForYou, getSimilar,
   trackInteraction, getProductVariants,
   getFlashDeals, getTrendingSearches, searchProducts,
+  getWishlist, addToWishlist, removeFromWishlist, checkWishlist,
+  getProductReviews, getProductReviewSummary, submitProductReview,
+  uploadImage,
 } from "./discovery";
-export type { Banner, RecommendationProduct, FlashDealProduct, SearchProductsParams, SearchProductsResponse } from "./discovery";
+export type {
+  Banner, RecommendationProduct, FlashDealProduct,
+  SearchProductsParams, SearchProductsResponse,
+  WishlistItem, ProductReview, ProductReviewsResponse, ReviewSummary,
+} from "./discovery";

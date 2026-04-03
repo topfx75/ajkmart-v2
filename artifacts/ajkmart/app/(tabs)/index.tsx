@@ -39,6 +39,7 @@ import {
   EmptyState,
   CountdownTimer,
 } from "@/components/user-shared";
+import { WishlistHeart } from "@/components/WishlistHeart";
 import { getBanners, getTrending, getFlashDeals } from "@workspace/api-client-react";
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
@@ -431,8 +432,11 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
               )}
             </View>
             <Text style={fd.name} numberOfLines={2}>{item.name}</Text>
-            <View style={fd.discBadge}>
-              <Text style={fd.disc}>{item.discountPercent}% OFF</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <View style={fd.discBadge}>
+                <Text style={fd.disc}>{item.discountPercent}% OFF</Text>
+              </View>
+              <WishlistHeart productId={item.id} size={12} style={{ marginLeft: "auto" }} />
             </View>
           </Pressable>
         )}
@@ -482,13 +486,16 @@ function TrendingSection() {
             onPress={() => router.push(`/product/${item.id}` as Href)}
             style={tr2.card}
           >
-            {item.image ? (
-              <Image source={{ uri: item.image }} style={tr2.img} />
-            ) : (
-              <View style={[tr2.img, { backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }]}>
-                <Ionicons name="cube-outline" size={24} color={C.textMuted} />
-              </View>
-            )}
+            <View style={{ position: "relative" }}>
+              {item.image ? (
+                <Image source={{ uri: item.image }} style={tr2.img} />
+              ) : (
+                <View style={[tr2.img, { backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }]}>
+                  <Ionicons name="cube-outline" size={24} color={C.textMuted} />
+                </View>
+              )}
+              <WishlistHeart productId={item.id} size={14} style={{ position: "absolute", top: 6, right: 6 }} />
+            </View>
             <View style={tr2.info}>
               <Text style={tr2.name} numberOfLines={2}>{item.name}</Text>
               <Text style={tr2.price}>Rs. {Number(item.price).toLocaleString()}</Text>

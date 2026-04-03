@@ -174,3 +174,122 @@ export const getTrendingSearches = async (
   const res: { searches?: string[] } = await customFetch(`/products/trending-searches${q ? `?${q}` : ""}`, { ...options, method: "GET" });
   return res.searches ?? [];
 };
+
+export interface WishlistItem {
+  id: string;
+  productId: string;
+  createdAt: string;
+  product: {
+    id: string;
+    name: string;
+    price: number;
+    originalPrice?: number;
+    image: string | null;
+    category: string;
+    type: string;
+    rating?: number;
+    reviewCount?: number;
+    inStock: boolean;
+    unit?: string;
+    vendorName?: string;
+  };
+}
+
+export const getWishlist = async (options?: RequestInit): Promise<WishlistItem[]> => {
+  const res = await customFetch(`/wishlist`, { ...options, method: "GET" });
+  return res.items ?? [];
+};
+
+export const addToWishlist = async (productId: string, options?: RequestInit): Promise<{ success: boolean; id: string }> => {
+  return customFetch(`/wishlist`, {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify({ productId }),
+  });
+};
+
+export const removeFromWishlist = async (productId: string, options?: RequestInit): Promise<{ success: boolean }> => {
+  return customFetch(`/wishlist/${productId}`, { ...options, method: "DELETE" });
+};
+
+export const checkWishlist = async (productId: string, options?: RequestInit): Promise<boolean> => {
+  const res = await customFetch(`/wishlist/check/${productId}`, { ...options, method: "GET" });
+  return res.inWishlist ?? false;
+};
+
+export interface ProductReview {
+  id: string;
+  userId: string;
+  userName: string;
+  rating: number;
+  comment: string | null;
+  photos: string[];
+  createdAt: string;
+  vendorReply: string | null;
+  vendorRepliedAt: string | null;
+}
+
+export interface ProductReviewsResponse {
+  reviews: ProductReview[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+export const getProductReviews = async (
+  productId: string,
+  params?: { page?: number; limit?: number },
+  options?: RequestInit,
+): Promise<ProductReviewsResponse> => {
+  const qs = new URLSearchParams();
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const q = qs.toString();
+  return customFetch(`/reviews/product/${productId}${q ? `?${q}` : ""}`, { ...options, method: "GET" });
+};
+
+export interface ReviewSummary {
+  average: number;
+  total: number;
+  distribution: Record<number, number>;
+}
+
+export const getProductReviewSummary = async (
+  productId: string,
+  options?: RequestInit,
+): Promise<ReviewSummary> => {
+  return customFetch(`/reviews/product/${productId}/summary`, { ...options, method: "GET" });
+};
+
+export const submitProductReview = async (
+  body: {
+    orderId?: string;
+    orderType: string;
+    rating: number;
+    comment?: string;
+    productId?: string;
+    photos?: string[];
+  },
+  options?: RequestInit,
+): Promise<Record<string, unknown>> => {
+  return customFetch(`/reviews`, {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(body),
+  });
+};
+
+export const uploadImage = async (
+  file: string,
+  mimeType?: string,
+  options?: RequestInit,
+): Promise<{ url: string }> => {
+  return customFetch(`/uploads`, {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify({ file, mimeType: mimeType || "image/jpeg" }),
+  });
+};

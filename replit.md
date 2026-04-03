@@ -3,6 +3,24 @@
 ### Overview
 AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pakistan. It integrates multiple services including Grocery Shopping (Mart), Food Delivery, Taxi/Bike Booking (Rides), Pharmacy, and Parcel Delivery, all unified by a digital wallet. The project aims to provide a comprehensive, localized service platform for the region.
 
+### Product Reviews, Wishlist & Image Gallery — Completed Changes
+
+#### Backend
+- **`artifacts/api-server/src/routes/wishlist.ts`**: New wishlist API with POST add, DELETE remove, GET list, GET check endpoints (all auth-protected, user-scoped).
+- **`artifacts/api-server/src/routes/reviews.ts`**: Extended with GET `/reviews/product/:productId` (paginated), GET `/reviews/product/:productId/summary` (avg/distribution), and new `orderType: "product"` branch in POST that validates product existence instead of order ownership. Duplicate check uses `productId + userId` for product reviews.
+
+#### API Client
+- **`lib/api-client-react/src/discovery.ts`**: Added `getWishlist`, `addToWishlist`, `removeFromWishlist`, `checkWishlist`, `getProductReviews`, `getProductReviewSummary`, `submitProductReview`, `uploadImage` functions with TypeScript types (`WishlistItem`, `ProductReview`, `ProductReviewsResponse`, `ReviewSummary`).
+
+#### Mobile App (AJKMart)
+- **`artifacts/ajkmart/components/WishlistHeart.tsx`**: Reusable heart toggle component with optimistic updates, scale animation, wishlist query cache hydration.
+- **`artifacts/ajkmart/app/product/[id].tsx`**: Full rewrite with wishlist heart, full-screen image viewer, multi-image carousel with dot indicators, reviews section with rating bars/distribution, Write Review modal (star picker + text + up to 3 photos via image picker).
+- **`artifacts/ajkmart/app/wishlist.tsx`**: Dedicated wishlist screen with 2-column grid, remove-with-animation, auth guard, empty/error/loading states.
+- **`artifacts/ajkmart/app/(tabs)/profile.tsx`**: Added "My Wishlist" entry in activity section.
+- **`artifacts/ajkmart/app/(tabs)/index.tsx`**: Heart icons on trending products and flash deal cards.
+- **`artifacts/ajkmart/app/mart/index.tsx`**: Heart icons on FlashCard and ProductCard components.
+- **`artifacts/ajkmart/app/search.tsx`**: Heart icons on search result cards.
+
 ### Pull-to-Refresh & UI Polish — Completed Changes
 
 #### PullToRefresh Component (All 3 Web Apps)

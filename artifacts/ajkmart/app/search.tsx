@@ -21,6 +21,7 @@ import Colors from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { searchProducts, getTrendingSearches } from "@workspace/api-client-react";
+import { WishlistHeart } from "@/components/WishlistHeart";
 
 const C = Colors.light;
 const HISTORY_KEY = "@ajkmart_search_history";
@@ -458,6 +459,7 @@ export default function UniversalSearchScreen() {
                 ) : (
                   <Ionicons name={SERVICE_META[item.type].icon} size={20} color={C.textMuted} />
                 )}
+                <WishlistHeart productId={item.id} size={14} style={{ position: "absolute", top: 4, right: 4 }} />
               </View>
               <View style={s.cardInfo}>
                 <View style={s.cardMeta}>

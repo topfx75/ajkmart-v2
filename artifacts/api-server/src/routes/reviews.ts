@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, pharmacyOrdersTable, parcelBookingsTable, reviewsTable, rideRatingsTable, ridesTable, usersTable } from "@workspace/db/schema";
+import { ordersTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, reviewsTable, rideRatingsTable, ridesTable, usersTable } from "@workspace/db/schema";
 import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -74,14 +74,122 @@ async function moderateComment(comment: string): Promise<{ flagged: boolean; rea
   return { flagged: false, reason: null };
 }
 
+/* ── GET /reviews/product/:productId — public paginated reviews for a product ── */
+router.get("/product/:productId", async (req, res) => {
+  const productId = req.params["productId"]!;
+  const page = Math.max(1, parseInt(String(req.query["page"] || "1")));
+  const limit = Math.min(parseInt(String(req.query["limit"] || "10")), 50);
+  const offset = (page - 1) * limit;
+
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(eq(productsTable.id, productId))
+    .limit(1);
+
+  if (!product) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  const [countResult] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(reviewsTable)
+    .where(and(
+      eq(reviewsTable.productId, productId),
+      eq(reviewsTable.hidden, false),
+      isNull(reviewsTable.deletedAt),
+      eq(reviewsTable.status, "visible"),
+    ));
+
+  const total = countResult?.total ?? 0;
+
+  const rows = await db
+    .select({
+      id: reviewsTable.id,
+      userId: reviewsTable.userId,
+      rating: reviewsTable.rating,
+      comment: reviewsTable.comment,
+      photos: reviewsTable.photos,
+      createdAt: reviewsTable.createdAt,
+      vendorReply: reviewsTable.vendorReply,
+      vendorRepliedAt: reviewsTable.vendorRepliedAt,
+      userName: usersTable.name,
+    })
+    .from(reviewsTable)
+    .leftJoin(usersTable, eq(reviewsTable.userId, usersTable.id))
+    .where(and(
+      eq(reviewsTable.productId, productId),
+      eq(reviewsTable.hidden, false),
+      isNull(reviewsTable.deletedAt),
+      eq(reviewsTable.status, "visible"),
+    ))
+    .orderBy(desc(reviewsTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  res.json({
+    reviews: rows.map(r => ({
+      ...r,
+      userName: r.userName || "Customer",
+      photos: r.photos ?? [],
+    })),
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  });
+});
+
+/* ── GET /reviews/product/:productId/summary — rating distribution stats ── */
+router.get("/product/:productId/summary", async (req, res) => {
+  const productId = req.params["productId"]!;
+
+  const rows = await db
+    .select({
+      rating: reviewsTable.rating,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(reviewsTable)
+    .where(and(
+      eq(reviewsTable.productId, productId),
+      eq(reviewsTable.hidden, false),
+      isNull(reviewsTable.deletedAt),
+      eq(reviewsTable.status, "visible"),
+    ))
+    .groupBy(reviewsTable.rating);
+
+  const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let total = 0;
+  let sum = 0;
+  for (const row of rows) {
+    distribution[row.rating] = row.count;
+    total += row.count;
+    sum += row.rating * row.count;
+  }
+  const average = total > 0 ? parseFloat((sum / total).toFixed(1)) : 0;
+
+  res.json({ average, total, distribution });
+});
+
 /* ── POST /reviews — submit a review ─────────────────────────────────────── */
 router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
-  const { orderId, vendorId, riderId, orderType, rating, riderRating, comment } = req.body;
+  const { orderId, vendorId, riderId, orderType, rating, riderRating, comment, productId, photos } = req.body;
 
-  if (!orderId || !orderType || !rating) {
-    res.status(400).json({ error: "orderId, orderType, and rating are required" });
+  if (!orderType || !rating) {
+    res.status(400).json({ error: "orderType and rating are required" });
     return;
+  }
+  if (orderType !== "product" && !orderId) {
+    res.status(400).json({ error: "orderId is required for order-based reviews" });
+    return;
+  }
+
+  const validPhotos: string[] = [];
+  if (photos && Array.isArray(photos)) {
+    for (const p of photos.slice(0, 3)) {
+      if (typeof p === "string" && p.trim()) validPhotos.push(p.trim());
+    }
   }
   if (typeof rating !== "number" || rating < 1 || rating > 5) {
     res.status(400).json({ error: "rating must be 1–5" });
@@ -183,6 +291,44 @@ router.post("/", customerAuth, async (req, res) => {
     }
     authoritativeRiderId = row.riderId ?? null;
 
+  } else if (orderType === "product") {
+    if (!productId) {
+      res.status(400).json({ error: "productId is required for product reviews." });
+      return;
+    }
+    const [productRow] = await db
+      .select({ id: productsTable.id, vendorId: productsTable.vendorId })
+      .from(productsTable)
+      .where(eq(productsTable.id, productId))
+      .limit(1);
+
+    if (!productRow) {
+      res.status(404).json({ error: "Product not found." });
+      return;
+    }
+
+    const purchaseOrders = await db
+      .select({ id: ordersTable.id })
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.userId, userId),
+          sql`${ordersTable.status} IN ('delivered', 'completed')`,
+          sql`EXISTS (
+            SELECT 1 FROM json_array_elements(${ordersTable.items}::json) elem
+            WHERE elem->>'productId' = ${productId}
+          )`
+        )
+      )
+      .limit(1);
+
+    if (purchaseOrders.length === 0) {
+      res.status(403).json({ error: "You can only review products you have purchased." });
+      return;
+    }
+
+    authoritativeVendorId = productRow.vendorId ?? null;
+
   } else {
     /* Mart / food / general delivery — all in ordersTable */
     const [orderRow] = await db
@@ -215,10 +361,14 @@ router.post("/", customerAuth, async (req, res) => {
     return;
   }
 
+  const existingCondition = orderType === "product" && productId
+    ? and(eq(reviewsTable.productId, productId), eq(reviewsTable.userId, userId), eq(reviewsTable.orderType, "product"))
+    : and(eq(reviewsTable.orderId, orderId), eq(reviewsTable.userId, userId));
+
   const existing = await db
     .select({ id: reviewsTable.id })
     .from(reviewsTable)
-    .where(and(eq(reviewsTable.orderId, orderId), eq(reviewsTable.userId, userId)))
+    .where(existingCondition)
     .limit(1);
 
   if (existing.length > 0) {
@@ -238,9 +388,11 @@ router.post("/", customerAuth, async (req, res) => {
     }
   }
 
+  const resolvedOrderId = orderType === "product" ? `product-review-${productId}-${generateId()}` : orderId;
+
   const [review] = await db.insert(reviewsTable).values({
     id: generateId(),
-    orderId,
+    orderId: resolvedOrderId,
     userId,
     vendorId: authoritativeVendorId,
     riderId:  authoritativeRiderId,
@@ -248,6 +400,8 @@ router.post("/", customerAuth, async (req, res) => {
     rating,
     riderRating: (authoritativeRiderId && riderRating) ? riderRating : null,
     comment: comment ?? null,
+    photos: validPhotos.length > 0 ? validPhotos : null,
+    productId: productId ?? null,
     status,
     moderationNote,
   }).returning();
