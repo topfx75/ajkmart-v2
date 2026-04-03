@@ -2006,7 +2006,7 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
     return;
   }
 
-  /* GPS Spoof Detection — 3-strike auto-offline.
+  /* GPS Spoof Detection — spoofed pings are rejected immediately on detection.
      Minimum threshold is always 300 km/h (physically impossible for ground transport),
      or the admin-configured max if it's higher. Mock GPS provider flag is also checked. */
   if (accuracy !== undefined) {
