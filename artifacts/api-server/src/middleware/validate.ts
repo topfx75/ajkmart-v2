@@ -26,7 +26,9 @@ export function validate(schema: ValidationTarget) {
         req.body = schema.body.parse(req.body);
       }
       if (schema.query) {
-        req.query = schema.query.parse(req.query) as typeof req.query;
+        const parsed = schema.query.parse(req.query) as Record<string, unknown>;
+        Object.keys(req.query).forEach(k => { if (!(k in parsed)) delete (req.query as Record<string, unknown>)[k]; });
+        Object.assign(req.query, parsed);
       }
       if (schema.params) {
         req.params = schema.params.parse(req.params);
