@@ -17,7 +17,7 @@ import * as Linking from "expo-linking";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -35,6 +35,36 @@ const _domain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
 if (_domain) setBaseUrl(`https://${_domain}/api`);
 
 SplashScreen.preventAutoHideAsync();
+
+function WebShell({ children }: { children: React.ReactNode }) {
+  if (Platform.OS !== "web") return <>{children}</>;
+  return (
+    <View style={webStyles.bg}>
+      <View style={webStyles.phone}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+const webStyles = Platform.OS === "web" ? StyleSheet.create({
+  bg: {
+    flex: 1,
+    backgroundColor: "#0a0f1e",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  phone: {
+    width: "100%" as any,
+    maxWidth: 430,
+    flex: 1,
+    overflow: "hidden" as const,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6,
+    shadowRadius: 32,
+  },
+}) : { bg: {}, phone: {} };
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -289,47 +319,55 @@ export default function RootLayout() {
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0047B3", alignItems: "center", justifyContent: "center", gap: 20 }}>
-        <View style={{
-          width: 72,
-          height: 72,
-          borderRadius: 20,
-          backgroundColor: "rgba(255,255,255,0.15)",
-          alignItems: "center",
-          justifyContent: "center",
-        }}>
-          <Text style={{ fontSize: 36 }}>🛒</Text>
+      <WebShell>
+        <View style={{ flex: 1, backgroundColor: "#0047B3", alignItems: "center", justifyContent: "center", gap: 20 }}>
+          <View style={{
+            width: 72,
+            height: 72,
+            borderRadius: 20,
+            backgroundColor: "rgba(255,255,255,0.15)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}>
+            <Text style={{ fontSize: 36 }}>🛒</Text>
+          </View>
+          <ActivityIndicator size="large" color="#ffffff" />
         </View>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
+      </WebShell>
     );
   }
 
   if (!_domain) {
-    return <MisconfigScreen />;
+    return (
+      <WebShell>
+        <MisconfigScreen />
+      </WebShell>
+    );
   }
 
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <PlatformConfigProvider>
-                <LanguageProvider>
-                  <AuthProvider>
-                    <CartProvider>
-                      <ToastProvider>
-                        <RootLayoutNav />
-                      </ToastProvider>
-                    </CartProvider>
-                  </AuthProvider>
-                </LanguageProvider>
-              </PlatformConfigProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <WebShell>
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+              <KeyboardProvider>
+                <PlatformConfigProvider>
+                  <LanguageProvider>
+                    <AuthProvider>
+                      <CartProvider>
+                        <ToastProvider>
+                          <RootLayoutNav />
+                        </ToastProvider>
+                      </CartProvider>
+                    </AuthProvider>
+                  </LanguageProvider>
+                </PlatformConfigProvider>
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </QueryClientProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    </WebShell>
   );
 }
