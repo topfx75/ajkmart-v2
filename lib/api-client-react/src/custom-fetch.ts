@@ -86,9 +86,12 @@ function isUrl(input: RequestInfo | URL): input is URL {
 
 function applyBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
   if (!_baseUrl) return input;
-  const url = resolveUrl(input);
-  // Only prepend to relative paths (starting with /)
+  let url = resolveUrl(input);
   if (!url.startsWith("/")) return input;
+
+  if (_baseUrl.endsWith("/api") && url.startsWith("/api/")) {
+    url = url.slice(4);
+  }
 
   const absolute = `${_baseUrl}${url}`;
   if (typeof input === "string") return absolute;
