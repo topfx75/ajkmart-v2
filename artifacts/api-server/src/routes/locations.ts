@@ -23,6 +23,37 @@ const gpsViolationCounts = new Map<string, { count: number; lastAt: number }>();
    without an extra DB read. Cleared on server restart (harmless: next ping will always insert). */
 const _riderLastLocCache = new Map<string, { lat: number; lng: number }>();
 
+/* Companion timestamp map — tracks when each rider last wrote to the cache so
+   the periodic sweep below can evict entries for riders who stopped pinging
+   (e.g. went offline cleanly without a server-side ghost-rider expiry). */
+const _riderLastLocTs = new Map<string, number>();
+
+/* Sweep _riderLastLocCache every 10 minutes. Any entry whose rider has not sent
+   a ping in the last 30 minutes is evicted.  This prevents unbounded growth of
+   the in-process cache when riders go offline without triggering the ghost-rider
+   cleanup path (e.g. server restart before their heartbeat expires). */
+const CACHE_IDLE_TTL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  const cutoff = Date.now() - CACHE_IDLE_TTL_MS;
+  for (const [uid, ts] of _riderLastLocTs) {
+    if (ts < cutoff) {
+      _riderLastLocCache.delete(uid);
+      _riderLastLocTs.delete(uid);
+    }
+  }
+  /* Also prune rate-limiter entries for riders who stopped pinging > 30 min ago */
+  for (const [uid, ts] of _riderRateLimit) {
+    if (ts < cutoff) _riderRateLimit.delete(uid);
+  }
+}, 10 * 60 * 1000);
+
+/* Per-rider rate limiter for /locations/update — max 1 accepted update per 2 seconds.
+   Excess requests are acknowledged with HTTP 200 (skip=true) so the rider app never
+   retries in a tight loop.  The /batch endpoint is intentionally exempt because batch
+   uploads replay accumulated offline pings (they are not real-time, high-frequency). */
+const _riderRateLimit = new Map<string, number>();
+const RIDER_UPDATE_INTERVAL_MS = 2000;
+
 /* Haversine distance in meters */
 function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -239,9 +270,10 @@ async function processLocationUpdate(opts: {
     },
   });
 
-  /* ── Update in-memory cache with fresh coords ── */
+  /* ── Update in-memory cache with fresh coords + eviction timestamp ── */
   if (effectiveRole === "rider") {
     _riderLastLocCache.set(userId, { lat, lng: lon });
+    _riderLastLocTs.set(userId, Date.now());
   }
 
   /* ── Fire-and-forget: location_history insert + users.lastActive update ──
@@ -427,6 +459,18 @@ router.post("/update", async (req, res) => {
   if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
     res.status(400).json({ error: "Invalid latitude or longitude values" });
     return;
+  }
+
+  /* ── Per-rider rate limit: accept at most 1 update per 2 seconds ──
+     Responding with 200+skipped (not 429) so the rider app does not retry. */
+  if (effectiveRole === "rider") {
+    const lastMs = _riderRateLimit.get(userId) ?? 0;
+    const nowMs = Date.now();
+    if (nowMs - lastMs < RIDER_UPDATE_INTERVAL_MS) {
+      res.json({ success: true, skipped: true, reason: "rate_limited", updatedAt: new Date().toISOString() });
+      return;
+    }
+    _riderRateLimit.set(userId, nowMs);
   }
 
   const settings = await getCachedSettings();

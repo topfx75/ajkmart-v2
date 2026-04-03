@@ -927,7 +927,9 @@ export const useRiderRoute = (userId: string | null, date?: string) => {
     queryKey: ["admin-rider-route", userId, date ?? "session"],
     queryFn: () => fetcher(`/riders/${userId}/route${qs}`),
     enabled: !!userId,
-    staleTime: 30_000,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 };
 

@@ -3,8 +3,8 @@ import type { Server as HttpServer } from "http";
 import { logger } from "./logger.js";
 import { verifyUserJwt, verifyAdminJwt } from "../middleware/security.js";
 import { db } from "@workspace/db";
-import { ridesTable, ordersTable, parcelBookingsTable, pharmacyOrdersTable, liveLocationsTable, usersTable } from "@workspace/db/schema";
-import { eq, or, and, sql, lt } from "drizzle-orm";
+import { ridesTable, ordersTable, parcelBookingsTable, pharmacyOrdersTable, liveLocationsTable, usersTable, locationHistoryTable } from "@workspace/db/schema";
+import { eq, or, and, sql, lt, lte } from "drizzle-orm";
 
 /* ── Server-side GPS broadcast throttle: max 1 emit per rider per 1500ms ── */
 const RIDER_LOC_THROTTLE_MS = 1500;
@@ -456,6 +456,37 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       logger.warn({ err }, "Ghost rider cleanup failed");
     }
   }, STALE_LOC_TTL_MS);
+
+  /* ── Weekly location_history cleanup: runs every Sunday at midnight (server local time) ──
+     Uses a 1-hour polling interval that checks day-of-week (0=Sunday) and hour (0 = midnight).
+     Deletes all location_history rows older than 60 days to keep the table lightweight.
+     A _lastCleanupRun guard ensures it fires at most once per Sunday even if the interval
+     drifts slightly across the midnight boundary. */
+  let _lastHistoryCleanup = 0;
+  const HISTORY_RETENTION_DAYS = 60;
+
+  setInterval(async () => {
+    const now = new Date();
+    const isSundayMidnight = now.getDay() === 0 && now.getHours() === 0;
+    if (!isSundayMidnight) return;
+
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (_lastHistoryCleanup >= todayMidnight) return;
+    _lastHistoryCleanup = todayMidnight;
+
+    try {
+      const cutoff = new Date(Date.now() - HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+      const result = await db
+        .delete(locationHistoryTable)
+        .where(lte(locationHistoryTable.createdAt, cutoff));
+      logger.info(
+        { deleted: result.rowCount ?? 0, olderThanDays: HISTORY_RETENTION_DAYS },
+        "[cron] location_history weekly cleanup complete",
+      );
+    } catch (err) {
+      logger.warn({ err }, "[cron] location_history weekly cleanup failed");
+    }
+  }, 60 * 60 * 1000);
 
   logger.info("Socket.io initialized");
   return _io;
