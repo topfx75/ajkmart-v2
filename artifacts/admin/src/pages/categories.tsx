@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FolderTree, Plus, Pencil, Trash2, Save,
   ChevronRight, ChevronDown, ArrowUp, ArrowDown,
-  ToggleLeft, ToggleRight,
+  ToggleLeft, ToggleRight, Search, GripVertical, Upload, X,
 } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,6 +66,7 @@ export default function CategoriesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [filterType, setFilterType] = useState<string>("");
+  const [search, setSearch] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-categories-tree", filterType],
@@ -74,9 +76,25 @@ export default function CategoriesPage() {
 
   const categories: Category[] = data?.categories || [];
 
-  const flatCategories = categories.flatMap(c => [c, ...(c.children || [])]);
-  const topLevelCategories = categories;
+  /* ── Filtered view (search-aware) ── */
+  const q = search.trim().toLowerCase();
+  const filteredCategories = q
+    ? categories
+        .filter(c =>
+          c.name.toLowerCase().includes(q) ||
+          (c.children || []).some(ch => ch.name.toLowerCase().includes(q))
+        )
+        .map(c => ({
+          ...c,
+          children: (c.children || []).filter(ch =>
+            c.name.toLowerCase().includes(q) || ch.name.toLowerCase().includes(q)
+          ),
+        }))
+    : categories;
 
+  const flatCategories = categories.flatMap(c => [c, ...(c.children || [])]);
+
+  /* ── Mutations ── */
   const saveMutation = useMutation({
     mutationFn: async (body: any) => {
       if (editing) return fetcher(`/categories/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -112,6 +130,33 @@ export default function CategoriesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-categories-tree"] }),
   });
 
+  /* ── Drag-to-reorder handler (top-level) ── */
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    const { source, destination, type } = result;
+    if (source.index === destination.index && source.droppableId === destination.droppableId) return;
+
+    if (type === "TOP_LEVEL") {
+      const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
+      const reordered = [...sorted];
+      const [moved] = reordered.splice(source.index, 1);
+      reordered.splice(destination.index, 0, moved);
+      const items = reordered.map((cat, i) => ({ id: cat.id, sortOrder: i }));
+      reorderMutation.mutate(items);
+    } else {
+      /* Sub-category reorder: droppableId = parent category id */
+      const parentId = source.droppableId;
+      const parent = categories.find(c => c.id === parentId);
+      if (!parent?.children) return;
+      const sorted = [...parent.children].sort((a, b) => a.sortOrder - b.sortOrder);
+      const [moved] = sorted.splice(source.index, 1);
+      sorted.splice(destination.index, 0, moved);
+      const items = sorted.map((ch, i) => ({ id: ch.id, sortOrder: i }));
+      reorderMutation.mutate(items);
+    }
+  };
+
+  /* ── Arrow-based move (fallback for sub-cats when search active) ── */
   const moveCategory = (catId: string, direction: "up" | "down", parentId?: string | null) => {
     const siblings = parentId
       ? categories.find(c => c.id === parentId)?.children ?? []
@@ -176,9 +221,11 @@ export default function CategoriesPage() {
 
   const totalActive = flatCategories.filter(c => c.isActive).length;
   const totalInactive = flatCategories.filter(c => !c.isActive).length;
+  const isSearching = q.length > 0;
 
   return (
     <div className="space-y-6">
+      {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
@@ -188,10 +235,11 @@ export default function CategoriesPage() {
             <h1 className="text-3xl font-display font-bold text-foreground">{T("navCategories")}</h1>
             <p className="text-muted-foreground text-sm">
               {totalActive} active · {totalInactive} inactive
+              {!isSearching && <span className="text-muted-foreground/50"> · Drag rows to reorder</span>}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
@@ -209,6 +257,23 @@ export default function CategoriesPage() {
         </div>
       </div>
 
+      {/* ── Search bar ── */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search categories by name..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-9 pr-9 h-10 rounded-xl"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* ── Category list ── */}
       <div className="space-y-2">
         {isLoading ? (
           <div className="space-y-3">
@@ -216,160 +281,207 @@ export default function CategoriesPage() {
               <div key={i} className="h-16 bg-muted rounded-2xl animate-pulse" />
             ))}
           </div>
-        ) : categories.length === 0 ? (
+        ) : filteredCategories.length === 0 ? (
           <Card className="rounded-2xl border-border/50">
             <CardContent className="p-16 text-center">
               <FolderTree className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground font-medium">No categories yet</p>
-              <p className="text-sm text-muted-foreground/60 mt-1">Create your first category to get started</p>
-              <Button onClick={() => openNew()} className="mt-4 rounded-xl gap-2">
-                <Plus className="w-4 h-4" /> Add Category
-              </Button>
+              <p className="text-muted-foreground font-medium">
+                {isSearching ? `No categories matching "${search}"` : "No categories yet"}
+              </p>
+              {!isSearching && (
+                <>
+                  <p className="text-sm text-muted-foreground/60 mt-1">Create your first category to get started</p>
+                  <Button onClick={() => openNew()} className="mt-4 rounded-xl gap-2">
+                    <Plus className="w-4 h-4" /> Add Category
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
-        ) : (
-          categories.map(cat => {
-            const hasChildren = (cat.children?.length ?? 0) > 0;
-            const isExpanded = expandedIds.has(cat.id);
-            return (
+        ) : isSearching ? (
+          /* Search results: flat list without drag-and-drop */
+          <div className="space-y-2">
+            {filteredCategories.map(cat => (
               <div key={cat.id}>
-                <Card className={`rounded-2xl border-border/50 shadow-sm hover:shadow-md transition-shadow ${!cat.isActive ? "opacity-60" : ""}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {hasChildren ? (
-                          <button onClick={() => toggleExpand(cat.id)} className="p-1 hover:bg-muted rounded-md">
-                            {isExpanded
-                              ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                              : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                          </button>
-                        ) : (
-                          <div className="w-6" />
-                        )}
-                      </div>
-
-                      <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <span className="text-lg">📂</span>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-foreground truncate">{cat.name}</p>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            cat.type === "mart" ? "bg-violet-100 text-violet-700"
-                            : cat.type === "food" ? "bg-amber-100 text-amber-700"
-                            : "bg-green-100 text-green-700"
-                          }`}>
-                            {cat.type.toUpperCase()}
-                          </span>
-                          {!cat.isActive && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                              INACTIVE
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Icon: {cat.icon} · Order: {cat.sortOrder}
-                          {hasChildren && ` · ${cat.children!.length} sub-categories`}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <button
-                          onClick={() => openNew(cat.id)}
-                          className="p-2 hover:bg-muted rounded-lg transition-colors"
-                          title="Add sub-category"
-                        >
-                          <Plus className="w-4 h-4 text-indigo-600" />
-                        </button>
-                        <button
-                          onClick={() => toggleMutation.mutate({ id: cat.id, isActive: !cat.isActive })}
-                          className="p-2 hover:bg-muted rounded-lg transition-colors"
-                          title={cat.isActive ? "Deactivate" : "Activate"}
-                        >
-                          {cat.isActive
-                            ? <ToggleRight className="w-5 h-5 text-green-600" />
-                            : <ToggleLeft className="w-5 h-5 text-muted-foreground" />}
-                        </button>
-                        <button onClick={() => moveCategory(cat.id, "up", null)} className="p-2 hover:bg-muted rounded-lg transition-colors" title="Move up">
-                          <ArrowUp className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                        <button onClick={() => moveCategory(cat.id, "down", null)} className="p-2 hover:bg-muted rounded-lg transition-colors" title="Move down">
-                          <ArrowDown className="w-4 h-4 text-muted-foreground" />
-                        </button>
-                        <button onClick={() => openEdit(cat)} className="p-2 hover:bg-muted rounded-lg transition-colors">
-                          <Pencil className="w-4 h-4 text-blue-600" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete "${cat.name}"? This will also unparent any sub-categories.`)) {
-                              deleteMutation.mutate(cat.id);
-                            }
-                          }}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {hasChildren && isExpanded && (
-                  <div className="ml-10 mt-1 space-y-1">
-                    {cat.children!.map(child => (
-                      <Card key={child.id} className={`rounded-xl border-border/40 shadow-sm ${!child.isActive ? "opacity-60" : ""}`}>
-                        <CardContent className="p-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-4 flex-shrink-0" />
-                            <div className="w-8 h-8 bg-indigo-50/60 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <span className="text-sm">📄</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm text-foreground truncate">{child.name}</p>
-                              <p className="text-[11px] text-muted-foreground">
-                                Icon: {child.icon} · Order: {child.sortOrder}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <button
-                                onClick={() => toggleMutation.mutate({ id: child.id, isActive: !child.isActive })}
-                                className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-                              >
-                                {child.isActive
-                                  ? <ToggleRight className="w-4 h-4 text-green-600" />
-                                  : <ToggleLeft className="w-4 h-4 text-muted-foreground" />}
-                              </button>
-                              <button onClick={() => moveCategory(child.id, "up", cat.id)} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="Move up">
-                                <ArrowUp className="w-3.5 h-3.5 text-muted-foreground" />
-                              </button>
-                              <button onClick={() => moveCategory(child.id, "down", cat.id)} className="p-1.5 hover:bg-muted rounded-lg transition-colors" title="Move down">
-                                <ArrowDown className="w-3.5 h-3.5 text-muted-foreground" />
-                              </button>
-                              <button onClick={() => openEdit(child)} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
-                                <Pencil className="w-3.5 h-3.5 text-blue-600" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`Delete "${child.name}"?`)) deleteMutation.mutate(child.id);
-                                }}
-                                className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                              </button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
+                <CategoryCard
+                  cat={cat}
+                  onEdit={openEdit}
+                  onDelete={id => { if (confirm(`Delete "${cat.name}"?`)) deleteMutation.mutate(id); }}
+                  onToggle={id => toggleMutation.mutate({ id, isActive: !cat.isActive })}
+                  onAddChild={() => openNew(cat.id)}
+                  onMove={moveCategory}
+                  onToggleExpand={toggleExpand}
+                  expanded={expandedIds.has(cat.id)}
+                  categories={categories}
+                  toggleMutation={toggleMutation}
+                  deleteMutation={deleteMutation}
+                  openEdit={openEdit}
+                  moveCategory={moveCategory}
+                  isDragging={false}
+                  isSearching={true}
+                />
               </div>
-            );
-          })
+            ))}
+          </div>
+        ) : (
+          /* Normal view: drag-and-drop enabled */
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId="top-level" type="TOP_LEVEL">
+              {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className={`space-y-2 transition-colors rounded-2xl ${snapshot.isDraggingOver ? "bg-indigo-50/50 p-2" : ""}`}
+                >
+                  {[...filteredCategories].sort((a, b) => a.sortOrder - b.sortOrder).map((cat, index) => {
+                    const hasChildren = (cat.children?.length ?? 0) > 0;
+                    const isExpanded = expandedIds.has(cat.id);
+                    return (
+                      <Draggable key={cat.id} draggableId={cat.id} index={index}>
+                        {(drag, dragSnapshot) => (
+                          <div ref={drag.innerRef} {...drag.draggableProps}>
+                            <Card className={`rounded-2xl border-border/50 shadow-sm transition-all ${
+                              dragSnapshot.isDragging ? "shadow-xl ring-2 ring-indigo-300 rotate-1 scale-[1.02]" : "hover:shadow-md"
+                            } ${!cat.isActive ? "opacity-60" : ""}`}>
+                              <CardContent className="p-4">
+                                <div className="flex items-center gap-3">
+                                  {/* Drag handle */}
+                                  <div {...drag.dragHandleProps} className="flex-shrink-0 cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded-md text-muted-foreground/50 hover:text-muted-foreground transition-colors">
+                                    <GripVertical className="w-4 h-4" />
+                                  </div>
+
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    {hasChildren ? (
+                                      <button onClick={() => toggleExpand(cat.id)} className="p-1 hover:bg-muted rounded-md">
+                                        {isExpanded
+                                          ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                          : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                                      </button>
+                                    ) : (
+                                      <div className="w-6" />
+                                    )}
+                                  </div>
+
+                                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                                    <span className="text-lg">📂</span>
+                                  </div>
+
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="font-bold text-foreground truncate">{cat.name}</p>
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                        cat.type === "mart" ? "bg-violet-100 text-violet-700"
+                                        : cat.type === "food" ? "bg-amber-100 text-amber-700"
+                                        : "bg-green-100 text-green-700"
+                                      }`}>
+                                        {cat.type.toUpperCase()}
+                                      </span>
+                                      {!cat.isActive && (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">INACTIVE</span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                      {cat.icon.replace("-outline", "")} · #{index + 1}
+                                      {hasChildren && ` · ${cat.children!.length} sub-categories`}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button onClick={() => openNew(cat.id)} className="p-2 hover:bg-muted rounded-lg transition-colors" title="Add sub-category">
+                                      <Plus className="w-4 h-4 text-indigo-600" />
+                                    </button>
+                                    <button
+                                      onClick={() => toggleMutation.mutate({ id: cat.id, isActive: !cat.isActive })}
+                                      className="p-2 hover:bg-muted rounded-lg transition-colors"
+                                    >
+                                      {cat.isActive
+                                        ? <ToggleRight className="w-5 h-5 text-green-600" />
+                                        : <ToggleLeft className="w-5 h-5 text-muted-foreground" />}
+                                    </button>
+                                    <button onClick={() => openEdit(cat)} className="p-2 hover:bg-muted rounded-lg transition-colors">
+                                      <Pencil className="w-4 h-4 text-blue-600" />
+                                    </button>
+                                    <button
+                                      onClick={() => { if (confirm(`Delete "${cat.name}"? This will also unparent any sub-categories.`)) deleteMutation.mutate(cat.id); }}
+                                      className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-500" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+
+                            {/* ── Sub-categories (nested droppable) ── */}
+                            {hasChildren && isExpanded && (
+                              <Droppable droppableId={cat.id} type="SUB_LEVEL">
+                                {(subProvided, subSnapshot) => (
+                                  <div
+                                    ref={subProvided.innerRef}
+                                    {...subProvided.droppableProps}
+                                    className={`ml-10 mt-1 space-y-1 transition-colors rounded-xl ${subSnapshot.isDraggingOver ? "bg-indigo-50/40 p-1.5" : ""}`}
+                                  >
+                                    {[...cat.children!].sort((a, b) => a.sortOrder - b.sortOrder).map((child, ci) => (
+                                      <Draggable key={child.id} draggableId={child.id} index={ci}>
+                                        {(childDrag, childSnap) => (
+                                          <div ref={childDrag.innerRef} {...childDrag.draggableProps}>
+                                            <Card className={`rounded-xl border-border/40 shadow-sm transition-all ${
+                                              childSnap.isDragging ? "shadow-lg ring-2 ring-indigo-200 rotate-1" : ""
+                                            } ${!child.isActive ? "opacity-60" : ""}`}>
+                                              <CardContent className="p-3">
+                                                <div className="flex items-center gap-3">
+                                                  <div {...childDrag.dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded-md text-muted-foreground/40 hover:text-muted-foreground">
+                                                    <GripVertical className="w-3.5 h-3.5" />
+                                                  </div>
+                                                  <div className="w-8 h-8 bg-indigo-50/60 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <span className="text-sm">📄</span>
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="font-semibold text-sm text-foreground truncate">{child.name}</p>
+                                                    <p className="text-[11px] text-muted-foreground">{child.icon.replace("-outline", "")} · #{ci + 1}</p>
+                                                  </div>
+                                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                                    <button onClick={() => toggleMutation.mutate({ id: child.id, isActive: !child.isActive })} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
+                                                      {child.isActive
+                                                        ? <ToggleRight className="w-4 h-4 text-green-600" />
+                                                        : <ToggleLeft className="w-4 h-4 text-muted-foreground" />}
+                                                    </button>
+                                                    <button onClick={() => openEdit(child)} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
+                                                      <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                                                    </button>
+                                                    <button
+                                                      onClick={() => { if (confirm(`Delete "${child.name}"?`)) deleteMutation.mutate(child.id); }}
+                                                      className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                                                    >
+                                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              </CardContent>
+                                            </Card>
+                                          </div>
+                                        )}
+                                      </Draggable>
+                                    ))}
+                                    {subProvided.placeholder}
+                                  </div>
+                                )}
+                              </Droppable>
+                            )}
+                          </div>
+                        )}
+                      </Draggable>
+                    );
+                  })}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </DragDropContext>
         )}
       </div>
 
+      {/* ── Add/Edit dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={v => { setDialogOpen(v); if (!v) { setEditing(null); setForm({ ...EMPTY_FORM }); } }}>
         <DialogContent className="w-[95vw] max-w-lg max-h-[90dvh] overflow-y-auto rounded-2xl">
           <DialogHeader>
@@ -476,5 +588,77 @@ export default function CategoriesPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/* ── Inline card for search-result view ── */
+function CategoryCard({
+  cat, onEdit, onDelete, onToggle, onAddChild, expanded, onToggleExpand,
+  categories, toggleMutation, deleteMutation, openEdit, moveCategory, isDragging, isSearching,
+}: any) {
+  const hasChildren = (cat.children?.length ?? 0) > 0;
+  return (
+    <Card className={`rounded-2xl border-border/50 shadow-sm hover:shadow-md transition-shadow ${!cat.isActive ? "opacity-60" : ""}`}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {hasChildren ? (
+              <button onClick={() => onToggleExpand(cat.id)} className="p-1 hover:bg-muted rounded-md">
+                {expanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+              </button>
+            ) : <div className="w-6" />}
+          </div>
+          <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <span className="text-lg">📂</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-bold text-foreground truncate">{cat.name}</p>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                cat.type === "mart" ? "bg-violet-100 text-violet-700"
+                : cat.type === "food" ? "bg-amber-100 text-amber-700"
+                : "bg-green-100 text-green-700"
+              }`}>{cat.type.toUpperCase()}</span>
+              {!cat.isActive && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">INACTIVE</span>}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">{cat.icon.replace("-outline", "")} · {hasChildren && `${cat.children.length} sub-categories`}</p>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={() => onAddChild(cat.id)} className="p-2 hover:bg-muted rounded-lg" title="Add sub-category"><Plus className="w-4 h-4 text-indigo-600" /></button>
+            <button onClick={() => onToggle(cat.id)} className="p-2 hover:bg-muted rounded-lg">
+              {cat.isActive ? <ToggleRight className="w-5 h-5 text-green-600" /> : <ToggleLeft className="w-5 h-5 text-muted-foreground" />}
+            </button>
+            <button onClick={() => onEdit(cat)} className="p-2 hover:bg-muted rounded-lg"><Pencil className="w-4 h-4 text-blue-600" /></button>
+            <button onClick={() => onDelete(cat.id)} className="p-2 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4 text-red-500" /></button>
+          </div>
+        </div>
+      </CardContent>
+      {hasChildren && expanded && (
+        <div className="ml-10 pb-3 px-3 space-y-1">
+          {cat.children.map((child: any, ci: number) => (
+            <Card key={child.id} className={`rounded-xl border-border/40 shadow-sm ${!child.isActive ? "opacity-60" : ""}`}>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-indigo-50/60 rounded-lg flex items-center justify-center"><span className="text-sm">📄</span></div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{child.name}</p>
+                    <p className="text-[11px] text-muted-foreground">{child.icon.replace("-outline", "")}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => toggleMutation.mutate({ id: child.id, isActive: !child.isActive })} className="p-1.5 hover:bg-muted rounded-lg">
+                      {child.isActive ? <ToggleRight className="w-4 h-4 text-green-600" /> : <ToggleLeft className="w-4 h-4 text-muted-foreground" />}
+                    </button>
+                    <button onClick={() => moveCategory(child.id, "up", cat.id)} className="p-1.5 hover:bg-muted rounded-lg"><ArrowUp className="w-3.5 h-3.5 text-muted-foreground" /></button>
+                    <button onClick={() => moveCategory(child.id, "down", cat.id)} className="p-1.5 hover:bg-muted rounded-lg"><ArrowDown className="w-3.5 h-3.5 text-muted-foreground" /></button>
+                    <button onClick={() => openEdit(child)} className="p-1.5 hover:bg-muted rounded-lg"><Pencil className="w-3.5 h-3.5 text-blue-600" /></button>
+                    <button onClick={() => { if (confirm(`Delete "${child.name}"?`)) deleteMutation.mutate(child.id); }} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }

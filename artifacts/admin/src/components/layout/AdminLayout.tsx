@@ -123,12 +123,12 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-const BOTTOM_NAV: { nameKey: TranslationKey; href: string; icon: React.ElementType }[] = [
-  { nameKey: "navDashboard", href: "/dashboard", icon: LayoutDashboard },
-  { nameKey: "navOrders",    href: "/orders",    icon: ShoppingBag },
-  { nameKey: "navRides",     href: "/rides",     icon: Car },
-  { nameKey: "navUsers",     href: "/users",     icon: Users },
-  { nameKey: "navMore",      href: "__more__",   icon: Menu },
+const BOTTOM_NAV: { nameKey: TranslationKey; href: string; icon: React.ElementType; isSos?: boolean }[] = [
+  { nameKey: "navDashboard", href: "/dashboard",  icon: LayoutDashboard },
+  { nameKey: "navOrders",    href: "/orders",     icon: ShoppingBag },
+  { nameKey: "navRides",     href: "/rides",      icon: Car },
+  { nameKey: "navSosAlerts", href: "/sos-alerts", icon: AlertTriangle, isSos: true },
+  { nameKey: "navMore",      href: "__more__",    icon: Menu },
 ];
 
 const navItems = NAV_GROUPS.flatMap(g => g.items);
@@ -433,6 +433,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             {BOTTOM_NAV.map((item) => {
               const active = item.href !== "__more__" && isActive(item.href);
               const Icon = item.icon;
+              const hasSosAlert = item.isSos && sosCount > 0;
 
               if (item.href === "__more__") {
                 return (
@@ -441,14 +442,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                     onClick={() => setIsMobileMenuOpen(true)}
                     className="flex-1 flex flex-col items-center justify-center gap-1 transition-colors text-muted-foreground relative"
                   >
-                    <div className="relative">
-                      <Menu className="w-5 h-5" />
-                      {sosCount > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center">
-                          {sosCount > 9 ? "9+" : sosCount}
-                        </span>
-                      )}
-                    </div>
+                    <Menu className="w-5 h-5" />
                     <span className="text-[10px] font-semibold">{T("navMore")}</span>
                   </button>
                 );
@@ -456,11 +450,27 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
               return (
                 <Link key={item.href} href={item.href} className="flex-1">
-                  <div className={`flex flex-col items-center justify-center h-full gap-1 transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}>
-                    <div className={`relative ${active ? "after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-4 after:h-0.5 after:bg-primary after:rounded-full" : ""}`}>
-                      <Icon className={`w-5 h-5 ${active ? "text-primary" : ""}`} />
+                  <div className={`flex flex-col items-center justify-center h-full gap-1 transition-colors ${
+                    hasSosAlert ? "text-red-600" : active ? "text-primary" : "text-muted-foreground"
+                  }`}>
+                    <div className={`relative ${active && !hasSosAlert ? "after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-4 after:h-0.5 after:bg-primary after:rounded-full" : ""}`}>
+                      {hasSosAlert ? (
+                        <div className="relative">
+                          <div className="absolute inset-0 rounded-full bg-red-500/20 animate-ping" />
+                          <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center shadow-lg shadow-red-500/40">
+                            <Icon className="w-4 h-4 text-white" />
+                          </div>
+                          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white text-red-600 text-[9px] font-black rounded-full flex items-center justify-center border border-red-200 shadow">
+                            {sosCount > 9 ? "9+" : sosCount}
+                          </span>
+                        </div>
+                      ) : (
+                        <Icon className={`w-5 h-5 ${active ? "text-primary" : ""}`} />
+                      )}
                     </div>
-                    <span className={`text-[10px] font-semibold ${active ? "text-primary" : ""}`}>{T(item.nameKey)}</span>
+                    <span className={`text-[10px] font-semibold ${hasSosAlert ? "text-red-600" : active ? "text-primary" : ""}`}>
+                      {hasSosAlert ? "SOS!" : T(item.nameKey)}
+                    </span>
                   </div>
                 </Link>
               );

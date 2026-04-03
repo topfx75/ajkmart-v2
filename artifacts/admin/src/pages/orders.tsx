@@ -340,7 +340,15 @@ export default function Orders() {
                   </TableRow>
                 ))
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No orders found.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6}>
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <ShoppingBag className="w-10 h-10 text-muted-foreground/25 mb-3" />
+                      <p className="font-semibold text-muted-foreground">No orders found</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or status filter</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : (
                 filtered.map((order: any) => (
                   <TableRow key={order.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => { setSelectedOrder(order); setShowCancelConfirm(false); }}>
@@ -406,8 +414,9 @@ export default function Orders() {
           [1,2,3].map(i => <div key={i} className="h-24 bg-muted rounded-2xl animate-pulse" />)
         ) : filtered.length === 0 ? (
           <Card className="rounded-2xl border-border/50 p-12 text-center">
-            <Package className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
-            <p className="text-muted-foreground text-sm">No orders found.</p>
+            <ShoppingBag className="w-10 h-10 text-muted-foreground/25 mx-auto mb-3" />
+            <p className="font-semibold text-muted-foreground text-sm">No orders found</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your filters</p>
           </Card>
         ) : (
           filtered.map((order: any) => (

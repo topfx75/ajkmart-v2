@@ -371,10 +371,16 @@ router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
   if (!tx) { sendNotFound(res, "Withdrawal not found"); return; }
   if (tx.reference && tx.reference !== "pending") {
-    sendValidationError(res, `Already processed (${tx.reference})`); return;
+    sendError(res, `Already processed (${tx.reference})`, 409); return;
   }
   const ref = refNo ? `paid:${refNo.trim()}` : "paid:manual";
-  await db.update(walletTransactionsTable).set({ reference: ref }).where(eq(walletTransactionsTable.id, txId));
+  /* Atomic compare-and-swap: only succeeds if still 'pending', preventing double-approval */
+  const [updated] = await db
+    .update(walletTransactionsTable)
+    .set({ reference: ref })
+    .where(and(eq(walletTransactionsTable.id, txId), eq(walletTransactionsTable.reference, "pending")))
+    .returning();
+  if (!updated) { sendError(res, "Withdrawal already processed by another request", 409); return; }
   const amt = parseFloat(String(tx.amount));
   const wdLang = await getUserLanguage(tx.userId);
   const wdRef = refNo ? ` Reference: ${refNo}` : "";
