@@ -28,6 +28,7 @@ import {
 import { verifyTotpToken } from "../services/totp.js";
 import { verifyAdminSecret } from "../services/password.js";
 import { logger } from "../lib/logger.js";
+import { sendPushToUser } from "../lib/webpush.js";
 
 export interface AdminRequest extends Request {
   adminRole?: string;
@@ -683,6 +684,8 @@ export async function sendUserNotification(userId: string, title: string, body: 
     type,
     icon,
   }).catch(() => {});
+
+  sendPushToUser(userId, { title, body, tag: `${type}-${Date.now()}` }).catch(() => {});
 }
 
 type NotifKeys = { titleKey: TranslationKey; bodyKey: TranslationKey; icon: string };

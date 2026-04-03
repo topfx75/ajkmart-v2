@@ -632,9 +632,10 @@ router.post("/orders/:id/accept", async (req, res) => {
   }
 
   // Atomic accept: only succeeds if riderId is still NULL in DB
+  // Status preserved — vendor controls prep flow; rider assignment doesn't skip to out_for_delivery
   const [updated] = await db
     .update(ordersTable)
-    .set({ riderId, riderName: String(riderUser.name || "Rider"), riderPhone: riderUser.phone ? String(riderUser.phone) : null, status: "out_for_delivery", updatedAt: new Date() })
+    .set({ riderId, riderName: String(riderUser.name || "Rider"), riderPhone: riderUser.phone ? String(riderUser.phone) : null, assignedRiderId: riderId, assignedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(ordersTable.id, orderId), isNull(ordersTable.riderId)))
     .returning();
 

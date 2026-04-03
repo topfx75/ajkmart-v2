@@ -646,23 +646,23 @@ router.get("/orders/available-riders", requireRole("vendor"), async (req, res) =
   const maxKm = parseFloat(String(req.query["maxKm"] ?? "10"));
 
   const riders = await db
-    .select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, vehicleType: usersTable.vehicleType, walletBalance: usersTable.walletBalance })
+    .select({
+      id: usersTable.id, name: usersTable.name, phone: usersTable.phone,
+      vehicleType: usersTable.vehicleType, walletBalance: usersTable.walletBalance,
+      lat: liveLocationsTable.latitude, lng: liveLocationsTable.longitude,
+    })
     .from(usersTable)
+    .innerJoin(liveLocationsTable, eq(usersTable.id, liveLocationsTable.userId))
     .where(and(eq(usersTable.role, "rider"), eq(usersTable.isOnline, true)));
-
-  const locs = await db.select().from(liveLocationsTable);
-  const locMap = new Map(locs.map(l => [l.userId, l]));
 
   const withDist = riders
     .map(r => {
-      const loc = locMap.get(r.id);
-      if (!loc) return null;
       const dist = (!isNaN(lat) && !isNaN(lng))
-        ? haversineKm(lat, lng, parseFloat(loc.latitude), parseFloat(loc.longitude))
+        ? haversineKm(lat, lng, parseFloat(r.lat), parseFloat(r.lng))
         : 99999;
-      return { ...r, distKm: Math.round(dist * 10) / 10, lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude) };
+      return { ...r, distKm: Math.round(dist * 10) / 10, lat: parseFloat(r.lat), lng: parseFloat(r.lng) };
     })
-    .filter((r): r is NonNullable<typeof r> => r !== null && r.distKm <= maxKm)
+    .filter(r => r.distKm <= maxKm)
     .sort((a, b) => a.distKm - b.distKm);
 
   sendSuccess(res, { riders: withDist });
@@ -673,18 +673,32 @@ router.get("/orders/available-riders", requireRole("vendor"), async (req, res) =
 ──────────────────────────────────────────────────────────────────────── */
 router.post("/orders/:id/assign-rider", requireRole("vendor"), async (req, res) => {
   const orderId = req.params["id"]!;
+  const vendorId = req.vendorId!;
   const { riderId } = req.body as { riderId?: string };
   if (!riderId) { sendValidationError(res, "riderId required"); return; }
 
-  const [rider] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone })
+  const [rider] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, isOnline: usersTable.isOnline })
     .from(usersTable).where(and(eq(usersTable.id, riderId), eq(usersTable.role, "rider"))).limit(1);
   if (!rider) { sendNotFound(res, "Rider not found"); return; }
+  if (!rider.isOnline) { sendError(res, "Rider is currently offline", 400); return; }
 
   const [updated] = await db.update(ordersTable)
     .set({ riderId: rider.id, riderName: rider.name, riderPhone: rider.phone, assignedRiderId: rider.id, assignedAt: new Date(), updatedAt: new Date() })
-    .where(eq(ordersTable.id, orderId))
+    .where(and(
+      eq(ordersTable.id, orderId),
+      eq(ordersTable.vendorId, vendorId),
+      isNull(ordersTable.riderId),
+      or(eq(ordersTable.status, "confirmed"), eq(ordersTable.status, "preparing"), eq(ordersTable.status, "ready")),
+    ))
     .returning();
-  if (!updated) { sendNotFound(res, "Order not found"); return; }
+  if (!updated) {
+    const [order] = await db.select({ id: ordersTable.id, riderId: ordersTable.riderId, status: ordersTable.status, vendorId: ordersTable.vendorId })
+      .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+    if (!order) { sendNotFound(res, "Order not found"); return; }
+    if (order.vendorId !== vendorId) { sendForbidden(res, "This order does not belong to your store"); return; }
+    if (order.riderId) { sendError(res, "Order already has a rider assigned", 409); return; }
+    sendError(res, `Order cannot be assigned in '${order.status}' status`, 400); return;
+  }
 
   await db.insert(notificationsTable).values({
     id: generateId(), userId: rider.id,
@@ -705,33 +719,46 @@ router.post("/orders/:id/assign-rider", requireRole("vendor"), async (req, res) 
 ──────────────────────────────────────────────────────────────────────── */
 router.post("/orders/:id/auto-assign", requireRole("vendor"), async (req, res) => {
   const orderId  = req.params["id"]!;
+  const vendorId = req.vendorId!;
   const { vendorLat, vendorLng } = req.body as { vendorLat?: number; vendorLng?: number };
 
   const riders = await db
-    .select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone })
+    .select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, lat: liveLocationsTable.latitude, lng: liveLocationsTable.longitude })
     .from(usersTable)
+    .innerJoin(liveLocationsTable, eq(usersTable.id, liveLocationsTable.userId))
     .where(and(eq(usersTable.role, "rider"), eq(usersTable.isOnline, true)));
 
   if (riders.length === 0) { sendNotFound(res, "No riders online"); return; }
 
   let nearest = riders[0]!;
   if (vendorLat != null && vendorLng != null) {
-    const locs = await db.select().from(liveLocationsTable);
-    const locMap = new Map(locs.map(l => [l.userId, l]));
     let minDist = Infinity;
     for (const r of riders) {
-      const loc = locMap.get(r.id);
-      if (!loc) continue;
-      const d = haversineKm(vendorLat, vendorLng, parseFloat(loc.latitude), parseFloat(loc.longitude));
+      const rLat = parseFloat(r.lat);
+      const rLng = parseFloat(r.lng);
+      if (isNaN(rLat) || isNaN(rLng)) continue;
+      const d = haversineKm(vendorLat, vendorLng, rLat, rLng);
       if (d < minDist) { minDist = d; nearest = r; }
     }
   }
 
   const [updated] = await db.update(ordersTable)
     .set({ riderId: nearest.id, riderName: nearest.name, riderPhone: nearest.phone, assignedRiderId: nearest.id, assignedAt: new Date(), updatedAt: new Date() })
-    .where(eq(ordersTable.id, orderId))
+    .where(and(
+      eq(ordersTable.id, orderId),
+      eq(ordersTable.vendorId, vendorId),
+      isNull(ordersTable.riderId),
+      or(eq(ordersTable.status, "confirmed"), eq(ordersTable.status, "preparing"), eq(ordersTable.status, "ready")),
+    ))
     .returning();
-  if (!updated) { sendNotFound(res, "Order not found"); return; }
+  if (!updated) {
+    const [order] = await db.select({ id: ordersTable.id, riderId: ordersTable.riderId, status: ordersTable.status, vendorId: ordersTable.vendorId })
+      .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
+    if (!order) { sendNotFound(res, "Order not found"); return; }
+    if (order.vendorId !== vendorId) { sendForbidden(res, "This order does not belong to your store"); return; }
+    if (order.riderId) { sendError(res, "Order already has a rider assigned", 409); return; }
+    sendError(res, `Order cannot be auto-assigned in '${order.status}' status`, 400); return;
+  }
 
   await db.insert(notificationsTable).values({
     id: generateId(), userId: nearest.id,
