@@ -125,12 +125,20 @@ function FoodScreenInner() {
   const showCartBanner = itemCount > 0 && cartType !== "food" && cartType !== "none";
   const [clearBannerConfirm, setClearBannerConfirm] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { category: routeCategory } = useLocalSearchParams<{ category?: string }>();
   const [selectedCat, setSelectedCat] = useState<string | undefined>(routeCategory || undefined);
   const topPad = Math.max(insets.top, 12);
 
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [search]);
+
   const { data: catData } = useGetCategories({ type: "food" });
-  const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "food", search: search || undefined, category: selectedCat });
+  const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "food", search: debouncedSearch || undefined, category: selectedCat });
 
   const categories = catData?.categories || [];
   const items = data?.products || [];

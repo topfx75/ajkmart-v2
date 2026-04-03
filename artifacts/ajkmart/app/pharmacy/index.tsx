@@ -31,6 +31,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { getProducts, createPharmacyOrder } from "@workspace/api-client-react";
 import type { GetProductsType } from "@workspace/api-client-react";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
+import { isValidPakistaniPhone } from "@/utils/phone";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { withServiceGuard } from "@/components/ServiceGuard";
 
@@ -288,6 +289,10 @@ function PharmacyScreenInner() {
   const placeOrder = async () => {
     if (!address.trim() || !phone.trim()) {
       showToast(T("deliveryAddress"), "error");
+      return;
+    }
+    if (!isValidPakistaniPhone(phone.trim())) {
+      showToast("Please enter a valid Pakistani phone number (e.g. 03001234567)", "error");
       return;
     }
     if (cartItems.length === 0) {

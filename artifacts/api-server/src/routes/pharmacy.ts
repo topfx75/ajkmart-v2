@@ -181,6 +181,22 @@ router.post("/", customerAuth, async (req, res) => {
     return;
   }
 
+  /* Validate contactPhone format — must be a valid Pakistani mobile number */
+  const canonPhone = (function() {
+    const raw = String(contactPhone ?? "").replace(/[\s\-()]/g, "");
+    const e164 = raw.match(/^\+?92(3\d{9})$/);
+    if (e164) return e164[1]!;
+    const local = raw.match(/^0(3\d{9})$/);
+    if (local) return local[1]!;
+    const bare = raw.match(/^(3\d{9})$/);
+    if (bare) return bare[1]!;
+    return raw;
+  })();
+  if (!/^3\d{9}$/.test(canonPhone)) {
+    sendValidationError(res, "Invalid contactPhone: must be a valid Pakistani mobile number (e.g. 03001234567)");
+    return;
+  }
+
   const s = await getPlatformSettings();
 
   if ((s["app_status"] ?? "active") === "maintenance") {

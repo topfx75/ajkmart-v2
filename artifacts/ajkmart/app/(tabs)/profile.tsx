@@ -557,7 +557,7 @@ function DeleteAccountRow({ token }: { token?: string }) {
 
 function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; userId: string; token?: string; onClose: () => void }) {
   const { showToast } = useToast();
-  const { biometricEnabled, setBiometricEnabled, user, updateUser } = useAuth();
+  const { biometricEnabled, setBiometricEnabled, user, updateUser, logout } = useAuth();
   const { config } = usePlatformConfig();
   const { language: currentLang, setLanguage, loading: langLoading } = useLanguage();
   const [cfg,     setCfg]     = useState<Record<string, boolean>>({});
@@ -581,6 +581,13 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
   const exportCooldownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [disableTwoFAError, setDisableTwoFAError] = useState("");
+
+  const [showChangePass, setShowChangePass] = useState(false);
+  const [currentPass, setCurrentPass]       = useState("");
+  const [newPass, setNewPass]               = useState("");
+  const [newPassConfirm, setNewPassConfirm] = useState("");
+  const [passError, setPassError]           = useState("");
+  const [passSaving, setPassSaving]         = useState(false);
 
   useEffect(() => {
     return () => {
@@ -642,6 +649,27 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
       showToast(v ? "Biometric login enabled" : "Biometric login disabled", "success");
     } catch { showToast("Biometric setup failed", "error"); }
     finally { setSaving(null); }
+  };
+
+  const handleChangePassword = async () => {
+    setPassError("");
+    if (!newPass || newPass.length < 8) { setPassError("New password must be at least 8 characters"); return; }
+    if (newPass !== newPassConfirm) { setPassError("Passwords do not match"); return; }
+    setPassSaving(true);
+    try {
+      const res = await fetch(`${API}/auth/set-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHdrs },
+        body: JSON.stringify({ password: newPass, currentPassword: currentPass || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPassError(data.error || "Password change failed"); return; }
+      showToast("Password changed! Please sign in again.", "success");
+      setShowChangePass(false);
+      setCurrentPass(""); setNewPass(""); setNewPassConfirm(""); setPassError("");
+      setTimeout(() => logout(), 1200);
+    } catch { setPassError("Network error — please try again"); }
+    finally { setPassSaving(false); }
   };
 
   const handle2FAToggle = async () => {
@@ -774,6 +802,37 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
             </Accordion>
             <Accordion title="🛡️ Security" icon="shield-checkmark-outline" iconColor={C.success} iconBg={C.successSoft}>
               <View style={secCard.wrap}>
+                <Pressable onPress={() => { setShowChangePass(v => !v); setPassError(""); }} style={privRow.wrap} accessibilityRole="button" accessibilityLabel="Change password">
+                  <View style={[privRow.icon, { backgroundColor: C.primarySoft }]}><Ionicons name="key-outline" size={17} color={C.primary} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={privRow.label}>Change Password</Text>
+                    <Text style={privRow.sub}>Update your account password</Text>
+                  </View>
+                  <Ionicons name={showChangePass ? "chevron-up" : "chevron-forward"} size={15} color={C.textMuted} />
+                </Pressable>
+                {showChangePass && (
+                  <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
+                    <TextInput
+                      value={currentPass} onChangeText={setCurrentPass} secureTextEntry
+                      placeholder="Current password (leave blank if not set)" placeholderTextColor={C.textMuted} maxLength={128}
+                      style={{ borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontFamily: Font.regular, fontSize: 14, color: C.text, backgroundColor: C.surface }}
+                    />
+                    <TextInput
+                      value={newPass} onChangeText={setNewPass} secureTextEntry
+                      placeholder="New password (min 8 chars)" placeholderTextColor={C.textMuted} maxLength={128}
+                      style={{ borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontFamily: Font.regular, fontSize: 14, color: C.text, backgroundColor: C.surface }}
+                    />
+                    <TextInput
+                      value={newPassConfirm} onChangeText={setNewPassConfirm} secureTextEntry
+                      placeholder="Confirm new password" placeholderTextColor={C.textMuted} maxLength={128}
+                      style={{ borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontFamily: Font.regular, fontSize: 14, color: C.text, backgroundColor: C.surface }}
+                    />
+                    {passError ? <Text style={{ fontFamily: Font.regular, fontSize: 12, color: C.danger }}>{passError}</Text> : null}
+                    <Pressable onPress={handleChangePassword} disabled={passSaving} style={{ backgroundColor: C.primary, borderRadius: 8, paddingVertical: 10, alignItems: "center", opacity: passSaving ? 0.6 : 1 }} accessibilityRole="button" accessibilityLabel="Save new password">
+                      {passSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontFamily: Font.semiBold, fontSize: 14, color: "#fff" }}>Save Password</Text>}
+                    </Pressable>
+                  </View>
+                )}
                 {isBioEnabled && (
                   <View style={privRow.wrap}>
                     <View style={[privRow.icon, { backgroundColor: C.primarySoft }]}><Ionicons name="finger-print-outline" size={17} color={C.primary} /></View>

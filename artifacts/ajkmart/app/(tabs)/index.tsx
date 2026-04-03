@@ -1074,7 +1074,7 @@ const s = StyleSheet.create({
 
   announceBar: {
     backgroundColor: C.primary, flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 14, paddingBottom: 6, gap: 8,
+    paddingHorizontal: 14, paddingBottom: 6, gap: 8, zIndex: 10,
   },
   announceIcon: { width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
   announceTxt: { flex: 1, fontFamily: Font.medium, fontSize: 12, color: "#fff" },

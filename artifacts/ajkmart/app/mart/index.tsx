@@ -219,6 +219,8 @@ function MartScreenInner() {
   const showCartBanner = itemCount > 0 && cartType !== "mart" && cartType !== "none";
   const [clearBannerConfirm, setClearBannerConfirm] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const topPad = Math.max(insets.top, 12);
   const { focus, category: routeCategory } = useLocalSearchParams<{ focus?: string; category?: string }>();
   const [selectedCat, setSelectedCat] = useState<string | undefined>(routeCategory || undefined);
@@ -229,11 +231,17 @@ function MartScreenInner() {
     }
   }, [focus]);
 
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [search]);
+
   const { config: platformConfig } = usePlatformConfig();
   const appName = platformConfig.platform.appName;
 
   const { data: catData } = useGetCategories({ type: "mart" });
-  const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "mart", search: search || undefined, category: selectedCat });
+  const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "mart", search: debouncedSearch || undefined, category: selectedCat });
 
   const categories = catData?.categories || [];
   const products   = data?.products   || [];

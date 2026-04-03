@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -999,14 +999,17 @@ export default function OrdersScreen() {
   const [ridesData, setRidesData] = useState<any>(null);
   const [ridesLoading, setRidesLoading] = useState(false);
   const [ridesError, setRidesError] = useState(false);
+  const isFetchingRidesRef = useRef(false);
 
   const [pharmData, setPharmData] = useState<any>(null);
   const [pharmLoading, setPharmLoading] = useState(false);
   const [pharmError, setPharmError] = useState(false);
+  const isFetchingPharmRef = useRef(false);
 
   const [parcelData, setParcelData] = useState<any>(null);
   const [parcelLoading, setParcelLoading] = useState(false);
   const [parcelError, setParcelError] = useState(false);
+  const isFetchingParcelRef = useRef(false);
   const [serverNow, setServerNow] = useState<number>(Date.now());
 
   const fetchServerTime = useCallback(async () => {
@@ -1054,7 +1057,8 @@ export default function OrdersScreen() {
   }, [orderRules.cancelWindowMin, serverNow]);
 
   const fetchRides = useCallback(async () => {
-    if (!user?.id || !ridesActive) return;
+    if (!user?.id || !ridesActive || isFetchingRidesRef.current) return;
+    isFetchingRidesRef.current = true;
     setRidesLoading(true);
     try {
       const res = await fetch(`${API_BASE}/rides`, { headers: authHeaders });
@@ -1066,12 +1070,15 @@ export default function OrdersScreen() {
     } catch (err) {
       console.warn("[Orders] Rides fetch failed:", err instanceof Error ? err.message : String(err));
       setRidesError(true);
+    } finally {
+      setRidesLoading(false);
+      isFetchingRidesRef.current = false;
     }
-    setRidesLoading(false);
   }, [user?.id, token, ridesActive]);
 
   const fetchPharmacy = useCallback(async () => {
-    if (!user?.id || !pharmActive) return;
+    if (!user?.id || !pharmActive || isFetchingPharmRef.current) return;
+    isFetchingPharmRef.current = true;
     setPharmLoading(true);
     try {
       const res = await fetch(`${API_BASE}/pharmacy-orders`, { headers: authHeaders });
@@ -1083,12 +1090,15 @@ export default function OrdersScreen() {
     } catch (err) {
       console.warn("[Orders] Pharmacy fetch failed:", err instanceof Error ? err.message : String(err));
       setPharmError(true);
+    } finally {
+      setPharmLoading(false);
+      isFetchingPharmRef.current = false;
     }
-    setPharmLoading(false);
   }, [user?.id, token, pharmActive]);
 
   const fetchParcel = useCallback(async () => {
-    if (!user?.id || !parcelActive) return;
+    if (!user?.id || !parcelActive || isFetchingParcelRef.current) return;
+    isFetchingParcelRef.current = true;
     setParcelLoading(true);
     try {
       const res = await fetch(`${API_BASE}/parcel-bookings`, { headers: authHeaders });
@@ -1100,8 +1110,10 @@ export default function OrdersScreen() {
     } catch (err) {
       console.warn("[Orders] Parcel fetch failed:", err instanceof Error ? err.message : String(err));
       setParcelError(true);
+    } finally {
+      setParcelLoading(false);
+      isFetchingParcelRef.current = false;
     }
-    setParcelLoading(false);
   }, [user?.id, token, parcelActive]);
 
   const handleCancelRide = useCallback((ride: any) => {
