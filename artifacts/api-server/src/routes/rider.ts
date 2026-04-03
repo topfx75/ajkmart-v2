@@ -1950,7 +1950,7 @@ const locationRateStore = new Map<string, number>();
 const locationRateLimiter = rateLimit({
   windowMs: 60_000,
   max: 60,
-  keyGenerator: (req) => (req as any).riderId ?? getClientIp(req) ?? "unknown",
+  keyGenerator: (req) => req.riderId ?? getClientIp(req) ?? "unknown",
   standardHeaders: true,
   legacyHeaders: false,
   handler: (_req, res) => {
