@@ -41,9 +41,24 @@
       ]
     },
     "web": {
+      "bundler": "metro",
+      "output": "static",
       "favicon": "./assets/images/icon.png",
+      "themeColor": "#1A56DB",
+      "backgroundColor": "#ffffff",
       "meta": {
         "viewport": "width=device-width, initial-scale=1, viewport-fit=cover"
+      },
+      "pwa": {
+        "display": "standalone",
+        "startUrl": "/",
+        "shortName": "AJKMart",
+        "lang": "en",
+        "icon": {
+          "src": "./assets/images/icon.png",
+          "sizes": "192x192 512x512",
+          "type": "image/png"
+        }
       }
     },
     "plugins": [

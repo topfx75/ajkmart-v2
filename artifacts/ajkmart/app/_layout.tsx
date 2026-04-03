@@ -23,6 +23,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { registerServiceWorker } from "@/utils/register-service-worker";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
@@ -209,6 +210,11 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+
+  /* Register PWA service worker on web */
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

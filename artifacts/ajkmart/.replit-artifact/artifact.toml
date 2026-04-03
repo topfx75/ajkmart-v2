@@ -10,13 +10,12 @@ name = "expo"
 version = "1.0.0"
 
 [[services]]
-ensurePreviewReachable = "/status"
 name = "expo"
 paths = [ "/" ]
 localPort = 20716
 
 [services.development]
-run = "pnpm --filter @workspace/ajkmart run dev"
+run = "pnpm --filter @workspace/ajkmart run dev:web"
 
 [services.production]
 build = [ "pnpm", "--filter", "@workspace/ajkmart", "run", "build" ]

@@ -33,4 +33,31 @@ if (existingBlockList instanceof RegExp) {
   config.resolver.blockList = blockListRegex;
 }
 
+/* ── Web shims ────────────────────────────────────────────────────────────────
+   When building for web, redirect native-only modules to browser-safe shims.
+   Metro resolves '.web.js' automatically but the shim map gives us full control.
+   ──────────────────────────────────────────────────────────────────────────── */
+const WEB_SHIMS = {
+  "expo-secure-store":          path.resolve(projectRoot, "shims/expo-secure-store.web.js"),
+  "expo-task-manager":          path.resolve(projectRoot, "shims/expo-task-manager.web.js"),
+  "expo-local-authentication":  path.resolve(projectRoot, "shims/expo-local-authentication.web.js"),
+  "expo-haptics":               path.resolve(projectRoot, "shims/expo-haptics.web.js"),
+  "expo-file-system":           path.resolve(projectRoot, "shims/expo-file-system.web.js"),
+  "expo-file-system/legacy":    path.resolve(projectRoot, "shims/expo-file-system.web.js"),
+  "expo-sharing":               path.resolve(projectRoot, "shims/expo-sharing.web.js"),
+  "expo-location":              path.resolve(projectRoot, "shims/expo-location.web.js"),
+  "expo-battery":               path.resolve(projectRoot, "shims/expo-battery.web.js"),
+};
+
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === "web" && WEB_SHIMS[moduleName]) {
+    return { filePath: WEB_SHIMS[moduleName], type: "sourceFile" };
+  }
+  if (originalResolveRequest) {
+    return originalResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;
