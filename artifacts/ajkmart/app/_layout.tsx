@@ -31,7 +31,7 @@ import { ToastProvider } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const _domain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-if (_domain) setBaseUrl(`https://${_domain}`);
+if (_domain) setBaseUrl(`https://${_domain}/api`);
 
 SplashScreen.preventAutoHideAsync();
 

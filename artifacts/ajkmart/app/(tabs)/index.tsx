@@ -38,7 +38,6 @@ import {
   SkeletonBlock,
   EmptyState,
   CountdownTimer,
-  SearchHeader,
 } from "@/components/user-shared";
 import { getBanners, getTrending, getFlashDeals } from "@workspace/api-client-react";
 
@@ -60,21 +59,18 @@ function safeNavigate(route: string) {
   router.push(route as Href);
 }
 
-function QuickLaunchRow({ services, isGuest, T }: {
+function ServiceGrid({ services, isGuest, T }: {
   services: ServiceDefinition[];
   isGuest: boolean;
   T: (key: Parameters<typeof tDual>[0]) => string;
 }) {
-  const labelMap: Record<string, Parameters<typeof tDual>[0]> = {
-    food: "foodDelivery", rides: "bikeCarRide", pharmacy: "pharmacy", parcel: "parcel",
-  };
   const shortLabel: Record<string, string> = {
     mart: "Mart", food: "Food", rides: "Ride", pharmacy: "Pharma", parcel: "Parcel",
   };
 
   return (
-    <View style={ql.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ql.row}>
+    <View style={sg.wrap}>
+      <View style={sg.grid}>
         {services.map((svc) => {
           const label = shortLabel[svc.key] ?? svc.label;
           return (
@@ -84,44 +80,73 @@ function QuickLaunchRow({ services, isGuest, T }: {
                 if (isGuest) { router.push("/auth" as Href); return; }
                 safeNavigate(String(svc.route));
               }}
-              style={ql.item}
+              style={sg.item}
               accessibilityRole="button"
               accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
             >
-              <LinearGradient colors={svc.iconGradient} style={ql.circle}>
-                <Ionicons name={svc.iconFocused} size={26} color="#fff" />
+              <LinearGradient colors={svc.iconGradient} style={sg.circle}>
+                <Ionicons name={svc.iconFocused} size={22} color="#fff" />
                 {isGuest && (
-                  <View style={ql.lockBadge}>
-                    <Ionicons name="lock-closed" size={9} color="#fff" />
+                  <View style={sg.lockBadge}>
+                    <Ionicons name="lock-closed" size={7} color="#fff" />
                   </View>
                 )}
               </LinearGradient>
-              <Text style={ql.label} numberOfLines={1}>{label}</Text>
+              <Text style={sg.label} numberOfLines={1}>{label}</Text>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
-const ql = StyleSheet.create({
-  wrap: { marginTop: 20, marginBottom: 4 },
-  row: { paddingHorizontal: H_PAD, gap: 20 },
-  item: { alignItems: "center", gap: 8, width: 68 },
+const sg = StyleSheet.create({
+  wrap: { paddingHorizontal: H_PAD, paddingTop: 14, paddingBottom: 6 },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", gap: 0 },
+  item: {
+    alignItems: "center", gap: 6,
+    width: (W - H_PAD * 2) / 5,
+    paddingVertical: 8,
+  },
   circle: {
-    width: 64, height: 64, borderRadius: 22,
+    width: 48, height: 48, borderRadius: 16,
     alignItems: "center", justifyContent: "center",
-    ...shadows.md,
+    ...shadows.sm,
   },
   lockBadge: {
     position: "absolute", bottom: -2, right: -2,
-    width: 18, height: 18, borderRadius: 9,
+    width: 16, height: 16, borderRadius: 8,
     backgroundColor: C.textMuted,
     alignItems: "center", justifyContent: "center",
     borderWidth: 2, borderColor: C.surface,
   },
-  label: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.text, fontSize: 12, textAlign: "center" },
+  label: { fontFamily: Font.semiBold, color: C.text, fontSize: 11, textAlign: "center" },
+});
+
+function GuestSignInStrip() {
+  return (
+    <Pressable onPress={() => router.push("/auth" as Href)} style={gi.wrap} accessibilityRole="button">
+      <LinearGradient colors={["#0047B3", "#0066FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={gi.card}>
+        <View style={gi.iconWrap}>
+          <Ionicons name="person-circle-outline" size={20} color="#fff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={gi.title}>Sign In / Register</Text>
+          <Text style={gi.sub}>Sign in to place orders & track deliveries</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+const gi = StyleSheet.create({
+  wrap: { marginHorizontal: H_PAD, marginTop: 6, borderRadius: 14, overflow: "hidden" },
+  card: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 },
+  iconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+  title: { fontFamily: Font.bold, fontSize: 14, color: "#fff" },
+  sub: { fontFamily: Font.regular, fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 1 },
 });
 
 function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabBarHeight?: number }) {
@@ -206,8 +231,8 @@ function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabB
 }
 
 const tr = StyleSheet.create({
-  wrap: { marginHorizontal: H_PAD, marginTop: 16, gap: 10 },
-  card: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16 },
+  wrap: { marginHorizontal: H_PAD, marginTop: 10, gap: 8 },
+  card: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 },
   iconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
   label: { fontFamily: Font.bold, fontSize: 14, color: "#fff" },
   sub: { fontFamily: Font.regular, fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 1 },
@@ -219,10 +244,9 @@ function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: numbe
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${appName} Wallet, Rs. ${balance.toLocaleString()}, tap to open`} style={ws.wrap}>
       <LinearGradient colors={["#0047B3", "#0066FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ws.card}>
-        <View style={[ws.blob, { top: -30, right: 60 }]} />
         <View style={ws.left}>
           <View style={ws.iconBox}>
-            <Ionicons name="wallet" size={18} color="#fff" />
+            <Ionicons name="wallet" size={16} color="#fff" />
           </View>
           <View>
             <Text style={ws.lbl}>{appName} Wallet</Text>
@@ -239,76 +263,14 @@ function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: numbe
 }
 
 const ws = StyleSheet.create({
-  wrap: { marginHorizontal: H_PAD, borderRadius: 18, overflow: "hidden" },
-  card: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 16, borderRadius: 18, overflow: "hidden" },
-  blob: { position: "absolute", width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.06)" },
-  left: { flexDirection: "row", alignItems: "center", gap: 14 },
-  iconBox: { width: 42, height: 42, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
-  lbl: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.75)", marginBottom: 2 },
-  bal: { fontFamily: Font.bold, fontSize: 20, color: "#fff" },
-  topupBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fff", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  topupTxt: { fontFamily: Font.semiBold, fontSize: 13, color: C.primary },
-});
-
-function GuestHero({ services, appName }: { services: ServiceDefinition[]; appName: string }) {
-  return (
-    <View style={gh.wrap}>
-      <LinearGradient colors={["#0047B3", "#0066FF", "#4D94FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={gh.card}>
-        <View style={[gh.blob, { top: -40, right: -40, width: 160, height: 160 }]} />
-        <View style={[gh.blob, { bottom: -30, left: -20, width: 100, height: 100 }]} />
-
-        <View style={gh.topRow}>
-          <View style={gh.logoBox}>
-            <Ionicons name="bag-handle" size={24} color={C.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={gh.appName}>{appName}</Text>
-            <Text style={gh.tagline}>Your super app for everything</Text>
-          </View>
-        </View>
-
-        <Text style={gh.headline}>Shop, Ride & More —{"\n"}All in One Place</Text>
-
-        <View style={gh.pillRow}>
-          {[
-            { icon: "storefront-outline" as const, label: "Mart" },
-            { icon: "car-outline" as const, label: "Rides" },
-            { icon: "cube-outline" as const, label: "Parcel" },
-            { icon: "medical-outline" as const, label: "Pharma" },
-          ].slice(0, Math.max(2, services.length)).map((p, i) => (
-            <View key={i} style={gh.pill}>
-              <Ionicons name={p.icon} size={13} color="rgba(255,255,255,0.9)" />
-              <Text style={gh.pillTxt}>{p.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        <Pressable onPress={() => router.push("/auth" as Href)} style={gh.signInBtn} accessibilityRole="button">
-          <Ionicons name="person-circle-outline" size={18} color={C.primary} />
-          <Text style={gh.signInTxt}>Sign In / Register</Text>
-          <Ionicons name="arrow-forward" size={16} color={C.primary} />
-        </Pressable>
-        <Text style={gh.guestNote}>Browse freely — sign in to place orders</Text>
-      </LinearGradient>
-    </View>
-  );
-}
-
-const gh = StyleSheet.create({
-  wrap: { paddingHorizontal: H_PAD, marginBottom: 4 },
-  card: { borderRadius: 24, padding: 22, overflow: "hidden", gap: 14 },
-  blob: { position: "absolute", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.07)" },
-  topRow: { flexDirection: "row", alignItems: "center", gap: 14 },
-  logoBox: { width: 46, height: 46, borderRadius: 14, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  appName: { fontFamily: Font.bold, fontSize: 16, color: "#fff" },
-  tagline: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.7)" },
-  headline: { fontFamily: Font.bold, fontSize: 22, color: "#fff", lineHeight: 30 },
-  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  pill: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: "rgba(255,255,255,0.2)" },
-  pillTxt: { fontFamily: Font.medium, fontSize: 12, color: "rgba(255,255,255,0.95)" },
-  signInBtn: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 16, paddingVertical: 14, paddingHorizontal: 20, justifyContent: "center" },
-  signInTxt: { fontFamily: Font.bold, fontSize: 15, color: C.primary, flex: 1, textAlign: "center" },
-  guestNote: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.6)", textAlign: "center" },
+  wrap: { marginHorizontal: H_PAD, borderRadius: 14, overflow: "hidden" },
+  card: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 },
+  left: { flexDirection: "row", alignItems: "center", gap: 12 },
+  iconBox: { width: 36, height: 36, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
+  lbl: { fontFamily: Font.regular, fontSize: 11, color: "rgba(255,255,255,0.75)", marginBottom: 1 },
+  bal: { fontFamily: Font.bold, fontSize: 17, color: "#fff" },
+  topupBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fff", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12 },
+  topupTxt: { fontFamily: Font.semiBold, fontSize: 12, color: C.primary },
 });
 
 function DynamicBannerCarousel() {
@@ -326,7 +288,7 @@ function DynamicBannerCarousel() {
   if (items.length === 0) return null;
 
   return (
-    <View style={{ marginTop: 20 }}>
+    <View style={{ marginTop: 16 }}>
       <View style={ban.headerRow}>
         <Text style={ban.headerTitle}>Featured</Text>
         <Text style={ban.headerSub}>Promotions & offers</Text>
@@ -366,7 +328,7 @@ function DynamicBannerCarousel() {
                   </View>
                 </View>
                 <View style={ban.iconWrap}>
-                  <Ionicons name={(b.icon as any) || "pricetag"} size={56} color="rgba(255,255,255,0.15)" />
+                  <Ionicons name={(b.icon as any) || "pricetag"} size={48} color="rgba(255,255,255,0.15)" />
                 </View>
               </LinearGradient>
             </Pressable>
@@ -385,18 +347,18 @@ function DynamicBannerCarousel() {
 }
 
 const ban = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: H_PAD, marginBottom: 12 },
-  headerTitle: { fontFamily: Font.bold, fontSize: 17, color: C.text },
-  headerSub: { fontFamily: Font.regular, fontSize: 13, color: C.textMuted },
-  card: { borderRadius: 20, padding: 20, minHeight: 140, flexDirection: "row", alignItems: "center", overflow: "hidden" },
+  headerRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: H_PAD, marginBottom: 10 },
+  headerTitle: { fontFamily: Font.bold, fontSize: 16, color: C.text },
+  headerSub: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
+  card: { borderRadius: 16, padding: 18, minHeight: 120, flexDirection: "row", alignItems: "center", overflow: "hidden" },
   blob: { position: "absolute", borderRadius: 999, backgroundColor: "rgba(255,255,255,0.1)" },
-  title: { fontFamily: Font.bold, fontSize: 18, color: "#fff", marginBottom: 6 },
-  desc: { fontFamily: Font.regular, fontSize: 13, color: "rgba(255,255,255,0.85)", lineHeight: 18, marginBottom: 12 },
-  cta: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.2)", alignSelf: "flex-start", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
-  ctaTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "#fff" },
-  iconWrap: { marginLeft: 12 },
-  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 12 },
-  dot: { height: 6, borderRadius: 3 },
+  title: { fontFamily: Font.bold, fontSize: 16, color: "#fff", marginBottom: 4 },
+  desc: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.85)", lineHeight: 17, marginBottom: 10 },
+  cta: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.2)", alignSelf: "flex-start", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  ctaTxt: { fontFamily: Font.semiBold, fontSize: 12, color: "#fff" },
+  iconWrap: { marginLeft: 10 },
+  dotsRow: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 10 },
+  dot: { height: 5, borderRadius: 3 },
 });
 
 function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => string }) {
@@ -424,9 +386,9 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fd.row}>
           {[0,1,2,3].map(i => (
             <View key={i} style={fd.card}>
-              <SkeletonBlock w={56} h={56} r={18} />
-              <SkeletonBlock w={60} h={11} r={5} />
-              <SkeletonBlock w={50} h={18} r={10} />
+              <SkeletonBlock w={48} h={48} r={14} />
+              <SkeletonBlock w={50} h={10} r={4} />
+              <SkeletonBlock w={44} h={16} r={8} />
             </View>
           ))}
         </ScrollView>
@@ -461,10 +423,10 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
           >
             <View style={fd.imgWrap}>
               {item.image ? (
-                <Image source={{ uri: item.image }} style={{ width: 52, height: 52, borderRadius: 14 }} />
+                <Image source={{ uri: item.image }} style={{ width: 48, height: 48, borderRadius: 12 }} />
               ) : (
                 <View style={[fd.imgWrap, { backgroundColor: C.dangerSoft, alignItems: "center", justifyContent: "center" }]}>
-                  <Ionicons name="flash" size={24} color={C.danger} />
+                  <Ionicons name="flash" size={20} color={C.danger} />
                 </View>
               )}
             </View>
@@ -480,17 +442,17 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
 }
 
 const fd = StyleSheet.create({
-  section: { marginHorizontal: H_PAD, marginTop: 24, backgroundColor: C.surface, borderRadius: 20, padding: 16, ...shadows.sm },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
-  badge: { width: 28, height: 28, borderRadius: 9, backgroundColor: C.danger, alignItems: "center", justifyContent: "center" },
-  title: { fontFamily: Font.bold, fontSize: 16, color: C.text, flex: 1 },
+  section: { marginHorizontal: H_PAD, marginTop: 16, backgroundColor: C.surface, borderRadius: 16, padding: 14, ...shadows.sm },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+  badge: { width: 26, height: 26, borderRadius: 8, backgroundColor: C.danger, alignItems: "center", justifyContent: "center" },
+  title: { fontFamily: Font.bold, fontSize: 15, color: C.text, flex: 1 },
   timerWrap: { alignItems: "flex-end" },
-  row: { gap: 12 },
-  card: { width: 100, alignItems: "center", backgroundColor: C.background, borderRadius: 16, padding: 12, gap: 7, borderWidth: 1, borderColor: C.borderLight },
-  imgWrap: { width: 56, height: 56, borderRadius: 16 },
-  name: { fontFamily: Font.medium, fontSize: 11, color: C.text, textAlign: "center", lineHeight: 15 },
-  discBadge: { backgroundColor: C.dangerSoft, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  disc: { fontFamily: Font.bold, fontSize: 10, color: C.danger },
+  row: { gap: 10 },
+  card: { width: 90, alignItems: "center", backgroundColor: C.background, borderRadius: 14, padding: 10, gap: 6, borderWidth: 1, borderColor: C.borderLight },
+  imgWrap: { width: 48, height: 48, borderRadius: 14 },
+  name: { fontFamily: Font.medium, fontSize: 10, color: C.text, textAlign: "center", lineHeight: 14 },
+  discBadge: { backgroundColor: C.dangerSoft, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 16 },
+  disc: { fontFamily: Font.bold, fontSize: 9, color: C.danger },
 });
 
 function TrendingSection() {
@@ -504,7 +466,7 @@ function TrendingSection() {
   if (items.length === 0) return null;
 
   return (
-    <View style={{ marginTop: 24 }}>
+    <View style={{ marginTop: 16 }}>
       <View style={tr2.headerRow}>
         <Text style={tr2.title}>Trending Now</Text>
         <Text style={tr2.sub}>Popular products</Text>
@@ -513,7 +475,7 @@ function TrendingSection() {
         horizontal
         data={items}
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: H_PAD, gap: 12 }}
+        contentContainerStyle={{ paddingHorizontal: H_PAD, gap: 10 }}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <Pressable
@@ -524,7 +486,7 @@ function TrendingSection() {
               <Image source={{ uri: item.image }} style={tr2.img} />
             ) : (
               <View style={[tr2.img, { backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }]}>
-                <Ionicons name="cube-outline" size={28} color={C.textMuted} />
+                <Ionicons name="cube-outline" size={24} color={C.textMuted} />
               </View>
             )}
             <View style={tr2.info}>
@@ -532,7 +494,7 @@ function TrendingSection() {
               <Text style={tr2.price}>Rs. {Number(item.price).toLocaleString()}</Text>
               {item.rating ? (
                 <View style={tr2.ratingRow}>
-                  <Ionicons name="star" size={11} color={C.gold} />
+                  <Ionicons name="star" size={10} color={C.gold} />
                   <Text style={tr2.ratingTxt}>{Number(item.rating).toFixed(1)}</Text>
                 </View>
               ) : null}
@@ -545,32 +507,32 @@ function TrendingSection() {
 }
 
 const tr2 = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: H_PAD, marginBottom: 12 },
-  title: { fontFamily: Font.bold, fontSize: 17, color: C.text },
-  sub: { fontFamily: Font.regular, fontSize: 13, color: C.textMuted },
-  card: { width: 140, backgroundColor: C.surface, borderRadius: 16, overflow: "hidden", ...shadows.sm },
-  img: { width: 140, height: 120 },
-  info: { padding: 10, gap: 4 },
-  name: { fontFamily: Font.medium, fontSize: 12, color: C.text, lineHeight: 17 },
-  price: { fontFamily: Font.bold, fontSize: 13, color: C.primary },
+  headerRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: H_PAD, marginBottom: 10 },
+  title: { fontFamily: Font.bold, fontSize: 16, color: C.text },
+  sub: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
+  card: { width: 130, backgroundColor: C.surface, borderRadius: 14, overflow: "hidden", ...shadows.sm },
+  img: { width: 130, height: 100 },
+  info: { padding: 8, gap: 3 },
+  name: { fontFamily: Font.medium, fontSize: 11, color: C.text, lineHeight: 15 },
+  price: { fontFamily: Font.bold, fontSize: 12, color: C.primary },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 3 },
-  ratingTxt: { fontFamily: Font.regular, fontSize: 11, color: C.textSecondary },
+  ratingTxt: { fontFamily: Font.regular, fontSize: 10, color: C.textSecondary },
 });
 
 function HomeSkeleton() {
   return (
-    <View style={{ paddingHorizontal: H_PAD, gap: spacing.md, marginTop: spacing.md }}>
-      <View style={{ flexDirection: "row", gap: 20 }}>
+    <View style={{ paddingHorizontal: H_PAD, gap: spacing.sm, marginTop: spacing.sm }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 0 }}>
         {Array.from({ length: 5 }, (_, i) => (
-          <View key={i} style={{ alignItems: "center", gap: 8 }}>
-            <SkeletonBlock w={64} h={64} r={22} />
-            <SkeletonBlock w={44} h={10} r={4} />
+          <View key={i} style={{ alignItems: "center", gap: 6, width: (W - H_PAD * 2) / 5, paddingVertical: 8 }}>
+            <SkeletonBlock w={48} h={48} r={16} />
+            <SkeletonBlock w={40} h={10} r={4} />
           </View>
         ))}
       </View>
-      <SkeletonBlock w="100%" h={64} r={18} />
-      <SkeletonBlock w="100%" h={140} r={20} />
-      <SkeletonBlock w="100%" h={120} r={20} />
+      <SkeletonBlock w="100%" h={52} r={14} />
+      <SkeletonBlock w="100%" h={120} r={16} />
+      <SkeletonBlock w="100%" h={100} r={16} />
     </View>
   );
 }
@@ -610,9 +572,6 @@ export default function HomeScreen() {
 
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
-  const ff = getFontFamily(language);
-  const urduText = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.regular, lineHeight: 30 } : base;
-  const urduBold = (base: object) => ff.isUrdu ? { ...base, fontFamily: ff.bold, lineHeight: 44 } : base;
 
   useEffect(() => {
     Animated.timing(hdOp, { toValue: 1, duration: 400, useNativeDriver: true }).start();
@@ -621,15 +580,14 @@ export default function HomeScreen() {
   const activeServices = getActiveServices(features);
   const noServicesActive = activeServices.length === 0;
   const isGuest = !user?.id;
-
   const walletBalance = (user as any)?.walletBalance ?? 0;
 
   return (
     <View style={s.root}>
       {announcement && !announceDismissed && (
-        <View style={s.announceBar} accessibilityRole="alert">
+        <View style={[s.announceBar, { paddingTop: topPad }]} accessibilityRole="alert">
           <View style={s.announceIcon}>
-            <Ionicons name="megaphone" size={12} color="#fff" />
+            <Ionicons name="megaphone" size={11} color="#fff" />
           </View>
           <Text style={s.announceTxt} numberOfLines={1}>{announcement}</Text>
           <Pressable
@@ -648,44 +606,45 @@ export default function HomeScreen() {
 
       <Animated.View style={{ opacity: hdOp }}>
         <LinearGradient
-          colors={["#0047B3", "#0066FF", "#4D94FF"]}
+          colors={["#0047B3", "#0066FF", "#2E80FF"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[s.header, { paddingTop: topPad + 10 }]}
+          style={[s.header, { paddingTop: (announcement && !announceDismissed) ? 8 : topPad + 8 }]}
         >
           <View style={s.hdrRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={urduText(s.greeting)}>
-                {user?.name ? `Salam, ${user.name.split(" ")[0]} 👋` : "Salam! 👋"}
-              </Text>
-              <Text style={urduBold(s.hdrTitle)} accessibilityRole="header">
-                {T("whatDoYouWant")}
-              </Text>
-              <View style={s.locRow}>
-                <Ionicons name="location" size={12} color="rgba(255,255,255,0.7)" />
-                <Text style={s.locTxt}>{platformConfig.platform.businessAddress}</Text>
-              </View>
-            </View>
-            <Pressable
-              onPress={() => router.push("/cart" as Href)}
-              style={s.cartBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`Cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}
-            >
-              <Ionicons name="cart-outline" size={22} color="#fff" />
-              {itemCount > 0 && (
-                <View style={s.cartBadge}>
-                  <Text style={s.cartBadgeTxt}>{itemCount > 99 ? "99+" : itemCount}</Text>
-                </View>
-              )}
+            <Pressable style={s.locBtn} onPress={() => {}}>
+              <Ionicons name="location" size={14} color="#fff" />
+              <Text style={s.locTxt} numberOfLines={1}>{platformConfig.platform.businessAddress || "AJK, Pakistan"}</Text>
+              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
             </Pressable>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable
+                onPress={() => router.push("/cart" as Href)}
+                style={s.iconBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}
+              >
+                <Ionicons name="cart-outline" size={20} color="#fff" />
+                {itemCount > 0 && (
+                  <View style={s.cartBadge}>
+                    <Text style={s.cartBadgeTxt}>{itemCount > 99 ? "99+" : itemCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
           </View>
 
-          <SearchHeader
-            placeholder={T("search")}
+          <Pressable
             onPress={() => router.push("/search")}
-            onFilterPress={() => router.push("/search")}
-          />
+            style={s.searchBar}
+            accessibilityRole="search"
+            accessibilityLabel={T("search")}
+          >
+            <Ionicons name="search" size={16} color={C.textMuted} />
+            <Text style={s.searchText}>{T("search")}</Text>
+            <View style={s.searchDivider} />
+            <Ionicons name="camera-outline" size={16} color={C.textMuted} />
+          </Pressable>
         </LinearGradient>
       </Animated.View>
 
@@ -696,9 +655,9 @@ export default function HomeScreen() {
         contentContainerStyle={s.scroll}
       >
         {contentBanner ? (
-          <View style={s.announceBanner}>
-            <Ionicons name="megaphone-outline" size={14} color={C.primary} />
-            <Text style={s.announceBannerTxt} numberOfLines={1}>{contentBanner}</Text>
+          <View style={s.promoBanner}>
+            <Ionicons name="gift-outline" size={14} color={C.primary} />
+            <Text style={s.promoBannerTxt} numberOfLines={1}>{contentBanner}</Text>
           </View>
         ) : null}
 
@@ -714,16 +673,16 @@ export default function HomeScreen() {
           />
         ) : (
           <>
-            {isGuest && <GuestHero services={activeServices} appName={appName} />}
+            <ServiceGrid services={activeServices} isGuest={isGuest} T={T} />
 
-            <QuickLaunchRow services={activeServices} isGuest={isGuest} T={T} />
+            {isGuest && <GuestSignInStrip />}
 
             {!isGuest && user?.id && (
               <ActiveTrackerStrip userId={user.id} />
             )}
 
             {!isGuest && walletBalance >= 0 && (
-              <View style={{ marginTop: 16 }}>
+              <View style={{ marginTop: 10 }}>
                 <WalletStrip
                   balance={walletBalance}
                   onPress={() => router.push("/(tabs)/wallet" as Href)}
@@ -738,7 +697,7 @@ export default function HomeScreen() {
 
             <TrendingSection />
 
-            <View style={{ height: 16 }} />
+            <View style={{ height: 12 }} />
           </>
         )}
 
@@ -753,7 +712,7 @@ export default function HomeScreen() {
           accessibilityLabel={`Cart — ${itemCount} item${itemCount > 1 ? "s" : ""}`}
         >
           <LinearGradient colors={["#0047B3", "#0066FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.cartFabGrad}>
-            <Ionicons name="bag" size={20} color="#fff" />
+            <Ionicons name="bag" size={18} color="#fff" />
             <Text style={s.cartFabTxt}>Cart</Text>
             <View style={s.cartFabBadge}>
               <Text style={s.cartFabBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
@@ -768,50 +727,55 @@ export default function HomeScreen() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
 
-  header: { paddingHorizontal: H_PAD, paddingBottom: 18 },
-  hdrRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 16 },
-  greeting: { fontFamily: Font.regular, fontSize: 13, color: "rgba(255,255,255,0.8)", marginBottom: 3 },
-  hdrTitle: { fontFamily: Font.bold, fontSize: 22, color: "#fff", marginBottom: 5, lineHeight: 28 },
-  locRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  locTxt: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.65)" },
+  header: { paddingHorizontal: H_PAD, paddingBottom: 12 },
+  hdrRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  locBtn: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1, marginRight: 12 },
+  locTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "#fff", flex: 1 },
 
-  cartBtn: {
-    width: 46, height: 46, borderRadius: 15,
+  iconBtn: {
+    width: 38, height: 38, borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.15)",
     alignItems: "center", justifyContent: "center",
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.2)",
   },
   cartBadge: {
-    position: "absolute", top: -5, right: -5,
-    backgroundColor: C.accent, borderRadius: 9,
-    minWidth: 18, height: 18,
+    position: "absolute", top: -4, right: -4,
+    backgroundColor: "#FF3B30", borderRadius: 8,
+    minWidth: 16, height: 16,
     alignItems: "center", justifyContent: "center",
-    paddingHorizontal: 3, borderWidth: 1.5, borderColor: "#fff",
+    paddingHorizontal: 3, borderWidth: 1.5, borderColor: "#0066FF",
   },
   cartBadgeTxt: { fontFamily: Font.bold, fontSize: 9, color: "#fff" },
 
+  searchBar: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "#fff", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  searchText: { flex: 1, fontFamily: Font.regular, fontSize: 13, color: C.textMuted },
+  searchDivider: { width: 1, height: 18, backgroundColor: C.borderLight },
+
   cartFab: { position: "absolute", right: H_PAD, borderRadius: 99, overflow: "hidden", ...shadows.xl },
-  cartFabGrad: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 99 },
-  cartFabTxt: { fontFamily: Font.bold, fontSize: 14, color: "#fff" },
-  cartFabBadge: { backgroundColor: C.accent, borderRadius: 12, minWidth: 22, height: 22, alignItems: "center", justifyContent: "center", paddingHorizontal: 5, borderWidth: 2, borderColor: C.primary },
+  cartFabGrad: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, paddingHorizontal: 18, borderRadius: 99 },
+  cartFabTxt: { fontFamily: Font.bold, fontSize: 13, color: "#fff" },
+  cartFabBadge: { backgroundColor: "#FF3B30", borderRadius: 11, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 4, borderWidth: 2, borderColor: C.primary },
   cartFabBadgeTxt: { fontFamily: Font.bold, fontSize: 10, color: "#fff" },
 
   announceBar: {
     backgroundColor: C.primary, flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 14, paddingVertical: 8, gap: 10,
+    paddingHorizontal: 14, paddingBottom: 6, gap: 8,
   },
-  announceIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
-  announceTxt: { flex: 1, fontFamily: Font.medium, fontSize: 13, color: "#fff" },
+  announceIcon: { width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  announceTxt: { flex: 1, fontFamily: Font.medium, fontSize: 12, color: "#fff" },
   announceClose: { padding: 4 },
 
-  announceBanner: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    marginHorizontal: H_PAD, marginTop: 14, marginBottom: 4,
-    backgroundColor: C.primarySoft, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 10,
+  promoBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginHorizontal: H_PAD, marginTop: 10, marginBottom: 2,
+    backgroundColor: C.primarySoft, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
     borderWidth: 1, borderColor: C.blueLightBorder,
   },
-  announceBannerTxt: { flex: 1, fontFamily: Font.medium, fontSize: 13, color: C.primary },
+  promoBannerTxt: { flex: 1, fontFamily: Font.medium, fontSize: 12, color: C.primary },
 
   scroll: { paddingBottom: 0 },
 });

@@ -353,7 +353,9 @@ async function attemptTokenRefresh(baseUrl: string | null): Promise<TokenRefresh
   const refreshToken = await _refreshTokenGetter();
   if (!refreshToken) return null;
 
-  const refreshUrl = baseUrl ? `${baseUrl}/api/auth/refresh` : "/api/auth/refresh";
+  const refreshUrl = baseUrl
+    ? (baseUrl.endsWith("/api") ? `${baseUrl}/auth/refresh` : `${baseUrl}/api/auth/refresh`)
+    : "/api/auth/refresh";
   try {
     const res = await fetch(refreshUrl, {
       method: "POST",
