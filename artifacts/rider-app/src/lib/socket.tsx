@@ -16,27 +16,50 @@ export function useSocket() {
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const socketRef = useRef<Socket | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     const token = api.getToken();
     if (!token || !user?.id) return;
 
-    const socket = io(window.location.origin, {
+    const s = io(window.location.origin, {
       path: "/api/socket.io",
       auth: { token },
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 2000,
+      reconnectionDelayMax: 30000,
+      reconnectionAttempts: 20,
     });
-    socketRef.current = socket;
+    socketRef.current = s;
+    setSocket(s);
 
-    socket.on("connect", () => setConnected(true));
-    socket.on("disconnect", () => setConnected(false));
-    socket.on("connect_error", () => setConnected(false));
+    s.on("connect", () => setConnected(true));
+    s.on("disconnect", () => setConnected(false));
+    s.on("connect_error", () => setConnected(false));
 
-    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+    const tokenRefreshInterval = setInterval(() => {
+      const freshToken = api.getToken();
+      if (freshToken && freshToken !== (s.auth as { token?: string })?.token) {
+        (s.auth as { token?: string }).token = freshToken;
+      }
+    }, 10_000);
+
+    return () => {
+      clearInterval(tokenRefreshInterval);
+      s.disconnect();
+      socketRef.current = null;
+      setSocket(null);
+      setConnected(false);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    const s = socketRef.current;
+    if (!s || !user?.isOnline) return;
+
     let batteryLevel: number | undefined;
     type BatteryManager = { level: number; addEventListener: (event: string, cb: () => void) => void };
     (navigator as unknown as { getBattery?: () => Promise<BatteryManager> }).getBattery?.()
@@ -45,34 +68,23 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         batt.addEventListener("levelchange", () => { batteryLevel = batt.level; });
       }).catch(() => {});
 
-    if (user?.isOnline) {
-      const sendHeartbeat = () => {
-        if (socket.connected) {
-          socket.emit("rider:heartbeat", { batteryLevel, isOnline: true, timestamp: new Date().toISOString() });
-        }
-      };
-      socket.on("connect", sendHeartbeat);
-      heartbeatInterval = setInterval(sendHeartbeat, 30_000);
-    }
-
-    const tokenRefreshInterval = setInterval(() => {
-      const freshToken = api.getToken();
-      if (freshToken && freshToken !== (socket.auth as { token?: string })?.token) {
-        (socket.auth as { token?: string }).token = freshToken;
+    const sendHeartbeat = () => {
+      if (s.connected) {
+        s.emit("rider:heartbeat", { batteryLevel, isOnline: true, timestamp: new Date().toISOString() });
       }
-    }, 10_000);
+    };
+    s.on("connect", sendHeartbeat);
+    sendHeartbeat();
+    const heartbeatInterval = setInterval(sendHeartbeat, 30_000);
 
     return () => {
-      clearInterval(tokenRefreshInterval);
-      if (heartbeatInterval) clearInterval(heartbeatInterval);
-      socket.disconnect();
-      socketRef.current = null;
-      setConnected(false);
+      clearInterval(heartbeatInterval);
+      s.off("connect", sendHeartbeat);
     };
-  }, [user?.id, user?.isOnline]);
+  }, [user?.isOnline, socket]);
 
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current, connected }}>
+    <SocketContext.Provider value={{ socket, connected }}>
       {children}
     </SocketContext.Provider>
   );

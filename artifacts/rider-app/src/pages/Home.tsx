@@ -9,7 +9,7 @@ import { tDual } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { playRequestSound, unlockAudio, silenceFor, isSilenced, unsilence, getSilenceRemaining, getSilenceMode, setSilenceMode } from "../lib/notificationSound";
 import { logRideEvent } from "../lib/rideUtils";
-import { enqueue } from "../lib/gpsQueue";
+import { enqueue, registerDrainHandler, type QueuedPing } from "../lib/gpsQueue";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -352,6 +352,7 @@ export default function Home() {
   const lastToggleRef = useRef<number>(0);
 
   const [showOfflineConfirm, setShowOfflineConfirm] = useState(false);
+  const [zoneWarning, setZoneWarning] = useState<string | null>(null);
 
   const doActualToggle = async () => {
     const now = Date.now();
@@ -360,8 +361,13 @@ export default function Home() {
     const newStatus = !effectiveOnline;
     setOptimisticOnline(newStatus);
     try {
-      await api.setOnline(newStatus);
+      const result = await api.setOnline(newStatus);
       if (!isMountedRef.current) return;
+      if (result?.serviceZoneWarning) {
+        setZoneWarning(result.serviceZoneWarning);
+      } else {
+        setZoneWarning(null);
+      }
       await refreshUser().catch(() => {});
       if (!isMountedRef.current) return;
       showToast(newStatus ? T("youAreNowOnline") : T("youAreNowOffline"), "success");
@@ -616,6 +622,24 @@ export default function Home() {
     };
   }, [user?.isOnline, hasActiveTask, user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    const unregister = registerDrainHandler(async (pings: QueuedPing[]) => {
+      await api.batchLocation(pings.map(p => ({
+        timestamp: p.timestamp,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        accuracy: p.accuracy,
+        speed: p.speed,
+        heading: p.heading,
+        batteryLevel: p.batteryLevel,
+        mockProvider: p.mockProvider,
+        action: p.action,
+      })));
+    });
+    return unregister;
+  }, [user?.id]);
+
   /* Heartbeat is managed globally in App.tsx so it runs on all pages. */
 
   const orders = allOrders.filter((o: any) => !dismissed.has(o.id));
@@ -778,9 +802,17 @@ export default function Home() {
       )}
 
       {!socketConnected && effectiveOnline && (
-        <div className="fixed top-0 left-0 right-0 z-40 bg-red-600 text-white text-xs font-bold text-center py-1.5 flex items-center justify-center gap-1.5 shadow-lg"
+        <div className="fixed top-0 left-0 right-0 z-40 bg-red-600 text-white text-xs font-bold text-center py-1.5 flex items-center justify-center gap-1.5 shadow-lg animate-pulse"
           style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 6px)" }}>
           <WifiOff size={13}/> Connection lost — new requests may not appear
+        </div>
+      )}
+
+      {zoneWarning && effectiveOnline && (
+        <div className="fixed top-0 left-0 right-0 z-[39] bg-amber-500 text-white text-xs font-bold text-center py-1.5 flex items-center justify-center gap-1.5 shadow-lg"
+          style={{ paddingTop: (!socketConnected ? "calc(env(safe-area-inset-top, 0px) + 30px)" : "calc(env(safe-area-inset-top, 0px) + 6px)") }}>
+          <MapPin size={13}/> {zoneWarning}
+          <button onClick={() => setZoneWarning(null)} className="ml-2 bg-white/20 rounded-full p-0.5"><X size={11}/></button>
         </div>
       )}
 

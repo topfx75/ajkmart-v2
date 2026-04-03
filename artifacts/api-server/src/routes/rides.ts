@@ -134,41 +134,46 @@ async function broadcastRide(rideId: string) {
       userId: liveLocationsTable.userId,
       latitude: liveLocationsTable.latitude,
       longitude: liveLocationsTable.longitude,
+      isActive: usersTable.isActive,
+      isBanned: usersTable.isBanned,
+      isRestricted: usersTable.isRestricted,
+      vehicleType: usersTable.vehicleType,
     }).from(liveLocationsTable)
+      .innerJoin(usersTable, eq(liveLocationsTable.userId, usersTable.id))
       .where(and(
         eq(liveLocationsTable.role, "rider"),
         gte(liveLocationsTable.updatedAt, new Date(Date.now() - 5 * 60 * 1000)),
+        eq(usersTable.isActive, true),
+        eq(usersTable.isBanned, false),
+        eq(usersTable.isRestricted, false),
       ));
 
-    const alreadyNotified = await db.select({ riderId: rideNotifiedRidersTable.riderId })
-      .from(rideNotifiedRidersTable)
-      .where(eq(rideNotifiedRidersTable.rideId, rideId));
+    const [alreadyNotified, busyRiders] = await Promise.all([
+      db.select({ riderId: rideNotifiedRidersTable.riderId })
+        .from(rideNotifiedRidersTable)
+        .where(eq(rideNotifiedRidersTable.rideId, rideId)),
+      db.select({ riderId: ridesTable.riderId })
+        .from(ridesTable)
+        .where(sql`${ridesTable.riderId} IS NOT NULL AND ${ridesTable.status} IN ('accepted', 'arrived', 'in_transit')`),
+    ]);
     const alreadySet = new Set(alreadyNotified.map(r => r.riderId));
+    const busySet = new Set(busyRiders.map(r => r.riderId));
 
     let notifiedCount = 0;
+    const rideVt = ride.type ? normalizeVehicleType(ride.type) : null;
 
     for (const r of onlineRiders) {
       if (alreadySet.has(r.userId)) continue;
+      if (busySet.has(r.userId)) continue;
+      if (rideVt) {
+        const riderVt = normalizeVehicleType(r.vehicleType);
+        if (!riderVt || riderVt !== rideVt) continue;
+      }
       const rLat = parseFloat(String(r.latitude));
       const rLng = parseFloat(String(r.longitude));
       if (!Number.isFinite(rLat) || !Number.isFinite(rLng)) continue;
       const dist = calcDistance(pickupLat, pickupLng, rLat, rLng);
       if (dist > radiusKm) continue;
-
-      const [user] = await db.select({ isActive: usersTable.isActive, isBanned: usersTable.isBanned, isRestricted: usersTable.isRestricted, vehicleType: usersTable.vehicleType })
-        .from(usersTable).where(eq(usersTable.id, r.userId)).limit(1);
-      if (!user || !user.isActive || user.isBanned || user.isRestricted) continue;
-      if (ride.type) {
-        const rideVt = normalizeVehicleType(ride.type);
-        const riderVt = normalizeVehicleType(user.vehicleType);
-        if (!riderVt || riderVt !== rideVt) continue;
-      }
-
-      const activeRiderRides = await db.select({ id: ridesTable.id })
-        .from(ridesTable)
-        .where(and(eq(ridesTable.riderId, r.userId), sql`status IN ('accepted', 'arrived', 'in_transit')`))
-        .limit(1);
-      if (activeRiderRides.length > 0) continue;
 
       const etaMin = Math.max(1, Math.round((dist / avgSpeed) * 60));
       const fareStr = parseFloat(ride.fare ?? "0").toFixed(0);

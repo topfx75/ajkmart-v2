@@ -13,7 +13,7 @@ import { useAuth } from "../lib/auth";
 import { useLanguage } from "../lib/useLanguage";
 import { useSocket } from "../lib/socket";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { enqueue } from "../lib/gpsQueue";
+import { enqueue, registerDrainHandler, type QueuedPing } from "../lib/gpsQueue";
 
 function SkeletonBlock({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded-xl ${className || ""}`} />;
@@ -704,6 +704,24 @@ export default function Active() {
 
     return () => navigator.geolocation.clearWatch(watchId);
   }, [!!data?.order, !!data?.ride, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const unregister = registerDrainHandler(async (pings: QueuedPing[]) => {
+      await api.batchLocation(pings.map(p => ({
+        timestamp: p.timestamp,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        accuracy: p.accuracy,
+        speed: p.speed,
+        heading: p.heading,
+        batteryLevel: p.batteryLevel,
+        mockProvider: p.mockProvider,
+        action: p.action,
+      })));
+    });
+    return unregister;
+  }, [user?.id]);
 
   const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

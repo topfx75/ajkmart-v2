@@ -34,16 +34,35 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
+const MAX_QUEUE_SIZE = 500;
+
 export async function enqueue(ping: QueuedPing): Promise<void> {
   try {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
       const store = tx.objectStore(STORE);
-      const req = store.put(ping);
-      req.onsuccess = () => resolve();
-      req.onerror   = () => reject(req.error);
-      tx.oncomplete = () => db.close();
+      const countReq = store.count();
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+      tx.onabort = () => { db.close(); reject(tx.error); };
+      countReq.onsuccess = () => {
+        if (countReq.result >= MAX_QUEUE_SIZE) {
+          const idx = store.index("timestamp");
+          const cursorReq = idx.openCursor();
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (cursor) {
+              cursor.delete();
+            }
+            store.put(ping);
+          };
+          cursorReq.onerror = () => tx.abort();
+        } else {
+          store.put(ping);
+        }
+      };
+      countReq.onerror = () => tx.abort();
     });
   } catch { /* swallow — offline queue is best-effort */ }
 }

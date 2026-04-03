@@ -12,6 +12,7 @@ import { z } from "zod";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { sendSuccess, sendCreated, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendUnauthorized, sendValidationError, sendTooManyRequests } from "../lib/response.js";
+import { isInServiceZone } from "../lib/geofence.js";
 
 function normalizeVehicleType(raw: string | null | undefined): string {
   const v = (raw ?? "").trim().toLowerCase();
@@ -245,6 +246,31 @@ router.patch("/online", async (req, res) => {
   if (isOnline && (riderUser.approvalStatus ?? "pending") !== "approved") {
     sendForbidden(res, "Your account is pending re-verification. You cannot go online until an admin approves your profile."); return;
   }
+  let serviceZoneWarning: string | undefined;
+  if (isOnline) {
+    try {
+      const reqLat = typeof req.body.latitude === "number" ? req.body.latitude : undefined;
+      const reqLng = typeof req.body.longitude === "number" ? req.body.longitude : undefined;
+      let checkLat = reqLat;
+      let checkLng = reqLng;
+      if (checkLat === undefined || checkLng === undefined) {
+        const [loc] = await db.select({ latitude: liveLocationsTable.latitude, longitude: liveLocationsTable.longitude })
+          .from(liveLocationsTable).where(eq(liveLocationsTable.userId, riderId)).limit(1);
+        if (loc) {
+          checkLat = parseFloat(String(loc.latitude));
+          checkLng = parseFloat(String(loc.longitude));
+        }
+      }
+      if (checkLat !== undefined && checkLng !== undefined && Number.isFinite(checkLat) && Number.isFinite(checkLng)
+          && !(checkLat === 0 && checkLng === 0)) {
+        const zoneCheck = await isInServiceZone(checkLat, checkLng, "rides");
+        if (!zoneCheck.allowed) {
+          serviceZoneWarning = "You are currently outside the active service area. You may not receive ride requests until you move into a service zone.";
+        }
+      }
+    } catch { /* non-critical — don't block going online */ }
+  }
+
   await db.update(usersTable).set({ isOnline: !!isOnline, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
 
   /* When going online, immediately upsert live_locations with last known
@@ -303,7 +329,7 @@ router.patch("/online", async (req, res) => {
     });
   } catch { /* non-critical */ }
 
-  sendSuccess(res, { isOnline: !!isOnline });
+  sendSuccess(res, { isOnline: !!isOnline, ...(serviceZoneWarning ? { serviceZoneWarning } : {}) });
 });
 
 /* ── PATCH /rider/profile — Update profile ── */
@@ -1136,7 +1162,8 @@ router.post("/rides/:id/accept", async (req, res) => {
   emitRideOtp(updated.userId, updated.id, tripOtp);
 
   emitRideDispatchUpdate({ rideId: updated.id, action: "accepted", status: "accepted" });
-  sendSuccess(res, { ...updated, fare: safeNum(updated.fare), distance: safeNum(updated.distance), tripOtp });
+  const { tripOtp: _omitOtp, ...rideWithoutOtp } = updated;
+  sendSuccess(res, { ...rideWithoutOtp, fare: safeNum(updated.fare), distance: safeNum(updated.distance) });
 });
 
 /* ── POST /rider/rides/:id/verify-otp — Verify customer OTP before starting trip ── */
