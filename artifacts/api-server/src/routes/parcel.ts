@@ -10,6 +10,22 @@ import { t, type TranslationKey } from "@workspace/i18n";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
 import { isInServiceZone } from "../lib/geofence.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
+import { z } from "zod";
+
+const createParcelSchema = z.object({
+  senderName: z.string().min(1, "senderName is required").max(100, "senderName too long"),
+  senderPhone: z.string().min(7, "senderPhone is required").max(20, "senderPhone too long"),
+  pickupAddress: z.string().min(1, "pickupAddress is required").max(500, "pickupAddress too long"),
+  receiverName: z.string().min(1, "receiverName is required").max(100, "receiverName too long"),
+  receiverPhone: z.string().min(7, "receiverPhone is required").max(20, "receiverPhone too long"),
+  dropAddress: z.string().min(1, "dropAddress is required").max(500, "dropAddress too long"),
+  parcelType: z.string().min(1, "parcelType is required").max(50, "parcelType too long"),
+  paymentMethod: z.enum(["cash", "wallet", "cod"], { errorMap: () => ({ message: "paymentMethod must be cash, wallet, or cod" }) }),
+  weight: z.number().positive().max(500, "weight cannot exceed 500 kg").optional(),
+  description: z.string().max(500, "description too long").optional(),
+  pickupLat: z.number().min(-90).max(90).optional(),
+  pickupLng: z.number().min(-180).max(180).optional(),
+});
 
 const router: IRouter = Router();
 
@@ -81,17 +97,19 @@ router.get("/:id", customerAuth, async (req, res) => {
 
 router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
+
+  const parsed = createParcelSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    sendValidationError(res, firstError);
+    return;
+  }
   const {
     senderName, senderPhone, pickupAddress,
     receiverName, receiverPhone, dropAddress,
     parcelType, weight, description, paymentMethod,
     pickupLat, pickupLng,
-  } = req.body;
-
-  if (!senderName || !senderPhone || !pickupAddress || !receiverName || !receiverPhone || !dropAddress || !parcelType || !paymentMethod) {
-    sendValidationError(res, "Missing required fields");
-    return;
-  }
+  } = parsed.data;
 
   const s = await getPlatformSettings();
 
@@ -241,7 +259,7 @@ router.post("/", customerAuth, async (req, res) => {
 
       sendCreated(res, { ...mapBooking(booking), gstAmount });
     } catch (e: unknown) {
-      sendValidationError(res, (e as Error).message);
+      sendValidationError(res, (e instanceof Error ? e.message : "An error occurred processing your parcel booking"));
     }
     return;
   }
@@ -324,9 +342,12 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       });
       return updated;
     }).catch((err: unknown) => {
-      const e = err as { httpStatus?: number; message?: string };
-      if (e?.httpStatus) { sendError(res, e.message ?? "Cancel failed", e.httpStatus); }
-      else { sendError(res, "Cancel failed", 500); }
+      if (err && typeof err === "object" && "httpStatus" in err) {
+        const e = err as { httpStatus: number; message?: string };
+        sendError(res, e.message ?? "Cancel failed", e.httpStatus);
+      } else {
+        sendError(res, "Cancel failed", 500);
+      }
       return undefined;
     });
     if (!cancelledBooking) return;

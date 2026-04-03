@@ -12,10 +12,30 @@ import { getIO } from "../lib/socketio.js";
 import { z } from "zod";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 
+type IdempotencyEntry =
+  | { state: "in_flight"; ts: number }
+  | { state: "success"; ts: number; statusCode: number; body: unknown }
+  | { state: "failed"; ts: number };
+
+/* In-memory idempotency store for deposit requests.
+   - "in_flight": concurrent duplicate → 409
+   - "success": replays the original response body and status code
+   - "failed": key is removed so the client can retry with the same key
+   TTL = 10 min; swept every 5 min. */
+const depositIdempotencyCache = new Map<string, IdempotencyEntry>();
+const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of depositIdempotencyCache) {
+    if (now - entry.ts > IDEMPOTENCY_TTL_MS) depositIdempotencyCache.delete(key);
+  }
+}, 5 * 60 * 1000);
+
 const depositSchema = z.object({
   amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
   paymentMethod: z.string().min(1, "paymentMethod required"),
   transactionId: z.string().min(1, "transactionId required"),
+  idempotencyKey: z.string().uuid("idempotencyKey must be a UUID"),
   accountNumber: z.string().optional(),
   note: z.string().max(500).optional(),
 });
@@ -168,13 +188,31 @@ router.post("/deposit", customerAuth, async (req, res) => {
     sendValidationError(res, firstError); return;
   }
 
-  const { amount: amt, paymentMethod, transactionId, accountNumber, note } = parsed.data;
+  const { amount: amt, paymentMethod, transactionId, idempotencyKey, accountNumber, note } = parsed.data;
+
+  const cacheKey = `deposit:${userId}:${idempotencyKey}`;
+  const existing = depositIdempotencyCache.get(cacheKey);
+  if (existing) {
+    if (existing.state === "in_flight") {
+      sendError(res, "Duplicate request — this deposit is already being processed.", 409);
+      return;
+    }
+    if (existing.state === "success") {
+      res.status(existing.statusCode).json(existing.body);
+      return;
+    }
+    /* state === "failed": key already removed below, allow retry with same key */
+  }
+  depositIdempotencyCache.set(cacheKey, { state: "in_flight", ts: Date.now() });
 
   /* ── Duplicate Transaction ID check ──
      Normalize TxID (trim + uppercase) both on check and on storage
      to prevent bypass via whitespace/casing variations. */
   const normalizedTxId = transactionId.trim().toUpperCase().replace(/\s+/g, "");
-  if (!normalizedTxId) { sendValidationError(res, "transactionId cannot be empty"); return; }
+  if (!normalizedTxId) {
+    depositIdempotencyCache.delete(cacheKey);
+    sendValidationError(res, "transactionId cannot be empty"); return;
+  }
 
   const txidSuffix = `:txid:${normalizedTxId}`;
   const existingDeposit = await db.select({ id: walletTransactionsTable.id })
@@ -187,6 +225,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
     .limit(1);
 
   if (existingDeposit.length > 0) {
+    depositIdempotencyCache.delete(cacheKey);
     sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
     return;
   }
@@ -197,9 +236,9 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const maxTopup      = parseFloat(s["wallet_max_topup"]   ?? "25000");
   const autoApproveThreshold = Math.max(0, parseFloat(s["wallet_deposit_auto_approve"] ?? "0"));
 
-  if (!walletEnabled) { sendError(res, "Wallet service is currently disabled", 503); return; }
-  if (amt < minTopup) { sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
-  if (amt > maxTopup) { sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
+  if (!walletEnabled) { depositIdempotencyCache.delete(cacheKey); sendError(res, "Wallet service is currently disabled", 503); return; }
+  if (amt < minTopup) { depositIdempotencyCache.delete(cacheKey); sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
+  if (amt > maxTopup) { depositIdempotencyCache.delete(cacheKey); sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
 
   const txId = generateId();
   const desc = [
@@ -210,6 +249,13 @@ router.post("/deposit", customerAuth, async (req, res) => {
   ].filter(Boolean).join(" · ");
 
   const shouldAutoApprove = autoApproveThreshold > 0 && amt <= autoApproveThreshold;
+
+  const setIdempotencyResult = (statusCode: number, body: unknown) => {
+    depositIdempotencyCache.set(cacheKey, { state: "success", ts: Date.now(), statusCode, body });
+  };
+  const setIdempotencyFailed = () => {
+    depositIdempotencyCache.delete(cacheKey);
+  };
 
   if (shouldAutoApprove) {
     const maxBalance = parseFloat(s["wallet_max_balance"] ?? "50000");
@@ -233,6 +279,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
         });
       });
     } catch (e: unknown) {
+      setIdempotencyFailed();
       sendValidationError(res, (e as Error).message); return;
     }
 
@@ -247,15 +294,22 @@ router.post("/deposit", customerAuth, async (req, res) => {
     const [freshUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (freshUser) broadcastWalletUpdate(userId, parseFloat(freshUser.walletBalance ?? "0"));
 
-    sendSuccess(res, { txId, status: "approved:auto", amount: amt });
+    const autoBody = { txId, status: "approved:auto", amount: amt };
+    setIdempotencyResult(200, autoBody);
+    sendSuccess(res, autoBody);
   } else {
-    await db.insert(walletTransactionsTable).values({
-      id: txId, userId, type: "deposit",
-      amount: amt.toFixed(2),
-      description: desc,
-      reference: `pending:txid:${normalizedTxId}`,
-      paymentMethod,
-    });
+    try {
+      await db.insert(walletTransactionsTable).values({
+        id: txId, userId, type: "deposit",
+        amount: amt.toFixed(2),
+        description: desc,
+        reference: `pending:txid:${normalizedTxId}`,
+        paymentMethod,
+      });
+    } catch (e: unknown) {
+      setIdempotencyFailed();
+      sendValidationError(res, (e as Error).message); return;
+    }
 
     const pendingLang = await getUserLanguage(userId);
     await db.insert(notificationsTable).values({
@@ -265,7 +319,9 @@ router.post("/deposit", customerAuth, async (req, res) => {
       type: "wallet", icon: "wallet-outline",
     }).catch(e => logger.error("customer deposit notif insert failed:", e));
 
-    sendSuccess(res, { txId, status: "pending", amount: amt });
+    const pendingBody = { txId, status: "pending", amount: amt };
+    setIdempotencyResult(200, pendingBody);
+    sendSuccess(res, pendingBody);
   }
 });
 

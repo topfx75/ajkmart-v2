@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import rateLimit from "express-rate-limit";
 import crypto from "crypto";
 import { z } from "zod";
 import { db } from "@workspace/db";
@@ -193,8 +194,20 @@ const router: IRouter = Router();
    Step 1 of the smart "Continue" login flow.
    Body: { identifier: string, role?: string, deviceId?: string }
    Returns what the client should do next: action + available methods.
+
+   Rate-limited to 10 requests/min/IP to prevent phone number enumeration.
 ══════════════════════════════════════════════════════════════ */
-router.post("/check-identifier", async (req, res) => {
+const checkIdentifierLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many identifier checks. Please wait a minute before trying again." },
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req) => getClientIp(req),
+});
+
+router.post("/check-identifier", checkIdentifierLimiter, async (req, res) => {
   const body = validateBody(checkIdentifierSchema, req, res);
   if (!body) return;
   const { identifier, role, deviceId } = body;
@@ -577,50 +590,6 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     });
     return;
   }
-  if (false) {
-    const now = new Date();
-    const userId = existingUser[0]?.id ?? generateId();
-    const u = existingUser[0];
-    if (!u) { res.status(500).json({ error: "User creation failed" }); return; }
-
-    const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
-    if (isNewUser && signupBonus > 0) {
-      await db.update(usersTable)
-        .set({ walletBalance: sql`wallet_balance + ${signupBonus}` })
-        .where(eq(usersTable.id, u.id));
-      await db.insert(walletTransactionsTable).values({
-        id: generateId(), userId: u.id, type: "bonus",
-        amount: signupBonus.toFixed(2),
-        description: `Welcome bonus — Thanks for joining AJKMart!`,
-      });
-    }
-
-    writeAuthAuditLog("otp_bypass_login", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone, reason: "otp_disabled" } });
-
-    const accessToken = signAccessToken(u.id, phone, u.role ?? "customer", u.roles ?? u.role ?? "customer", u.tokenVersion ?? 0);
-    const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
-    const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
-    await db.insert(refreshTokensTable).values({
-      id: generateId(), userId: u.id, tokenHash: refreshHash,
-      authMethod: "phone_otp_bypass", expiresAt: refreshExpiresAt,
-    });
-
-    res.json({
-      otpRequired: false,
-      message: "OTP verification skipped — phone registered directly",
-      token: accessToken,
-      refreshToken: refreshRaw,
-      user: {
-        id: u.id, phone: u.phone, name: u.name, email: u.email,
-        username: u.username, role: u.role, roles: u.roles,
-        avatar: u.avatar, walletBalance: parseFloat(u.walletBalance ?? "0"),
-        isActive: u.isActive, cnic: u.cnic, city: u.city,
-        totpEnabled: u.totpEnabled ?? false, createdAt: u.createdAt.toISOString(),
-      },
-    });
-    return;
-  }
-
   /* ── Per-phone OTP resend cooldown (60 s) — prevents SMS bombing ── */
   const otpCooldownMs = parseInt(settings["security_otp_cooldown_sec"] ?? "60", 10) * 1000;
   const existingOtpExpiry = existingUser[0]?.otpExpiry;
@@ -898,28 +867,15 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
     return;
   }
 
-  /* ── OTP Bypass Mode (dev/testing only) ──
-     Only allowed when NODE_ENV is explicitly "development" or "test".
-     Any other value (including undefined/unset) treats the env as production-like.
-     security_phone_verify=on also overrides the bypass. ── */
-  const nodeEnv = process.env.NODE_ENV;
-  const isExplicitlyDev = nodeEnv === "development" || nodeEnv === "test";
-  const phoneVerifyRequired = settings["security_phone_verify"] === "on";
-  const otpBypass = isExplicitlyDev && settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
-  if (otpBypass) {
-    console.warn("[SECURITY] OTP bypass is ENABLED for phone verify-otp. This must NOT be used in production.");
-  }
-
   /* ── Atomic OTP consumption via a single conditional UPDATE ──
      The WHERE clause combines: correct code + not-yet-used + not-expired.
-     Concurrency-safe: only the first concurrent caller gets rows back.
-     On bypass mode we skip the OTP check entirely. ── */
+     Concurrency-safe: only the first concurrent caller gets rows back. ── */
   const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
   const now = new Date();
 
   let isActualFirstLogin = false;
 
-  if (!otpBypass) {
+  {
     const consumed = await db.transaction(async (tx) => {
       /* Single atomic UPDATE: marks OTP as used ONLY if code matches, unused, and unexpired.
          Returns the row if consumed, empty if already used / wrong code / expired. */
@@ -995,11 +951,6 @@ router.post("/verify-otp", verifyCaptcha, async (req, res) => {
       }
       return;
     }
-  } else {
-    /* OTP bypass mode — still mark verified and update last login */
-    await db.update(usersTable)
-      .set({ phoneVerified: true, lastLoginAt: now })
-      .where(eq(usersTable.phone, phone));
   }
 
   await resetAttempts(phone);
@@ -1557,22 +1508,13 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
   const emailIsPending = user.approvalStatus === "pending";
   if (!user.isActive && !emailIsPending) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
 
-  /* Verify OTP — bypass only allowed in development/test, respects phoneVerifyRequired */
-  const phoneVerifyRequired = settings["security_phone_verify"] === "on";
-  const emailNodeEnv = process.env.NODE_ENV;
-  const emailIsExplicitlyDev = emailNodeEnv === "development" || emailNodeEnv === "test";
-  const otpBypass = emailIsExplicitlyDev && settings["security_otp_bypass"] === "on" && !phoneVerifyRequired;
-  if (otpBypass) {
-    console.warn("[SECURITY] OTP bypass is ENABLED for email verify-otp. This must NOT be used in production.");
-  }
-
   /* Check expiry FIRST — prevents timing oracle (attacker learning that an
      expired OTP was correct by observing which error branch fires). */
-  if (!otpBypass && user.emailOtpExpiry && new Date() > user.emailOtpExpiry) {
+  if (user.emailOtpExpiry && new Date() > user.emailOtpExpiry) {
     res.status(401).json({ error: "OTP expired. Please request a new one." }); return;
   }
 
-  if (!otpBypass && user.emailOtpCode !== hashOtp(otp)) {
+  if (user.emailOtpCode !== hashOtp(otp)) {
     const updated = await recordFailedAttempt(normalized, maxAttempts, lockoutMinutes);
     const remaining = maxAttempts - updated.attempts;
     addAuditEntry({ action: "email_otp_failed", ip, details: `Wrong email OTP for: ${normalized}`, result: "fail" });

@@ -194,7 +194,12 @@ export default function OrderDetailScreen() {
       });
       socketRef.current = socket;
       socket.on("connect", () => socket?.emit("join", room));
-      socket.on("rider:location", (payload: { latitude: number; longitude: number }) => {
+      socket.on("rider:location", (payload: { latitude: number; longitude: number; orderId?: string; rideId?: string }) => {
+        const payloadOrderId = payload.orderId ?? payload.rideId;
+        if (!payloadOrderId || payloadOrderId !== orderId) {
+          if (__DEV__) console.warn("[socket] rider:location discarded — ID mismatch", { payloadOrderId, expected: orderId });
+          return;
+        }
         if (mountedRef.current) {
           animateToLocation(payload.latitude, payload.longitude);
         }

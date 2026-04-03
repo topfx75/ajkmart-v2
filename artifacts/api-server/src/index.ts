@@ -8,6 +8,7 @@ import { initSocketIO } from "./lib/socketio.js";
 import { ensureAuthMethodColumn } from "./routes/admin.js";
 import { initVapid } from "./lib/webpush.js";
 import { db } from "@workspace/db";
+import { getPlatformSettings } from "./routes/admin.js";
 import { locationLogsTable, pendingOtpsTable } from "@workspace/db/schema";
 import { lt } from "drizzle-orm";
 
@@ -48,7 +49,16 @@ cron.schedule("0 0 * * *", async () => {
   }
 }, { timezone: "Asia/Karachi" });
 
+async function assertSecureSettings() {
+  const settings = await getPlatformSettings();
+  if (settings["security_otp_bypass"] === "on") {
+    logger.fatal("SECURITY: security_otp_bypass is enabled. OTP bypass has been removed; this setting no longer has any effect but must be disabled. Refusing to start.");
+    process.exit(1);
+  }
+}
+
 ensureAuthMethodColumn()
+  .then(() => assertSecureSettings())
   .then(() => {
     httpServer.listen(port, () => {
       logger.info({ port }, "Server listening");

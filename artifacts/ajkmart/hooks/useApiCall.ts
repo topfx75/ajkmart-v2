@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/context/ToastContext";
 
 type ApiCallState<T> = {
@@ -27,6 +27,7 @@ export function useApiCall<T>(
     onSuccess?: (data: T) => void;
     onError?: (error: string) => void;
     retryMessage?: string;
+    withSignal?: boolean;
   },
 ): ApiCallState<T> {
   const [data, setData] = useState<T | null>(null);
@@ -36,6 +37,7 @@ export function useApiCall<T>(
   const [retryCount, setRetryCount] = useState(0);
   const lastArgsRef = useRef<any[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
   const { showToast } = useToast();
 
   const showErr = options?.showErrorToast !== false;
@@ -50,6 +52,17 @@ export function useApiCall<T>(
       "Something went wrong. Please try again."
     );
   };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   const callWithRetry = useCallback(
     async (args: any[], isRetry = false): Promise<T | null> => {
@@ -66,7 +79,7 @@ export function useApiCall<T>(
       }
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        if (controller.signal.aborted) return null;
+        if (controller.signal.aborted || !mountedRef.current) return null;
 
         if (attempt > 0) {
           setRetrying(true);
@@ -81,8 +94,9 @@ export function useApiCall<T>(
         }
 
         try {
-          const result = await apiFn(...args);
-          if (controller.signal.aborted) return null;
+          const callArgs = options?.withSignal ? [...args, controller.signal] : args;
+          const result = await apiFn(...callArgs);
+          if (controller.signal.aborted || !mountedRef.current) return null;
           setData(result);
           setLoading(false);
           setRetrying(false);
@@ -91,7 +105,7 @@ export function useApiCall<T>(
           options?.onSuccess?.(result);
           return result;
         } catch (e: any) {
-          if (controller.signal.aborted) return null;
+          if (controller.signal.aborted || !mountedRef.current) return null;
           const msg = extractError(e);
           if (attempt === maxRetries) {
             setError(msg);

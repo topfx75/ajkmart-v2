@@ -129,7 +129,12 @@ export function RideTracker({
         transports: ["polling", "websocket"],
       });
       socketRef.current = socket;
-      socket.on("rider:location", (payload: { latitude: number; longitude: number }) => {
+      socket.on("rider:location", (payload: { latitude: number; longitude: number; rideId?: string; orderId?: string }) => {
+        const payloadRideId = payload.rideId ?? payload.orderId;
+        if (!payloadRideId || payloadRideId !== rideId) {
+          if (__DEV__) console.warn("[socket] rider:location discarded — ID mismatch", { payloadRideId, expected: rideId });
+          return;
+        }
         setRiderLivePos({ lat: payload.latitude, lng: payload.longitude });
       });
       socket.on("ride:otp", (payload: { rideId: string; otp: string }) => {

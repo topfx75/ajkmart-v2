@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { getRide as getRideApi, type Ride } from "@workspace/api-client-react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type RideStatusHookResult = {
   ride: Ride | null;
@@ -80,7 +79,7 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
         const SS = await import("expo-secure-store");
         token = await SS.getItemAsync("ajkmart_token");
       } catch {}
-      if (!token) token = await AsyncStorage.getItem("@ajkmart_token");
+      /* Never fall back to AsyncStorage — tokens must be read from SecureStore only. */
       const sseUrl = `${apiBase}/rides/${rideId}/stream`;
 
       const response = await fetch(sseUrl, {

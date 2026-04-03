@@ -399,15 +399,24 @@ function DynamicBannerCarousel() {
     return () => { if (autoScrollTimer.current) clearInterval(autoScrollTimer.current); };
   }, [items.length, BANNER_W]);
 
+  const bannerThrottleRef = useRef<number | null>(null);
+
   const handleBannerPress = (b: Banner) => {
+    const now = Date.now();
+    if (bannerThrottleRef.current !== null && now - bannerThrottleRef.current < 300) {
+      return;
+    }
+    bannerThrottleRef.current = now;
+
     if (b.linkType === "product" && b.linkValue) {
       router.push({ pathname: "/product/[id]", params: { id: b.linkValue } } as Href);
     } else if (b.linkType === "category" && b.linkValue) {
       router.push({ pathname: "/search", params: { category: b.linkValue } } as Href);
     } else if (b.linkType === "url" && b.linkValue) {
-      if (b.linkValue.startsWith("http://") || b.linkValue.startsWith("https://")) {
+      /* Only https:// URLs are opened externally. All other schemes are discarded. */
+      if (b.linkValue.startsWith("https://")) {
         Linking.openURL(b.linkValue);
-      } else {
+      } else if (b.linkValue.startsWith("/") || b.linkValue.startsWith("/(")) {
         router.push(b.linkValue as Href);
       }
     }
@@ -861,9 +870,13 @@ export default function HomeScreen() {
     }).catch(() => {});
   }, []);
 
-  const handleToggleView = (mode: ViewMode) => {
+  const handleToggleView = async (mode: ViewMode) => {
     setViewMode(mode);
-    AsyncStorage.setItem(SVC_VIEW_KEY, mode).catch(() => {});
+    try {
+      await AsyncStorage.setItem(SVC_VIEW_KEY, mode);
+    } catch (err) {
+      console.warn("[HomeScreen] Failed to persist view mode:", err);
+    }
   };
 
   const activeServices = getActiveServices(features);

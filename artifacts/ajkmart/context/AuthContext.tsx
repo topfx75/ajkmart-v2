@@ -67,33 +67,32 @@ const BIOMETRIC_TOKEN   = "ajkmart_biometric_token";
 const LEGACY_TOKEN_KEY = "@ajkmart_token";
 const LEGACY_REFRESH_KEY = "@ajkmart_refresh_token";
 
+/* Auth tokens are stored exclusively in SecureStore. If SecureStore is unavailable
+   the error propagates to the caller (login is blocked), preventing silent
+   fallback to unencrypted AsyncStorage which is readable on rooted devices. */
 async function secureSet(key: string, value: string) {
-  try { await SecureStore.setItemAsync(key, value); } catch { await AsyncStorage.setItem(key, value); }
+  await SecureStore.setItemAsync(key, value);
 }
 async function secureGet(key: string): Promise<string | null> {
-  try {
-    const val = await SecureStore.getItemAsync(key);
-    if (val) return val;
-  } catch {}
-  return AsyncStorage.getItem(key);
+  return SecureStore.getItemAsync(key);
 }
 async function secureDelete(key: string) {
   try { await SecureStore.deleteItemAsync(key); } catch {}
   try { await AsyncStorage.removeItem(key); } catch {}
 }
 
-async function migrateTokensToSecureStore() {
+/* Purge legacy AsyncStorage tokens and signal that re-authentication is required.
+   Legacy tokens stored in AsyncStorage are unencrypted and must not be used.
+   Returns true if legacy tokens were found (caller must force logout). */
+async function purgeLegacyInsecureTokens(): Promise<boolean> {
   try {
     const [[, legacyToken], [, legacyRefresh]] = await AsyncStorage.multiGet([LEGACY_TOKEN_KEY, LEGACY_REFRESH_KEY]);
-    if (legacyToken) {
-      await secureSet(TOKEN_KEY, legacyToken);
-      await AsyncStorage.removeItem(LEGACY_TOKEN_KEY);
-    }
-    if (legacyRefresh) {
-      await secureSet(REFRESH_TOKEN_KEY, legacyRefresh);
-      await AsyncStorage.removeItem(LEGACY_REFRESH_KEY);
-    }
-  } catch {}
+    const hadLegacy = !!(legacyToken || legacyRefresh);
+    await AsyncStorage.multiRemove([LEGACY_TOKEN_KEY, LEGACY_REFRESH_KEY]);
+    return hadLegacy;
+  } catch {
+    return false;
+  }
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -265,13 +264,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadAuth = async () => {
       try {
-        await migrateTokensToSecureStore();
+        /* Purge any legacy unencrypted AsyncStorage tokens. If found, they are
+           deleted and the user must log in again — no migration to SecureStore. */
+        const hadLegacy = await purgeLegacyInsecureTokens();
+        if (hadLegacy) {
+          await AsyncStorage.multiRemove([USER_KEY, BIOMETRIC_KEY]);
+          setIsLoading(false);
+          return;
+        }
+
         const [[, storedUser], [, bioPref]] = await AsyncStorage.multiGet([
           USER_KEY,
           BIOMETRIC_KEY,
         ]);
-        const storedToken = await secureGet(TOKEN_KEY);
-        const storedRefresh = await secureGet(REFRESH_TOKEN_KEY);
+
+        /* If SecureStore is unavailable, secureGet throws. Catch separately to
+           distinguish hardware encryption failure from other errors — in both cases
+           we clear stored session data and require fresh login. */
+        let storedToken: string | null = null;
+        let storedRefresh: string | null = null;
+        try {
+          storedToken = await secureGet(TOKEN_KEY);
+          storedRefresh = await secureGet(REFRESH_TOKEN_KEY);
+        } catch {
+          await AsyncStorage.multiRemove([USER_KEY, BIOMETRIC_KEY]);
+          setIsLoading(false);
+          return;
+        }
+
         if (bioPref === "true") setBiometricEnabledState(true);
         if (storedUser && storedToken) {
           const parsedUser = JSON.parse(storedUser);
