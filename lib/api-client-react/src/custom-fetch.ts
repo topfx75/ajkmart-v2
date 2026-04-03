@@ -471,7 +471,17 @@ export async function customFetch<T = unknown>(
       throw new ApiError(response, errorData, requestInfo);
     }
 
-    return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+    const parsed = await parseSuccessBody(response, responseType, requestInfo);
+    if (
+      parsed != null &&
+      typeof parsed === "object" &&
+      "success" in parsed &&
+      (parsed as Record<string, unknown>).success === true &&
+      "data" in parsed
+    ) {
+      return (parsed as Record<string, unknown>).data as T;
+    }
+    return parsed as T;
   }
 
   throw lastError ?? new Error("Request failed after retries");

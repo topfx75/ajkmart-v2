@@ -29,7 +29,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { tDual } from "@workspace/i18n";
 import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { useGetWallet } from "@workspace/api-client-react";
-import { API_BASE as API } from "@/utils/api";
+import { API_BASE as API, unwrapApiResponse } from "@/utils/api";
 
 const C = Colors.light;
 
@@ -162,7 +162,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ amount: amt, paymentMethod: selectedMethod, accountNumber: accountNumber.trim(), note: note.trim() || undefined }),
       });
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
         if (data.error === "wallet_frozen") { onFrozen?.(); onClose(); return; }
         setErr(data.error || "Request failed");
@@ -344,6 +344,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
   useEffect(() => {
     fetch(`${API}/payments/methods`)
       .then(r => r.json())
+      .then(unwrapApiResponse)
       .then((data: any) => {
         const depositable: PayMethod[] = (data.methods || [])
           .filter((m: any) => ["jazzcash", "easypaisa", "bank"].includes(m.id));
@@ -402,7 +403,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
           note: note.trim() || undefined,
         }),
       });
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
         if (data.error === "wallet_frozen") { onFrozen?.(); }
         setErr(data.error === "wallet_frozen" ? data.message : (data.error || "Request failed"));
@@ -494,6 +495,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                       setLoadingMethods(true);
                       fetch(`${API}/payments/methods`)
                         .then(r => r.json())
+                        .then(unwrapApiResponse)
                         .then((data: any) => {
                           const depositable: PayMethod[] = (data.methods || []).filter((m: any) => ["jazzcash", "easypaisa", "bank"].includes(m.id));
                           if (depositable.length === 0) setMethodsError(true);
@@ -802,7 +804,7 @@ export default function WalletScreen() {
       fetch(`${API}/wallet`, { headers: { Authorization: `Bearer ${token}` } })
         .then(async r => {
           if (r.status === 403) {
-            const d = await r.json().catch(() => ({}));
+            const d = unwrapApiResponse(await r.json().catch(() => ({})));
             if (d.error === "wallet_frozen") setWalletFrozen(true);
           } else {
             setWalletFrozen(false);
@@ -817,7 +819,7 @@ export default function WalletScreen() {
       try {
         const r = await fetch(`${API}/wallet`, { headers: { Authorization: `Bearer ${token}` } });
         if (r.status === 403) {
-          const d = await r.json().catch(() => ({}));
+          const d = unwrapApiResponse(await r.json().catch(() => ({})));
           if (d.error === "wallet_frozen") { setWalletFrozen(true); return; }
         } else { setWalletFrozen(false); }
       } catch (err) {
@@ -836,6 +838,7 @@ export default function WalletScreen() {
     if (token) {
       fetch(`${API}/wallet/pending-topups`, { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.json())
+        .then(unwrapApiResponse)
         .then(d => setPendingTopups({ count: d.count || 0, total: d.total || 0 }))
         .catch((err) => console.warn("[Wallet] Pending topups fetch failed:", err instanceof Error ? err.message : String(err)));
     }
@@ -884,7 +887,7 @@ export default function WalletScreen() {
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ phone: sendPhone.trim() }),
       });
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       setSendReceiverName(data.name || "");
     } catch (err) {
       console.warn("[Wallet] Receiver lookup failed:", err instanceof Error ? err.message : String(err));
@@ -903,7 +906,7 @@ export default function WalletScreen() {
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ receiverPhone: sendPhone.trim(), amount: num, note: sendNote || null }),
       });
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
         if (data.error === "wallet_frozen") { setWalletFrozen(true); setShowSend(false); setSendLoading(false); return; }
         showToast(data.error || "Transfer failed", "error");

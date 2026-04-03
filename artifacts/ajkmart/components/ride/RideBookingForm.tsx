@@ -26,7 +26,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useApiCall } from "@/hooks/useApiCall";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, unwrapApiResponse } from "@/utils/api";
 import { ServiceListSkeleton, FareEstimateSkeleton } from "@/components/ride/Skeletons";
 import { PermissionGuide } from "@/components/PermissionGuide";
 import {
@@ -260,6 +260,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   useEffect(() => {
     fetch(`${API_BASE}/rides/payment-methods`)
       .then((r) => r.json())
+      .then(unwrapApiResponse)
       .then((rideData) => {
         if (rideData?.methods?.length) {
           const mapped = rideData.methods.map((m: any) => ({
@@ -304,6 +305,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((r) => r.json())
+      .then(unwrapApiResponse)
       .then((d) => {
         if (d?.debtBalance > 0) setDebtBalance(d.debtBalance);
       })

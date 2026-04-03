@@ -117,8 +117,9 @@ export default function BannersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file: base64, filename: file.name, mimeType: file.type }),
       });
-      const res = await uploadRes.json();
-      if (!uploadRes.ok) throw new Error(res.error || "Upload failed");
+      const uj = await uploadRes.json();
+      const res = uj?.success === true && "data" in uj ? uj.data : uj;
+      if (!uploadRes.ok) throw new Error(res.error || uj.error || "Upload failed");
       if (res?.url) {
         setForm(f => ({ ...f, imageUrl: res.url }));
         toast({ title: "Image uploaded successfully" });

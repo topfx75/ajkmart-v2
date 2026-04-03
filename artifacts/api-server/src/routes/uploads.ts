@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { randomUUID } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -20,13 +21,13 @@ router.post("/", async (req, res) => {
     const { file, filename, mimeType } = req.body;
 
     if (!file) {
-      res.status(400).json({ error: "No file data provided" });
+      sendValidationError(res, "No file data provided");
       return;
     }
 
     const mime = mimeType || "image/jpeg";
     if (!ALLOWED_TYPES.includes(mime)) {
-      res.status(400).json({ error: "Only JPEG, PNG, and WebP images are allowed" });
+      sendValidationError(res, "Only JPEG, PNG, and WebP images are allowed");
       return;
     }
 
@@ -34,7 +35,7 @@ router.post("/", async (req, res) => {
     const buffer = Buffer.from(base64Data, "base64");
 
     if (buffer.length > MAX_FILE_SIZE) {
-      res.status(400).json({ error: "File too large. Maximum 5MB allowed" });
+      sendValidationError(res, "File too large. Maximum 5MB allowed");
       return;
     }
 
@@ -44,18 +45,16 @@ router.post("/", async (req, res) => {
     await ensureDir();
     await writeFile(path.join(UPLOADS_DIR, uniqueName), buffer);
 
-    const domain = process.env["REPLIT_DEV_DOMAIN"] || process.env["APP_DOMAIN"] || "localhost";
     const url = `/api/uploads/${uniqueName}`;
 
-    res.json({
-      success: true,
+    sendCreated(res, {
       url,
       filename: filename || uniqueName,
       size: buffer.length,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Upload failed";
-    res.status(500).json({ error: msg });
+    sendError(res, msg);
   }
 });
 
@@ -64,18 +63,18 @@ router.post("/prescription", async (req, res) => {
     const { file, mimeType, refId } = req.body;
 
     if (!file) {
-      res.status(400).json({ error: "No file data provided" });
+      sendValidationError(res, "No file data provided");
       return;
     }
 
     if (!refId || typeof refId !== "string") {
-      res.status(400).json({ error: "refId is required" });
+      sendValidationError(res, "refId is required");
       return;
     }
 
     const mime = mimeType || "image/jpeg";
     if (!ALLOWED_TYPES.includes(mime)) {
-      res.status(400).json({ error: "Only JPEG, PNG, and WebP images are allowed" });
+      sendValidationError(res, "Only JPEG, PNG, and WebP images are allowed");
       return;
     }
 
@@ -83,7 +82,7 @@ router.post("/prescription", async (req, res) => {
     const buffer = Buffer.from(base64Data, "base64");
 
     if (buffer.length > MAX_FILE_SIZE) {
-      res.status(400).json({ error: "File too large. Maximum 5MB allowed" });
+      sendValidationError(res, "File too large. Maximum 5MB allowed");
       return;
     }
 
@@ -98,19 +97,19 @@ router.post("/prescription", async (req, res) => {
 
     setTimeout(() => prescriptionRefMap.delete(refId), 60 * 60 * 1000);
 
-    res.json({ success: true, url, refId });
+    sendCreated(res, { url, refId });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Upload failed";
-    res.status(500).json({ error: msg });
+    sendError(res, msg);
   }
 });
 
 router.get("/prescription/resolve/:refId", (req, res) => {
   const url = prescriptionRefMap.get(req.params.refId!);
   if (url) {
-    res.json({ url });
+    sendSuccess(res, { url });
   } else {
-    res.status(404).json({ error: "Reference not found or expired" });
+    sendNotFound(res, "Reference not found or expired");
   }
 });
 

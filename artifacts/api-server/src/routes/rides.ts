@@ -14,6 +14,7 @@ import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings,
 import { customerAuth, riderAuth } from "../middleware/security.js";
 import { loadRide, requireRideState, requireRideOwner } from "../middleware/ride-guards.js";
 import { getIO } from "../lib/socketio.js";
+import { sendSuccess, sendCreated, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 
 function broadcastWalletUpdate(userId: string, newBalance: number) {
   const io = getIO();
@@ -388,7 +389,7 @@ router.get("/services", async (_req, res) => {
   const services = await db.select().from(rideServiceTypesTable)
     .where(eq(rideServiceTypesTable.isEnabled, true))
     .orderBy(asc(rideServiceTypesTable.sortOrder));
-  res.json({
+  sendSuccess(res, {
     services: services.map(s => ({
       id:              s.id,
       key:             s.key,
@@ -412,7 +413,7 @@ router.get("/stops", async (_req, res) => {
   const locs = await db.select().from(popularLocationsTable)
     .where(eq(popularLocationsTable.isActive, true))
     .orderBy(asc(popularLocationsTable.sortOrder));
-  res.json({
+  sendSuccess(res, {
     locations: locs.map(l => ({
       id: l.id, name: l.name, nameUrdu: l.nameUrdu,
       lat: parseFloat(String(l.lat)), lng: parseFloat(String(l.lng)),
@@ -425,7 +426,7 @@ router.post("/estimate", async (req, res) => {
   const parsed = estimateSchema.safeParse(req.body);
   if (!parsed.success) {
     const msg = parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
-    res.status(422).json({ error: msg }); return;
+    sendError(res, msg, 422); return;
   }
   const { pickupLat, pickupLng, dropLat, dropLng, type } = parsed.data;
   try {
@@ -438,7 +439,7 @@ router.post("/estimate", async (req, res) => {
     const bargainEnabled = (s["ride_bargaining_enabled"] ?? "on") === "on";
     const bargainMinPct  = parseFloat(s["ride_bargaining_min_pct"] ?? "70");
     const minOffer       = Math.ceil(total * (bargainMinPct / 100));
-    res.json({
+    sendSuccess(res, {
       distance:    Math.round(distanceKm * 10) / 10,
       baseFare,
       gstAmount,
@@ -453,7 +454,7 @@ router.post("/estimate", async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 422;
     const code = e instanceof RideApiError ? e.code : "ESTIMATE_FAILED";
-    res.status(status).json({ error: e.message, code });
+    sendErrorWithData(res, e.message, { code }, status);
   }
 });
 
@@ -461,7 +462,7 @@ router.post("/", customerAuth, async (req, res) => {
   const parsed = bookRideSchema.safeParse(req.body);
   if (!parsed.success) {
     const msg = parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
-    res.status(422).json({ error: msg }); return;
+    sendError(res, msg, 422); return;
   }
 
   const userId = req.customerId!;
@@ -477,11 +478,10 @@ router.post("/", customerAuth, async (req, res) => {
     .where(and(eq(ridesTable.userId, userId), sql`status IN ('searching', 'bargaining', 'accepted', 'arrived', 'in_transit')`))
     .limit(1);
   if (existingActive.length > 0) {
-    res.status(409).json({
-      error: "Aapki ek ride pehle se active hai. Naye ride ke liye pehle wali complete ya cancel karein.",
+    sendErrorWithData(res, "Aapki ek ride pehle se active hai. Naye ride ke liye pehle wali complete ya cancel karein.", {
       activeRideId: existingActive[0]!.id,
       activeRideStatus: existingActive[0]!.status,
-    });
+    }, 409);
     return;
   }
 
@@ -491,10 +491,7 @@ router.post("/", customerAuth, async (req, res) => {
     .limit(1);
   const debtAmount = parseFloat(debtUser?.cancellationDebt ?? "0");
   if (debtAmount > 0) {
-    res.status(402).json({
-      error: `You have an outstanding cancellation fee debt of Rs. ${debtAmount.toFixed(0)}. Please clear your debt before booking a new ride.`,
-      debtAmount,
-    });
+    sendErrorWithData(res, `You have an outstanding cancellation fee debt of Rs. ${debtAmount.toFixed(0)}. Please clear your debt before booking a new ride.`, { debtAmount }, 402);
     return;
   }
 
@@ -504,12 +501,12 @@ router.post("/", customerAuth, async (req, res) => {
     const mainKey = (s["security_maintenance_key"] ?? "").trim();
     const bypass  = ((req.headers["x-maintenance-key"] as string) ?? "").trim();
     if (!mainKey || bypass !== mainKey) {
-      res.status(503).json({ error: s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!" }); return;
+      sendError(res, s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!", 503); return;
     }
   }
 
   const ridesEnabled = (s["feature_rides"] ?? "on") === "on";
-  if (!ridesEnabled) { res.status(503).json({ error: "Ride booking is currently disabled" }); return; }
+  if (!ridesEnabled) { sendError(res, "Ride booking is currently disabled", 503); return; }
 
   let distance: number;
   let baseFare: number, gstAmount: number, platformFare: number;
@@ -523,7 +520,7 @@ router.post("/", customerAuth, async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 422;
     const code = e instanceof RideApiError ? e.code : "FARE_CALCULATION_FAILED";
-    res.status(status).json({ error: e.message, code }); return;
+    sendErrorWithData(res, e.message, { code }, status); return;
   }
 
   const bargainEnabled  = (s["ride_bargaining_enabled"] ?? "on") === "on";
@@ -536,7 +533,7 @@ router.post("/", customerAuth, async (req, res) => {
     validatedOffer = offeredFare;
     const minOffer = Math.ceil(platformFare * (bargainMinPct / 100));
     if (validatedOffer < minOffer) {
-      res.status(400).json({ error: `Minimum offer allowed is Rs. ${minOffer} (${bargainMinPct}% of platform fare)`, code: "FARE_OUT_OF_RANGE" }); return;
+      sendErrorWithData(res, `Minimum offer allowed is Rs. ${minOffer} (${bargainMinPct}% of platform fare)`, { code: "FARE_OUT_OF_RANGE" }, 400); return;
     }
     isBargaining = validatedOffer < platformFare;
   }
@@ -545,20 +542,20 @@ router.post("/", customerAuth, async (req, res) => {
   const maxOnline = parseFloat(s["payment_max_online"] ?? "100000");
   const effectiveFare = isBargaining ? validatedOffer : platformFare;
   if (paymentMethod === "wallet" && (effectiveFare < minOnline || effectiveFare > maxOnline)) {
-    res.status(400).json({ error: `Wallet payment must be between Rs. ${minOnline} and Rs. ${maxOnline}` }); return;
+    sendValidationError(res, `Wallet payment must be between Rs. ${minOnline} and Rs. ${maxOnline}`); return;
   }
 
   if (paymentMethod === "wallet") {
     const [wUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (wUser && (wUser.blockedServices || "").split(",").map(sv => sv.trim()).includes("wallet")) {
-      res.status(403).json({ error: "wallet_frozen", message: "Your wallet has been temporarily frozen. Contact support." }); return;
+      sendForbidden(res, "wallet_frozen", "Your wallet has been temporarily frozen. Contact support."); return;
     }
   }
 
   if (paymentMethod === "cash") {
     const riderCashAllowed = (s["rider_cash_allowed"] ?? "on") === "on";
     if (!riderCashAllowed) {
-      res.status(400).json({ error: "Cash payment is currently not available for rides. Please use wallet." }); return;
+      sendValidationError(res, "Cash payment is currently not available for rides. Please use wallet."); return;
     }
   }
 
@@ -571,7 +568,7 @@ router.post("/", customerAuth, async (req, res) => {
 
     if (paymentMethod === "wallet" && !isBargaining) {
       const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
-      if (!walletEnabled) { res.status(400).json({ error: "Wallet payments are currently disabled" }); return; }
+      if (!walletEnabled) { sendValidationError(res, "Wallet payments are currently disabled"); return; }
 
       rideRecord = await db.transaction(async (tx) => {
         const [deducted] = await tx.update(usersTable)
@@ -640,7 +637,7 @@ router.post("/", customerAuth, async (req, res) => {
       emitRideDispatchUpdate({ rideId: rideRecord.id, action: "new", status: rideRecord.status });
     }
 
-    res.status(201).json({
+    sendCreated(res, {
       ...formatRide(rideRecord),
       baseFare, gstAmount,
       platformFare, effectiveFare: fareToCharge,
@@ -649,7 +646,7 @@ router.post("/", customerAuth, async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 400;
     const code = e instanceof RideApiError ? e.code : "BOOKING_FAILED";
-    res.status(status).json({ error: e.message, code });
+    sendErrorWithData(res, e.message, { code }, status);
   }
 });
 
@@ -659,7 +656,7 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
   const cancelParsed = cancelRideSchema.safeParse(req.body ?? {});
   if (!cancelParsed.success) {
     const msg = cancelParsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
-    res.status(422).json({ error: msg }); return;
+    sendError(res, msg, 422); return;
   }
   const cancelReason = cancelParsed.data.reason ?? null;
 
@@ -796,7 +793,7 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
   }
 
   emitRideDispatchUpdate({ rideId: ride.id, action: "cancel", status: "cancelled" });
-  res.json({
+  sendSuccess(res, {
     ...formatRide(cancelResult!),
     cancellationFee: actualCancelFee,
     cancelFeeAsDebt,
@@ -807,7 +804,7 @@ router.patch("/:id/cancel", customerAuth, requireRideState(["searching", "bargai
 router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
   const parsed = acceptBidSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "bidId required" }); return;
+    sendValidationError(res, "bidId required"); return;
   }
 
   const userId = req.customerId!;
@@ -819,10 +816,7 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   const bidDebt = parseFloat(debtUserBid?.cancellationDebt ?? "0");
   if (bidDebt > 0) {
-    res.status(402).json({
-      error: `You have an outstanding cancellation fee debt of Rs. ${bidDebt.toFixed(0)}. Please clear your debt before accepting a ride.`,
-      debtAmount: bidDebt,
-    });
+    sendErrorWithData(res, `You have an outstanding cancellation fee debt of Rs. ${bidDebt.toFixed(0)}. Please clear your debt before accepting a ride.`, { debtAmount: bidDebt }, 402);
     return;
   }
 
@@ -891,7 +885,7 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 400;
     const code = e instanceof RideApiError ? e.code : "ACCEPT_BID_FAILED";
-    res.status(status).json({ error: e.message, code });
+    sendErrorWithData(res, e.message, { code }, status);
     return;
   }
 
@@ -918,14 +912,14 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
   }).catch(() => {});
 
   emitRideDispatchUpdate({ rideId: rideUpdate!.id, action: "accepted", status: "accepted" });
-  res.json({ ...formatRide(rideUpdate!), agreedFare, tripOtp: otp });
+  sendSuccess(res, { ...formatRide(rideUpdate!), agreedFare, tripOtp: otp });
 });
 
 router.patch("/:id/customer-counter", bargainLimiter, customerAuth, requireRideState(["bargaining"]), requireRideOwner("userId"), async (req, res) => {
   const parsed = customerCounterSchema.safeParse(req.body);
   if (!parsed.success) {
     const msg = parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ");
-    res.status(422).json({ error: msg }); return;
+    sendError(res, msg, 422); return;
   }
 
   const ride = req.ride!;
@@ -938,7 +932,7 @@ router.patch("/:id/customer-counter", bargainLimiter, customerAuth, requireRideS
   const platformFare  = parseFloat(ride.fare);
   const minOffer      = Math.ceil(platformFare * (bargainMinPct / 100));
   if (newOffer < minOffer) {
-    res.status(400).json({ error: `Minimum offer is Rs. ${minOffer}` }); return;
+    sendValidationError(res, `Minimum offer is Rs. ${minOffer}`); return;
   }
 
   await db.update(rideBidsTable)
@@ -962,7 +956,7 @@ router.patch("/:id/customer-counter", bargainLimiter, customerAuth, requireRideS
     .where(and(eq(ridesTable.id, rideId), eq(ridesTable.userId, userId)))
     .returning();
 
-  res.json(formatRide(updated!));
+  sendSuccess(res, formatRide(updated!));
 });
 
 router.get("/", customerAuth, async (req, res) => {
@@ -979,7 +973,7 @@ router.get("/", customerAuth, async (req, res) => {
     }
     return { ...base, fareBreakdown };
   }));
-  res.json({
+  sendSuccess(res, {
     rides: formatted.reverse(),
     total: rides.length,
   });
@@ -997,7 +991,7 @@ router.get("/payment-methods", async (_req, res) => {
     { key: "jazzcash",  label: "JazzCash",   enabled: rideAllowed("jazzcash_allowed_rides", "ride_payment_jazzcash", "off") && (s["jazzcash_enabled"] ?? "off") === "on" },
     { key: "easypaisa", label: "EasyPaisa",  enabled: rideAllowed("easypaisa_allowed_rides", "ride_payment_easypaisa", "off") && (s["easypaisa_enabled"] ?? "off") === "on" },
   ];
-  res.json({ methods: methods.filter(m => m.enabled) });
+  sendSuccess(res, { methods: methods.filter(m => m.enabled) });
 });
 
 router.get("/:id", customerAuth, async (req, res) => {
@@ -1005,12 +999,12 @@ router.get("/:id", customerAuth, async (req, res) => {
 
   const rideId = String(req.params["id"]);
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
 
   const isCustomer = ride.userId  === callerId;
   const isRider    = ride.riderId === callerId;
   if (!isCustomer && !isRider) {
-    res.status(403).json({ error: "Access denied — not your ride" }); return;
+    sendForbidden(res, "Access denied — not your ride"); return;
   }
 
   let riderName = ride.riderName;
@@ -1086,7 +1080,7 @@ router.get("/:id", customerAuth, async (req, res) => {
     } catch {}
   }
 
-  res.json({ ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge, riderAvgRating, fareBreakdown });
+  sendSuccess(res, { ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge, riderAvgRating, fareBreakdown });
 });
 
 router.get("/:id/track", customerAuth, async (req, res) => {
@@ -1100,9 +1094,9 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     pickupAddress: ridesTable.pickupAddress, dropAddress: ridesTable.dropAddress,
   }).from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
 
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
   if (ride.userId !== callerId && ride.riderId !== callerId) {
-    res.status(403).json({ error: "Access denied — not your ride" }); return;
+    sendForbidden(res, "Access denied — not your ride"); return;
   }
 
   let riderLat: number | null = null;
@@ -1148,7 +1142,7 @@ router.get("/:id/track", customerAuth, async (req, res) => {
   const pickLat  = ride.pickupLat ? parseFloat(ride.pickupLat) : null;
   const pickLng  = ride.pickupLng ? parseFloat(ride.pickupLng) : null;
 
-  res.json({
+  sendSuccess(res, {
     id: ride.id,
     status: ride.status,
     riderId: ride.riderId,
@@ -1169,7 +1163,7 @@ router.get("/:id/track", customerAuth, async (req, res) => {
 router.post("/:id/event-log", riderAuth, loadRide(), requireRideOwner("riderId"), async (req, res) => {
   const parsed = eventLogSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message || "event is required" });
+    sendValidationError(res, parsed.error.issues[0]?.message || "event is required");
     return;
   }
 
@@ -1190,7 +1184,7 @@ router.post("/:id/event-log", riderAuth, loadRide(), requireRideOwner("riderId")
     createdAt: new Date(),
   });
 
-  res.json({ success: true, id });
+  sendSuccess(res, { id });
 });
 
 router.get("/:id/event-logs", adminAuth, async (req, res) => {
@@ -1209,13 +1203,13 @@ router.get("/:id/event-logs", adminAuth, async (req, res) => {
     createdAt: l.createdAt instanceof Date ? l.createdAt.toISOString() : l.createdAt,
   }));
 
-  res.json({ logs: formatted, total: formatted.length });
+  sendSuccess(res, { logs: formatted, total: formatted.length });
 });
 
 router.post("/:id/rate", customerAuth, requireRideState(["completed"]), requireRideOwner("userId"), async (req, res) => {
   const parsed = rateRideSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.issues[0]?.message || "stars must be between 1 and 5" }); return;
+    sendError(res, parsed.error.issues[0]?.message || "stars must be between 1 and 5", 422); return;
   }
 
   const ride = req.ride!;
@@ -1223,16 +1217,16 @@ router.post("/:id/rate", customerAuth, requireRideState(["completed"]), requireR
   const rideId = ride.id;
   const { stars, comment } = parsed.data;
 
-  if (!ride.riderId) { res.status(400).json({ error: "No rider assigned" }); return; }
+  if (!ride.riderId) { sendValidationError(res, "No rider assigned"); return; }
 
   /* Explicit self-rating guard: customer cannot be the same person as the rider */
   if (ride.riderId === userId) {
-    res.status(403).json({ error: "You cannot rate yourself." });
+    sendForbidden(res, "You cannot rate yourself.");
     return;
   }
 
   const existing = await db.select({ id: rideRatingsTable.id }).from(rideRatingsTable).where(eq(rideRatingsTable.rideId, rideId)).limit(1);
-  if (existing.length > 0) { res.status(409).json({ error: "Already rated" }); return; }
+  if (existing.length > 0) { sendError(res, "Already rated", 409); return; }
 
   const [rating] = await db.insert(rideRatingsTable).values({
     id: generateId(),
@@ -1251,7 +1245,7 @@ router.post("/:id/rate", customerAuth, requireRideState(["completed"]), requireR
     type: "ride", icon: "star-outline",
   }).catch(() => {});
 
-  res.json({ success: true, rating });
+  sendSuccess(res, { rating });
 });
 
 router.get("/:id/status", customerAuth, loadRide(), requireRideOwner("userId"), async (req, res) => {
@@ -1261,7 +1255,7 @@ router.get("/:id/status", customerAuth, loadRide(), requireRideOwner("userId"), 
   const attempts = (ride.dispatchAttempts as string[] | null) || [];
   const hasRating = await db.select({ id: rideRatingsTable.id }).from(rideRatingsTable).where(eq(rideRatingsTable.rideId, rideId)).limit(1);
 
-  res.json({
+  sendSuccess(res, {
     id: ride.id,
     status: ride.status,
     riderId: ride.riderId,
@@ -1295,7 +1289,7 @@ router.get("/:id/dispatch-status", customerAuth, loadRide(), requireRideOwner("u
 
   const maxLoops = parseInt(s["dispatch_max_loops"] ?? "3", 10);
 
-  res.json({
+  sendSuccess(res, {
     status: ride.status,
     notifiedRiders: notifiedCount,
     elapsedSec,
@@ -1326,7 +1320,7 @@ router.post("/:id/retry", customerAuth, requireRideState(["no_riders", "expired"
 
   broadcastRide(rideId);
 
-  res.json({ success: true, message: "Dispatch restarted" });
+  sendSuccess(res, undefined, "Dispatch restarted");
 });
 
 let dispatchCycleRunning = false;

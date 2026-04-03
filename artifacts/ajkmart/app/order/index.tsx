@@ -23,7 +23,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, unwrapApiResponse } from "@/utils/api";
 import { staticMapUrl } from "@/hooks/useMaps";
 import type { Socket } from "socket.io-client";
 
@@ -150,7 +150,7 @@ export default function OrderDetailScreen() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
-          const d = await res.json();
+          const d = unwrapApiResponse(await res.json());
           if (mountedRef.current) {
             if (typeof d.riderLat === "number" && typeof d.riderLng === "number") {
               animateToLocation(d.riderLat, d.riderLng);
@@ -231,7 +231,7 @@ export default function OrderDetailScreen() {
         if (serverDate && mountedRef.current) {
           setServerNow(new Date(serverDate).getTime());
         }
-        const data = await res.json();
+        const data = unwrapApiResponse(await res.json());
         const fetched = data.order || data.booking || data;
         if (mountedRef.current) {
           setOrder(fetched);
@@ -265,7 +265,7 @@ export default function OrderDetailScreen() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
-          const d = await res.json();
+          const d = unwrapApiResponse(await res.json());
           if (mountedRef.current && d.status) {
             setPaymentStatus(d.status);
           }
@@ -284,7 +284,7 @@ export default function OrderDetailScreen() {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
-              const d = await res.json();
+              const d = unwrapApiResponse(await res.json());
               if (mountedRef.current && d.status) {
                 setPaymentStatus(d.status);
               }
@@ -379,7 +379,7 @@ export default function OrderDetailScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       if (!res.ok) throw new Error(data.error || "Refund request failed");
       setRefundRequested(true);
       showToast(T("requestRefund") + " — submitted successfully", "success");

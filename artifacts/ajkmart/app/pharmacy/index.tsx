@@ -30,7 +30,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { getProducts, createPharmacyOrder } from "@workspace/api-client-react";
 import type { GetProductsType } from "@workspace/api-client-react";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, unwrapApiResponse } from "@/utils/api";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { withServiceGuard } from "@/components/ServiceGuard";
 
@@ -144,7 +144,7 @@ function PharmacyScreenInner() {
     if (!token) return;
     fetch(`${API_BASE}/addresses`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.addresses) setSavedAddresses(data.addresses); })
+      .then(j => { const data = unwrapApiResponse(j); if (data?.addresses) setSavedAddresses(data.addresses); })
       .catch((err) => console.warn("[Pharmacy] Saved addresses fetch failed:", err instanceof Error ? err.message : String(err)));
   }, [token]);
 

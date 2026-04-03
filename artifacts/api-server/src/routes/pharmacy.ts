@@ -9,6 +9,7 @@ import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
 import { prescriptionRefMap } from "./uploads.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -71,7 +72,7 @@ router.get("/", customerAuth, async (req, res) => {
     .from(pharmacyOrdersTable)
     .where(eq(pharmacyOrdersTable.userId, userId))
     .orderBy(sql`${pharmacyOrdersTable.createdAt} DESC`);
-  res.json({ orders: orders.map(mapOrder), total: orders.length });
+  sendSuccess(res, { orders: orders.map(mapOrder), total: orders.length });
 });
 
 router.get("/:id", customerAuth, async (req, res) => {
@@ -82,7 +83,7 @@ router.get("/:id", customerAuth, async (req, res) => {
     .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
     .limit(1);
   if (!order) {
-    res.status(404).json({ error: "Pharmacy order not found" });
+    sendNotFound(res, "Pharmacy order not found");
     return;
   }
   if (idorGuard(res, order.userId, userId)) return;
@@ -95,7 +96,7 @@ router.get("/:id", customerAuth, async (req, res) => {
     }
   }
 
-  res.json(mapOrder(order, resolvedPhoto));
+  sendSuccess(res, mapOrder(order, resolvedPhoto));
 });
 
 /* ── GET /pharmacy-orders/:id/track — Live rider location for active pharmacy orders ── */
@@ -107,7 +108,7 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
     .limit(1);
 
-  if (!order) { res.status(404).json({ error: "Pharmacy order not found" }); return; }
+  if (!order) { sendNotFound(res, "Pharmacy order not found"); return; }
   if (idorGuard(res, order.userId, userId)) return;
 
   const TRACKABLE = ["picked_up", "out_for_delivery", "in_transit"];
@@ -131,7 +132,7 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     riderPhone = riderUser[0]?.phone ?? null;
   }
 
-  res.json({
+  sendSuccess(res, {
     id: order.id,
     status: order.status,
     riderId: order.riderId,
@@ -148,8 +149,6 @@ router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const { items, prescriptionNote, prescriptionPhotoUri, deliveryAddress, contactPhone, paymentMethod } = req.body;
 
-  // If prescriptionPhotoUri is a refId (async upload in-flight), resolve to real URL
-  // If no URL found yet, store the refId as placeholder — mapOrder will handle rendering
   let resolvedPhotoUrl: string | null = null;
   if (prescriptionPhotoUri?.trim()) {
     const rawUri = prescriptionPhotoUri.trim();
@@ -165,32 +164,28 @@ router.post("/", customerAuth, async (req, res) => {
     }
   }
 
-  // Merge text note + photo URL into a single prescriptionNote for storage
-  // Format: "text note\n[photo: /api/uploads/filename.jpg]"
   const mergedPrescriptionNote = [
     prescriptionNote?.trim() || null,
     resolvedPhotoUrl ? `[photo: ${resolvedPhotoUrl}]` : null,
   ].filter(Boolean).join("\n") || null;
   if (!items || !deliveryAddress || !contactPhone || !paymentMethod) {
-    res.status(400).json({ error: "Missing required fields" });
+    sendValidationError(res, "Missing required fields");
     return;
   }
 
   const s = await getPlatformSettings();
 
-  // Maintenance mode gate
   if ((s["app_status"] ?? "active") === "maintenance") {
     const mainKey = (s["security_maintenance_key"] ?? "").trim();
     const bypass  = ((req.headers["x-maintenance-key"] as string) ?? "").trim();
     if (!mainKey || bypass !== mainKey) {
-      res.status(503).json({ error: s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!" }); return;
+      sendError(res, s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!", 503); return;
     }
   }
 
-  // Feature flag check
   const pharmacyEnabled = (s["feature_pharmacy"] ?? "on") === "on";
   if (!pharmacyEnabled) {
-    res.status(503).json({ error: "Pharmacy service is currently disabled" }); return;
+    sendError(res, "Pharmacy service is currently disabled", 503); return;
   }
 
   /* ── Fraud detection (mirrors orders.ts pattern) ── */
@@ -198,10 +193,10 @@ router.post("/", customerAuth, async (req, res) => {
   {
     const [userRecord] = await db.select({ isBanned: usersTable.isBanned, isActive: usersTable.isActive }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (userRecord?.isBanned) {
-      res.status(403).json({ error: "Your account has been suspended." }); return;
+      sendForbidden(res, "Your account has been suspended."); return;
     }
     if (userRecord && !userRecord.isActive) {
-      res.status(403).json({ error: "Your account is inactive. Please contact support." }); return;
+      sendForbidden(res, "Your account is inactive. Please contact support."); return;
     }
 
     if ((s["security_fake_order_detect"] ?? "off") === "on") {
@@ -211,7 +206,7 @@ router.post("/", customerAuth, async (req, res) => {
       const dailyCount = Number(dailyResult?.c ?? 0);
       if (dailyCount >= maxDailyOrders) {
         addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily pharmacy limit: ${dailyCount}/${maxDailyOrders}`, severity: "medium" });
-        res.status(429).json({ error: `Daily pharmacy order limit (${maxDailyOrders}) reached. Please try again tomorrow.` }); return;
+        sendError(res, `Daily pharmacy order limit (${maxDailyOrders}) reached. Please try again tomorrow.`, 429); return;
       }
 
       if (deliveryAddress) {
@@ -221,7 +216,7 @@ router.post("/", customerAuth, async (req, res) => {
         const sameAddrCount = Number(sameAddrOrders[0]?.c ?? 0);
         if (sameAddrCount >= sameAddrLimit) {
           addSecurityEvent({ type: "same_address_limit", ip, userId, details: `Pharmacy same-address limit: ${deliveryAddress} (${sameAddrCount}/hr)`, severity: "high" });
-          res.status(429).json({ error: "Too many pharmacy orders to this address. Please try again later." }); return;
+          sendError(res, "Too many pharmacy orders to this address. Please try again later.", 429); return;
         }
       }
     }
@@ -233,7 +228,7 @@ router.post("/", customerAuth, async (req, res) => {
             !Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0,
   );
   if (badItem) {
-    res.status(400).json({ error: "Each item must have a valid positive price and quantity" }); return;
+    sendValidationError(res, "Each item must have a valid positive price and quantity"); return;
   }
 
   /* ── Prescription (Rx) enforcement ──
@@ -266,10 +261,7 @@ router.post("/", customerAuth, async (req, res) => {
   }
 
   if (hasRxItem && !mergedPrescriptionNote) {
-    res.status(400).json({
-      error: "One or more items in your order require a doctor's prescription. Please add a prescription note or upload a photo.",
-      requiresPrescription: true,
-    });
+    sendErrorWithData(res, "One or more items in your order require a doctor's prescription. Please add a prescription note or upload a photo.", { requiresPrescription: true }, 400);
     return;
   }
 
@@ -279,13 +271,13 @@ router.post("/", customerAuth, async (req, res) => {
   );
 
   if (itemsTotal <= 0) {
-    res.status(400).json({ error: "Order total must be greater than 0" }); return;
+    sendValidationError(res, "Order total must be greater than 0"); return;
   }
 
   /* ── Min order check ── */
   const minOrder = parseFloat(s["min_order_amount"] ?? "100");
   if (itemsTotal < minOrder) {
-    res.status(400).json({ error: `Minimum order amount is Rs. ${minOrder}` }); return;
+    sendValidationError(res, `Minimum order amount is Rs. ${minOrder}`); return;
   }
 
   /* ── Delivery fee, GST, COD fee — via shared utility (see lib/fees.ts) ── */
@@ -303,15 +295,15 @@ router.post("/", customerAuth, async (req, res) => {
   if (paymentMethod === "cash") {
     const codEnabled = (s["cod_enabled"] ?? "on") === "on";
     if (!codEnabled) {
-      res.status(400).json({ error: "Cash on Delivery is currently not available" }); return;
+      sendValidationError(res, "Cash on Delivery is currently not available"); return;
     }
     const codAllowedForPharmacy = (s["cod_allowed_pharmacy"] ?? "on") !== "off";
     if (!codAllowedForPharmacy) {
-      res.status(400).json({ error: "Cash on Delivery is not available for Pharmacy orders. Please choose another payment method." }); return;
+      sendValidationError(res, "Cash on Delivery is not available for Pharmacy orders. Please choose another payment method."); return;
     }
     const codMax = parseFloat(s["cod_max_amount"] ?? "5000");
     if (total > codMax) {
-      res.status(400).json({ error: `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.` }); return;
+      sendValidationError(res, `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.`); return;
     }
     /* ── COD verification threshold — flag high-value cash orders ── */
     const verifyThreshold = parseFloat(s["cod_verification_threshold"] ?? "0");
@@ -320,16 +312,15 @@ router.post("/", customerAuth, async (req, res) => {
     }
   }
 
-  // Wallet payment → atomic DB transaction (prevents race condition / double-spend)
   if (paymentMethod === "wallet") {
     const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
     if (!walletEnabled) {
-      res.status(400).json({ error: "Wallet payments are currently disabled" }); return;
+      sendValidationError(res, "Wallet payments are currently disabled"); return;
     }
 
     const [wUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (wUser && (wUser.blockedServices || "").split(",").map(sv => sv.trim()).includes("wallet")) {
-      res.status(403).json({ error: "wallet_frozen", message: "Your wallet has been temporarily frozen. Contact support." }); return;
+      sendForbidden(res, "wallet_frozen", "Your wallet has been temporarily frozen. Contact support."); return;
     }
 
     try {
@@ -370,14 +361,13 @@ router.post("/", customerAuth, async (req, res) => {
         type: "pharmacy", icon: "medical-outline", link: `/(tabs)/orders`,
       }).catch(() => {});
 
-      res.status(201).json({ ...mapOrder(order), deliveryFee, gstAmount });
+      sendCreated(res, { ...mapOrder(order), deliveryFee, gstAmount });
     } catch (e: unknown) {
-      res.status(400).json({ error: e.message });
+      sendValidationError(res, (e as Error).message);
     }
     return;
   }
 
-  // Cash / other payments
   const [order] = await db.insert(pharmacyOrdersTable).values({
     id: generateId(), userId, items,
     prescriptionNote: mergedPrescriptionNote,
@@ -394,7 +384,7 @@ router.post("/", customerAuth, async (req, res) => {
     type: "pharmacy", icon: "medical-outline", link: `/(tabs)/orders`,
   }).catch(() => {});
 
-  res.status(201).json({ ...mapOrder(order!), deliveryFee, gstAmount });
+  sendCreated(res, { ...mapOrder(order!), deliveryFee, gstAmount });
 });
 
 router.patch("/:id/cancel", customerAuth, async (req, res) => {
@@ -407,10 +397,10 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     .where(eq(pharmacyOrdersTable.id, orderId))
     .limit(1);
 
-  if (!order) { res.status(404).json({ error: "Pharmacy order not found" }); return; }
+  if (!order) { sendNotFound(res, "Pharmacy order not found"); return; }
   if (idorGuard(res, order.userId, userId)) return;
   if (order.status !== "pending") {
-    res.status(409).json({ error: "Only pending pharmacy orders can be cancelled" });
+    sendError(res, "Only pending pharmacy orders can be cancelled", 409);
     return;
   }
 
@@ -418,7 +408,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   const cancelWindowMin = parseFloat(String(s["order_cancel_window_min"] ?? "5"));
   const minutesSincePlaced = (Date.now() - order.createdAt.getTime()) / 60000;
   if (minutesSincePlaced > cancelWindowMin) {
-    res.status(409).json({ error: `Cancellation window of ${cancelWindowMin} minutes has passed` });
+    sendError(res, `Cancellation window of ${cancelWindowMin} minutes has passed`, 409);
     return;
   }
 
@@ -451,8 +441,9 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       });
       return updated;
     }).catch((err: unknown) => {
-      if (err?.httpStatus) { res.status(err.httpStatus).json({ error: err.message }); }
-      else { res.status(500).json({ error: "Cancel failed" }); }
+      const e = err as any;
+      if (e?.httpStatus) { sendError(res, e.message, e.httpStatus); }
+      else { sendError(res, "Cancel failed", 500); }
       return undefined;
     });
     if (!cancelledOrder) return;
@@ -464,7 +455,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       type: "pharmacy", icon: "wallet-outline",
     }).catch(() => {});
     refundAmount = refund;
-    res.json({ ...mapOrder(cancelledOrder), refundAmount });
+    sendSuccess(res, { ...mapOrder(cancelledOrder), refundAmount });
     return;
   }
 
@@ -474,8 +465,8 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     .where(and(eq(pharmacyOrdersTable.id, orderId), eq(pharmacyOrdersTable.status, "pending")))
     .returning();
 
-  if (!cancelled) { res.status(409).json({ error: "Order already processed or cancelled" }); return; }
-  res.json({ ...mapOrder(cancelled), refundAmount });
+  if (!cancelled) { sendError(res, "Order already processed or cancelled", 409); return; }
+  sendSuccess(res, { ...mapOrder(cancelled), refundAmount });
 });
 
 router.patch("/:id/status", riderAuth, async (req, res) => {
@@ -484,7 +475,7 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
   /* Whitelist: prevent arbitrary string injection into the status column */
   const ALLOWED_STATUSES = ["accepted", "picked_up", "in_transit", "delivered", "cancelled"] as const;
   if (!ALLOWED_STATUSES.includes(status)) {
-    res.status(400).json({ error: `Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}` });
+    sendValidationError(res, `Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}`);
     return;
   }
 
@@ -494,11 +485,11 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
     .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
     .limit(1);
   if (!existing) {
-    res.status(404).json({ error: "Pharmacy order not found" });
+    sendNotFound(res, "Pharmacy order not found");
     return;
   }
   if (existing.riderId && existing.riderId !== req.riderId) {
-    res.status(403).json({ error: "This order is assigned to another rider" });
+    sendForbidden(res, "This order is assigned to another rider");
     return;
   }
 
@@ -512,10 +503,10 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
       .where(and(eq(pharmacyOrdersTable.id, String(req.params["id"])), sql`rider_id IS NULL`))
       .returning();
     if (!order) {
-      res.status(409).json({ error: "This order has already been accepted by another rider" });
+      sendError(res, "This order has already been accepted by another rider", 409);
       return;
     }
-    res.json(mapOrder(order));
+    sendSuccess(res, mapOrder(order));
     return;
   }
 
@@ -525,10 +516,10 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
     .where(eq(pharmacyOrdersTable.id, String(req.params["id"])))
     .returning();
   if (!order) {
-    res.status(404).json({ error: "Pharmacy order not found" });
+    sendNotFound(res, "Pharmacy order not found");
     return;
   }
-  res.json(mapOrder(order));
+  sendSuccess(res, mapOrder(order));
 });
 
 export default router;

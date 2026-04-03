@@ -132,6 +132,7 @@ export const spacing = {
   xl: 20,
   xxl: 24,
   xxxl: 32,
+  xxxxl: 48,
 } as const;
 
 export const radii = {
@@ -209,6 +210,28 @@ export const shadows = {
   md: _mkShadow(2, 8, 0.06, 3),
   lg: _mkShadow(4, 16, 0.08, 6),
   xl: _mkShadow(8, 24, 0.12, 10),
+} as const;
+
+export const gradients = {
+  primary: [primary, primaryDark] as const,
+  mart: ["#00C48C", "#00A67A"] as const,
+  food: ["#FF9500", "#E67E00"] as const,
+  ride: [primary, "#0052CC"] as const,
+  wallet: ["#5856D6", "#4644B0"] as const,
+  pharmacy: ["#AF52DE", "#8E44AD"] as const,
+  parcel: ["#FF6B35", "#D4541E"] as const,
+  success: [success, "#00A67A"] as const,
+  danger: [danger, "#CC2F26"] as const,
+  dark: ["#1E293B", "#0F172A"] as const,
+} as const;
+
+export const serviceColors = {
+  mart: { main: "#00C48C", light: "#E5F9F2", dark: "#00A67A" },
+  food: { main: "#FF9500", light: "#FFF4E5", dark: "#E67E00" },
+  ride: { main: primary, light: "#E8F1FF", dark: "#0052CC" },
+  wallet: { main: "#5856D6", light: "#EEEEFF", dark: "#4644B0" },
+  pharmacy: { main: "#AF52DE", light: "#F5E6FF", dark: "#8E44AD" },
+  parcel: { main: "#FF6B35", light: "#FFF0EB", dark: "#D4541E" },
 } as const;
 
 export default {
@@ -343,8 +366,15 @@ export default {
     greenVivid,
     pharmacy: "#AF52DE",
     pharmacyLight: "#F5E6FF",
+    pharmacyDark: "#8E44AD",
     parcel: "#FF6B35",
     parcelLight: "#FFF0EB",
+    parcelDark: "#D4541E",
+
+    martDark: "#00A67A",
+    foodDark: "#E67E00",
+    rideDark: "#0052CC",
+    walletDark: "#4644B0",
     overlayLight10,
     overlayLight15,
     overlayLight20,

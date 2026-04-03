@@ -9,6 +9,7 @@ import { adminAuth } from "./admin.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { emitSosNew, emitSosAcknowledged, emitSosResolved } from "../lib/socketio.js";
+import { sendSuccess, sendError, sendNotFound } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -16,7 +17,7 @@ const router: IRouter = Router();
 router.post("/", customerAuth, async (req, res) => {
   const settings = await getCachedSettings();
   if ((settings["feature_sos"] ?? "on") !== "on") {
-    res.status(503).json({ error: "SOS feature is currently disabled" }); return;
+    sendError(res, "SOS feature is currently disabled", 503); return;
   }
 
   const userId = req.customerId!;
@@ -58,7 +59,7 @@ router.post("/", customerAuth, async (req, res) => {
     });
   } catch { /* non-critical */ }
 
-  res.json({ ok: true, alertId, message: "SOS alert sent. Help is on the way." });
+  sendSuccess(res, { alertId }, "SOS alert sent. Help is on the way.");
 });
 
 function getAdminFromReq(req: Request): { adminId: string; adminName: string } {
@@ -144,7 +145,7 @@ router.get("/alerts", adminAuth, async (req, res) => {
     .where(whereClause)
     .then(r => r.length);
 
-  res.json({
+  sendSuccess(res, {
     alerts: alerts.map(a => serializeAlert(a)),
     total:  totalRows,
     page,
@@ -162,12 +163,12 @@ router.patch("/alerts/:id/acknowledge", adminAuth, async (req, res) => {
     .where(and(eq(notificationsTable.id, alertId), eq(notificationsTable.type, "sos")))
     .limit(1);
 
-  if (!existing) { res.status(404).json({ error: "SOS alert not found" }); return; }
+  if (!existing) { sendNotFound(res, "SOS alert not found"); return; }
   if (existing.sosStatus === "acknowledged") {
-    res.status(409).json({ error: "Alert is already acknowledged", acknowledgedBy: existing.acknowledgedByName ?? existing.acknowledgedBy ?? "another admin" });
+    sendError(res, "Alert is already acknowledged", 409);
     return;
   }
-  if (existing.sosStatus === "resolved") { res.status(409).json({ error: "Alert is already resolved" }); return; }
+  if (existing.sosStatus === "resolved") { sendError(res, "Alert is already resolved", 409); return; }
 
   const now = new Date();
   await db.update(notificationsTable)
@@ -178,7 +179,7 @@ router.patch("/alerts/:id/acknowledge", adminAuth, async (req, res) => {
   const fullPayload = serializeAlert(updated);
 
   try { emitSosAcknowledged(fullPayload); } catch { /* non-critical */ }
-  res.json({ ok: true, alert: fullPayload });
+  sendSuccess(res, { alert: fullPayload });
 });
 
 /* ── PATCH /sos/alerts/:id/resolve ── */
@@ -192,8 +193,8 @@ router.patch("/alerts/:id/resolve", adminAuth, async (req, res) => {
     .where(and(eq(notificationsTable.id, alertId), eq(notificationsTable.type, "sos")))
     .limit(1);
 
-  if (!existing) { res.status(404).json({ error: "SOS alert not found" }); return; }
-  if (existing.sosStatus === "resolved") { res.status(409).json({ error: "Alert is already resolved" }); return; }
+  if (!existing) { sendNotFound(res, "SOS alert not found"); return; }
+  if (existing.sosStatus === "resolved") { sendError(res, "Alert is already resolved", 409); return; }
 
   const now = new Date();
   await db.update(notificationsTable)
@@ -204,7 +205,7 @@ router.patch("/alerts/:id/resolve", adminAuth, async (req, res) => {
   const fullPayload = serializeAlert(updated);
 
   try { emitSosResolved(fullPayload); } catch { /* non-critical */ }
-  res.json({ ok: true, alert: fullPayload });
+  sendSuccess(res, { alert: fullPayload });
 });
 
 export default router;

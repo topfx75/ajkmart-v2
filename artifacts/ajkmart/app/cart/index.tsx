@@ -28,7 +28,7 @@ import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { createOrder } from "@workspace/api-client-react";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, unwrapApiResponse } from "@/utils/api";
 
 const C = Colors.light;
 type PayMethod = "cash" | "wallet" | "jazzcash" | "easypaisa";
@@ -123,7 +123,7 @@ function AddressPickerModal({
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || "Failed to save address");
       }
-      const d = await res.json();
+      const d = unwrapApiResponse(await res.json());
       const created: SavedAddress = d.address || d;
       onAddressCreated(created);
       resetForm();
@@ -357,7 +357,7 @@ export default function CartScreen() {
             const r = await fetch(`${API_BASE}/payments/${encodeURIComponent(oid)}/status`, {
               headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
-            const d = await r.json() as any;
+            const d = unwrapApiResponse(await r.json()) as any;
             if (!mountedRef.current) return;
             if (d.status === "completed" || d.status === "success") {
               const successData = { id: oid.slice(-6).toUpperCase(), time: "30-45 min", payMethod };
@@ -390,6 +390,7 @@ export default function CartScreen() {
   useEffect(() => {
     fetch(`${API_BASE}/platform-config`)
       .then(r => r.json())
+      .then(unwrapApiResponse)
       .then(d => {
         if (d.payment?.methods) {
           const methods: PaymentMethod[] = (d as PaymentMethodsApiResponse).payment.methods.map((m: PaymentMethodRaw) => ({
@@ -442,6 +443,7 @@ export default function CartScreen() {
     setAddrLoading(true);
     fetch(`${API_BASE}/addresses`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => r.json())
+      .then(unwrapApiResponse)
       .then(d => {
         const addrs: SavedAddress[] = d.addresses || [];
         setAddresses(addrs);
@@ -475,7 +477,7 @@ export default function CartScreen() {
       const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       if (data.valid) {
         setPromoDiscount(data.discount);
       } else {
@@ -504,7 +506,7 @@ export default function CartScreen() {
       const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       if (data.valid) {
         setPromoCode(code);
         setPromoDiscount(data.discount);
@@ -759,11 +761,12 @@ export default function CartScreen() {
           orderId: realOrderId, mobileNumber: gwMobile.replace(/\D/g, ""),
         }),
       });
-      const data = await r.json() as any;
+      const rawData = await r.json() as any;
       if (!r.ok) {
         await cancelPendingOrder(realOrderId);
-        throw new Error(data.error || "Could not initiate payment");
+        throw new Error(rawData.error || "Could not initiate payment");
       }
+      const data = unwrapApiResponse(rawData) as any;
 
       gwOrderId.current = realOrderId;
       gwTxnRef.current = data.txnRef || data.transactionRef || realOrderId;

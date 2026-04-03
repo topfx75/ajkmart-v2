@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { getPlatformSettings } from "./admin.js";
+import { sendSuccess } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -54,7 +55,7 @@ router.get("/", async (req, res) => {
     },
   ];
 
-  res.json({
+  sendSuccess(res, {
     deliveryFee: {
       mart:             parseFloat(s["delivery_fee_mart"]      ?? "80"),
       food:             parseFloat(s["delivery_fee_food"]      ?? "60"),
@@ -311,3 +312,4 @@ router.get("/", async (req, res) => {
 });
 
 export default router;
+

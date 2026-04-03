@@ -43,6 +43,7 @@ import {
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
 
+import { unwrapApiResponse } from "@/utils/api";
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 const C = Colors.light;
@@ -161,7 +162,7 @@ function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabB
     queryFn: async () => {
       const r = await fetch(`${API_BASE}/orders?status=active`, { headers: authHdrs });
       if (!r.ok) throw new Error("orders fetch failed");
-      return r.json();
+      return r.json().then(unwrapApiResponse);
     },
     enabled: !!userId && !!token,
     refetchInterval: 30000,
@@ -173,7 +174,7 @@ function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabB
     queryFn: async () => {
       const r = await fetch(`${API_BASE}/rides?status=active`, { headers: authHdrs });
       if (!r.ok) throw new Error("rides fetch failed");
-      return r.json();
+      return r.json().then(unwrapApiResponse);
     },
     enabled: !!userId && !!token,
     refetchInterval: 30000,

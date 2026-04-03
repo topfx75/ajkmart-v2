@@ -37,7 +37,7 @@ export const getBanners = async (
   if (params?.placement) qs.set("placement", params.placement);
   if (params?.service) qs.set("service", params.service);
   const q = qs.toString();
-  const res = await customFetch(`/banners${q ? `?${q}` : ""}`, { ...options, method: "GET" });
+  const res: { banners?: Banner[] } = await customFetch(`/banners${q ? `?${q}` : ""}`, { ...options, method: "GET" });
   return res.banners ?? [];
 };
 
@@ -48,7 +48,7 @@ export const getTrending = async (
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   const q = qs.toString();
-  const res = await customFetch(`/recommendations/trending${q ? `?${q}` : ""}`, { ...options, method: "GET" });
+  const res: { recommendations?: RecommendationProduct[]; products?: RecommendationProduct[] } = await customFetch(`/recommendations/trending${q ? `?${q}` : ""}`, { ...options, method: "GET" });
   return res.recommendations ?? res.products ?? [];
 };
 
@@ -59,7 +59,7 @@ export const getForYou = async (
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   const q = qs.toString();
-  const res = await customFetch(`/recommendations/for-you${q ? `?${q}` : ""}`, { ...options, method: "GET" });
+  const res: { products?: RecommendationProduct[] } = await customFetch(`/recommendations/for-you${q ? `?${q}` : ""}`, { ...options, method: "GET" });
   return res.products ?? [];
 };
 
@@ -71,7 +71,7 @@ export const getSimilar = async (
   const qs = new URLSearchParams();
   if (params?.limit) qs.set("limit", String(params.limit));
   const q = qs.toString();
-  const res = await customFetch(`/recommendations/similar/${productId}${q ? `?${q}` : ""}`, { ...options, method: "GET" });
+  const res: { products?: RecommendationProduct[] } = await customFetch(`/recommendations/similar/${productId}${q ? `?${q}` : ""}`, { ...options, method: "GET" });
   return res.products ?? [];
 };
 
@@ -91,7 +91,7 @@ export const getProductVariants = async (
   productId: string,
   options?: RequestInit,
 ): Promise<any[]> => {
-  const res = await customFetch(`/variants/product/${productId}`, { ...options, method: "GET" });
+  const res: { variants?: any[] } = await customFetch(`/variants/product/${productId}`, { ...options, method: "GET" });
   return res.variants ?? [];
 };
 
@@ -130,7 +130,6 @@ export interface SearchProductsParams {
   minPrice?: string;
   maxPrice?: string;
   minRating?: string;
-  category?: string;
   page?: number;
   perPage?: number;
 }
@@ -165,7 +164,6 @@ export const searchProducts = async (
   if (params.minPrice) qs.set("minPrice", params.minPrice);
   if (params.maxPrice) qs.set("maxPrice", params.maxPrice);
   if (params.minRating) qs.set("minRating", params.minRating);
-  if (params.category) qs.set("category", params.category);
   if (params.page) qs.set("page", String(params.page));
   if (params.perPage) qs.set("perPage", String(params.perPage));
   const res: SearchProductsResponse = await customFetch(`/products/search?${qs.toString()}`, { ...options, method: "GET" });
@@ -226,7 +224,7 @@ export interface WishlistItem {
 }
 
 export const getWishlist = async (options?: RequestInit): Promise<WishlistItem[]> => {
-  const res = await customFetch(`/wishlist`, { ...options, method: "GET" });
+  const res: { items?: WishlistItem[] } = await customFetch(`/wishlist`, { ...options, method: "GET" });
   return res.items ?? [];
 };
 
@@ -244,7 +242,7 @@ export const removeFromWishlist = async (productId: string, options?: RequestIni
 };
 
 export const checkWishlist = async (productId: string, options?: RequestInit): Promise<boolean> => {
-  const res = await customFetch(`/wishlist/check/${productId}`, { ...options, method: "GET" });
+  const res: { inWishlist?: boolean } = await customFetch(`/wishlist/check/${productId}`, { ...options, method: "GET" });
   return res.inWishlist ?? false;
 };
 

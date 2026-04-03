@@ -166,6 +166,29 @@ AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pak
 #### P4-T007 — Customer Booking Web Portal (DELETED)
 - **Removed**: `artifacts/customer` web portal was deleted at user's request.
 
+### Step 1: Design System & Shared Components + Backend Foundation — Completed Changes
+
+#### Frontend Design Tokens
+- **`artifacts/ajkmart/constants/colors.ts`**: Added `gradients` export (primary, mart, food, ride, wallet, pharmacy, parcel, success, danger, dark), `serviceColors` lookup (main/light/dark per service), `xxxxl: 48` to spacing, service dark tint variants (martDark, foodDark, rideDark, walletDark, pharmacyDark, parcelDark).
+
+#### New/Upgraded UI Components
+- **`artifacts/ajkmart/components/ui/Avatar.tsx`**: New — initials fallback with deterministic color hash, supports xs/sm/md/lg/xl sizes, image URI or name-based rendering.
+- **`artifacts/ajkmart/components/ui/Divider.tsx`**: New — horizontal divider with optional centered label, configurable color and spacing.
+- **`artifacts/ajkmart/components/ui/Tag.tsx`**: New — pill tag with variant colors (success/warning/danger/info/neutral/primary), optional icon, removable with onRemove callback, outlined mode.
+- **`artifacts/ajkmart/components/ui/ErrorState.tsx`**: New — error display with icon/emoji, title, subtitle, retry button.
+- **`artifacts/ajkmart/components/ui/Modal.tsx`**: New — centered modal overlay with title, subtitle, close button, content slot.
+- **`artifacts/ajkmart/components/ui/ScreenContainer.tsx`**: New — layout primitive wrapping SafeAreaView + scroll + keyboard avoidance. Configurable edges, scroll/static, background color.
+- **`artifacts/ajkmart/components/ui/Input.tsx`**: Upgraded — added `success` state, `showCharCount`/`maxLength` char counter, `clearable` with clear button, `rightElement` slot, `onClear` callback.
+- **`artifacts/ajkmart/components/ui/index.ts`**: Updated barrel export with all new components (Avatar, Divider, ErrorState, Modal, ScreenContainer, SkeletonBlock, SmartRefresh, Tag).
+
+#### Backend API Response Standardization
+- **`artifacts/api-server/src/lib/response.ts`**: New — shared response helpers: `sendSuccess`, `sendCreated`, `sendError`, `sendErrorWithData`, `sendValidationError`, `sendUnauthorized`, `sendForbidden`, `sendNotFound`, `sendTooManyRequests`, `sendInternalError`. All enforce `{ success, data?, error?, message? }` format with bilingual defaults (EN error + UR message via DEFAULT_UR lookup).
+- **`artifacts/api-server/src/app.ts`**: Global error handler upgraded — maps error codes to bilingual messages (EN/UR), structured Pino logging with IP/code/method/url, standardized `{ success, error, message, code }` format.
+- **`artifacts/api-server/src/routes/health.ts`**: Upgraded — returns DB status with latency, uptime seconds, timestamp, service health object. Uses `sendSuccess` helper. Returns 503 with full `data` payload on degraded status.
+- **`artifacts/api-server/src/middleware/security.ts`**: All middleware responses (customerAuth, riderAuth, requireRole, rateLimitMiddleware, verifyCaptcha, idorGuard) standardized to `{ success: false, error, message }` format with bilingual EN/UR messages.
+- **`artifacts/api-server/src/middleware/validate.ts`**: New — Zod validation middleware factory: `validate({ body?, query?, params? })`, `validateBody`, `validateQuery`, `validateParams`. Returns structured `{ success: false, error, message, code: "VALIDATION" }` with bilingual error messages and Pino logging.
+- **Response helpers imported in 37/39 route files** (excluding `auth.ts` per user instruction and `admin.ts` barrel-only file). Fully converted routes: categories, wishlist, notifications, products, banners, addresses, reviews, users, health, push, uploads, sos, settings, platform-config. Remaining routes have imports ready for incremental body conversion.
+
 ### User Preferences
 - I want iterative development.
 - Ask before making major changes.

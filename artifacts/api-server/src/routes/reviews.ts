@@ -4,6 +4,7 @@ import { db } from "@workspace/db";
 import { ordersTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, reviewsTable, rideRatingsTable, ridesTable, usersTable } from "@workspace/db/schema";
 import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendUnauthorized } from "../lib/response.js";
 import { getPlatformSettings } from "./admin.js";
 import { customerAuth, verifyUserJwt, writeAuthAuditLog, getClientIp } from "../middleware/security.js";
 import OpenAI from "openai";
@@ -16,16 +17,16 @@ async function vendorAuth(req: Request, res: Response, next: NextFunction) {
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
   const ip = getClientIp(req);
-  if (!raw) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!raw) { sendUnauthorized(res, "Authentication required", "تصدیق ضروری ہے۔"); return; }
   const payload = verifyUserJwt(raw);
   if (!payload) {
     writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, role: "vendor" } });
-    res.status(401).json({ error: "Invalid or expired session" }); return;
+    sendUnauthorized(res, "Invalid or expired session", "غلط یا ختم شدہ سیشن۔"); return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-  if (!user || !user.isActive || user.isBanned) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!user || !user.isActive || user.isBanned) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
   const dbRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
-  if (!dbRoles.includes("vendor")) { res.status(403).json({ error: "Vendor role required" }); return; }
+  if (!dbRoles.includes("vendor")) { sendForbidden(res, "Vendor role required", "وینڈر کا کردار ضروری ہے۔"); return; }
   req.vendorId = user.id;
   req.vendorUser = user;
   next();
@@ -89,7 +90,7 @@ router.get("/product/:productId", async (req, res) => {
     .limit(1);
 
   if (!product) {
-    res.status(404).json({ error: "Product not found" });
+    sendNotFound(res, "Product not found", "پروڈکٹ نہیں ملی۔");
     return;
   }
 
@@ -129,7 +130,7 @@ router.get("/product/:productId", async (req, res) => {
     .limit(limit)
     .offset(offset);
 
-  res.json({
+  sendSuccess(res, {
     reviews: rows.map(r => ({
       ...r,
       userName: r.userName || "Customer",
@@ -169,7 +170,7 @@ router.get("/product/:productId/summary", async (req, res) => {
   }
   const average = total > 0 ? parseFloat((sum / total).toFixed(1)) : 0;
 
-  res.json({ average, total, distribution });
+  sendSuccess(res, { average, total, distribution });
 });
 
 /* ── POST /reviews — submit a review ─────────────────────────────────────── */
@@ -178,11 +179,11 @@ router.post("/", customerAuth, async (req, res) => {
   const { orderId, vendorId, riderId, orderType, rating, riderRating, comment, productId, photos } = req.body;
 
   if (!orderType || !rating) {
-    res.status(400).json({ error: "orderType and rating are required" });
+    sendValidationError(res, "orderType and rating are required");
     return;
   }
   if (orderType !== "product" && !orderId) {
-    res.status(400).json({ error: "orderId is required for order-based reviews" });
+    sendValidationError(res, "orderId is required for order-based reviews");
     return;
   }
 
@@ -193,12 +194,12 @@ router.post("/", customerAuth, async (req, res) => {
     }
   }
   if (typeof rating !== "number" || rating < 1 || rating > 5) {
-    res.status(400).json({ error: "rating must be 1–5" });
+    sendValidationError(res, "rating must be 1–5");
     return;
   }
   if (riderRating !== undefined && riderRating !== null) {
     if (typeof riderRating !== "number" || riderRating < 1 || riderRating > 5) {
-      res.status(400).json({ error: "riderRating must be 1–5" });
+      sendValidationError(res, "riderRating must be 1–5");
       return;
     }
   }
@@ -206,7 +207,7 @@ router.post("/", customerAuth, async (req, res) => {
   const s = await getPlatformSettings();
   const reviewsEnabled = (s["feature_reviews"] ?? "on") === "on";
   if (!reviewsEnabled) {
-    res.status(503).json({ error: "Customer reviews are currently disabled." });
+    sendError(res, "Customer reviews are currently disabled.", 503, "کسٹمر ریویوز فی الحال بند ہیں۔");
     return;
   }
 
@@ -229,21 +230,21 @@ router.post("/", customerAuth, async (req, res) => {
       .limit(1);
 
     if (!rideRow) {
-      res.status(404).json({ error: "Ride not found." });
+      sendNotFound(res, "Ride not found.", "سواری نہیں ملی۔");
       return;
     }
     if (rideRow.userId !== userId) {
-      res.status(403).json({ error: "You can only review your own rides." });
+      sendForbidden(res, "You can only review your own rides.", "آپ صرف اپنی سواریوں کا جائزہ لے سکتے ہیں۔");
       return;
     }
     /* Self-rating guard */
     if (rideRow.riderId && rideRow.riderId === userId) {
-      res.status(403).json({ error: "You cannot rate yourself." });
+      sendForbidden(res, "You cannot rate yourself.", "آپ خود کو درجہ بندی نہیں دے سکتے۔");
       return;
     }
     const ageHours = (Date.now() - new Date(rideRow.createdAt).getTime()) / (3_600_000);
     if (ageHours > ratingWindowHours) {
-      res.status(400).json({ error: `Reviews can only be submitted within ${ratingWindowHours} hours of completion.`, expired: true, ratingWindowHours });
+      sendValidationError(res, `Reviews can only be submitted within ${ratingWindowHours} hours of completion.`);
       return;
     }
     authoritativeRiderId = rideRow.riderId ?? null;
@@ -256,16 +257,16 @@ router.post("/", customerAuth, async (req, res) => {
       .limit(1);
 
     if (!row) {
-      res.status(404).json({ error: "Pharmacy order not found." });
+      sendNotFound(res, "Pharmacy order not found.", "فارمیسی آرڈر نہیں ملا۔");
       return;
     }
     if (row.userId !== userId) {
-      res.status(403).json({ error: "You can only review your own orders." });
+      sendForbidden(res, "You can only review your own orders.", "آپ صرف اپنے آرڈرز کا جائزہ لے سکتے ہیں۔");
       return;
     }
     const ageHours = (Date.now() - new Date(row.createdAt).getTime()) / (3_600_000);
     if (ageHours > ratingWindowHours) {
-      res.status(400).json({ error: `Reviews can only be submitted within ${ratingWindowHours} hours of order completion.`, expired: true, ratingWindowHours });
+      sendValidationError(res, `Reviews can only be submitted within ${ratingWindowHours} hours of order completion.`);
       return;
     }
     authoritativeRiderId = row.riderId ?? null;
@@ -278,23 +279,23 @@ router.post("/", customerAuth, async (req, res) => {
       .limit(1);
 
     if (!row) {
-      res.status(404).json({ error: "Parcel booking not found." });
+      sendNotFound(res, "Parcel booking not found.", "پارسل بکنگ نہیں ملی۔");
       return;
     }
     if (row.userId !== userId) {
-      res.status(403).json({ error: "You can only review your own bookings." });
+      sendForbidden(res, "You can only review your own bookings.", "آپ صرف اپنی بکنگ کا جائزہ لے سکتے ہیں۔");
       return;
     }
     const ageHours = (Date.now() - new Date(row.createdAt).getTime()) / (3_600_000);
     if (ageHours > ratingWindowHours) {
-      res.status(400).json({ error: `Reviews can only be submitted within ${ratingWindowHours} hours of completion.`, expired: true, ratingWindowHours });
+      sendValidationError(res, `Reviews can only be submitted within ${ratingWindowHours} hours of completion.`);
       return;
     }
     authoritativeRiderId = row.riderId ?? null;
 
   } else if (orderType === "product") {
     if (!productId) {
-      res.status(400).json({ error: "productId is required for product reviews." });
+      sendValidationError(res, "productId is required for product reviews.");
       return;
     }
     const [productRow] = await db
@@ -304,7 +305,7 @@ router.post("/", customerAuth, async (req, res) => {
       .limit(1);
 
     if (!productRow) {
-      res.status(404).json({ error: "Product not found." });
+      sendNotFound(res, "Product not found.", "پروڈکٹ نہیں ملی۔");
       return;
     }
 
@@ -324,7 +325,7 @@ router.post("/", customerAuth, async (req, res) => {
       .limit(1);
 
     if (purchaseOrders.length === 0) {
-      res.status(403).json({ error: "You can only review products you have purchased." });
+      sendForbidden(res, "You can only review products you have purchased.", "آپ صرف خریدی ہوئی مصنوعات کا جائزہ لے سکتے ہیں۔");
       return;
     }
 
@@ -339,16 +340,16 @@ router.post("/", customerAuth, async (req, res) => {
       .limit(1);
 
     if (!orderRow) {
-      res.status(404).json({ error: "Order not found." });
+      sendNotFound(res, "Order not found.", "آرڈر نہیں ملا۔");
       return;
     }
     if (orderRow.userId !== userId) {
-      res.status(403).json({ error: "You can only review your own orders." });
+      sendForbidden(res, "You can only review your own orders.", "آپ صرف اپنے آرڈرز کا جائزہ لے سکتے ہیں۔");
       return;
     }
     const ageHours = (Date.now() - new Date(orderRow.createdAt).getTime()) / (3_600_000);
     if (ageHours > ratingWindowHours) {
-      res.status(400).json({ error: `Reviews can only be submitted within ${ratingWindowHours} hours of order completion.`, expired: true, ratingWindowHours });
+      sendValidationError(res, `Reviews can only be submitted within ${ratingWindowHours} hours of order completion.`);
       return;
     }
     /* Derive subjects from DB — never from request body */
@@ -358,7 +359,7 @@ router.post("/", customerAuth, async (req, res) => {
 
   /* Self-rating guard (non-ride types) */
   if (authoritativeRiderId && authoritativeRiderId === userId) {
-    res.status(403).json({ error: "You cannot rate yourself." });
+    sendForbidden(res, "You cannot rate yourself.", "آپ خود کو درجہ بندی نہیں دے سکتے۔");
     return;
   }
 
@@ -373,7 +374,7 @@ router.post("/", customerAuth, async (req, res) => {
     .limit(1);
 
   if (existing.length > 0) {
-    res.status(409).json({ error: "Already reviewed", alreadyReviewed: true });
+    sendError(res, "Already reviewed", 409, "پہلے سے جائزہ لیا جا چکا ہے۔");
     return;
   }
 
@@ -408,9 +409,9 @@ router.post("/", customerAuth, async (req, res) => {
   }).returning();
 
   if (status === "pending_moderation") {
-    res.status(201).json({ ...review, _moderated: true, message: "Your review is under moderation and will be visible once approved." });
+    sendCreated(res, { ...review, _moderated: true }, "آپ کا جائزہ اعتدال کے تحت ہے اور منظوری کے بعد نظر آئے گا۔");
   } else {
-    res.status(201).json(review);
+    sendCreated(res, review);
   }
 });
 
@@ -419,7 +420,7 @@ router.get("/", customerAuth, async (req, res) => {
   const userId  = req.customerId!;
   const orderId = req.query["orderId"] as string;
   const type    = (req.query["type"] as string) ?? "order"; // "ride" | "order"
-  if (!orderId) { res.status(400).json({ error: "orderId required" }); return; }
+  if (!orderId) { sendValidationError(res, "orderId required"); return; }
 
   /* Ownership gate: verify the caller owns this order/ride before revealing review status.
      Without this check a caller can enumerate review states for arbitrary IDs. */
@@ -438,7 +439,7 @@ router.get("/", customerAuth, async (req, res) => {
     owned = !!row && row.userId === userId;
   }
   if (!owned) {
-    res.status(403).json({ error: "Forbidden." });
+    sendForbidden(res);
     return;
   }
 
@@ -449,7 +450,7 @@ router.get("/", customerAuth, async (req, res) => {
     .where(and(eq(reviewsTable.orderId, orderId), eq(reviewsTable.userId, userId)))
     .limit(1);
 
-  res.json({ reviewed: rows.length > 0, review: rows[0] ?? null });
+  sendSuccess(res, { reviewed: rows.length > 0, review: rows[0] ?? null });
 });
 
 /* ── GET /reviews/my — list all reviews submitted by the logged-in customer ── */
@@ -531,7 +532,7 @@ router.get("/my", customerAuth, async (req, res) => {
     riderName: r.riderId ? (riderMap.get(r.riderId) ?? null) : null,
   }));
 
-  res.json({ reviews, total, page: pageParam, pages: Math.ceil(total / limitParam) });
+  sendSuccess(res, { reviews, total, page: pageParam, pages: Math.ceil(total / limitParam) });
 });
 
 /* ── GET /reviews/vendor/:vendorId — all visible reviews for a vendor (public) ── */
@@ -560,7 +561,7 @@ router.get("/vendor/:vendorId", async (req, res) => {
     ? (rows.reduce((s, r) => s + r.rating, 0) / rows.length).toFixed(1)
     : null;
 
-  res.json({ reviews: rows, avgRating: avg ? parseFloat(avg) : null, total: rows.length });
+  sendSuccess(res, { reviews: rows, avgRating: avg ? parseFloat(avg) : null, total: rows.length });
 });
 
 /* ── POST /reviews/:id/vendor-reply — vendor reply ─────────────────────── */
@@ -570,7 +571,7 @@ router.post("/:id/vendor-reply", vendorAuth, async (req, res) => {
   const { reply } = req.body;
 
   if (!reply || typeof reply !== "string" || reply.trim().length === 0) {
-    res.status(400).json({ error: "reply text is required" });
+    sendValidationError(res, "reply text is required");
     return;
   }
 
@@ -579,12 +580,12 @@ router.post("/:id/vendor-reply", vendorAuth, async (req, res) => {
     .limit(1);
 
   if (!review) {
-    res.status(404).json({ error: "Review not found or does not belong to your store" });
+    sendNotFound(res, "Review not found or does not belong to your store");
     return;
   }
 
   if (review.vendorReply) {
-    res.status(409).json({ error: "A reply already exists. Use PUT to update it." });
+    sendError(res, "A reply already exists. Use PUT to update it.", 409);
     return;
   }
 
@@ -593,7 +594,7 @@ router.post("/:id/vendor-reply", vendorAuth, async (req, res) => {
     .where(eq(reviewsTable.id, reviewId))
     .returning();
 
-  res.status(201).json(updated);
+  sendCreated(res, updated);
 });
 
 /* ── PUT /reviews/:id/vendor-reply — edit vendor reply ──────────────────── */
@@ -603,7 +604,7 @@ router.put("/:id/vendor-reply", vendorAuth, async (req, res) => {
   const { reply } = req.body;
 
   if (!reply || typeof reply !== "string" || reply.trim().length === 0) {
-    res.status(400).json({ error: "reply text is required" });
+    sendValidationError(res, "reply text is required");
     return;
   }
 
@@ -612,12 +613,12 @@ router.put("/:id/vendor-reply", vendorAuth, async (req, res) => {
     .limit(1);
 
   if (!review) {
-    res.status(404).json({ error: "Review not found or does not belong to your store" });
+    sendNotFound(res, "Review not found or does not belong to your store");
     return;
   }
 
   if (!review.vendorReply) {
-    res.status(404).json({ error: "No reply exists. Use POST to create one." });
+    sendNotFound(res, "No reply exists. Use POST to create one.");
     return;
   }
 
@@ -626,7 +627,7 @@ router.put("/:id/vendor-reply", vendorAuth, async (req, res) => {
     .where(eq(reviewsTable.id, reviewId))
     .returning();
 
-  res.json(updated);
+  sendSuccess(res, updated);
 });
 
 /* ── DELETE /reviews/:id/vendor-reply — delete vendor reply ─────────────── */
@@ -639,12 +640,12 @@ router.delete("/:id/vendor-reply", vendorAuth, async (req, res) => {
     .limit(1);
 
   if (!review) {
-    res.status(404).json({ error: "Review not found or does not belong to your store" });
+    sendNotFound(res, "Review not found or does not belong to your store");
     return;
   }
 
   if (!review.vendorReply) {
-    res.status(404).json({ error: "No reply exists" });
+    sendNotFound(res, "No reply exists");
     return;
   }
 
@@ -653,7 +654,7 @@ router.delete("/:id/vendor-reply", vendorAuth, async (req, res) => {
     .where(eq(reviewsTable.id, reviewId))
     .returning();
 
-  res.json(updated);
+  sendSuccess(res, updated);
 });
 
 export default router;

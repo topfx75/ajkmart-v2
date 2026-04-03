@@ -2,21 +2,23 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { wishlistTable, productsTable } from "@workspace/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
+import { z } from "zod";
 import { generateId } from "../lib/id.js";
+import { sendSuccess, sendCreated, sendNotFound } from "../lib/response.js";
+import { validateBody } from "../middleware/validate.js";
 import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
 router.use(customerAuth);
 
-router.post("/", async (req, res) => {
+const addToWishlistSchema = z.object({
+  productId: z.string().min(1, "productId is required"),
+});
+
+router.post("/", validateBody(addToWishlistSchema), async (req, res) => {
   const userId = req.customerId!;
   const { productId } = req.body;
-
-  if (!productId || typeof productId !== "string") {
-    res.status(400).json({ error: "productId is required" });
-    return;
-  }
 
   const [product] = await db
     .select({ id: productsTable.id })
@@ -25,7 +27,7 @@ router.post("/", async (req, res) => {
     .limit(1);
 
   if (!product) {
-    res.status(404).json({ error: "Product not found" });
+    sendNotFound(res, "Product not found", "پروڈکٹ نہیں ملی۔");
     return;
   }
 
@@ -36,7 +38,7 @@ router.post("/", async (req, res) => {
     .limit(1);
 
   if (existing.length > 0) {
-    res.json({ success: true, alreadyExists: true, id: existing[0]!.id });
+    sendSuccess(res, { alreadyExists: true, id: existing[0]!.id });
     return;
   }
 
@@ -46,7 +48,7 @@ router.post("/", async (req, res) => {
     productId,
   }).returning();
 
-  res.status(201).json({ success: true, id: entry!.id });
+  sendCreated(res, { id: entry!.id });
 });
 
 router.delete("/:productId", async (req, res) => {
@@ -59,11 +61,11 @@ router.delete("/:productId", async (req, res) => {
     .returning();
 
   if (deleted.length === 0) {
-    res.status(404).json({ error: "Item not in wishlist" });
+    sendNotFound(res, "Item not in wishlist", "آئٹم خواہش کی فہرست میں نہیں ہے۔");
     return;
   }
 
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
 router.get("/", async (req, res) => {
@@ -80,7 +82,7 @@ router.get("/", async (req, res) => {
     .orderBy(desc(wishlistTable.createdAt));
 
   if (items.length === 0) {
-    res.json({ items: [], total: 0 });
+    sendSuccess(res, { items: [], total: 0 });
     return;
   }
 
@@ -118,7 +120,7 @@ router.get("/", async (req, res) => {
     })
     .filter(Boolean);
 
-  res.json({ items: enriched, total: enriched.length });
+  sendSuccess(res, { items: enriched, total: enriched.length });
 });
 
 router.get("/check/:productId", async (req, res) => {
@@ -131,7 +133,7 @@ router.get("/check/:productId", async (req, res) => {
     .where(and(eq(wishlistTable.userId, userId), eq(wishlistTable.productId, productId)))
     .limit(1);
 
-  res.json({ inWishlist: existing.length > 0 });
+  sendSuccess(res, { inWishlist: existing.length > 0 });
 });
 
 export default router;

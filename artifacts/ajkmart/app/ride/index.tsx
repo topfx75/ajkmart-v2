@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, Text, Platform } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, unwrapApiResponse } from "@/utils/api";
 
 const C = Colors.light;
 
@@ -44,6 +44,7 @@ function RideScreenInner() {
         if (!r.ok) throw new Error("fetch failed");
         return r.json();
       })
+      .then(unwrapApiResponse)
       .then(data => {
         setBooked({ id: urlRideId, type: data.type || "bike" });
       })

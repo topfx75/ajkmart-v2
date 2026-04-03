@@ -31,7 +31,7 @@ import { useToast } from "@/context/ToastContext";
 import { tDual, type TranslationKey, type Language, LANGUAGE_OPTIONS } from "@workspace/i18n";
 import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import Accordion from "@/components/Accordion";
-import { API_BASE as API } from "@/utils/api";
+import { API_BASE as API, unwrapApiResponse } from "@/utils/api";
 
 const C = Colors.light;
 
@@ -110,7 +110,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
         const err = await avatarRes.json().catch(() => ({}));
         throw new Error((err as any)?.error || "Avatar upload failed");
       }
-      const avatarData = await avatarRes.json();
+      const avatarData = unwrapApiResponse(await avatarRes.json());
       const avatarUrl: string = avatarData.avatarUrl;
       if (!avatarUrl) throw new Error("No URL returned from server");
       updateUser({ avatar: avatarUrl });
@@ -165,7 +165,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
         body: JSON.stringify({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() }),
       });
       if (!res.ok) throw new Error();
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       updateUser({
         name: data.name ?? name.trim(),
         email: data.email ?? email.trim(),
@@ -329,7 +329,7 @@ function NotificationsModal({ visible, userId, token, onClose }: {
     setLoading(true);
     try {
       const r = await fetch(`${API}/notifications`, { headers: authHdrs });
-      const d = await r.json();
+      const d = unwrapApiResponse(await r.json());
       setNotifs(d.notifications || []);
     } catch (err) {
       console.warn("[Profile] Notifications load failed:", err instanceof Error ? err.message : String(err));
@@ -592,7 +592,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
     try {
       const r = await fetch(`${API}/settings`, { headers: authHdrs });
       if (!r.ok) throw new Error("Settings load failed");
-      const d = await r.json();
+      const d = unwrapApiResponse(await r.json());
       const loaded = { notifOrders: d.notifOrders, notifWallet: d.notifWallet, notifDeals: d.notifDeals, notifRides: d.notifRides, locationSharing: d.locationSharing };
       cfgRef.current = loaded;
       setCfg(loaded);
@@ -824,8 +824,8 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                                 },
                               });
                               if (!res.ok) throw new Error("Request failed");
-                              const data = await res.json();
-                              const exportPayload = data.data ?? data;
+                              const data = unwrapApiResponse(await res.json());
+                              const exportPayload = data;
                               const jsonStr = JSON.stringify(exportPayload, null, 2);
                               const fileName = `ajkmart-data-${Date.now()}.json`;
                               const filePath = `${LegacyFileSystem.documentDirectory}${fileName}`;
@@ -1025,7 +1025,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
   const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
-    try { const r = await fetch(`${API}/addresses`, { headers: authHdrs }); const d = await r.json(); setList(d.addresses || []); }
+    try { const r = await fetch(`${API}/addresses`, { headers: authHdrs }); const d = unwrapApiResponse(await r.json()); setList(d.addresses || []); }
     catch (err) {
       console.warn("[Profile] Addresses load failed:", err instanceof Error ? err.message : String(err));
       showToast("Could not load addresses — tap to refresh", "error");
@@ -1301,7 +1301,7 @@ export default function ProfileScreen() {
           fetch(`${API}/pharmacy-orders`,   { headers: hdrs }),
           fetch(`${API}/parcel-bookings`,   { headers: hdrs }),
         ]);
-        const [oD, rD, nD, phD, parD] = await Promise.all([oR.json(), rR.json(), nR.json(), phR.json().catch(() => ({})), parR.json().catch(() => ({}))]);
+        const [oD, rD, nD, phD, parD] = await Promise.all([oR.json().then(unwrapApiResponse), rR.json().then(unwrapApiResponse), nR.json().then(unwrapApiResponse), phR.json().then(unwrapApiResponse).catch(() => ({})), parR.json().then(unwrapApiResponse).catch(() => ({}))]);
         const orders   = oD.orders   || [];
         const rides    = rD.rides    || [];
         const pharmacy = phD.orders  || phD.pharmacyOrders  || [];

@@ -21,6 +21,7 @@ import {
 } from "../admin-shared.js";
 import { emitSosNew, emitSosAcknowledged, emitSosResolved } from "../../lib/socketio.js";
 import { hashPassword } from "../../services/password.js";
+import { sendSuccess, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
 import { auditLog, securityEvents, blockIP, unblockIP, isIPBlocked, getBlockedIPList, getActiveLockouts, unlockPhone } from "../../middleware/security.js";
 
 const router = Router();
@@ -59,7 +60,7 @@ router.get("/stats", async (_req, res) => {
     .orderBy(desc(ridesTable.createdAt))
     .limit(5);
 
-  res.json({
+  sendSuccess(res, {
     users: userCount!.count,
     orders: orderCount!.count,
     rides: rideCount!.count,
@@ -99,7 +100,7 @@ router.get("/platform-settings", async (_req, res) => {
     if (!grouped[row.category]) grouped[row.category] = [];
     grouped[row.category]!.push({ key: row.key, value: row.value, label: row.label, updatedAt: row.updatedAt.toISOString() });
   }
-  res.json({ settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })), grouped });
+  sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })), grouped });
 });
 
 /* Keys that must be valid finite numbers */
@@ -163,10 +164,10 @@ function validateSettingValue(key: string, value: string): string | null {
 
 router.put("/platform-settings", async (req, res) => {
   const { settings } = req.body as { settings: Array<{ key: string; value: string }> };
-  if (!Array.isArray(settings)) { res.status(400).json({ error: "settings array required" }); return; }
+  if (!Array.isArray(settings)) { sendValidationError(res, "settings array required"); return; }
   for (const { key, value } of settings) {
     const err = validateSettingValue(key, String(value));
-    if (err) { res.status(422).json({ error: err }); return; }
+    if (err) { sendError(res, err, 422); return; }
   }
   for (const { key, value } of settings) {
     await db
@@ -179,24 +180,24 @@ router.put("/platform-settings", async (req, res) => {
   const changedKeys = settings.map((s: Record<string, unknown>) => s.key).join(", ");
   addAuditEntry({ action: "settings_update", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Updated ${settings.length} setting(s): ${changedKeys}`, result: "success" });
   const rows = await db.select().from(platformSettingsTable);
-  res.json({ success: true, settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })) });
+  sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })) });
 });
 
 router.patch("/platform-settings/:key", async (req, res) => {
   const { value } = req.body;
   const settingKey = req.params["key"]!;
   const err = validateSettingValue(settingKey, String(value));
-  if (err) { res.status(422).json({ error: err }); return; }
+  if (err) { sendError(res, err, 422); return; }
   const [row] = await db
     .update(platformSettingsTable)
     .set({ value: String(value), updatedAt: new Date() })
     .where(eq(platformSettingsTable.key, settingKey))
     .returning();
-  if (!row) { res.status(404).json({ error: "Setting not found" }); return; }
+  if (!row) { sendNotFound(res, "Setting not found"); return; }
   /* Bust the security settings cache so new values apply immediately */
   invalidateSettingsCache();
   addAuditEntry({ action: "settings_update", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Updated setting "${settingKey}" = "${value}"`, result: "success" });
-  res.json({ ...row, updatedAt: row.updatedAt.toISOString() });
+  sendSuccess(res, { ...row, updatedAt: row.updatedAt.toISOString() });
 });
 
 /* ── Pharmacy Orders Enriched ── */
@@ -221,7 +222,7 @@ router.get("/app-overview", async (_req, res) => {
     db.select({ c: count() }).from(adminAccountsTable).where(eq(adminAccountsTable.isActive, true)),
   ]);
   const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]));
-  res.json({
+  sendSuccess(res, {
     users:    { total: totalUsers[0]?.c ?? 0, active: activeUsers[0]?.c ?? 0, banned: bannedUsers[0]?.c ?? 0 },
     orders:   { total: totalOrders[0]?.c ?? 0, pending: pendingOrders[0]?.c ?? 0 },
     rides:    { total: totalRides[0]?.c ?? 0, active: activeRides[0]?.c ?? 0 },
@@ -249,7 +250,7 @@ router.get("/all-notifications", async (req, res) => {
   if (role) {
     const users = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role as any, role));
     userIds = users.map(u => u.id);
-    if (userIds.length === 0) { res.json({ notifications: [] }); return; }
+    if (userIds.length === 0) { sendSuccess(res, { notifications: [] }); return; }
   }
   const notifs = await db.select().from(notificationsTable)
     .orderBy(desc(notificationsTable.createdAt))
@@ -260,7 +261,7 @@ router.get("/all-notifications", async (req, res) => {
       .from(usersTable).where(eq(usersTable.id, n.userId)).limit(1);
     return { ...n, user: user || null };
   }));
-  res.json({ notifications: enriched });
+  sendSuccess(res, { notifications: enriched });
 });
 
 /* ══════════════════════════════════════════════════════════════
@@ -285,7 +286,7 @@ router.get("/audit-log", adminAuth, (req, res) => {
   const total = entries.length;
   const paginated = entries.slice((page - 1) * limit, page * limit);
 
-  res.json({
+  sendSuccess(res, {
     entries: paginated,
     total,
     page,
@@ -309,7 +310,7 @@ router.get("/auth-audit-log", adminAuth, async (req, res) => {
     .orderBy(desc(authAuditLogTable.createdAt))
     .limit(limit);
 
-  res.json({ entries, total: entries.length });
+  sendSuccess(res, { entries, total: entries.length });
 });
 
 /* ── POST /admin/rotate-secret — rotate the admin master secret ── */
@@ -322,7 +323,7 @@ router.get("/security-events", adminAuth, (req, res) => {
   if (severity) events = events.filter(e => e.severity === severity);
   if (type)     events = events.filter(e => e.type.includes(type));
 
-  res.json({
+  sendSuccess(res, {
     events: events.slice(0, limit),
     total: events.length,
     summary: {
@@ -337,7 +338,7 @@ router.get("/security-events", adminAuth, (req, res) => {
 /* ── GET /admin/blocked-ips — list all blocked IPs ── */
 router.get("/blocked-ips", adminAuth, async (_req, res) => {
   const blocked = await getBlockedIPList();
-  res.json({
+  sendSuccess(res, {
     blocked,
     total: blocked.length,
   });
@@ -346,7 +347,7 @@ router.get("/blocked-ips", adminAuth, async (_req, res) => {
 /* ── POST /admin/blocked-ips — block an IP ── */
 router.post("/blocked-ips", adminAuth, async (req, res) => {
   const { ip, reason } = req.body as { ip: string; reason?: string };
-  if (!ip) { res.status(400).json({ error: "ip required" }); return; }
+  if (!ip) { sendValidationError(res, "ip required"); return; }
 
   await blockIP(ip.trim());
   addAuditEntry({
@@ -358,7 +359,7 @@ router.post("/blocked-ips", adminAuth, async (req, res) => {
   });
   addSecurityEvent({ type: "ip_manually_blocked", ip, details: `Admin manually blocked IP: ${ip}. Reason: ${reason || "none"}`, severity: "high" });
   const blocked = await getBlockedIPList();
-  res.json({ success: true, blocked: ip, totalBlocked: blocked.length });
+  sendSuccess(res, { blocked: ip, totalBlocked: blocked.length });
 });
 
 /* ── DELETE /admin/blocked-ips/:ip — unblock an IP ── */
@@ -373,13 +374,13 @@ router.delete("/blocked-ips/:ip", adminAuth, async (req, res) => {
     details: `IP ${ip} unblocked`,
     result: "success",
   });
-  res.json({ success: true, unblocked: ip, wasBlocked });
+  sendSuccess(res, { unblocked: ip, wasBlocked });
 });
 
 /* ── GET /admin/login-lockouts — view locked accounts ── */
 router.get("/login-lockouts", adminAuth, async (_req, res) => {
   const lockouts = await getActiveLockouts();
-  res.json({
+  sendSuccess(res, {
     lockouts: lockouts.map(l => ({
       phone: l.key,
       attempts: l.attempts,
@@ -401,7 +402,7 @@ router.delete("/login-lockouts/:phone", adminAuth, async (req, res) => {
     details: `Admin manually unlocked phone: ${phone}`,
     result: "success",
   });
-  res.json({ success: true, unlocked: phone });
+  sendSuccess(res, { unlocked: phone });
 });
 
 /* ── GET /admin/security-dashboard — quick security overview ── */
@@ -416,7 +417,7 @@ router.get("/security-dashboard", adminAuth, async (_req, res) => {
   const recentCritical = securityEvents.filter(e => e.severity === "critical" && new Date(e.timestamp).getTime() > now - 24 * 60 * 60 * 1000).length;
   const recentHigh     = securityEvents.filter(e => e.severity === "high"     && new Date(e.timestamp).getTime() > now - 24 * 60 * 60 * 1000).length;
 
-  res.json({
+  sendSuccess(res, {
     status: recentCritical > 0 ? "critical" : recentHigh > 5 ? "warning" : "healthy",
     activeBlockedIPs: activeBlocks,
     activeAccountLockouts: activeLockouts,
@@ -450,7 +451,7 @@ router.get("/security-dashboard", adminAuth, async (_req, res) => {
 /* This wraps the existing settings update to bust the cache */
 router.post("/invalidate-cache", adminAuth, (_req, res) => {
   invalidateSettingsCache();
-  res.json({ success: true, message: "Settings cache invalidated. New security settings will be applied immediately." });
+  sendSuccess(res, { message: "Settings cache invalidated. New security settings will be applied immediately." });
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -463,7 +464,7 @@ router.post("/invalidate-cache", adminAuth, (_req, res) => {
 router.get("/search", async (req, res) => {
   const q = String(req.query["q"] ?? "").trim();
   if (!q || q.length < 2) {
-    res.json({ users: [], rides: [], orders: [], pharmacy: [], query: q });
+    sendSuccess(res, { users: [], rides: [], orders: [], pharmacy: [], query: q });
     return;
   }
 
@@ -565,7 +566,7 @@ router.get("/search", async (req, res) => {
     ),
   ]);
 
-  res.json({
+  sendSuccess(res, {
     users, rides, orders, pharmacy, query: q,
     ...(errors.length > 0 ? { errors, partial: true } : {}),
   });
@@ -605,7 +606,7 @@ router.get("/leaderboard", async (_req, res) => {
   .orderBy(sql`count(${ridesTable.id}) desc`)
   .limit(5);
 
-  res.json({
+  sendSuccess(res, {
     vendors: vendors.map(v => ({ ...v, totalRevenue: parseFloat(String(v.totalRevenue)), totalOrders: Number(v.totalOrders) })),
     riders:  riders.map(r  => ({ ...r,  totalEarned: parseFloat(String(r.totalEarned)),  completedTrips: Number(r.completedTrips) })),
   });
@@ -628,7 +629,7 @@ router.get("/dashboard-export", async (_req, res) => {
     rideRevenue:  parseFloat(rideRev?.total ?? "0"),
   };
   res.setHeader("Content-Disposition", `attachment; filename="dashboard-${new Date().toISOString().slice(0,10)}.json"`);
-  res.json(snapshot);
+  sendSuccess(res, snapshot);
 });
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -741,17 +742,17 @@ router.get("/reviews", adminAuth, async (req, res) => {
     subjectPhone: r.subjectId ? subjectMap.get(r.subjectId)?.phone ?? null : null,
   }));
 
-  res.json({ reviews: enriched, total, page, limit, pages: Math.ceil(total / limit) });
+  sendSuccess(res, { reviews: enriched, total, page, limit, pages: Math.ceil(total / limit) });
 });
 
 /* ── PATCH /admin/reviews/:id/hide — toggle hidden status ── */
 router.patch("/reviews/:id/hide", adminAuth, async (req, res) => {
   const [existing] = await db.select({ id: reviewsTable.id, hidden: reviewsTable.hidden })
     .from(reviewsTable).where(eq(reviewsTable.id, String(req.params["id"]))).limit(1);
-  if (!existing) { res.status(404).json({ error: "Review not found" }); return; }
+  if (!existing) { sendNotFound(res, "Review not found"); return; }
   const newHidden = !existing.hidden;
   await db.update(reviewsTable).set({ hidden: newHidden }).where(eq(reviewsTable.id, existing.id));
-  res.json({ success: true, hidden: newHidden });
+  sendSuccess(res, { hidden: newHidden });
 });
 
 /* ── DELETE /admin/reviews/:id — soft delete ── */
@@ -759,21 +760,21 @@ router.delete("/reviews/:id", adminAuth, async (req, res) => {
   const adminId = (req as AdminRequest).adminId ?? "admin";
   const [existing] = await db.select({ id: reviewsTable.id })
     .from(reviewsTable).where(eq(reviewsTable.id, String(req.params["id"]))).limit(1);
-  if (!existing) { res.status(404).json({ error: "Review not found" }); return; }
+  if (!existing) { sendNotFound(res, "Review not found"); return; }
   await db.update(reviewsTable)
     .set({ deletedAt: new Date(), deletedBy: adminId, hidden: true })
     .where(eq(reviewsTable.id, existing.id));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ── PATCH /admin/ride-ratings/:id/hide — toggle hidden status ── */
 router.patch("/ride-ratings/:id/hide", adminAuth, async (req, res) => {
   const [existing] = await db.select({ id: rideRatingsTable.id, hidden: rideRatingsTable.hidden })
     .from(rideRatingsTable).where(eq(rideRatingsTable.id, String(req.params["id"]))).limit(1);
-  if (!existing) { res.status(404).json({ error: "Ride rating not found" }); return; }
+  if (!existing) { sendNotFound(res, "Ride rating not found"); return; }
   const newHidden = !existing.hidden;
   await db.update(rideRatingsTable).set({ hidden: newHidden }).where(eq(rideRatingsTable.id, existing.id));
-  res.json({ success: true, hidden: newHidden });
+  sendSuccess(res, { hidden: newHidden });
 });
 
 /* ── DELETE /admin/ride-ratings/:id — soft delete ── */
@@ -781,11 +782,11 @@ router.delete("/ride-ratings/:id", adminAuth, async (req, res) => {
   const adminId = (req as AdminRequest).adminId ?? "admin";
   const [existing] = await db.select({ id: rideRatingsTable.id })
     .from(rideRatingsTable).where(eq(rideRatingsTable.id, String(req.params["id"]))).limit(1);
-  if (!existing) { res.status(404).json({ error: "Ride rating not found" }); return; }
+  if (!existing) { sendNotFound(res, "Ride rating not found"); return; }
   await db.update(rideRatingsTable)
     .set({ deletedAt: new Date(), deletedBy: adminId, hidden: true })
     .where(eq(rideRatingsTable.id, existing.id));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ── GET /admin/reviews/export — export CSV ────────────────────────────── */
@@ -837,13 +838,13 @@ router.get("/reviews/export", async (req, res) => {
 router.post("/reviews/import", async (req, res) => {
   const { csvData } = req.body;
   if (!csvData || typeof csvData !== "string") {
-    res.status(400).json({ error: "csvData (string) is required" });
+    sendValidationError(res, "csvData (string) is required");
     return;
   }
 
   const lines = csvData.split("\n").map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) {
-    res.status(400).json({ error: "CSV must have a header and at least one data row" });
+    sendValidationError(res, "CSV must have a header and at least one data row");
     return;
   }
 
@@ -851,7 +852,7 @@ router.post("/reviews/import", async (req, res) => {
   const requiredCols = ["ordertype", "orderid", "stars"];
   const missing = requiredCols.filter(c => !header.includes(c));
   if (missing.length > 0) {
-    res.status(400).json({ error: `Missing required columns: ${missing.join(", ")}` });
+    sendValidationError(res, `Missing required columns: ${missing.join(", ")}`);
     return;
   }
 
@@ -904,7 +905,7 @@ router.post("/reviews/import", async (req, res) => {
     }
   }
 
-  res.json({ imported, skipped, errored, total: lines.length - 1 });
+  sendSuccess(res, { imported, skipped, errored, total: lines.length - 1 });
 });
 
 /* ── GET /admin/reviews/moderation-queue — pending moderation ─────────── */
@@ -920,7 +921,7 @@ router.get("/reviews/moderation-queue", async (req, res) => {
     .where(eq(reviewsTable.status, "pending_moderation"))
     .orderBy(desc(reviewsTable.createdAt));
 
-  res.json({
+  sendSuccess(res, {
     reviews: rows.map(r => ({
       ...r.review,
       reviewerName: r.reviewerName,
@@ -936,8 +937,8 @@ router.patch("/reviews/:id/approve", async (req, res) => {
     .set({ status: "visible" })
     .where(and(eq(reviewsTable.id, req.params["id"]!), eq(reviewsTable.status, "pending_moderation")))
     .returning();
-  if (!updated) { res.status(404).json({ error: "Review not found or not pending moderation" }); return; }
-  res.json(updated);
+  if (!updated) { sendNotFound(res, "Review not found or not pending moderation"); return; }
+  sendSuccess(res, updated);
 });
 
 /* ── PATCH /admin/reviews/:id/reject — reject (soft-delete) a moderated review ─ */
@@ -946,8 +947,8 @@ router.patch("/reviews/:id/reject", async (req, res) => {
     .set({ status: "rejected" })
     .where(eq(reviewsTable.id, req.params["id"]!))
     .returning();
-  if (!updated) { res.status(404).json({ error: "Review not found" }); return; }
-  res.json(updated);
+  if (!updated) { sendNotFound(res, "Review not found"); return; }
+  sendSuccess(res, updated);
 });
 
 /* ── POST /admin/jobs/rating-suspension — auto-suspend low-rated riders/vendors ─ */
@@ -1058,7 +1059,7 @@ router.post("/jobs/rating-suspension", async (req, res) => {
     }
   }
 
-  res.json({
+  sendSuccess(res, {
     success: true,
     suspendedRiders,
     suspendedVendors,
@@ -1092,7 +1093,7 @@ router.get("/sos/alerts", async (req, res) => {
       .then(r => r.length),
   ]);
 
-  res.json({
+  sendSuccess(res, {
     alerts:      alerts.map(serializeSosAlert),
     total:       totalRows,
     page,
@@ -1111,12 +1112,12 @@ router.patch("/sos/alerts/:id/acknowledge", async (req, res) => {
     .where(and(eq(notificationsTable.id, alertId), eq(notificationsTable.type, "sos")))
     .limit(1);
 
-  if (!existing) { res.status(404).json({ error: "SOS alert not found" }); return; }
+  if (!existing) { sendNotFound(res, "SOS alert not found"); return; }
   if (existing.sosStatus === "acknowledged") {
-    res.status(409).json({ error: "Alert is already acknowledged", acknowledgedBy: existing.acknowledgedByName ?? existing.acknowledgedBy ?? "another admin" });
+    sendErrorWithData(res, "Alert is already acknowledged", { acknowledgedBy: existing.acknowledgedByName ?? existing.acknowledgedBy ?? "another admin" }, 409);
     return;
   }
-  if (existing.sosStatus === "resolved") { res.status(409).json({ error: "Alert is already resolved" }); return; }
+  if (existing.sosStatus === "resolved") { sendError(res, "Alert is already resolved", 409); return; }
 
   const now = new Date();
   await db.update(notificationsTable)
@@ -1126,7 +1127,7 @@ router.patch("/sos/alerts/:id/acknowledge", async (req, res) => {
   const [updatedAck] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, alertId)).limit(1);
   const fullAckPayload = serializeSosAlert(updatedAck);
   try { emitSosAcknowledged(fullAckPayload); } catch { /* non-critical */ }
-  res.json({ ok: true, alert: fullAckPayload });
+  sendSuccess(res, { ok: true, alert: fullAckPayload });
 });
 
 /* PATCH /admin/sos/alerts/:id/resolve */
@@ -1140,8 +1141,8 @@ router.patch("/sos/alerts/:id/resolve", async (req, res) => {
     .where(and(eq(notificationsTable.id, alertId), eq(notificationsTable.type, "sos")))
     .limit(1);
 
-  if (!existing) { res.status(404).json({ error: "SOS alert not found" }); return; }
-  if (existing.sosStatus === "resolved") { res.status(409).json({ error: "Alert is already resolved" }); return; }
+  if (!existing) { sendNotFound(res, "SOS alert not found"); return; }
+  if (existing.sosStatus === "resolved") { sendError(res, "Alert is already resolved", 409); return; }
 
   const now = new Date();
   await db.update(notificationsTable)
@@ -1151,7 +1152,7 @@ router.patch("/sos/alerts/:id/resolve", async (req, res) => {
   const [updatedRes] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, alertId)).limit(1);
   const fullResPayload = serializeSosAlert(updatedRes);
   try { emitSosResolved(fullResPayload); } catch { /* non-critical */ }
-  res.json({ ok: true, alert: fullResPayload });
+  sendSuccess(res, { ok: true, alert: fullResPayload });
 });
 
 export default router;

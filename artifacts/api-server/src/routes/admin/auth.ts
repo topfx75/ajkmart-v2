@@ -22,6 +22,7 @@ import {
 import { hashAdminSecret } from "../../services/password.js";
 import { generateTotpSecret, verifyTotpToken as verifyTotp, generateQRCodeDataURL, getTotpUri } from "../../services/totp.js";
 import { writeAuthAuditLog } from "../../middleware/security.js";
+import { sendSuccess, sendError, sendNotFound, sendForbidden, sendUnauthorized, sendValidationError } from "../../lib/response.js";
 
 const router = Router();
 router.post("/auth", async (req, res) => {

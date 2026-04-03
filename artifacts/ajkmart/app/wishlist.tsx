@@ -5,7 +5,6 @@ import {
   Animated,
   Dimensions,
   Image,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,13 +12,13 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import Colors from "@/constants/colors";
-import { T as Typ, Font } from "@/constants/typography";
+import { Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { getWishlist, removeFromWishlist, type WishlistItem } from "@workspace/api-client-react";
 
 const C = Colors.light;
@@ -91,9 +90,6 @@ function WishlistCard({ item, onRemove }: { item: WishlistItem; onRemove: (produ
 }
 
 export default function WishlistScreen() {
-  const insets = useSafeAreaInsets();
-  const topPad = Platform.OS === "web" ? 20 : insets.top;
-  const bottomPad = Math.max(insets.bottom, Platform.OS === "web" ? 20 : 16);
   const { user, token } = useAuth();
   const isLoggedIn = !!user && !!token;
   const queryClient = useQueryClient();
@@ -114,7 +110,7 @@ export default function WishlistScreen() {
 
   if (!isLoggedIn) {
     return (
-      <View style={[styles.container, { paddingTop: topPad }]}>
+      <ScreenContainer scroll={false}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={C.text} />
@@ -132,12 +128,12 @@ export default function WishlistScreen() {
             <Text style={styles.signInBtnTxt}>Sign In</Text>
           </Pressable>
         </View>
-      </View>
+      </ScreenContainer>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
+    <ScreenContainer scroll={false}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={C.text} />
@@ -151,7 +147,7 @@ export default function WishlistScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={C.primary} />}
-        contentContainerStyle={{ paddingBottom: bottomPad + 20 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
       >
         {isLoading ? (
           <View style={styles.grid}>
@@ -196,12 +192,11 @@ export default function WishlistScreen() {
           </View>
         )}
       </ScrollView>
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.background },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" },
   headerTitle: { fontFamily: Font.bold, fontSize: 18, color: C.text },

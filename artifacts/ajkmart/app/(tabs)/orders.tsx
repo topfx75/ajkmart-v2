@@ -28,7 +28,7 @@ import { useGetOrders } from "@workspace/api-client-react";
 import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, unwrapApiResponse } from "@/utils/api";
 import {
   SkeletonBlock,
   SkeletonRows,
@@ -940,7 +940,7 @@ export default function OrdersScreen() {
     try {
       const productsRes = await fetch(`${API_BASE}/products`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (productsRes.ok) {
-        const productsData = await productsRes.json();
+        const productsData = unwrapApiResponse(await productsRes.json());
         const productMap = new Map<string, any>((productsData.products || productsData || []).map((p: any) => [p.id, p]));
         const priceChangedItems: string[] = [];
         let skippedCount = 0;
@@ -1060,7 +1060,7 @@ export default function OrdersScreen() {
       const res = await fetch(`${API_BASE}/rides`, { headers: authHeaders });
       const serverDate = res.headers.get("Date");
       if (serverDate) setServerNow(new Date(serverDate).getTime());
-      const d = await res.json();
+      const d = unwrapApiResponse(await res.json());
       setRidesData(d);
       setRidesError(false);
     } catch (err) {
@@ -1077,7 +1077,7 @@ export default function OrdersScreen() {
       const res = await fetch(`${API_BASE}/pharmacy-orders`, { headers: authHeaders });
       const serverDate = res.headers.get("Date");
       if (serverDate) setServerNow(new Date(serverDate).getTime());
-      const d = await res.json();
+      const d = unwrapApiResponse(await res.json());
       setPharmData(d);
       setPharmError(false);
     } catch (err) {
@@ -1094,7 +1094,7 @@ export default function OrdersScreen() {
       const res = await fetch(`${API_BASE}/parcel-bookings`, { headers: authHeaders });
       const serverDate = res.headers.get("Date");
       if (serverDate) setServerNow(new Date(serverDate).getTime());
-      const d = await res.json();
+      const d = unwrapApiResponse(await res.json());
       setParcelData(d);
       setParcelError(false);
     } catch (err) {

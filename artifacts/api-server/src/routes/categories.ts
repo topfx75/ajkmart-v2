@@ -2,7 +2,10 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { categoriesTable, productsTable } from "@workspace/db/schema";
 import { eq, and, sql, asc } from "drizzle-orm";
+import { z } from "zod";
 import { generateId } from "../lib/id.js";
+import { sendSuccess, sendCreated, sendValidationError, sendNotFound } from "../lib/response.js";
+import { validateBody, validateQuery } from "../middleware/validate.js";
 import { adminAuth, getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
@@ -42,15 +45,19 @@ async function ensureSeedCategories() {
 
 ensureSeedCategories().catch(() => {});
 
-router.get("/", async (req, res) => {
-  const type = req.query["type"] as string;
+const listQuerySchema = z.object({
+  type: z.enum(["mart", "food"]).optional(),
+}).passthrough();
+
+router.get("/", validateQuery(listQuerySchema), async (req, res) => {
+  const type = req.query["type"] as string | undefined;
 
   if (type && (type === "mart" || type === "food")) {
     try {
       const s = await getPlatformSettings();
       const featureKey = `feature_${type}`;
       if ((s[featureKey] ?? "on") !== "on") {
-        res.json({ categories: [] });
+        sendSuccess(res, { categories: [] });
         return;
       }
     } catch {}
@@ -117,15 +124,20 @@ router.get("/", async (req, res) => {
     })),
   }));
 
-  res.json({ categories });
+  sendSuccess(res, { categories });
 });
 
-router.post("/", adminAuth, async (req, res) => {
+const createCategorySchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  type: z.string().min(1, "Type is required"),
+  icon: z.string().optional(),
+  parentId: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+});
+
+router.post("/", adminAuth, validateBody(createCategorySchema), async (req, res) => {
   const { name, icon, type, parentId, sortOrder, isActive } = req.body;
-  if (!name || !type) {
-    res.status(400).json({ error: "name and type are required" });
-    return;
-  }
 
   const id = generateId();
   const [category] = await db.insert(categoriesTable).values({
@@ -138,7 +150,7 @@ router.post("/", adminAuth, async (req, res) => {
     isActive: isActive !== false,
   }).returning();
 
-  res.status(201).json(category);
+  sendCreated(res, category);
 });
 
 router.patch("/:id", adminAuth, async (req, res) => {
@@ -159,11 +171,11 @@ router.patch("/:id", adminAuth, async (req, res) => {
     .returning();
 
   if (!updated) {
-    res.status(404).json({ error: "Category not found" });
+    sendNotFound(res, "Category not found", "زمرہ نہیں ملا۔");
     return;
   }
 
-  res.json(updated);
+  sendSuccess(res, updated);
 });
 
 router.delete("/:id", adminAuth, async (req, res) => {
@@ -180,19 +192,22 @@ router.delete("/:id", adminAuth, async (req, res) => {
     .returning();
 
   if (!deleted) {
-    res.status(404).json({ error: "Category not found" });
+    sendNotFound(res, "Category not found", "زمرہ نہیں ملا۔");
     return;
   }
 
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
-router.post("/reorder", adminAuth, async (req, res) => {
+const reorderSchema = z.object({
+  items: z.array(z.object({
+    id: z.string(),
+    sortOrder: z.number().int(),
+  })),
+});
+
+router.post("/reorder", adminAuth, validateBody(reorderSchema), async (req, res) => {
   const { items } = req.body;
-  if (!Array.isArray(items)) {
-    res.status(400).json({ error: "items array required" });
-    return;
-  }
 
   for (const item of items) {
     if (item.id && typeof item.sortOrder === "number") {
@@ -203,7 +218,7 @@ router.post("/reorder", adminAuth, async (req, res) => {
     }
   }
 
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
 export default router;

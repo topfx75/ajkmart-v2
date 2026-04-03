@@ -4,7 +4,6 @@ import {
   usersTable,
   walletTransactionsTable,
   notificationsTable,
-  
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import {
@@ -21,6 +20,7 @@ import {
 } from "../admin-shared.js";
 import { writeAuthAuditLog } from "../../middleware/security.js";
 import { hashPassword } from "../../services/password.js";
+import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
 
 const router = Router();
 router.get("/users", async (req, res) => {
@@ -30,7 +30,7 @@ router.get("/users", async (req, res) => {
     query = query.where(eq(usersTable.totpEnabled, true)) as any;
   }
   const users = await query.orderBy(desc(usersTable.createdAt));
-  res.json({
+  sendSuccess(res, {
     users: users.map((u) => ({
       ...stripUser(u),
       walletBalance: parseFloat(u.walletBalance ?? "0"),
@@ -59,12 +59,12 @@ router.patch("/users/:id", async (req, res) => {
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
 
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
   /* Revoke sessions on role or status change so user re-authenticates with new role */
   if (role !== undefined || isActive === false) {
     revokeAllUserSessions(req.params["id"]!).catch(() => {});
   }
-  res.json({ ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") });
+  sendSuccess(res, { ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") });
 });
 
 /* ── Pending Approval Users ── */
@@ -72,7 +72,7 @@ router.get("/users/pending", async (_req, res) => {
   const users = await db.select().from(usersTable)
     .where(eq(usersTable.approvalStatus, "pending"))
     .orderBy(desc(usersTable.createdAt));
-  res.json({
+  sendSuccess(res, {
     users: users.map(({ otpCode: _otp, otpExpiry: _exp, passwordHash: _ph, emailOtpCode: _eotp, emailOtpExpiry: _eexp, ...u }) => ({
       ...u,
       walletBalance: parseFloat(u.walletBalance ?? "0"),
@@ -87,7 +87,7 @@ router.get("/users/pending", async (_req, res) => {
 router.post("/users/:id/approve", async (req, res) => {
   const { note, skipDocCheck } = req.body;
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
-  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  if (!target) { sendNotFound(res, "User not found"); return; }
 
   if (target.role === "rider" && !skipDocCheck) {
     const hasCnic = !!target.cnic;
@@ -96,7 +96,7 @@ router.post("/users/:id/approve", async (req, res) => {
     if (!hasCnic) missing.push("CNIC");
     if (!hasLicense) missing.push("Driving License");
     if (missing.length > 0) {
-      res.status(400).json({ error: `Missing required documents: ${missing.join(", ")}. Pass skipDocCheck=true to override.` });
+      sendValidationError(res, `Missing required documents: ${missing.join(", ")}. Pass skipDocCheck=true to override.`);
       return;
     }
   }
@@ -105,9 +105,9 @@ router.post("/users/:id/approve", async (req, res) => {
     .set({ approvalStatus: "approved", approvalNote: note || null, isActive: true, updatedAt: new Date() })
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
   addAuditEntry({ action: "user_approved", ip: "admin", details: `User approved: ${user.phone} — ${user.name || "unnamed"}`, result: "success" });
-  res.json({ success: true, user: { ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") } });
+  sendSuccess(res, { success: true, user: { ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") } });
 });
 
 /* ── Reject User ── */
@@ -117,21 +117,21 @@ router.post("/users/:id/reject", async (req, res) => {
     .set({ approvalStatus: "rejected", approvalNote: note || "Rejected by admin", isActive: false, updatedAt: new Date() })
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
   addAuditEntry({ action: "user_rejected", ip: "admin", details: `User rejected: ${user.phone} — ${note || "no reason"}`, result: "success" });
-  res.json({ success: true, user: { ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") } });
+  sendSuccess(res, { success: true, user: { ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") } });
 });
 
 /* ── Wallet Top-up ── */
 router.post("/users/:id/wallet-topup", async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-    res.status(400).json({ error: "Valid amount is required" });
+    sendValidationError(res, "Valid amount is required");
     return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!));
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
 
   const currentBalance = parseFloat(user.walletBalance ?? "0");
   const newBalance = currentBalance + Number(amount);
@@ -159,7 +159,7 @@ router.post("/users/:id/wallet-topup", async (req, res) => {
     "wallet-outline"
   );
 
-  res.json({
+  sendSuccess(res, {
     success: true,
     newBalance,
     user: { ...stripUser(updatedUser!), walletBalance: newBalance },
@@ -167,7 +167,7 @@ router.post("/users/:id/wallet-topup", async (req, res) => {
 });
 router.delete("/users/:id", async (req, res) => {
   await db.delete(usersTable).where(eq(usersTable.id, req.params["id"]!));
-  res.json({ success: true });
+  sendSuccess(res, { success: true });
 });
 
 /* ── User Activity (orders + rides summary) ── */
@@ -178,7 +178,7 @@ router.get("/users/:id/activity", async (req, res) => {
   const pharmacy = await db.select().from(pharmacyOrdersTable).where(eq(pharmacyOrdersTable.userId, uid)).orderBy(desc(pharmacyOrdersTable.createdAt)).limit(5);
   const parcels = await db.select().from(parcelBookingsTable).where(eq(parcelBookingsTable.userId, uid)).orderBy(desc(parcelBookingsTable.createdAt)).limit(5);
   const txns = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, uid)).orderBy(desc(walletTransactionsTable.createdAt)).limit(10);
-  res.json({
+  sendSuccess(res, {
     orders: orders.map(o => ({ ...o, total: parseFloat(String(o.total)), createdAt: o.createdAt.toISOString(), updatedAt: o.updatedAt.toISOString() })),
     rides: rides.map(r => ({ ...r, fare: parseFloat(r.fare), distance: parseFloat(r.distance), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() })),
     pharmacy: pharmacy.map(p => ({ ...p, total: parseFloat(String(p.total)), createdAt: p.createdAt.toISOString(), updatedAt: p.updatedAt.toISOString() })),
@@ -204,7 +204,7 @@ router.patch("/users/:id/security", async (req, res) => {
   if (body.roles !== undefined) {
     const rolesValue = String(body.roles).trim();
     const roleList = rolesValue.split(",").map((r: string) => r.trim()).filter(Boolean);
-    if (!roleList.length) { res.status(400).json({ error: "At least one role must be assigned" }); return; }
+    if (!roleList.length) { sendValidationError(res, "At least one role must be assigned"); return; }
     updates.roles = roleList.join(",");
     updates.role = roleList.includes("vendor") ? "vendor" : roleList.includes("rider") ? "rider" : roleList[0];
 
@@ -228,7 +228,7 @@ router.patch("/users/:id/security", async (req, res) => {
   if (body.securityNote !== undefined) updates.securityNote = body.securityNote || null;
   if (body.devOtpEnabled !== undefined) updates.devOtpEnabled = body.devOtpEnabled === true;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id!)).returning();
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
 
   /* Revoke all sessions if ban, deactivation, or role change occurred */
   if (body.isBanned || body.isActive === false || body.roles !== undefined || body.role !== undefined) {
@@ -237,7 +237,7 @@ router.patch("/users/:id/security", async (req, res) => {
   if (body.isBanned && body.notify) {
     await sendUserNotification(id!, "Account Suspended ⚠️", String(body.banReason || "Your account has been suspended. Contact support."), "warning", "warning-outline");
   }
-  res.json({ ...user, walletBalance: parseFloat(String(user.walletBalance)) });
+  sendSuccess(res, { ...user, walletBalance: parseFloat(String(user.walletBalance)) });
 });
 
 /* ── PATCH /admin/users/:id/identity — Admin update user identity (username, email, name) ── */
@@ -247,15 +247,15 @@ router.patch("/users/:id/identity", async (req, res) => {
   const updates: Record<string, unknown> = { updatedAt: new Date() };
 
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  if (!target) { sendNotFound(res, "User not found"); return; }
 
   if (body.username !== undefined) {
     const raw = String(body.username).toLowerCase().replace(/[^a-z0-9_]/g, "").trim();
-    if (raw && raw.length < 3) { res.status(400).json({ error: "Username must be at least 3 characters" }); return; }
+    if (raw && raw.length < 3) { sendValidationError(res, "Username must be at least 3 characters"); return; }
     if (raw) {
       const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.username}) = ${raw}`).limit(1);
       if (existing && existing.id !== userId) {
-        res.status(409).json({ error: "Username already taken by another account" }); return;
+        sendError(res, "Username already taken by another account", 409); return;
       }
       updates.username = raw;
     } else {
@@ -265,11 +265,11 @@ router.patch("/users/:id/identity", async (req, res) => {
 
   if (body.email !== undefined) {
     const raw = String(body.email).toLowerCase().trim();
-    if (raw && !raw.includes("@")) { res.status(400).json({ error: "Invalid email format" }); return; }
+    if (raw && !raw.includes("@")) { sendValidationError(res, "Invalid email format"); return; }
     if (raw) {
       const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.email}) = ${raw}`).limit(1);
       if (existing && existing.id !== userId) {
-        res.status(409).json({ error: "Email already linked to another account" }); return;
+        sendError(res, "Email already linked to another account", 409); return;
       }
       updates.email = raw;
       updates.emailVerified = false;
@@ -288,17 +288,17 @@ router.patch("/users/:id/identity", async (req, res) => {
     const raw = String(body.phone).replace(/[\s\-()]/g, "");
     if (raw) {
       const normalized = raw.replace(/^\+?92/, "").replace(/^0/, "");
-      if (!/^3\d{9}$/.test(normalized)) { res.status(400).json({ error: "Invalid phone format" }); return; }
+      if (!/^3\d{9}$/.test(normalized)) { sendValidationError(res, "Invalid phone format"); return; }
       const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, normalized)).limit(1);
       if (existing && existing.id !== userId) {
-        res.status(409).json({ error: "Phone already linked to another account" }); return;
+        sendError(res, "Phone already linked to another account", 409); return;
       }
       updates.phone = normalized;
     }
   }
 
   if (Object.keys(updates).length <= 1) {
-    res.status(400).json({ error: "No valid fields to update" }); return;
+    sendValidationError(res, "No valid fields to update"); return;
   }
 
   const ip = getClientIp(req);
@@ -306,25 +306,25 @@ router.patch("/users/:id/identity", async (req, res) => {
   addAuditEntry({ action: "admin_identity_update", ip, details: `Admin updated identity for ${userId}: ${changedFields.join(", ")}`, result: "success" });
 
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
 
   revokeAllUserSessions(userId).catch(() => {});
 
-  res.json({ ...stripUser(user), walletBalance: parseFloat(String(user.walletBalance)) });
+  sendSuccess(res, { ...stripUser(user), walletBalance: parseFloat(String(user.walletBalance)) });
 });
 
 router.post("/users/:id/reset-otp", async (req, res) => {
   await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, req.params["id"]!));
-  res.json({ success: true, message: "OTP cleared — user must re-authenticate" });
+  sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });
 });
 
 /* ── Force-disable 2FA for a user (admin action) ── */
 router.post("/users/:id/2fa/disable", async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
 
-  if (!user.totpEnabled) { res.status(400).json({ error: "2FA is not enabled for this user" }); return; }
+  if (!user.totpEnabled) { sendValidationError(res, "2FA is not enabled for this user"); return; }
 
   await db.update(usersTable).set({
     totpEnabled: false, totpSecret: null, backupCodes: null, trustedDevices: null, updatedAt: new Date(),
@@ -334,7 +334,7 @@ router.post("/users/:id/2fa/disable", async (req, res) => {
   addAuditEntry({ action: "admin_2fa_disable", ip, details: `Admin force-disabled 2FA for user ${userId} (${user.phone})`, result: "success" });
   writeAuthAuditLog("admin_2fa_disabled", { userId, ip, userAgent: req.headers["user-agent"] as string, metadata: { adminAction: true } });
 
-  res.json({ success: true, message: `2FA disabled for user ${user.name ?? user.phone}` });
+  sendSuccess(res, { success: true, message: `2FA disabled for user ${user.name ?? user.phone}` });
 });
 
 /* ── Admin Accounts (Sub-Admins) ── */
@@ -344,7 +344,7 @@ router.patch("/users/:id/request-correction", async (req, res) => {
     .set({ approvalStatus: "correction_needed", approvalNote: note || `Please re-upload: ${field || "document"}`, updatedAt: new Date() })
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
   addAuditEntry({ action: "user_correction_requested", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Correction requested for ${user.phone}: ${field}`, result: "success" });
   const docLang = await getUserLanguage(user.id);
   await db.insert(notificationsTable).values({
@@ -353,7 +353,7 @@ router.patch("/users/:id/request-correction", async (req, res) => {
     body: note || t("notifDocumentCorrectionBody", docLang).replace("{field}", field || "document"),
     type: "system", icon: "document-outline",
   }).catch(() => {});
-  res.json({ success: true, user: stripUser(user) });
+  sendSuccess(res, { success: true, user: stripUser(user) });
 });
 
 /* ── PATCH /admin/users/:id/waive-debt — waive rider's cancellation debt ── */
@@ -361,9 +361,9 @@ router.patch("/users/:id/waive-debt", async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, cancellationDebt: usersTable.cancellationDebt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
   const debt = parseFloat(user.cancellationDebt ?? "0");
-  if (debt <= 0) { res.json({ success: true, message: "No debt to waive" }); return; }
+  if (debt <= 0) { sendSuccess(res, { success: true, message: "No debt to waive" }); return; }
   await db.update(usersTable).set({ cancellationDebt: "0", updatedAt: new Date() }).where(eq(usersTable.id, userId));
   addAuditEntry({ action: "debt_waived", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Cancelled debt of Rs.${debt.toFixed(0)} for ${user.phone}`, result: "success" });
   const debtLang = await getUserLanguage(userId);
@@ -373,13 +373,13 @@ router.patch("/users/:id/waive-debt", async (req, res) => {
     body: t("notifDebtWaivedBody", debtLang).replace("{amount}", debt.toFixed(0)),
     type: "system", icon: "checkmark-circle-outline",
   }).catch(() => {});
-  res.json({ success: true, waived: debt });
+  sendSuccess(res, { success: true, waived: debt });
 });
 
 /* ── PATCH /admin/users/:id/bulk-ban — ban/unban multiple users ── */
 router.patch("/users/bulk-ban", async (req, res) => {
   const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
-  if (!ids?.length) { res.status(400).json({ error: "ids required" }); return; }
+  if (!ids?.length) { sendValidationError(res, "ids required"); return; }
   const updates = action === "ban"
     ? { isBanned: true, isActive: false, banReason: reason || "Banned by admin", updatedAt: new Date() }
     : { isBanned: false, isActive: true, banReason: null as unknown, updatedAt: new Date() };
@@ -387,7 +387,7 @@ router.patch("/users/bulk-ban", async (req, res) => {
     await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).catch(() => {});
   }
   addAuditEntry({ action: `bulk_${action}`, ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Bulk ${action}: ${ids.length} users`, result: "success" });
-  res.json({ success: true, affected: ids.length, action });
+  sendSuccess(res, { success: true, affected: ids.length, action });
 });
 
 /* ── PATCH /admin/orders/:id/assign-rider — manually assign a rider to an order ── */

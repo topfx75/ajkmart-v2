@@ -6,3 +6,10 @@ if (!domain) {
   );
 }
 export const API_BASE = domain ? `https://${domain}/api` : "";
+
+export function unwrapApiResponse<T = any>(json: unknown): T {
+  if (json != null && typeof json === "object" && (json as any).success === true && "data" in json) {
+    return (json as any).data as T;
+  }
+  return json as T;
+}

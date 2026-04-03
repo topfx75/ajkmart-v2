@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 import { getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
+import { sendSuccess } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -33,7 +34,7 @@ router.get("/", async (req, res) => {
     await db.insert(userSettingsTable).values({ id, userId, ...DEFAULT_SETTINGS_BASE, language: platformLang });
     [settings] = await db.select().from(userSettingsTable).where(eq(userSettingsTable.userId, userId)).limit(1);
   }
-  res.json({ ...settings, updatedAt: settings!.updatedAt.toISOString() });
+  sendSuccess(res, { ...settings, updatedAt: settings!.updatedAt.toISOString() });
 });
 
 router.put("/", async (req, res) => {
@@ -53,7 +54,7 @@ router.put("/", async (req, res) => {
     await db.update(userSettingsTable).set({ ...updates, updatedAt: new Date() }).where(eq(userSettingsTable.userId, userId));
   }
   const [settings] = await db.select().from(userSettingsTable).where(eq(userSettingsTable.userId, userId)).limit(1);
-  res.json({ ...settings, updatedAt: settings!.updatedAt.toISOString() });
+  sendSuccess(res, { ...settings, updatedAt: settings!.updatedAt.toISOString() });
 });
 
 export default router;

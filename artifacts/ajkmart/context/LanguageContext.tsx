@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useCallback, useState, use
 import { I18nManager } from "react-native";
 import type { Language } from "@workspace/i18n";
 import { LANGUAGE_OPTIONS } from "@workspace/i18n";
+import { unwrapApiResponse } from "../utils/api";
 
 const LANG_STORAGE_KEY = "@ajkmart_language";
 const VALID_LANGS = new Set<string>(LANGUAGE_OPTIONS.map(o => o.value));
@@ -29,7 +30,7 @@ async function fetchPlatformDefaultLanguage(): Promise<Language | null> {
   try {
     const res = await fetch(`https://${API_DOMAIN}/api/platform-config`, { cache: "no-store" });
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = unwrapApiResponse(await res.json());
     const lang = data?.language?.defaultLanguage;
     if (lang && VALID_LANGS.has(lang)) return lang as Language;
   } catch (err) { console.warn("[Language] Platform default language fetch failed:", err instanceof Error ? err.message : String(err)); }
@@ -42,7 +43,7 @@ async function fetchUserLanguage(token: string): Promise<Language | null> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = unwrapApiResponse(await res.json());
     const lang = data?.language;
     if (lang && VALID_LANGS.has(lang)) return lang as Language;
   } catch (err) { console.warn("[Language] User language fetch failed:", err instanceof Error ? err.message : String(err)); }

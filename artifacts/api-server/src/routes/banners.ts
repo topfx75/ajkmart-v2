@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { bannersTable } from "@workspace/db/schema";
 import { eq, and, or, lte, gte, isNull, desc, asc } from "drizzle-orm";
+import { sendSuccess } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ router.get("/", async (req, res) => {
     ? banners.filter(b => !b.targetService || b.targetService === service || b.targetService === "all")
     : banners;
 
-  res.json({
+  sendSuccess(res, {
     banners: filtered.map(b => ({
       id: b.id,
       title: b.title,

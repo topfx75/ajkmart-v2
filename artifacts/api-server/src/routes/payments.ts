@@ -14,6 +14,7 @@ import { getPlatformSettings, adminAuth } from "./admin.js";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 import { z } from "zod";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 import {
   buildJazzCashHash, buildEasyPaisaHash,
   txnDateTime, txnExpiry,
@@ -176,7 +177,7 @@ router.get("/methods", async (req, res) => {
     });
   }
 
-  res.json({
+  sendSuccess(res, {
     methods,
     currency:          "PKR",
     minAmount:         parseFloat(s["payment_min_online"]          ?? "50"),
@@ -201,20 +202,20 @@ router.get("/test-connection/:gateway", adminAuth, async (req, res) => {
       const name   = s["jazzcash_manual_name"]   ?? "";
       const number = s["jazzcash_manual_number"] ?? "";
       if (!name || !number) {
-        res.json({ ok: false, message: "Manual mode: account name aur Jazz number add karein." }); return;
+        sendSuccess(res, { ok: false, message: "Manual mode: account name aur Jazz number add karein." }); return;
       }
-      res.json({ ok: true, message: `JazzCash Manual mode — ${number} (${name}) ✅` }); return;
+      sendSuccess(res, { ok: true, message: `JazzCash Manual mode — ${number} (${name}) ✅` }); return;
     }
     const merchantId = s["jazzcash_merchant_id"] ?? "";
     const password   = s["jazzcash_password"]    ?? "";
     const salt       = s["jazzcash_salt"]         ?? "";
     if (!merchantId || !password || !salt) {
-      res.json({ ok: false, message: "API mode: Merchant ID, Password aur Salt darj karein." }); return;
+      sendSuccess(res, { ok: false, message: "API mode: Merchant ID, Password aur Salt darj karein." }); return;
     }
     const testParams = { pp_MerchantID: merchantId, pp_Password: password, pp_TxnRefNo: `T${Date.now()}`, pp_Amount: "100", pp_TxnCurrency: "PKR", pp_TxnDateTime: txnDateTime() };
     const hash = buildJazzCashHash(testParams, salt);
     const mode = s["jazzcash_mode"] ?? "sandbox";
-    res.json({ ok: true, mode, message: `JazzCash API ready — ${mode.toUpperCase()} ✅ Hash: ${hash.slice(0,10)}...` }); return;
+    sendSuccess(res, { ok: true, mode, message: `JazzCash API ready — ${mode.toUpperCase()} ✅ Hash: ${hash.slice(0,10)}...` }); return;
   }
 
   if (gw === "easypaisa") {
@@ -223,21 +224,21 @@ router.get("/test-connection/:gateway", adminAuth, async (req, res) => {
       const name   = s["easypaisa_manual_name"]   ?? "";
       const number = s["easypaisa_manual_number"] ?? "";
       if (!name || !number) {
-        res.json({ ok: false, message: "Manual mode: account name aur EasyPaisa number add karein." }); return;
+        sendSuccess(res, { ok: false, message: "Manual mode: account name aur EasyPaisa number add karein." }); return;
       }
-      res.json({ ok: true, message: `EasyPaisa Manual mode — ${number} (${name}) ✅` }); return;
+      sendSuccess(res, { ok: true, message: `EasyPaisa Manual mode — ${number} (${name}) ✅` }); return;
     }
     const storeId = s["easypaisa_store_id"] ?? "";
     const hashKey = s["easypaisa_hash_key"] ?? "";
     if (!storeId || !hashKey) {
-      res.json({ ok: false, message: "API mode: Store ID aur Hash Key darj karein." }); return;
+      sendSuccess(res, { ok: false, message: "API mode: Store ID aur Hash Key darj karein." }); return;
     }
     const testHash = buildEasyPaisaHash([storeId, "100", "PKR"], hashKey);
     const mode = s["easypaisa_mode"] ?? "sandbox";
-    res.json({ ok: true, mode, message: `EasyPaisa API ready — ${mode.toUpperCase()} ✅ Hash: ${testHash.slice(0,10)}...` }); return;
+    sendSuccess(res, { ok: true, mode, message: `EasyPaisa API ready — ${mode.toUpperCase()} ✅ Hash: ${testHash.slice(0,10)}...` }); return;
   }
 
-  res.status(400).json({ error: "Unknown gateway. Use: jazzcash, easypaisa" });
+  sendValidationError(res, "Unknown gateway. Use: jazzcash, easypaisa");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -251,20 +252,20 @@ router.post("/initiate", customerAuth, async (req, res) => {
   const parsed = paymentInitiateSchema.safeParse(req.body);
   if (!parsed.success) {
     const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
-    res.status(400).json({ success: false, error: firstError, message: firstError }); return;
+    sendValidationError(res, firstError); return;
   }
 
   const { gateway, amount, orderId, mobileNumber } = parsed.data;
 
   if (!isSupportedGateway(gateway)) {
-    res.status(400).json({ success: false, error: `Unsupported gateway. Supported: ${SUPPORTED_GATEWAYS.join(", ")}` }); return;
+    sendValidationError(res, `Unsupported gateway. Supported: ${SUPPORTED_GATEWAYS.join(", ")}`); return;
   }
 
   /* Verify the order belongs to the authenticated user */
   const [order] = await db.select({ userId: ordersTable.userId })
     .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  if (order.userId !== callerId) { res.status(403).json({ error: "Access denied — order does not belong to you" }); return; }
+  if (!order) { sendNotFound(res, "Order not found"); return; }
+  if (order.userId !== callerId) { sendForbidden(res, "Access denied — order does not belong to you"); return; }
 
   const s = await getPlatformSettings();
   const amountPaisa = Math.round(parseFloat(amount) * 100);
@@ -275,12 +276,12 @@ router.post("/initiate", customerAuth, async (req, res) => {
   if (gateway === "jazzcash") {
     const amountErr = providerCfg ? validatePaymentAmount(providerCfg, parseFloat(amount), "JazzCash") : "JazzCash is not configured";
     if (amountErr) {
-      res.status(providerCfg?.enabled === false ? 503 : 400).json({ error: amountErr }); return;
+      sendError(res, amountErr, providerCfg?.enabled === false ? 503 : 400); return;
     }
     const jcType = providerCfg!.type;
 
     if (jcType === "manual") {
-      res.json({
+      sendSuccess(res, {
         gateway:    "jazzcash",
         mode:       "manual",
         type:       "manual",
@@ -302,10 +303,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
     const timeoutMins = parseInt(s["payment_timeout_mins"] ?? "15");
 
     if (mode !== "sandbox" && (!merchantId || !password || !salt)) {
-      /* Return pending-manual-verification instead of a hard 503 so the customer
-         flow is not completely blocked when the admin has not yet configured API keys.
-         The customer is informed to pay manually and the order is flagged for review. */
-      res.json({
+      sendSuccess(res, {
         gateway: "jazzcash", mode: "pending_manual", type: "pending",
         status: "pending_manual_verification",
         message: "JazzCash digital payment is temporarily unavailable. Please pay via bank transfer or contact support to complete your order.",
@@ -340,7 +338,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
 
     const isSandbox = mode === "sandbox";
     await trackPayment(txnRef, orderId);
-    res.json({
+    sendSuccess(res, {
       gateway: "jazzcash", mode, type: "api", txnRef, orderId,
       gatewayUrl: isSandbox
         ? "https://sandbox.jazzcash.com.pk/CustomerPortal/transactionmanagement/merchantform/"
@@ -358,12 +356,12 @@ router.post("/initiate", customerAuth, async (req, res) => {
   if (gateway === "easypaisa") {
     const amountErr = providerCfg ? validatePaymentAmount(providerCfg, parseFloat(amount), "EasyPaisa") : "EasyPaisa is not configured";
     if (amountErr) {
-      res.status(providerCfg?.enabled === false ? 503 : 400).json({ error: amountErr }); return;
+      sendError(res, amountErr, providerCfg?.enabled === false ? 503 : 400); return;
     }
     const epType = providerCfg!.type;
 
     if (epType === "manual") {
-      res.json({
+      sendSuccess(res, {
         gateway:    "easypaisa",
         mode:       "manual",
         type:       "manual",
@@ -385,9 +383,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
 
     const isSandbox = mode === "sandbox";
     if (!isSandbox && (!storeId || !hashKey)) {
-      /* Return pending-manual-verification instead of a hard 503 so the customer
-         flow is not completely blocked when the admin has not yet configured API keys. */
-      res.json({
+      sendSuccess(res, {
         gateway: "easypaisa", mode: "pending_manual", type: "pending",
         status: "pending_manual_verification",
         message: "EasyPaisa digital payment is temporarily unavailable. Please pay via bank transfer or contact support to complete your order.",
@@ -424,18 +420,18 @@ router.post("/initiate", customerAuth, async (req, res) => {
         const epData = await epRes.json() as any;
         if (epData?.responseCode === "0000") {
           await trackPayment(txnRef, orderId);
-          res.json({ gateway: "easypaisa", mode: "live", type: "api", txnRef, token: epData.token, orderId,
+          sendSuccess(res, { gateway: "easypaisa", mode: "live", type: "api", txnRef, token: epData.token, orderId,
             instructions: `Mobile ${mobileNumber} pe notification aayegi — approve karein.` });
           return;
         }
-        res.status(502).json({ error: `EasyPaisa error: ${epData?.responseDesc || "Unknown error"}` }); return;
+        sendError(res, `EasyPaisa error: ${epData?.responseDesc || "Unknown error"}`, 502); return;
       } catch (e: unknown) {
-        res.status(502).json({ error: `EasyPaisa API unreachable: ${e.message}` }); return;
+        sendError(res, `EasyPaisa API unreachable: ${(e as Error).message}`, 502); return;
       }
     }
 
     await trackPayment(txnRef, orderId);
-    res.json({
+    sendSuccess(res, {
       gateway: "easypaisa", mode, type: "api", txnRef, orderId, payload,
       instructions: isSandbox ? "Sandbox mode — payment simulate hogi." : `EasyPaisa notification aayegi — approve karein.`,
       simulateUrl: isSandbox ? `/api/payments/simulate/easypaisa/${txnRef}/${orderId}` : null,
@@ -443,7 +439,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
     return;
   }
 
-  res.status(400).json({ error: "Unsupported gateway. Use: jazzcash, easypaisa" });
+  sendValidationError(res, "Unsupported gateway. Use: jazzcash, easypaisa");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -453,15 +449,15 @@ router.post("/initiate", customerAuth, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 router.post("/verify-manual", adminAuth, async (req, res) => {
   const { orderId, gateway, transactionId } = req.body;
-  if (!orderId) { res.status(400).json({ error: "orderId required" }); return; }
+  if (!orderId) { sendValidationError(res, "orderId required"); return; }
   await confirmOrder(orderId);
-  res.json({ success: true, orderId, gateway, transactionId, message: "Manual payment verified — order confirmed ✅" });
+  sendSuccess(res, { orderId, gateway, transactionId }, "Manual payment verified — order confirmed ✅");
 });
 
 router.post("/reconcile", adminAuth, async (req, res) => {
   const { orderId, txnRef, status: forcedStatus, gateway, notes } = req.body;
   if (!orderId && !txnRef) {
-    res.status(400).json({ error: "orderId or txnRef is required" });
+    sendValidationError(res, "orderId or txnRef is required");
     return;
   }
 
@@ -479,12 +475,12 @@ router.post("/reconcile", adminAuth, async (req, res) => {
   }).from(ordersTable).where(whereClause).limit(1);
 
   if (!order) {
-    res.status(404).json({ error: "Order not found" });
+    sendNotFound(res, "Order not found");
     return;
   }
 
   if (!forcedStatus || !["success", "failed"].includes(forcedStatus)) {
-    res.status(400).json({ error: "status is required and must be 'success' or 'failed'" });
+    sendValidationError(res, "status is required and must be 'success' or 'failed'");
     return;
   }
   const newPaymentStatus = forcedStatus as "success" | "failed";
@@ -499,8 +495,7 @@ router.post("/reconcile", adminAuth, async (req, res) => {
 
   await db.update(ordersTable).set(updates).where(eq(ordersTable.id, order.id));
 
-  res.json({
-    success: true,
+  sendSuccess(res, {
     orderId: order.id,
     txnRef: order.txnRef,
     previousPaymentStatus: order.paymentStatus,
@@ -508,8 +503,7 @@ router.post("/reconcile", adminAuth, async (req, res) => {
     orderStatus: updates["status"] ?? order.status,
     gateway: gateway ?? order.paymentMethod,
     notes: notes ?? null,
-    message: `Payment reconciled — ${newPaymentStatus} ✅`,
-  });
+  }, `Payment reconciled — ${newPaymentStatus} ✅`);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -524,12 +518,12 @@ router.get("/simulate/:gateway/:txnRef/:orderId", adminAuth, async (req, res) =>
   const mode = gw === "jazzcash" ? (s["jazzcash_mode"] ?? "sandbox") : (s["easypaisa_mode"] ?? "sandbox");
 
   if (mode !== "sandbox") {
-    res.status(403).json({ error: "Simulation only available in sandbox mode" }); return;
+    sendForbidden(res, "Simulation only available in sandbox mode"); return;
   }
 
   await confirmOrder(orderId);
   await resolvePayment(req.params["txnRef"]!, "success");
-  res.json({ status: "success", txnRef: req.params["txnRef"], orderId, gateway: gw, message: "Sandbox payment simulated ✅ — Order confirmed" });
+  sendSuccess(res, { status: "success", txnRef: req.params["txnRef"], orderId, gateway: gw }, "Sandbox payment simulated ✅ — Order confirmed");
 });
 
 router.get("/simulate/:gateway/:txnRef", adminAuth, async (req, res) => {
@@ -538,10 +532,10 @@ router.get("/simulate/:gateway/:txnRef", adminAuth, async (req, res) => {
   const mode = gw === "jazzcash" ? (s["jazzcash_mode"] ?? "sandbox") : (s["easypaisa_mode"] ?? "sandbox");
 
   if (mode !== "sandbox") {
-    res.status(403).json({ error: "Simulation only available in sandbox mode" }); return;
+    sendForbidden(res, "Simulation only available in sandbox mode"); return;
   }
 
-  res.json({ status: "success", txnRef: req.params["txnRef"], orderId: null, gateway: gw, message: "Sandbox payment simulated ✅" });
+  sendSuccess(res, { status: "success", txnRef: req.params["txnRef"], orderId: null, gateway: gw }, "Sandbox payment simulated ✅");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -559,14 +553,14 @@ router.post("/callback/jazzcash", async (req, res) => {
      Sandbox mode: skip hash check (sandbox credentials aren't real keys). ── */
   if (mode !== "sandbox") {
     if (!salt) {
-      res.status(500).json({ error: "JazzCash salt not configured — cannot verify callback" }); return;
+      sendError(res, "JazzCash salt not configured — cannot verify callback", 500); return;
     }
     const receivedHash      = params["pp_SecureHash"];
     const paramsWithoutHash = { ...params };
     delete paramsWithoutHash["pp_SecureHash"];
     const computedHash = buildJazzCashHash(paramsWithoutHash, salt);
     if (receivedHash !== computedHash) {
-      res.status(400).json({ error: "Hash mismatch — possible tampering" }); return;
+      sendValidationError(res, "Hash mismatch — possible tampering"); return;
     }
   }
 
@@ -577,10 +571,10 @@ router.post("/callback/jazzcash", async (req, res) => {
   if (responseCode === "000") {
     if (orderId) await confirmOrder(orderId);
     if (txnRef) await resolvePayment(txnRef, "success");
-    res.json({ success: true, txnRef, orderId, message: "JazzCash payment confirmed — order updated ✅" });
+    sendSuccess(res, { txnRef, orderId }, "JazzCash payment confirmed — order updated ✅");
   } else {
     if (txnRef) await resolvePayment(txnRef, "failed");
-    res.json({ success: false, txnRef, responseCode, message: "JazzCash payment failed or cancelled" });
+    sendSuccess(res, { txnRef, responseCode }, "JazzCash payment failed or cancelled");
   }
 });
 
@@ -606,11 +600,11 @@ router.post("/callback/easypaisa", async (req, res) => {
      Sandbox mode: skip hash check (sandbox credentials aren't real keys). ── */
   if (mode !== "sandbox") {
     if (!hashKey) {
-      res.status(500).json({ error: "EasyPaisa hash key not configured — cannot verify callback" }); return;
+      sendError(res, "EasyPaisa hash key not configured — cannot verify callback", 500); return;
     }
     const computedHash = buildEasyPaisaHash([storeId, orderId, amount, "PKR", ""], hashKey);
     if (receivedHash !== computedHash) {
-      res.status(400).json({ error: "Hash mismatch — verify EasyPaisa credentials" }); return;
+      sendValidationError(res, "Hash mismatch — verify EasyPaisa credentials"); return;
     }
   }
 
@@ -620,10 +614,10 @@ router.post("/callback/easypaisa", async (req, res) => {
       if (order) await confirmOrder(order.id);
       await resolvePayment(orderId, "success");
     }
-    res.json({ success: true, txnRefNo, message: "EasyPaisa payment confirmed ✅" });
+    sendSuccess(res, { txnRefNo }, "EasyPaisa payment confirmed ✅");
   } else {
     if (orderId) await resolvePayment(orderId, "failed");
-    res.json({ success: false, txnRefNo, responseCode, message: "EasyPaisa payment failed" });
+    sendSuccess(res, { txnRefNo, responseCode }, "EasyPaisa payment failed");
   }
 });
 
@@ -641,7 +635,7 @@ router.get("/status/:txnRef", async (req, res) => {
   }).from(ordersTable).where(eq(ordersTable.txnRef, txnRef)).limit(1);
 
   if (!order) {
-    res.json({ txnRef, status: "pending", message: "Awaiting payment confirmation from gateway" });
+    sendSuccess(res, { txnRef, status: "pending" }, "Awaiting payment confirmation from gateway");
     return;
   }
 
@@ -659,7 +653,7 @@ router.get("/status/:txnRef", async (req, res) => {
     expired: "Payment session expired",
   };
 
-  res.json({ txnRef, status, message: messages[status] || status, amount: order?.total ? parseFloat(String(order.total)) : null });
+  sendSuccess(res, { txnRef, status, amount: order?.total ? parseFloat(String(order.total)) : null }, messages[status] || status);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -682,11 +676,11 @@ async function handleOrderPaymentStatus(req: import("express").Request, res: imp
   }).from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
 
   if (!order) {
-    res.status(404).json({ error: "Order not found", code: "ORDER_NOT_FOUND" });
+    sendNotFound(res, "Order not found");
     return;
   }
   if (order.userId !== callerId) {
-    res.status(403).json({ error: "Access denied", code: "ORDER_ACCESS_DENIED" });
+    sendForbidden(res, "Access denied");
     return;
   }
 
@@ -704,8 +698,7 @@ async function handleOrderPaymentStatus(req: import("express").Request, res: imp
     ? (order.status === "cancelled" ? "refunded" : "settled")
     : paymentStatus;
 
-  res.json({
-    success: true,
+  sendSuccess(res, {
     orderId: order.id,
     orderStatus: order.status,
     paymentMethod: order.paymentMethod,
@@ -714,11 +707,10 @@ async function handleOrderPaymentStatus(req: import("express").Request, res: imp
     total: order.total ? parseFloat(String(order.total)) : null,
     txnRef: order.txnRef,
     confirmed: order.status !== "pending" || isWalletOrCash,
-    message: effectivePaymentStatus === "settled" || effectivePaymentStatus === "success"
-      ? "Payment confirmed" : effectivePaymentStatus === "expired"
-      ? "Payment session expired" : effectivePaymentStatus === "failed"
-      ? "Payment failed or was cancelled" : "Awaiting payment confirmation",
-  });
+  }, effectivePaymentStatus === "settled" || effectivePaymentStatus === "success"
+    ? "Payment confirmed" : effectivePaymentStatus === "expired"
+    ? "Payment session expired" : effectivePaymentStatus === "failed"
+    ? "Payment failed or was cancelled" : "Awaiting payment confirmation");
 }
 
 router.get("/:orderId/status", customerAuth, handleOrderPaymentStatus);

@@ -20,11 +20,12 @@ import {
   type AdminRequest,
 } from "../admin-shared.js";
 import { emitRideDispatchUpdate } from "../../lib/socketio.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 
 const router = Router();
 router.get("/rides", async (_req, res) => {
   const rides = await db.select().from(ridesTable).orderBy(desc(ridesTable.createdAt)).limit(200);
-  res.json({
+  sendSuccess(res, {
     rides: rides.map(r => ({
       ...r,
       fare: parseFloat(r.fare),
@@ -47,7 +48,7 @@ router.patch("/rides/:id/status", async (req, res) => {
     .set(updateData)
     .where(eq(ridesTable.id, req.params["id"]!))
     .returning();
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
 
   const rideNotifKeys = RIDE_NOTIF_KEYS[status];
   if (rideNotifKeys) {
@@ -88,20 +89,20 @@ router.patch("/rides/:id/status", async (req, res) => {
     await sendUserNotification(ride.userId, "Ride Refund 💰", `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya.`, "ride", "wallet-outline");
   }
 
-  res.json({ ...ride, fare: parseFloat(ride.fare), distance: parseFloat(ride.distance) });
+  sendSuccess(res, { ...ride, fare: parseFloat(ride.fare), distance: parseFloat(ride.distance) });
 });
 router.get("/ride-services", async (_req, res) => {
   await ensureDefaultRideServices();
   const services = await db.select().from(rideServiceTypesTable).orderBy(asc(rideServiceTypesTable.sortOrder));
-  res.json({ services: services.map(formatSvc) });
+  sendSuccess(res, { services: services.map(formatSvc) });
 });
 
 /* POST /admin/ride-services — create custom service */
 router.post("/ride-services", async (req, res) => {
   const { key, name, nameUrdu, icon, description, color, baseFare, perKm, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
-  if (!key || !name || !icon) { res.status(400).json({ error: "key, name, icon are required" }); return; }
+  if (!key || !name || !icon) { sendValidationError(res, "key, name, icon are required"); return; }
   const existing = await db.select({ id: rideServiceTypesTable.id }).from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, String(key))).limit(1);
-  if (existing.length > 0) { res.status(409).json({ error: `Service key "${key}" already exists` }); return; }
+  if (existing.length > 0) { sendError(res, `Service key "${key}" already exists`, 409); return; }
   const [created] = await db.insert(rideServiceTypesTable).values({
     id: `svc_${generateId()}`,
     key: String(key).toLowerCase().replace(/\s+/g, "_"),
@@ -119,14 +120,14 @@ router.post("/ride-services", async (req, res) => {
     allowBargaining: allowBargaining !== false,
     sortOrder:     Number(sortOrder ?? 99),
   }).returning();
-  res.status(201).json({ success: true, service: formatSvc(created) });
+  sendCreated(res, { service: formatSvc(created) });
 });
 
 /* PATCH /admin/ride-services/:id — update any field */
 router.patch("/ride-services/:id", async (req, res) => {
   const svcId = req.params["id"]!;
   const [existing] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId)).limit(1);
-  if (!existing) { res.status(404).json({ error: "Service not found" }); return; }
+  if (!existing) { sendNotFound(res, "Service not found"); return; }
   const { name, nameUrdu, icon, description, color, isEnabled, baseFare, perKm, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (name          !== undefined) patch["name"]           = String(name);
@@ -142,17 +143,17 @@ router.patch("/ride-services/:id", async (req, res) => {
   if (allowBargaining !== undefined) patch["allowBargaining"] = Boolean(allowBargaining);
   if (sortOrder     !== undefined) patch["sortOrder"]      = Number(sortOrder);
   const [updated] = await db.update(rideServiceTypesTable).set(patch as any).where(eq(rideServiceTypesTable.id, svcId)).returning();
-  res.json({ success: true, service: formatSvc(updated) });
+  sendSuccess(res, { service: formatSvc(updated) });
 });
 
 /* DELETE /admin/ride-services/:id — only custom services */
 router.delete("/ride-services/:id", async (req, res) => {
   const svcId = req.params["id"]!;
   const [existing] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId)).limit(1);
-  if (!existing) { res.status(404).json({ error: "Service not found" }); return; }
-  if (!existing.isCustom) { res.status(400).json({ error: "Built-in services cannot be deleted. Disable them instead." }); return; }
+  if (!existing) { sendNotFound(res, "Service not found"); return; }
+  if (!existing.isCustom) { sendValidationError(res, "Built-in services cannot be deleted. Disable them instead."); return; }
   await db.delete(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ══════════════════════════════════════════════════════
@@ -201,7 +202,7 @@ router.get("/locations", async (_req, res) => {
   await ensureDefaultLocations();
   const locs = await db.select().from(popularLocationsTable)
     .orderBy(asc(popularLocationsTable.sortOrder), asc(popularLocationsTable.name));
-  res.json({
+  sendSuccess(res, {
     locations: locs.map(l => ({
       ...l,
       lat: parseFloat(String(l.lat)),
@@ -212,13 +213,13 @@ router.get("/locations", async (_req, res) => {
 
 router.post("/locations", async (req, res) => {
   const { name, nameUrdu, lat, lng, category = "general", icon = "📍", isActive = true, sortOrder = 0 } = req.body;
-  if (!name || !lat || !lng) { res.status(400).json({ error: "name, lat, lng required" }); return; }
+  if (!name || !lat || !lng) { sendValidationError(res, "name, lat, lng required"); return; }
   const [loc] = await db.insert(popularLocationsTable).values({
     id: generateId(), name, nameUrdu: nameUrdu || null,
     lat: String(lat), lng: String(lng), category, icon,
     isActive: Boolean(isActive), sortOrder: Number(sortOrder),
   }).returning();
-  res.status(201).json({ ...loc, lat: parseFloat(String(loc!.lat)), lng: parseFloat(String(loc!.lng)) });
+  sendCreated(res, { ...loc, lat: parseFloat(String(loc!.lat)), lng: parseFloat(String(loc!.lng)) });
 });
 
 router.patch("/locations/:id", async (req, res) => {
@@ -233,16 +234,16 @@ router.patch("/locations/:id", async (req, res) => {
   if (isActive  !== undefined) patch.isActive  = Boolean(isActive);
   if (sortOrder !== undefined) patch.sortOrder = Number(sortOrder);
   const [updated] = await db.update(popularLocationsTable).set(patch).where(eq(popularLocationsTable.id, req.params["id"]!)).returning();
-  if (!updated) { res.status(404).json({ error: "Location not found" }); return; }
-  res.json({ ...updated, lat: parseFloat(String(updated.lat)), lng: parseFloat(String(updated.lng)) });
+  if (!updated) { sendNotFound(res, "Location not found"); return; }
+  sendSuccess(res, { ...updated, lat: parseFloat(String(updated.lat)), lng: parseFloat(String(updated.lng)) });
 });
 
 router.delete("/locations/:id", async (req, res) => {
   const [existing] = await db.select({ id: popularLocationsTable.id })
     .from(popularLocationsTable).where(eq(popularLocationsTable.id, req.params["id"]!)).limit(1);
-  if (!existing) { res.status(404).json({ error: "Location not found" }); return; }
+  if (!existing) { sendNotFound(res, "Location not found"); return; }
   await db.delete(popularLocationsTable).where(eq(popularLocationsTable.id, req.params["id"]!));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ══════════════════════════════════════════════════════
@@ -270,7 +271,7 @@ function fmtRoute(r: Record<string, unknown>) {
 router.get("/school-routes", async (_req, res) => {
   const routes = await db.select().from(schoolRoutesTable)
     .orderBy(asc(schoolRoutesTable.sortOrder), asc(schoolRoutesTable.schoolName));
-  res.json({ routes: routes.map(fmtRoute) });
+  sendSuccess(res, { routes: routes.map(fmtRoute) });
 });
 
 router.post("/school-routes", async (req, res) => {
@@ -280,7 +281,7 @@ router.post("/school-routes", async (req, res) => {
     capacity = 30, vehicleType = "school_shift", notes, isActive = true, sortOrder = 0,
   } = req.body;
   if (!routeName || !schoolName || !fromArea || !toAddress || !monthlyPrice) {
-    res.status(400).json({ error: "routeName, schoolName, fromArea, toAddress, monthlyPrice required" }); return;
+    sendValidationError(res, "routeName, schoolName, fromArea, toAddress, monthlyPrice required"); return;
   }
   const [route] = await db.insert(schoolRoutesTable).values({
     id: generateId(), routeName, schoolName, schoolNameUrdu: schoolNameUrdu || null,
@@ -294,7 +295,7 @@ router.post("/school-routes", async (req, res) => {
     vehicleType, notes: notes || null,
     isActive: Boolean(isActive), sortOrder: Number(sortOrder),
   }).returning();
-  res.status(201).json(fmtRoute(route!));
+  sendCreated(res, fmtRoute(route!));
 });
 
 router.patch("/school-routes/:id", async (req, res) => {
@@ -324,8 +325,8 @@ router.patch("/school-routes/:id", async (req, res) => {
   if (isActive       !== undefined) patch.isActive       = Boolean(isActive);
   if (sortOrder      !== undefined) patch.sortOrder      = Number(sortOrder);
   const [updated] = await db.update(schoolRoutesTable).set(patch).where(eq(schoolRoutesTable.id, routeId)).returning();
-  if (!updated) { res.status(404).json({ error: "Route not found" }); return; }
-  res.json(fmtRoute(updated));
+  if (!updated) { sendNotFound(res, "Route not found"); return; }
+  sendSuccess(res, fmtRoute(updated));
 });
 
 router.delete("/school-routes/:id", async (req, res) => {
@@ -336,13 +337,13 @@ router.delete("/school-routes/:id", async (req, res) => {
     .where(and(eq(schoolSubscriptionsTable.routeId, routeId), eq(schoolSubscriptionsTable.status, "active")))
     .limit(1);
   if (activeSub) {
-    res.status(409).json({ error: "Cannot delete route with active subscriptions. Disable it instead." }); return;
+    sendError(res, "Cannot delete route with active subscriptions. Disable it instead.", 409); return;
   }
   const [existing] = await db.select({ id: schoolRoutesTable.id })
     .from(schoolRoutesTable).where(eq(schoolRoutesTable.id, routeId)).limit(1);
-  if (!existing) { res.status(404).json({ error: "Route not found" }); return; }
+  if (!existing) { sendNotFound(res, "Route not found"); return; }
   await db.delete(schoolRoutesTable).where(eq(schoolRoutesTable.id, routeId));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 router.get("/school-subscriptions", async (req, res) => {
@@ -369,7 +370,7 @@ router.get("/school-subscriptions", async (req, res) => {
       createdAt:       sub.createdAt instanceof Date       ? sub.createdAt.toISOString()       : sub.createdAt,
     };
   }));
-  res.json({ subscriptions: enriched, total: enriched.length });
+  sendSuccess(res, { subscriptions: enriched, total: enriched.length });
 });
 
 /* ══════════════════════════════════════════════════════════
@@ -436,7 +437,7 @@ router.get("/live-riders", async (_req, res) => {
     return a.ageSeconds - b.ageSeconds;
   });
 
-  res.json({
+  sendSuccess(res, {
     riders: enriched,
     total: enriched.length,
     freshCount: enriched.filter(r => r.isFresh).length,
@@ -489,7 +490,7 @@ router.get("/customer-locations", async (_req, res) => {
     };
   });
 
-  res.json({ customers: enriched, total: enriched.length, freshCount: enriched.filter(c => c.isFresh).length });
+  sendSuccess(res, { customers: enriched, total: enriched.length, freshCount: enriched.filter(c => c.isFresh).length });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -503,9 +504,9 @@ router.patch("/riders/:id/online", async (req, res) => {
     .set({ isOnline, updatedAt: new Date() } as any)
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
-  if (!rider) { res.status(404).json({ error: "Rider not found" }); return; }
+  if (!rider) { sendNotFound(res, "Rider not found"); return; }
   addAuditEntry({ action: "rider_online_toggle", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Rider ${req.params["id"]} set ${isOnline ? "online" : "offline"} by admin`, result: "success" });
-  res.json({ success: true, isOnline });
+  sendSuccess(res, { isOnline });
 });
 
 /* ── GET /admin/revenue-trend — 7-day rolling revenue for dashboard sparkline ── */
@@ -528,7 +529,7 @@ router.get("/revenue-trend", async (_req, res) => {
       revenue: parseFloat(row?.total ?? "0") + parseFloat(rideRow?.total ?? "0"),
     });
   }
-  res.json({ trend: days });
+  sendSuccess(res, { trend: days });
 });
 
 /* ── GET /admin/leaderboard — top-5 vendors and riders ── */
@@ -561,7 +562,7 @@ router.get("/leaderboard", async (_req, res) => {
   .orderBy(sql`count(${ridesTable.id}) desc`)
   .limit(5);
 
-  res.json({
+  sendSuccess(res, {
     vendors: vendors.map(v => ({ ...v, totalRevenue: parseFloat(String(v.totalRevenue)), totalOrders: Number(v.totalOrders) })),
     riders:  riders.map(r  => ({ ...r,  totalEarned: parseFloat(String(r.totalEarned)),  completedTrips: Number(r.completedTrips) })),
   });
@@ -584,7 +585,7 @@ router.get("/dashboard-export", async (_req, res) => {
     rideRevenue:  parseFloat(rideRev?.total ?? "0"),
   };
   res.setHeader("Content-Disposition", `attachment; filename="dashboard-${new Date().toISOString().slice(0,10)}.json"`);
-  res.json(snapshot);
+  sendSuccess(res, snapshot);
 });
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -595,9 +596,9 @@ router.post("/rides/:id/cancel", async (req, res) => {
   const rideId = req.params["id"]!;
   const { reason } = req.body as { reason?: string };
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
   if (["completed", "cancelled"].includes(ride.status)) {
-    res.status(400).json({ error: `Cannot cancel a ride that is already ${ride.status}` }); return;
+    sendValidationError(res, `Cannot cancel a ride that is already ${ride.status}`); return;
   }
 
   const isWallet = ride.paymentMethod === "wallet";
@@ -628,7 +629,7 @@ router.post("/rides/:id/cancel", async (req, res) => {
     });
   } catch (txErr: unknown) {
     addAuditEntry({ action: "ride_cancel", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Ride ${rideId} cancel failed — transaction error: ${txErr.message}`, result: "fail" });
-    res.status(500).json({ error: "Cancellation failed: could not complete transaction" });
+    sendError(res, "Cancellation failed: could not complete transaction", 500);
     return;
   }
 
@@ -644,17 +645,17 @@ router.post("/rides/:id/cancel", async (req, res) => {
 
   addAuditEntry({ action: "ride_cancel", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Admin cancelled ride ${rideId}${reason ? ` — ${reason}` : ""}${refunded ? " (wallet refunded)" : ""}`, result: "success" });
   emitRideDispatchUpdate({ rideId, action: "cancel", status: "cancelled" });
-  res.json({ success: true, rideId, refunded });
+  sendSuccess(res, { rideId, refunded });
 });
 
 router.post("/rides/:id/refund", async (req, res) => {
   const rideId = req.params["id"]!;
   const { amount, reason } = req.body as { amount?: number; reason?: string };
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
 
   const refundAmt = amount ?? parseFloat(ride.fare);
-  if (refundAmt <= 0 || !isFinite(refundAmt)) { res.status(400).json({ error: "Invalid refund amount" }); return; }
+  if (refundAmt <= 0 || !isFinite(refundAmt)) { sendValidationError(res, "Invalid refund amount"); return; }
 
   try {
     await db.transaction(async (tx) => {
@@ -667,31 +668,31 @@ router.post("/rides/:id/refund", async (req, res) => {
     });
   } catch (txErr: unknown) {
     addAuditEntry({ action: "ride_refund", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Ride ${rideId} refund failed — transaction error: ${txErr.message}`, result: "fail" });
-    res.status(500).json({ error: "Refund failed: could not complete transaction" });
+    sendError(res, "Refund failed: could not complete transaction", 500);
     return;
   }
 
   await sendUserNotification(ride.userId, "Ride Refund 💰", `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya.`, "ride", "wallet-outline");
   addAuditEntry({ action: "ride_refund", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Admin refunded Rs. ${refundAmt} for ride ${rideId}${reason ? ` — ${reason}` : ""}`, result: "success" });
   emitRideDispatchUpdate({ rideId, action: "refund", status: ride.status });
-  res.json({ success: true, rideId, refundedAmount: refundAmt });
+  sendSuccess(res, { rideId, refundedAmount: refundAmt });
 });
 
 router.post("/rides/:id/reassign", async (req, res) => {
   const rideId = req.params["id"]!;
   const { riderId, riderName, riderPhone } = req.body as { riderId?: string; riderName?: string; riderPhone?: string };
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
   if (["completed", "cancelled"].includes(ride.status)) {
-    res.status(400).json({ error: `Cannot reassign a ride that is ${ride.status}` }); return;
+    sendValidationError(res, `Cannot reassign a ride that is ${ride.status}`); return;
   }
 
-  if (!riderId) { res.status(400).json({ error: "riderId is required to reassign" }); return; }
+  if (!riderId) { sendValidationError(res, "riderId is required to reassign"); return; }
 
   const [riderUser] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, role: usersTable.role })
     .from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
-  if (!riderUser) { res.status(404).json({ error: "Rider not found" }); return; }
-  if (riderUser.role !== "rider") { res.status(400).json({ error: "Selected user is not a rider" }); return; }
+  if (!riderUser) { sendNotFound(res, "Rider not found"); return; }
+  if (riderUser.role !== "rider") { sendValidationError(res, "Selected user is not a rider"); return; }
 
   const oldRiderId = ride.riderId;
   const resolvedName = riderName || riderUser.name;
@@ -716,7 +717,7 @@ router.post("/rides/:id/reassign", async (req, res) => {
 
   addAuditEntry({ action: "ride_reassign", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Admin reassigned ride ${rideId} from ${oldRiderId ?? "none"} to ${riderId} (${resolvedName})`, result: "success" });
   emitRideDispatchUpdate({ rideId, action: "reassign", status: updated!.status });
-  res.json({ success: true, ride: { ...updated, fare: parseFloat(updated!.fare), distance: parseFloat(updated!.distance) } });
+  sendSuccess(res, { ride: { ...updated, fare: parseFloat(updated!.fare), distance: parseFloat(updated!.distance) } });
 });
 
 router.get("/rides/:id/audit-trail", async (req, res) => {
@@ -731,13 +732,13 @@ router.get("/rides/:id/audit-trail", async (req, res) => {
     timestamp: e.timestamp,
   }));
   trail.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  res.json({ trail, rideId });
+  sendSuccess(res, { trail, rideId });
 });
 
 router.get("/rides/:id/detail", async (req, res) => {
   const rideId = req.params["id"]!;
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
 
   const [customer] = await db.select({ name: usersTable.name, phone: usersTable.phone, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, ride.userId)).limit(1);
   let rider = null;
@@ -761,7 +762,7 @@ router.get("/rides/:id/detail", async (req, res) => {
   const gstAmount = gstEnabled ? parseFloat(((fare * gstPct) / (100 + gstPct)).toFixed(2)) : 0;
   const baseFare = fare - gstAmount;
 
-  res.json({
+  sendSuccess(res, {
     ride: {
       ...ride,
       fare,
@@ -834,7 +835,7 @@ router.get("/dispatch-monitor", async (_req, res) => {
     : [];
   const bidCountMap = Object.fromEntries(bidCounts.map(b => [b.rideId, Number(b.total)]));
 
-  res.json({
+  sendSuccess(res, {
     rides: activeRides.map(r => ({
       id: r.id,
       type: r.type,
@@ -1002,7 +1003,7 @@ router.get("/fleet-analytics", async (req, res) => {
     .slice(0, 10)
     .map(z => ({ lat: z.lat, lng: z.lng, pings: z.count }));
 
-  res.json({
+  sendSuccess(res, {
     heatmap,
     avgResponseTimeMin,
     riderDistances,
@@ -1073,7 +1074,7 @@ router.get("/riders/:userId/route", async (req, res) => {
   const loginLocation  = points[0] ?? null;
   const lastLocation   = points[points.length - 1] ?? null;
 
-  res.json({ userId, date: dateParam ?? "today", loginLocation, lastLocation, route: points, total: points.length });
+  sendSuccess(res, { userId, date: dateParam ?? "today", loginLocation, lastLocation, route: points, total: points.length });
 });
 
 /* ══════════════════════════════════════════════════════════════

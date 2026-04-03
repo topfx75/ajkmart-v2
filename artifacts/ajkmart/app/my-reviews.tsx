@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,12 +10,12 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey, type Language } from "@workspace/i18n";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, unwrapApiResponse } from "@/utils/api";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
 
 const C = Colors.light;
 
@@ -35,7 +35,8 @@ function useFetch<T>(url: string, token: string | null) {
     try {
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) throw new Error(`Error ${r.status}`);
-      setData(await r.json());
+      const json = unwrapApiResponse(await r.json());
+      setData(json);
     } catch (e: any) {
       setError(e.message || "Failed to load");
     } finally {
@@ -71,7 +72,6 @@ function StarRow({ value }: { value: number }) {
 }
 
 export default function MyReviewsScreen() {
-  const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const { language } = useLanguage();
   const t = (k: TranslationKey) => T(k, language);
@@ -89,8 +89,7 @@ export default function MyReviewsScreen() {
   }
 
   return (
-    <View style={[s.root, { paddingTop: insets.top }]}>
-      {/* Header */}
+    <ScreenContainer scroll={false} backgroundColor="#f9fafb">
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.backBtn} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color="#111" />
@@ -113,11 +112,10 @@ export default function MyReviewsScreen() {
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={[s.list, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={s.list}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={C.primary} />}
           showsVerticalScrollIndicator={false}
         >
-          {/* Summary */}
           <View style={s.summaryCard}>
             <Ionicons name="star" size={28} color="#f59e0b" />
             <Text style={s.summaryCount}>{total}</Text>
@@ -155,7 +153,6 @@ export default function MyReviewsScreen() {
                   <Text style={s.date}>{fmtDate(r.createdAt)}</Text>
                 </View>
 
-                {/* Primary rating */}
                 <View style={s.ratingRow}>
                   <Text style={s.ratingLabel}>
                     {r.riderRating ? t("vendor") : t("ratingLabel")}
@@ -163,7 +160,6 @@ export default function MyReviewsScreen() {
                   <StarRow value={r.rating} />
                 </View>
 
-                {/* Separate rider rating (only when dual-rated) */}
                 {!!r.riderRating && (
                   <View style={s.ratingRow}>
                     <Text style={s.ratingLabel}>{t("rider")}</Text>
@@ -188,12 +184,11 @@ export default function MyReviewsScreen() {
           )}
         </ScrollView>
       )}
-    </View>
+    </ScreenContainer>
   );
 }
 
 const s = StyleSheet.create({
-  root:         { flex: 1, backgroundColor: "#f9fafb" },
   header:       { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
   backBtn:      { width: 40, height: 40, borderRadius: 20, backgroundColor: "#f3f4f6", justifyContent: "center", alignItems: "center" },
   headerTitle:  { flex: 1, textAlign: "center", fontSize: 17, fontWeight: "800", color: "#111" },

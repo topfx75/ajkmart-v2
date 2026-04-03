@@ -24,6 +24,7 @@ import * as Battery from "expo-battery";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, AppStateStatus, Platform } from "react-native";
 import { useAuth } from "./AuthContext";
+import { unwrapApiResponse } from "../utils/api";
 
 const BACKGROUND_LOCATION_TASK = "RIDER_BACKGROUND_LOCATION";
 const MIN_DISTANCE_METERS = 25;
@@ -111,7 +112,7 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
           headers: { Authorization: `Bearer ${tok}` },
         });
         if (!r.ok) return;
-        const data = await r.json();
+        const data = unwrapApiResponse(await r.json());
         const active = !!(data?.order || data?.ride);
         setHasActiveTask(active);
       } catch (err) { console.warn("[RiderLocation] Active task poll failed:", err instanceof Error ? err.message : String(err)); }

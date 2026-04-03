@@ -609,7 +609,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
 
   if (await isIPBlocked(ip)) {
     addSecurityEvent({ type: "blocked_ip_access", ip, details: `Blocked IP attempted access to ${req.url}`, severity: "high" });
-    res.status(403).json({ error: "Access denied. Your IP address has been blocked due to suspicious activity." });
+    res.status(403).json({ success: false, error: "Access denied. Your IP address has been blocked due to suspicious activity.", message: "رسائی سے انکار۔ آپ کا IP ایڈریس مشکوک سرگرمی کی وجہ سے بلاک کر دیا گیا ہے۔" });
     return;
   }
 
@@ -621,7 +621,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
       blockIP(ip);
       addSecurityEvent({ type: "tor_access_blocked", ip, details: `TOR exit node blocked from ${req.url}`, severity: "high" });
       addAuditEntry({ action: "tor_block", ip, details: `Blocked TOR exit node IP`, result: "warn" });
-      res.status(403).json({ error: "Access via TOR is not permitted." });
+      res.status(403).json({ success: false, error: "Access via TOR is not permitted.", message: "TOR کے ذریعے رسائی کی اجازت نہیں ہے۔" });
       return;
     }
   }
@@ -630,7 +630,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
     const isVpn = await isVpnOrProxy(ip);
     if (isVpn) {
       addSecurityEvent({ type: "vpn_access_blocked", ip, details: `VPN/proxy IP blocked from ${req.url}`, severity: "medium" });
-      res.status(403).json({ error: "Access via VPN or proxy is not permitted." });
+      res.status(403).json({ success: false, error: "Access via VPN or proxy is not permitted.", message: "VPN یا پراکسی کے ذریعے رسائی کی اجازت نہیں ہے۔" });
       return;
     }
   }
@@ -656,7 +656,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
       blockIP(ip);
       addAuditEntry({ action: "auto_block_ip", ip, details: `Auto-blocked: ${rateResult.count} req/min far exceeds limit of ${hardLimit}`, result: "warn" });
       addSecurityEvent({ type: "ip_auto_blocked", ip, details: `Auto-blocked after ${rateResult.count} requests in 1 minute`, severity: "critical" });
-      res.status(403).json({ error: "Your IP has been automatically blocked due to excessive requests." });
+      res.status(403).json({ success: false, error: "Your IP has been automatically blocked due to excessive requests.", message: "آپ کا IP ایڈریس زیادہ درخواستوں کی وجہ سے خودکار طور پر بلاک کر دیا گیا ہے۔" });
       return;
     }
 
@@ -664,7 +664,7 @@ export async function rateLimitMiddleware(req: Request, res: Response, next: Nex
       const now = Date.now();
       const retryAfter = Math.ceil((rateResult.windowStartMs + 60_000 - now) / 1000);
       res.setHeader("Retry-After", retryAfter.toString());
-      res.status(429).json({ error: "Too many requests. Please slow down.", retryAfter });
+      res.status(429).json({ success: false, error: "Too many requests. Please slow down.", message: "بہت زیادہ درخواستیں۔ براہ کرم آہستہ کریں۔", retryAfter });
       return;
     }
   }
@@ -766,34 +766,33 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
   const ip = getClientIp(req);
 
   if (!token) {
-    res.status(401).json({ error: "Authentication required. Please log in." });
+    res.status(401).json({ success: false, error: "Authentication required. Please log in.", message: "تصدیق ضروری ہے۔ براہ کرم لاگ ان کریں۔" });
     return;
   }
 
   const payload = verifyUserJwt(token);
   if (!payload) {
     writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url } });
-    res.status(401).json({ error: "Invalid or expired session. Please log in again." });
+    res.status(401).json({ success: false, error: "Invalid or expired session. Please log in again.", message: "غلط یا ختم شدہ سیشن۔ براہ کرم دوبارہ لاگ ان کریں۔" });
     return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-  if (!user) { res.status(401).json({ error: "Account not found." }); return; }
+  if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
   if (user.isBanned) {
     writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip });
-    res.status(403).json({ error: "Your account has been suspended. Contact support." });
+    res.status(403).json({ success: false, error: "Your account has been suspended. Contact support.", message: "آپ کا اکاؤنٹ معطل کر دیا گیا ہے۔ سپورٹ سے رابطہ کریں۔" });
     return;
   }
   if (!user.isActive) {
     writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip });
-    res.status(403).json({ error: "Your account is inactive. Contact support." });
+    res.status(403).json({ success: false, error: "Your account is inactive. Contact support.", message: "آپ کا اکاؤنٹ غیر فعال ہے۔ سپورٹ سے رابطہ کریں۔" });
     return;
   }
 
-  /* Token version check — invalidates access JWTs on logout/ban/role change */
   if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
     writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url } });
-    res.status(401).json({ error: "Session revoked. Please log in again." });
+    res.status(401).json({ success: false, error: "Session revoked. Please log in again.", message: "سیشن منسوخ کر دیا گیا۔ براہ کرم دوبارہ لاگ ان کریں۔" });
     return;
   }
 
@@ -813,40 +812,38 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
   const ip = getClientIp(req);
 
   if (!token) {
-    res.status(401).json({ error: "Authentication required." });
+    res.status(401).json({ success: false, error: "Authentication required.", message: "تصدیق ضروری ہے۔" });
     return;
   }
 
   const payload = verifyUserJwt(token);
   if (!payload) {
     writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, role: "rider" } });
-    res.status(401).json({ error: "Invalid or expired session. Please log in again." });
+    res.status(401).json({ success: false, error: "Invalid or expired session. Please log in again.", message: "غلط یا ختم شدہ سیشن۔ براہ کرم دوبارہ لاگ ان کریں۔" });
     return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-  if (!user) { res.status(401).json({ error: "Account not found." }); return; }
+  if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
   if (user.isBanned) {
     writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
-    res.status(403).json({ code: "AUTH_REQUIRED", error: "Account is banned." }); return;
+    res.status(403).json({ success: false, code: "AUTH_REQUIRED", error: "Account is banned.", message: "اکاؤنٹ پابندی شدہ ہے۔" }); return;
   }
   if (!user.isActive) {
     writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
-    res.status(403).json({ code: "AUTH_REQUIRED", error: "Account is inactive." }); return;
+    res.status(403).json({ success: false, code: "AUTH_REQUIRED", error: "Account is inactive.", message: "اکاؤنٹ غیر فعال ہے۔" }); return;
   }
 
-  /* Token version check — invalidates access JWTs on logout/ban/role change */
   if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
     writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
-    res.status(401).json({ code: "TOKEN_EXPIRED", error: "Session revoked. Please log in again." });
+    res.status(401).json({ success: false, code: "TOKEN_EXPIRED", error: "Session revoked. Please log in again.", message: "سیشن منسوخ کر دیا گیا۔ براہ کرم دوبارہ لاگ ان کریں۔" });
     return;
   }
 
-  /* Use the authoritative roles field from DB — catches immediate role changes/bans */
   const dbRoles = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
   if (!dbRoles.includes("rider")) {
     writeAuthAuditLog("auth_denied_role", { userId: user.id, ip, metadata: { required: "rider", actual: user.roles } });
-    res.status(403).json({ code: "ROLE_DENIED", error: "Access denied. Rider account required." });
+    res.status(403).json({ success: false, code: "ROLE_DENIED", error: "Access denied. Rider account required.", message: "رسائی سے انکار۔ رائیڈر اکاؤنٹ ضروری ہے۔" });
     return;
   }
 
@@ -887,23 +884,23 @@ export function requireRole(
     const ip = getClientIp(req);
 
     if (!token) {
-      res.status(401).json({ error: "Authentication required." });
+      res.status(401).json({ success: false, error: "Authentication required.", message: "تصدیق ضروری ہے۔" });
       return;
     }
 
     const payload = verifyUserJwt(token);
     if (!payload) {
       writeAuthAuditLog("auth_denied_invalid_token", { ip, metadata: { url: req.url, roles: allowedRoles } });
-      res.status(401).json({ error: "Invalid or expired session. Please log in again." });
+      res.status(401).json({ success: false, error: "Invalid or expired session. Please log in again.", message: "غلط یا ختم شدہ سیشن۔ براہ کرم دوبارہ لاگ ان کریں۔" });
       return;
     }
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-    if (!user) { res.status(401).json({ error: "Account not found." }); return; }
+    if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
 
     if (user.isBanned) {
       writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url } });
-      res.status(403).json({ error: "Account is banned. Please contact support." });
+      res.status(403).json({ success: false, error: "Account is banned. Please contact support.", message: "اکاؤنٹ پابندی شدہ ہے۔ براہ کرم سپورٹ سے رابطہ کریں۔" });
       return;
     }
 
@@ -911,23 +908,23 @@ export function requireRole(
       if (opts.vendorApprovalCheck) {
         if (user.approvalStatus === "pending") {
           writeAuthAuditLog("auth_denied_pending", { userId: user.id, ip, metadata: { url: req.url } });
-          res.status(403).json({ error: "Your vendor account is pending admin approval.", pendingApproval: true });
+          res.status(403).json({ success: false, error: "Your vendor account is pending admin approval.", message: "آپ کا وینڈر اکاؤنٹ ایڈمن کی منظوری کے انتظار میں ہے۔", pendingApproval: true });
           return;
         }
         if (user.approvalStatus === "rejected") {
           writeAuthAuditLog("auth_denied_rejected", { userId: user.id, ip, metadata: { url: req.url } });
-          res.status(403).json({ error: "Your vendor application was rejected. Contact support for details.", rejected: true, approvalNote: user.approvalNote });
+          res.status(403).json({ success: false, error: "Your vendor application was rejected. Contact support for details.", message: "آپ کی وینڈر درخواست مسترد کر دی گئی۔ تفصیلات کے لیے سپورٹ سے رابطہ کریں۔", rejected: true, approvalNote: user.approvalNote });
           return;
         }
       }
       writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url } });
-      res.status(403).json({ error: "Account is inactive. Please contact support." });
+      res.status(403).json({ success: false, error: "Account is inactive. Please contact support.", message: "اکاؤنٹ غیر فعال ہے۔ براہ کرم سپورٹ سے رابطہ کریں۔" });
       return;
     }
 
     if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
       writeAuthAuditLog("auth_denied_token_revoked", { userId: user.id, ip, metadata: { url: req.url } });
-      res.status(401).json({ error: "Session revoked. Please log in again." });
+      res.status(401).json({ success: false, error: "Session revoked. Please log in again.", message: "سیشن منسوخ کر دیا گیا۔ براہ کرم دوبارہ لاگ ان کریں۔" });
       return;
     }
 
@@ -936,7 +933,7 @@ export function requireRole(
       const hasRole = allowedRoles.some(r => dbRoles.includes(r));
       if (!hasRole) {
         writeAuthAuditLog("auth_denied_role", { userId: user.id, ip, metadata: { required: allowedRoles, actual: user.roles, url: req.url } });
-        res.status(403).json({ error: `Access denied. Required role: ${allowedRoles.join(" or ")}.` });
+        res.status(403).json({ success: false, error: `Access denied. Required role: ${allowedRoles.join(" or ")}.`, message: "رسائی سے انکار۔" });
         return;
       }
     }
@@ -968,14 +965,14 @@ export async function verifyCaptcha(req: Request, res: Response, next: NextFunct
 
   const captchaToken = req.body?.captchaToken || req.headers["x-captcha-token"];
   if (!captchaToken) {
-    res.status(400).json({ error: "CAPTCHA verification required" });
+    res.status(400).json({ success: false, error: "CAPTCHA verification required", message: "CAPTCHA تصدیق ضروری ہے" });
     return;
   }
 
   const secretKey = process.env["RECAPTCHA_SECRET_KEY"] || settings["recaptcha_secret_key"] || "";
   if (!secretKey) {
     logger.error("[CAPTCHA] CAPTCHA enabled but no RECAPTCHA_SECRET_KEY configured — blocking request");
-    res.status(500).json({ error: "CAPTCHA verification is misconfigured. Please contact support." });
+    res.status(500).json({ success: false, error: "CAPTCHA verification is misconfigured. Please contact support.", message: "CAPTCHA تصدیق میں خرابی۔ براہ کرم سپورٹ سے رابطہ کریں۔" });
     return;
   }
 
@@ -990,7 +987,7 @@ export async function verifyCaptcha(req: Request, res: Response, next: NextFunct
 
     if (!resp.ok) {
       logger.error("[CAPTCHA] Google API returned non-OK status:", resp.status);
-      res.status(502).json({ error: "CAPTCHA verification service unavailable. Please try again." });
+      res.status(502).json({ success: false, error: "CAPTCHA verification service unavailable. Please try again.", message: "CAPTCHA تصدیق کی سروس دستیاب نہیں ہے۔" });
       return;
     }
 
@@ -998,7 +995,7 @@ export async function verifyCaptcha(req: Request, res: Response, next: NextFunct
     if (!data.success) {
       const ip = getClientIp(req);
       addSecurityEvent({ type: "captcha_failed", ip, details: `CAPTCHA failed: ${(data["error-codes"] ?? []).join(", ")}`, severity: "medium" });
-      res.status(403).json({ error: "CAPTCHA verification failed. Please try again." });
+      res.status(403).json({ success: false, error: "CAPTCHA verification failed. Please try again.", message: "CAPTCHA تصدیق ناکام ہو گئی۔ براہ کرم دوبارہ کوشش کریں۔" });
       return;
     }
 
@@ -1006,14 +1003,14 @@ export async function verifyCaptcha(req: Request, res: Response, next: NextFunct
     if (typeof data.score === "number" && data.score < minScore) {
       const ip = getClientIp(req);
       addSecurityEvent({ type: "captcha_low_score", ip, details: `CAPTCHA score ${data.score} below threshold ${minScore}`, severity: "medium" });
-      res.status(403).json({ error: "Suspicious activity detected. Please try again." });
+      res.status(403).json({ success: false, error: "Suspicious activity detected. Please try again.", message: "مشکوک سرگرمی کا پتہ چلا۔ براہ کرم دوبارہ کوشش کریں۔" });
       return;
     }
 
     next();
   } catch (err: any) {
     logger.error("[CAPTCHA] Verification error:", err.message);
-    res.status(502).json({ error: "CAPTCHA verification failed. Please try again later." });
+    res.status(502).json({ success: false, error: "CAPTCHA verification failed. Please try again later.", message: "CAPTCHA تصدیق ناکام ہو گئی۔ براہ کرم بعد میں دوبارہ کوشش کریں۔" });
   }
 }
 
@@ -1031,7 +1028,7 @@ export function idorGuard(
     return false;
   }
   if (!resourceOwnerId || resourceOwnerId !== requestingUserId) {
-    res.status(403).json({ error: "Access denied." });
+    res.status(403).json({ success: false, error: "Access denied.", message: "رسائی سے انکار۔" });
     return true;
   }
   return false;

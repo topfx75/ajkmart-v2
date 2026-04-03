@@ -8,6 +8,7 @@ import { requireRole } from "../middleware/security.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -52,7 +53,7 @@ router.get("/me", async (req, res) => {
     db.select({ c: count() }).from(ordersTable).where(eq(ordersTable.vendorId, vendorId)),
     db.select({ s: sum(ordersTable.total) }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), or(eq(ordersTable.status, "delivered"), eq(ordersTable.status, "completed")))),
   ]);
-  res.json({
+  sendSuccess(res, {
     ...formatUser(user),
     stats: {
       todayOrders:  todayOrders[0]?.c ?? 0,
@@ -78,13 +79,13 @@ router.patch("/profile", async (req, res) => {
   if (bankAccountTitle !== undefined) updates.bankAccountTitle = bankAccountTitle;
   if (businessType     !== undefined) updates.businessType     = businessType;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, vendorId)).returning();
-  res.json(formatUser(user));
+  sendSuccess(res, formatUser(user));
 });
 
 /* ── GET /vendor/store ── */
 router.get("/store", async (req, res) => {
   const user = req.vendorUser!;
-  res.json(formatUser(user));
+  sendSuccess(res, formatUser(user));
 });
 
 /* ── PATCH /vendor/store ── */
@@ -98,7 +99,7 @@ router.patch("/store", async (req, res) => {
   }
   if (body.storeHours !== undefined) updates.storeHours = typeof body.storeHours === "string" ? body.storeHours : JSON.stringify(body.storeHours);
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, vendorId)).returning();
-  res.json(formatUser(user));
+  sendSuccess(res, formatUser(user));
 });
 
 /* ── GET /vendor/stats ── */
@@ -118,7 +119,7 @@ router.get("/stats", async (req, res) => {
     db.select({ c: count() }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), eq(ordersTable.status, "pending"))),
     db.select({ c: count() }).from(productsTable).where(and(eq(productsTable.vendorId, vendorId), sql`stock IS NOT NULL AND stock < 10 AND stock > 0`)),
   ]);
-  res.json({
+  sendSuccess(res, {
     today:    { orders: tData[0]?.c??0, revenue: parseFloat((safeNum(tData[0]?.s)*vendorShare).toFixed(2)) },
     week:     { orders: wData[0]?.c??0, revenue: parseFloat((safeNum(wData[0]?.s)*vendorShare).toFixed(2)) },
     month:    { orders: mData[0]?.c??0, revenue: parseFloat((safeNum(mData[0]?.s)*vendorShare).toFixed(2)) },
@@ -146,7 +147,7 @@ router.get("/orders", async (req, res) => {
     .where(and(...conditions))
     .orderBy(desc(ordersTable.createdAt))
     .limit(100);
-  res.json({ orders: orders.map(row => ({ ...row.order, total: safeNum(row.order.total), riderName: row.riderName ?? undefined, riderPhone: row.riderPhone ?? undefined })) });
+  sendSuccess(res, { orders: orders.map(row => ({ ...row.order, total: safeNum(row.order.total), riderName: row.riderName ?? undefined, riderPhone: row.riderPhone ?? undefined })) });
 });
 
 /* ── PATCH /vendor/orders/:id/status ── */
@@ -154,9 +155,9 @@ router.patch("/orders/:id/status", async (req, res) => {
   const vendorId = req.vendorId!;
   const { status } = req.body;
   const validStatuses = ["confirmed","preparing","ready","cancelled"];
-  if (!validStatuses.includes(status)) { res.status(400).json({ error: "Invalid status" }); return; }
+  if (!validStatuses.includes(status)) { sendValidationError(res, "Invalid status"); return; }
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.vendorId, vendorId))).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!order) { sendNotFound(res, "Order not found"); return; }
 
   const ALLOWED_TRANSITIONS: Record<string, string[]> = {
     pending:   ["confirmed", "cancelled"],
@@ -169,7 +170,7 @@ router.patch("/orders/:id/status", async (req, res) => {
   };
   const allowed = ALLOWED_TRANSITIONS[order.status] || [];
   if (!allowed.includes(status)) {
-    res.status(400).json({ error: `Cannot change order from "${order.status}" to "${status}". Allowed: ${allowed.join(", ") || "none"}.` });
+    sendValidationError(res, `Cannot change order from "${order.status}" to "${status}". Allowed: ${allowed.join(", ") || "none"}.`);
     return;
   }
 
@@ -208,7 +209,7 @@ router.patch("/orders/:id/status", async (req, res) => {
       if (err.message === "ALREADY_REFUNDED") return null;
       throw err;
     });
-    if (!txResult) { res.status(409).json({ error: "Order has already been refunded" }); return; }
+    if (!txResult) { sendError(res, "Order has already been refunded", 409); return; }
     updated = txResult;
     await db.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: t("notifRefundProcessed", custLang) + " 💰", body: t("notifRefundProcessedBody", custLang).replace("{amount}", refundAmt.toFixed(0)), type: "wallet", icon: "wallet-outline" }).catch(() => {});
   } else {
@@ -217,7 +218,7 @@ router.patch("/orders/:id/status", async (req, res) => {
       .set({ status, updatedAt: new Date() })
       .where(and(eq(ordersTable.id, orderId), eq(ordersTable.vendorId, vendorId)))
       .returning();
-    if (!result) { res.status(404).json({ error: "Order not found" }); return; }
+    if (!result) { sendNotFound(res, "Order not found"); return; }
     updated = result;
   }
 
@@ -250,7 +251,7 @@ router.patch("/orders/:id/status", async (req, res) => {
     })();
   }
 
-  res.json({ ...updated, total: safeNum(updated.total) });
+  sendSuccess(res, { ...updated, total: safeNum(updated.total) });
 });
 
 /* ── GET /vendor/products ── */
@@ -262,7 +263,7 @@ router.get("/products", async (req, res) => {
   if (q) conditions.push(ilike(productsTable.name, `%${q}%`));
   if (cat && cat !== "all") conditions.push(eq(productsTable.category, cat));
   const products = await db.select().from(productsTable).where(and(...conditions)).orderBy(desc(productsTable.createdAt));
-  res.json({ products: products.map(p => ({ ...p, price: safeNum(p.price), originalPrice: p.originalPrice ? safeNum(p.originalPrice) : null, rating: safeNum(p.rating, 4.0) })) });
+  sendSuccess(res, { products: products.map(p => ({ ...p, price: safeNum(p.price), originalPrice: p.originalPrice ? safeNum(p.originalPrice) : null, rating: safeNum(p.rating, 4.0) })) });
 });
 
 /* ── POST /vendor/products ── Add single product ── */
@@ -270,17 +271,16 @@ router.post("/products", async (req, res) => {
   const vendorId = req.vendorId!;
   const user = req.vendorUser!;
   const body = req.body;
-  if (!body.name || !body.price) { res.status(400).json({ error: "name and price required" }); return; }
+  if (!body.name || !body.price) { sendValidationError(res, "name and price required"); return; }
   if (!isFinite(Number(body.price)) || Number(body.price) <= 0) {
-    res.status(400).json({ error: "Price must be a positive number" }); return;
+    sendValidationError(res, "Price must be a positive number"); return;
   }
 
-  // Enforce max items limit
   const s = await getPlatformSettings();
   const maxItems = parseInt(s["vendor_max_items"] ?? "100");
   const [countRow] = await db.select({ c: count() }).from(productsTable).where(eq(productsTable.vendorId, vendorId));
   if ((countRow?.c ?? 0) >= maxItems) {
-    res.status(400).json({ error: `Product limit reached. Maximum ${maxItems} items allowed per vendor.` }); return;
+    sendValidationError(res, `Product limit reached. Maximum ${maxItems} items allowed per vendor.`); return;
   }
 
   const [product] = await db.insert(productsTable).values({
@@ -293,7 +293,7 @@ router.post("/products", async (req, res) => {
     unit: body.unit || null, deliveryTime: body.deliveryTime || null,
     approvalStatus: "pending",
   }).returning();
-  res.status(201).json({ ...product, price: safeNum(product.price) });
+  sendCreated(res, { ...product, price: safeNum(product.price) });
 });
 
 /* ── POST /vendor/products/bulk ── Bulk add products ── */
@@ -301,19 +301,18 @@ router.post("/products/bulk", async (req, res) => {
   const vendorId = req.vendorId!;
   const user = req.vendorUser!;
   const { products } = req.body;
-  if (!Array.isArray(products) || products.length === 0) { res.status(400).json({ error: "products array required" }); return; }
-  if (products.length > 50) { res.status(400).json({ error: "Max 50 products at a time" }); return; }
+  if (!Array.isArray(products) || products.length === 0) { sendValidationError(res, "products array required"); return; }
+  if (products.length > 50) { sendValidationError(res, "Max 50 products at a time"); return; }
 
-  // Enforce max items limit (check current count + new items)
   const s2 = await getPlatformSettings();
   const maxItems2 = parseInt(s2["vendor_max_items"] ?? "100");
   const [countRow2] = await db.select({ c: count() }).from(productsTable).where(eq(productsTable.vendorId, vendorId));
   const currentCount = countRow2?.c ?? 0;
   if (currentCount + products.length > maxItems2) {
-    res.status(400).json({ error: `Product limit exceeded. You have ${currentCount}/${maxItems2} items. Can only add ${Math.max(0, maxItems2 - currentCount)} more.` }); return;
+    sendValidationError(res, `Product limit exceeded. You have ${currentCount}/${maxItems2} items. Can only add ${Math.max(0, maxItems2 - currentCount)} more.`); return;
   }
   const invalid = products.filter(p => !p.name || !p.price || !isFinite(Number(p.price)) || Number(p.price) <= 0);
-  if (invalid.length > 0) { res.status(400).json({ error: `${invalid.length} product(s) missing name, or have an invalid/non-positive price` }); return; }
+  if (invalid.length > 0) { sendValidationError(res, `${invalid.length} product(s) missing name, or have an invalid/non-positive price`); return; }
   const inserted = await db.insert(productsTable).values(
     products.map(p => ({
       id: generateId(), vendorId, vendorName: user.storeName || user.name,
@@ -325,7 +324,7 @@ router.post("/products/bulk", async (req, res) => {
       approvalStatus: "pending",
     }))
   ).returning();
-  res.status(201).json({ inserted: inserted.length, products: inserted.map(p => ({ ...p, price: safeNum(p.price) })) });
+  sendCreated(res, { inserted: inserted.length, products: inserted.map(p => ({ ...p, price: safeNum(p.price) })) });
 });
 
 /* ── PATCH /vendor/products/:id ── Update product ── */
@@ -337,7 +336,7 @@ router.patch("/products/:id", async (req, res) => {
   for (const f of fields) if (body[f] !== undefined) updates[f] = body[f];
   if (body.price !== undefined) {
     if (!isFinite(Number(body.price)) || Number(body.price) <= 0) {
-      res.status(400).json({ error: "Price must be a positive number" }); return;
+      sendValidationError(res, "Price must be a positive number"); return;
     }
     updates.price = String(body.price);
   }
@@ -346,23 +345,23 @@ router.patch("/products/:id", async (req, res) => {
   if (body.stock       !== undefined) updates.stock        = body.stock !== null ? Number(body.stock) : null;
   if (body.image       !== undefined) updates.image        = body.image;
   const [product] = await db.update(productsTable).set(updates).where(and(eq(productsTable.id, req.params["id"]!), eq(productsTable.vendorId, vendorId))).returning();
-  if (!product) { res.status(404).json({ error: "Product not found" }); return; }
-  res.json({ ...product, price: safeNum(product.price) });
+  if (!product) { sendNotFound(res, "Product not found"); return; }
+  sendSuccess(res, { ...product, price: safeNum(product.price) });
 });
 
 /* ── DELETE /vendor/products/:id ── */
 router.delete("/products/:id", async (req, res) => {
   const vendorId = req.vendorId!;
   const [del] = await db.delete(productsTable).where(and(eq(productsTable.id, req.params["id"]!), eq(productsTable.vendorId, vendorId))).returning();
-  if (!del) { res.status(404).json({ error: "Product not found" }); return; }
-  res.json({ success: true });
+  if (!del) { sendNotFound(res, "Product not found"); return; }
+  sendSuccess(res);
 });
 
 /* ── GET /vendor/promos ── Vendor promo codes ── */
 router.get("/promos", async (req, res) => {
   const vendorId = req.vendorId!;
   const promos = await db.select().from(promoCodesTable).where(eq(promoCodesTable.vendorId, vendorId)).orderBy(desc(promoCodesTable.createdAt));
-  res.json({ promos: promos.map(p => ({ ...p, discountPct: safeNum(p.discountPct), discountFlat: safeNum(p.discountFlat), minOrderAmount: safeNum(p.minOrderAmount) })) });
+  sendSuccess(res, { promos: promos.map(p => ({ ...p, discountPct: safeNum(p.discountPct), discountFlat: safeNum(p.discountFlat), minOrderAmount: safeNum(p.minOrderAmount) })) });
 });
 
 /* ── POST /vendor/promos ── Create promo ── */
@@ -370,16 +369,14 @@ router.post("/promos", async (req, res) => {
   const vendorId = req.vendorId!;
   const body = req.body;
   if (!body.code || (!body.discountPct && !body.discountFlat)) {
-    res.status(400).json({ error: "code + discount (% or flat) required" }); return;
+    sendValidationError(res, "code + discount (% or flat) required"); return;
   }
-  // Check if promos are enabled by admin
   const sp = await getPlatformSettings();
   if ((sp["vendor_promo_enabled"] ?? "on") !== "on") {
-    res.status(403).json({ error: "Promo code creation is currently disabled by admin." }); return;
+    sendForbidden(res, "Promo code creation is currently disabled by admin."); return;
   }
-  // Check if code already exists
   const [existing] = await db.select({ id: promoCodesTable.id }).from(promoCodesTable).where(eq(promoCodesTable.code, body.code.toUpperCase())).limit(1);
-  if (existing) { res.status(400).json({ error: "Promo code already exists" }); return; }
+  if (existing) { sendValidationError(res, "Promo code already exists"); return; }
   const [promo] = await db.insert(promoCodesTable).values({
     id: generateId(), code: body.code.toUpperCase().trim(),
     description: body.description || null,
@@ -392,23 +389,23 @@ router.post("/promos", async (req, res) => {
     expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     vendorId, isActive: true,
   }).returning();
-  res.status(201).json({ ...promo, discountPct: safeNum(promo.discountPct), discountFlat: safeNum(promo.discountFlat) });
+  sendCreated(res, { ...promo, discountPct: safeNum(promo.discountPct), discountFlat: safeNum(promo.discountFlat) });
 });
 
 /* ── PATCH /vendor/promos/:id/toggle ── */
 router.patch("/promos/:id/toggle", async (req, res) => {
   const vendorId = req.vendorId!;
   const [promo] = await db.select().from(promoCodesTable).where(and(eq(promoCodesTable.id, req.params["id"]!), eq(promoCodesTable.vendorId, vendorId))).limit(1);
-  if (!promo) { res.status(404).json({ error: "Promo not found" }); return; }
+  if (!promo) { sendNotFound(res, "Promo not found"); return; }
   const [updated] = await db.update(promoCodesTable).set({ isActive: !promo.isActive }).where(eq(promoCodesTable.id, promo.id)).returning();
-  res.json(updated);
+  sendSuccess(res, updated);
 });
 
 /* ── DELETE /vendor/promos/:id ── */
 router.delete("/promos/:id", async (req, res) => {
   const vendorId = req.vendorId!;
   await db.delete(promoCodesTable).where(and(eq(promoCodesTable.id, req.params["id"]!), eq(promoCodesTable.vendorId, vendorId)));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ── GET /vendor/wallet/transactions ── */
@@ -420,7 +417,7 @@ router.get("/wallet/transactions", async (req, res) => {
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(limit);
   const user = req.vendorUser!;
-  res.json({
+  sendSuccess(res, {
     balance: safeNum(user.walletBalance),
     transactions: txns.map(t => ({
       ...t,
@@ -435,22 +432,20 @@ router.post("/wallet/withdraw", async (req, res) => {
   const { amount, accountTitle, accountNumber, bankName, note } = req.body;
   const amt = safeNum(amount);
 
-  // Check admin settings for withdrawal rules
   const sw = await getPlatformSettings();
   if ((sw["vendor_withdrawal_enabled"] ?? "on") !== "on") {
-    res.status(403).json({ error: "Withdrawal requests are temporarily disabled by admin. Please try again later." }); return;
+    sendForbidden(res, "Withdrawal requests are temporarily disabled by admin. Please try again later."); return;
   }
   const minPayout = parseFloat(sw["vendor_min_payout"] ?? "500");
   const maxPayout = parseFloat(sw["vendor_max_payout"] ?? "50000");
 
-  if (!amt || amt <= 0) { res.status(400).json({ error: "Valid amount required" }); return; }
-  if (amt < minPayout) { res.status(400).json({ error: `Minimum withdrawal is Rs. ${minPayout}` }); return; }
-  if (amt > maxPayout) { res.status(400).json({ error: `Maximum single withdrawal is Rs. ${maxPayout}` }); return; }
+  if (!amt || amt <= 0) { sendValidationError(res, "Valid amount required"); return; }
+  if (amt < minPayout) { sendValidationError(res, `Minimum withdrawal is Rs. ${minPayout}`); return; }
+  if (amt > maxPayout) { sendValidationError(res, `Maximum single withdrawal is Rs. ${maxPayout}`); return; }
   if (!accountTitle || !accountNumber || !bankName) {
-    res.status(400).json({ error: "Account title, number, and bank name are required" }); return;
+    sendValidationError(res, "Account title, number, and bank name are required"); return;
   }
 
-  // Atomic transaction — prevents race condition / overdraw
   try {
     const result = await db.transaction(async (tx) => {
       const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
@@ -484,9 +479,9 @@ router.post("/wallet/withdraw", async (req, res) => {
       type: "wallet", icon: "cash-outline",
     }).catch(() => {});
 
-    res.json({ success: true, newBalance: parseFloat(result.toFixed(2)), amount: amt });
+    sendSuccess(res, { newBalance: parseFloat(result.toFixed(2)), amount: amt });
   } catch (e: unknown) {
-    res.status(400).json({ error: e.message });
+    sendValidationError(res, (e as Error).message);
   }
 });
 
@@ -497,21 +492,21 @@ router.get("/notifications", async (req, res) => {
     .where(eq(notificationsTable.userId, vendorId))
     .orderBy(desc(notificationsTable.createdAt))
     .limit(30);
-  res.json({ notifications: notifs, unread: notifs.filter((n: Record<string, unknown>) => !n.isRead).length });
+  sendSuccess(res, { notifications: notifs, unread: notifs.filter((n: Record<string, unknown>) => !n.isRead).length });
 });
 
 /* ── PATCH /vendor/notifications/read-all ── */
 router.patch("/notifications/read-all", async (req, res) => {
   const vendorId = req.vendorId!;
   await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.userId, vendorId));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ── PATCH /vendor/notifications/:id/read ── */
 router.patch("/notifications/:id/read", async (req, res) => {
   const vendorId = req.vendorId!;
   await db.update(notificationsTable).set({ isRead: true }).where(and(eq(notificationsTable.id, req.params.id), eq(notificationsTable.userId, vendorId)));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ── GET /vendor/analytics ── ── */
@@ -552,7 +547,7 @@ router.get("/analytics", async (req, res) => {
     revenue: 0,
   }));
 
-  res.json({
+  sendSuccess(res, {
     summary: { totalOrders, totalRevenue },
     daily,
     topProducts,
@@ -621,7 +616,7 @@ router.get("/reviews", async (req, res) => {
       : "Customer",
   }));
 
-  res.json({
+  sendSuccess(res, {
     reviews: masked,
     total: totalCount,
     avgRating,
@@ -670,7 +665,7 @@ router.get("/orders/available-riders", requireRole("vendor"), async (req, res) =
     .filter((r): r is NonNullable<typeof r> => r !== null && r.distKm <= maxKm)
     .sort((a, b) => a.distKm - b.distKm);
 
-  res.json({ riders: withDist });
+  sendSuccess(res, { riders: withDist });
 });
 
 /* ── POST /vendor/orders/:id/assign-rider ────────────────────────────────
@@ -679,17 +674,17 @@ router.get("/orders/available-riders", requireRole("vendor"), async (req, res) =
 router.post("/orders/:id/assign-rider", requireRole("vendor"), async (req, res) => {
   const orderId = req.params["id"]!;
   const { riderId } = req.body as { riderId?: string };
-  if (!riderId) { res.status(400).json({ error: "riderId required" }); return; }
+  if (!riderId) { sendValidationError(res, "riderId required"); return; }
 
   const [rider] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone })
     .from(usersTable).where(and(eq(usersTable.id, riderId), eq(usersTable.role, "rider"))).limit(1);
-  if (!rider) { res.status(404).json({ error: "Rider not found" }); return; }
+  if (!rider) { sendNotFound(res, "Rider not found"); return; }
 
   const [updated] = await db.update(ordersTable)
     .set({ riderId: rider.id, riderName: rider.name, riderPhone: rider.phone, assignedRiderId: rider.id, assignedAt: new Date(), updatedAt: new Date() })
     .where(eq(ordersTable.id, orderId))
     .returning();
-  if (!updated) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!updated) { sendNotFound(res, "Order not found"); return; }
 
   await db.insert(notificationsTable).values({
     id: generateId(), userId: rider.id,
@@ -701,7 +696,7 @@ router.post("/orders/:id/assign-rider", requireRole("vendor"), async (req, res) 
   const io = getIO();
   if (io) io.to(`user:${rider.id}`).emit("order:assigned", { orderId });
 
-  res.json({ success: true, riderId: rider.id, riderName: rider.name });
+  sendSuccess(res, { riderId: rider.id, riderName: rider.name });
 });
 
 /* ── POST /vendor/orders/:id/auto-assign ─────────────────────────────────
@@ -717,7 +712,7 @@ router.post("/orders/:id/auto-assign", requireRole("vendor"), async (req, res) =
     .from(usersTable)
     .where(and(eq(usersTable.role, "rider"), eq(usersTable.isOnline, true)));
 
-  if (riders.length === 0) { res.status(404).json({ error: "No riders online" }); return; }
+  if (riders.length === 0) { sendNotFound(res, "No riders online"); return; }
 
   let nearest = riders[0]!;
   if (vendorLat != null && vendorLng != null) {
@@ -736,7 +731,7 @@ router.post("/orders/:id/auto-assign", requireRole("vendor"), async (req, res) =
     .set({ riderId: nearest.id, riderName: nearest.name, riderPhone: nearest.phone, assignedRiderId: nearest.id, assignedAt: new Date(), updatedAt: new Date() })
     .where(eq(ordersTable.id, orderId))
     .returning();
-  if (!updated) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!updated) { sendNotFound(res, "Order not found"); return; }
 
   await db.insert(notificationsTable).values({
     id: generateId(), userId: nearest.id,
@@ -748,7 +743,7 @@ router.post("/orders/:id/auto-assign", requireRole("vendor"), async (req, res) =
   const io = getIO();
   if (io) io.to(`user:${nearest.id}`).emit("order:assigned", { orderId });
 
-  res.json({ success: true, riderId: nearest.id, riderName: nearest.name });
+  sendSuccess(res, { riderId: nearest.id, riderName: nearest.name });
 });
 
 export default router;

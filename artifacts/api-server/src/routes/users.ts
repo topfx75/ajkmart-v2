@@ -9,6 +9,7 @@ import path from "path";
 import multer from "multer";
 import { generateId } from "../lib/id.js";
 import { z } from "zod";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 
 const profileUpdateSchema = z.object({
   name: z.string().min(1, "Name cannot be empty").max(100).optional(),
@@ -47,10 +48,10 @@ router.get("/profile", async (req, res) => {
   const userId = req.customerId!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    res.status(404).json({ error: "User not found" });
+    sendNotFound(res, "User not found");
     return;
   }
-  res.json({
+  sendSuccess(res, {
     id: user.id,
     phone: user.phone,
     name: user.name,
@@ -76,22 +77,22 @@ router.get("/profile", async (req, res) => {
 router.get("/:id/debt", async (req, res) => {
   const userId = req.customerId!;
   if (req.params["id"] !== userId) {
-    res.status(403).json({ error: "Access denied" });
+    sendForbidden(res, "Access denied");
     return;
   }
   const [user] = await db.select({ cancellationDebt: usersTable.cancellationDebt }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    res.status(404).json({ error: "User not found" });
+    sendNotFound(res, "User not found");
     return;
   }
-  res.json({ debtBalance: parseFloat(user.cancellationDebt ?? "0") });
+  sendSuccess(res, { debtBalance: parseFloat(user.cancellationDebt ?? "0") });
 });
 
 router.post("/export-data", async (req, res) => {
   const userId = req.customerId!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    res.status(404).json({ error: "User not found" });
+    sendNotFound(res, "User not found");
     return;
   }
 
@@ -180,27 +181,27 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
       mime = req.file.mimetype;
     } else {
       const { file, mimeType } = req.body;
-      if (!file) { res.status(400).json({ error: "No image data provided" }); return; }
+      if (!file) { sendValidationError(res, "No image data provided"); return; }
       mime = mimeType || "image/jpeg";
       if (!ALLOWED_AVATAR_TYPES.includes(mime)) {
-        res.status(400).json({ error: "Only JPEG, PNG, and WebP images are allowed" }); return;
+        sendValidationError(res, "Only JPEG, PNG, and WebP images are allowed"); return;
       }
       const base64Data = (file as string).replace(/^data:image\/\w+;base64,/, "");
       buffer = Buffer.from(base64Data, "base64");
       if (buffer.length > MAX_AVATAR_SIZE) {
-        res.status(400).json({ error: "File too large. Maximum 5MB allowed" }); return;
+        sendValidationError(res, "File too large. Maximum 5MB allowed"); return;
       }
     }
 
     const avatarUrl = await saveAvatarBuffer(userId, buffer, mime);
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) { res.status(404).json({ error: "User not found" }); return; }
-    res.json({ success: true, avatarUrl, user: {
+    if (!user) { sendNotFound(res, "User not found"); return; }
+    sendSuccess(res, { avatarUrl, user: {
       id: user.id, phone: user.phone, name: user.name, email: user.email,
       role: user.role, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"),
     }});
   } catch (e: unknown) {
-    res.status(500).json({ error: e?.message || "Avatar upload failed" });
+    sendError(res, e?.message || "Avatar upload failed");
   }
 });
 
@@ -210,7 +211,7 @@ router.put("/profile", async (req, res) => {
   const parsed = profileUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
-    res.status(400).json({ success: false, error: firstError, message: firstError });
+    sendValidationError(res, firstError);
     return;
   }
 
@@ -226,7 +227,7 @@ router.put("/profile", async (req, res) => {
 
   const [current] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!current) {
-    res.status(404).json({ error: "User not found" });
+    sendNotFound(res, "User not found");
     return;
   }
 
@@ -245,30 +246,26 @@ router.put("/profile", async (req, res) => {
   await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    res.status(404).json({ error: "User not found" });
+    sendNotFound(res, "User not found");
     return;
   }
-  res.json({
-    success: true,
-    data: {
-      id: user.id,
-      phone: user.phone,
-      name: user.name,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-      avatar: user.avatar,
-      walletBalance: parseFloat(user.walletBalance ?? "0"),
-      cnic: user.cnic,
-      city: user.city,
-      area: user.area,
-      address: user.address,
-      accountLevel: user.accountLevel,
-      kycStatus: user.kycStatus,
-      createdAt: user.createdAt.toISOString(),
-    },
-    message: "Profile updated successfully",
-  });
+  sendSuccess(res, {
+    id: user.id,
+    phone: user.phone,
+    name: user.name,
+    email: user.email,
+    username: user.username,
+    role: user.role,
+    avatar: user.avatar,
+    walletBalance: parseFloat(user.walletBalance ?? "0"),
+    cnic: user.cnic,
+    city: user.city,
+    area: user.area,
+    address: user.address,
+    accountLevel: user.accountLevel,
+    kycStatus: user.kycStatus,
+    createdAt: user.createdAt.toISOString(),
+  }, "پروفائل کامیابی سے اپ ڈیٹ ہو گیا۔");
 });
 
 router.delete("/delete-account", async (req, res) => {
@@ -277,13 +274,13 @@ router.delete("/delete-account", async (req, res) => {
   const parsed = deleteAccountSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     const msg = parsed.error.errors[0]?.message ?? "You must type DELETE to confirm account deletion.";
-    res.status(400).json({ success: false, error: msg, message: msg });
+    sendValidationError(res, msg);
     return;
   }
 
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    if (!user) { sendNotFound(res, "User not found"); return; }
 
     const activeOrders = await db.select({ c: count() }).from(ordersTable)
       .where(and(
@@ -292,7 +289,7 @@ router.delete("/delete-account", async (req, res) => {
       ));
 
     if (activeOrders[0] && activeOrders[0].c > 0) {
-      res.status(400).json({ error: "Cannot delete account with active orders. Please wait for all orders to complete." });
+      sendValidationError(res, "Cannot delete account with active orders. Please wait for all orders to complete.");
       return;
     }
 
@@ -303,7 +300,7 @@ router.delete("/delete-account", async (req, res) => {
       ));
 
     if (activeRides[0] && activeRides[0].c > 0) {
-      res.status(400).json({ error: "Cannot delete account with active rides. Please wait for all rides to complete." });
+      sendValidationError(res, "Cannot delete account with active rides. Please wait for all rides to complete.");
       return;
     }
 
@@ -345,9 +342,9 @@ router.delete("/delete-account", async (req, res) => {
     const ip = getClientIp(req);
     writeAuthAuditLog("account_deleted", { userId, ip, userAgent: req.headers["user-agent"] as string });
 
-    res.json({ success: true, message: "Account has been deleted and all data anonymized." });
+    sendSuccess(res, null, "اکاؤنٹ حذف ہو گیا اور تمام ڈیٹا گمنام ہو گیا۔");
   } catch (e: unknown) {
-    res.status(500).json({ error: e.message || "Could not delete account" });
+    sendError(res, e.message || "Could not delete account");
   }
 });
 
@@ -361,7 +358,7 @@ router.get("/sessions", async (req, res) => {
   const currentToken = authHeader?.replace(/^Bearer\s+/i, "") ?? "";
   const currentTokenHash = currentToken ? createHash("sha256").update(currentToken).digest("hex") : "";
 
-  res.json({
+  sendSuccess(res, {
     sessions: sessions.map(s => ({
       id: s.id,
       deviceName: s.deviceName,
@@ -400,7 +397,7 @@ router.delete("/sessions/all", async (req, res) => {
   const ip = getClientIp(req);
   writeAuthAuditLog("sessions_revoked_all", { userId, ip, userAgent: req.headers["user-agent"] as string });
 
-  res.json({ success: true, message: "All other sessions have been signed out." });
+  sendSuccess(res, null, "تمام دیگر سیشنز سے سائن آؤٹ ہو گیا۔");
 });
 
 router.delete("/sessions/:sessionId", async (req, res) => {
@@ -412,12 +409,12 @@ router.delete("/sessions/:sessionId", async (req, res) => {
     .limit(1);
 
   if (!session) {
-    res.status(404).json({ error: "Session not found" });
+    sendNotFound(res, "Session not found");
     return;
   }
 
   if (session.revokedAt) {
-    res.status(400).json({ error: "Session already revoked" });
+    sendValidationError(res, "Session already revoked");
     return;
   }
 
@@ -437,7 +434,7 @@ router.delete("/sessions/:sessionId", async (req, res) => {
   const ip = getClientIp(req);
   writeAuthAuditLog("session_revoked", { userId, ip, userAgent: req.headers["user-agent"] as string, metadata: { sessionId } });
 
-  res.json({ success: true, message: "Session revoked" });
+  sendSuccess(res, null, "سیشن منسوخ ہو گیا۔");
 });
 
 router.get("/login-history", async (req, res) => {
@@ -447,7 +444,7 @@ router.get("/login-history", async (req, res) => {
     .orderBy(desc(loginHistoryTable.createdAt))
     .limit(20);
 
-  res.json({
+  sendSuccess(res, {
     history: history.map(h => ({
       id: h.id,
       ip: h.ip,

@@ -2,12 +2,14 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { savedAddressesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { generateId } from "../lib/id.js";
+import { sendSuccess, sendCreated, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
+import { validateBody } from "../middleware/validate.js";
 import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
-/* All address routes require authentication */
 router.use(customerAuth);
 
 router.get("/", async (req, res) => {
@@ -15,18 +17,26 @@ router.get("/", async (req, res) => {
   const addresses = await db.select().from(savedAddressesTable)
     .where(eq(savedAddressesTable.userId, userId))
     .orderBy(savedAddressesTable.createdAt);
-  res.json({ addresses: addresses.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })) });
+  sendSuccess(res, { addresses: addresses.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })) });
 });
 
-router.post("/", async (req, res) => {
+const createAddressSchema = z.object({
+  label: z.string().min(1, "Label is required").max(100, "Label must be 100 characters or less"),
+  address: z.string().min(1, "Address is required").max(500, "Address must be 500 characters or less"),
+  city: z.string().max(100, "City must be 100 characters or less").optional(),
+  icon: z.string().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+router.post("/", validateBody(createAddressSchema), async (req, res) => {
   const userId = req.customerId!;
   const { label, address, city, icon, isDefault } = req.body;
-  if (!label || !address) { res.status(400).json({ error: "label and address required" }); return; }
-  if (typeof address !== "string" || address.length > 500) { res.status(400).json({ error: "Address must be 500 characters or less" }); return; }
-  if (typeof label !== "string" || label.length > 100) { res.status(400).json({ error: "Label must be 100 characters or less" }); return; }
-  if (city && (typeof city !== "string" || city.length > 100)) { res.status(400).json({ error: "City must be 100 characters or less" }); return; }
+
   const existing = await db.select({ id: savedAddressesTable.id }).from(savedAddressesTable).where(eq(savedAddressesTable.userId, userId));
-  if (existing.length >= 5) { res.status(400).json({ error: "Maximum 5 addresses allowed" }); return; }
+  if (existing.length >= 5) {
+    sendValidationError(res, "Maximum 5 addresses allowed", "زیادہ سے زیادہ 5 پتے مجاز ہیں۔");
+    return;
+  }
   if (isDefault) {
     await db.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
   }
@@ -38,7 +48,7 @@ router.post("/", async (req, res) => {
     isDefault: isDefault ?? false,
   });
   const [addr] = await db.select().from(savedAddressesTable).where(eq(savedAddressesTable.id, id)).limit(1);
-  res.json({ ...addr, createdAt: addr!.createdAt.toISOString() });
+  sendCreated(res, { ...addr, createdAt: addr!.createdAt.toISOString() });
 });
 
 router.put("/:id", async (req, res) => {
@@ -46,16 +56,15 @@ router.put("/:id", async (req, res) => {
   const { label, address, city, icon, isDefault } = req.body;
   const { id } = req.params;
 
-  /* Verify ownership before updating */
   const [existing] = await db.select().from(savedAddressesTable).where(eq(savedAddressesTable.id, id!)).limit(1);
-  if (!existing) { res.status(404).json({ error: "Address not found" }); return; }
-  if (existing.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!existing) { sendNotFound(res, "Address not found", "پتہ نہیں ملا۔"); return; }
+  if (existing.userId !== userId) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
 
   if (isDefault) {
     await db.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
   }
   await db.update(savedAddressesTable).set({ label, address, city, icon, isDefault }).where(eq(savedAddressesTable.id, id!));
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
 router.patch("/:id/set-default", async (req, res) => {
@@ -63,24 +72,23 @@ router.patch("/:id/set-default", async (req, res) => {
   const { id } = req.params;
 
   const [existing] = await db.select().from(savedAddressesTable).where(eq(savedAddressesTable.id, id!)).limit(1);
-  if (!existing) { res.status(404).json({ error: "Address not found" }); return; }
-  if (existing.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!existing) { sendNotFound(res, "Address not found", "پتہ نہیں ملا۔"); return; }
+  if (existing.userId !== userId) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
 
   await db.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
   await db.update(savedAddressesTable).set({ isDefault: true }).where(eq(savedAddressesTable.id, id!));
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
 router.delete("/:id", async (req, res) => {
   const userId = req.customerId!;
 
-  /* Verify ownership before deleting */
   const [existing] = await db.select().from(savedAddressesTable).where(eq(savedAddressesTable.id, req.params["id"]!)).limit(1);
-  if (!existing) { res.status(404).json({ error: "Address not found" }); return; }
-  if (existing.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!existing) { sendNotFound(res, "Address not found", "پتہ نہیں ملا۔"); return; }
+  if (existing.userId !== userId) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
 
   await db.delete(savedAddressesTable).where(eq(savedAddressesTable.id, req.params["id"]!));
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
 export default router;

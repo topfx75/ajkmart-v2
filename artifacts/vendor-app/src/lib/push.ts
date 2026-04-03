@@ -9,7 +9,8 @@ export async function registerPush(): Promise<void> {
 
     const vapidRes = await fetch(`${BASE}/api/push/vapid-key`);
     if (!vapidRes.ok) return;
-    const { publicKey } = await vapidRes.json() as { publicKey: string };
+    const vj = await vapidRes.json();
+    const { publicKey } = (vj?.success === true && "data" in vj ? vj.data : vj) as { publicKey: string };
     if (!publicKey) return;
 
     const sub = await reg.pushManager.subscribe({

@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import Colors from "@/constants/colors";
+import { unwrapApiResponse } from "@/utils/api";
 
 const C = Colors.light;
 
@@ -86,7 +87,7 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
         setLoading(false);
         return;
       }
-      const result = await res.json().catch(() => ({}));
+      const result = unwrapApiResponse(await res.json().catch(() => ({})));
       onDone(result);
       onClose();
     } catch {

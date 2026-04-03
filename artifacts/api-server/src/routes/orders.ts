@@ -7,6 +7,7 @@ import { getPlatformSettings } from "./admin.js";
 import { addSecurityEvent, getClientIp, getCachedSettings, customerAuth, idorGuard } from "../middleware/security.js";
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -150,13 +151,13 @@ async function validatePromoCode(code: string, orderTotal: number, orderType: st
 router.post("/validate-cart", async (req, res) => {
   const { items } = req.body;
   if (!items || !Array.isArray(items) || items.length === 0) {
-    res.json({ valid: true, items: [], removed: [], priceChanges: [] });
+    sendSuccess(res, { valid: true, items: [], removed: [], priceChanges: [] });
     return;
   }
 
   const productIds = items.map((it: Record<string, unknown>) => it.productId).filter(Boolean);
   if (productIds.length === 0) {
-    res.json({ valid: true, items, removed: [], priceChanges: [] });
+    sendSuccess(res, { valid: true, items, removed: [], priceChanges: [] });
     return;
   }
 
@@ -187,7 +188,7 @@ router.post("/validate-cart", async (req, res) => {
     }
   }
 
-  res.json({
+  sendSuccess(res, {
     valid: removed.length === 0 && priceChanges.length === 0,
     items: validItems,
     removed,
@@ -200,9 +201,9 @@ router.get("/validate-promo", customerAuth, async (req, res) => {
   const code  = String(req.query["code"]  || "").trim();
   const total = parseFloat(String(req.query["total"] || "0"));
   const type  = String(req.query["type"]  || "mart");
-  if (!code) { res.status(400).json({ valid: false, error: "code required" }); return; }
+  if (!code) { sendValidationError(res, "code required"); return; }
   const result = await validatePromoCode(code, total, type);
-  res.json(result);
+  sendSuccess(res, result);
 });
 
 /* ── GET /orders?status=&page=&limit= ───────────────────────────────────── */
@@ -225,7 +226,7 @@ router.get("/", customerAuth, async (req, res) => {
     .limit(limit)
     .offset(offset);
 
-  res.json({
+  sendSuccess(res, {
     orders: orders.map(o => mapOrder(o)),
     total,
     page,
@@ -238,7 +239,7 @@ router.get("/", customerAuth, async (req, res) => {
 router.get("/:id", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!order) { sendNotFound(res, "Order not found"); return; }
   if (idorGuard(res, order.userId, userId)) return;
   const s = await getCachedSettings();
   const orderItems = (order.items ?? []) as { price: number; quantity: number }[];
@@ -246,7 +247,7 @@ router.get("/:id", customerAuth, async (req, res) => {
   const deliveryFee = calcDeliveryFee(s, order.type, itemsTotal);
   const gstAmount   = calcGst(s, itemsTotal);
   const codFee      = calcCodFee(s, order.paymentMethod, itemsTotal + deliveryFee + gstAmount);
-  res.json(mapOrder(order, deliveryFee, gstAmount, codFee));
+  sendSuccess(res, mapOrder(order, deliveryFee, gstAmount, codFee));
 });
 
 /* ── GET /orders/:id/track — Live rider location for active food/mart orders ── */
@@ -265,8 +266,8 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     .where(eq(ordersTable.id, String(req.params["id"])))
     .limit(1);
 
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
-  if (order.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!order) { sendNotFound(res, "Order not found"); return; }
+  if (order.userId !== userId) { sendForbidden(res, "Access denied"); return; }
 
   const TRACKABLE = ["picked_up", "out_for_delivery", "in_transit"];
   let riderLat: number | null = null;
@@ -300,7 +301,7 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     }
   }
 
-  res.json({
+  sendSuccess(res, {
     id: order.id,
     status: order.status,
     riderId: order.riderId,
@@ -326,13 +327,13 @@ router.post("/", customerAuth, async (req, res) => {
   if (idempotencyKey) {
     const cached = idempotencyCache.get(`${userId}:${idempotencyKey}`);
     if (cached) {
-      res.status(200).json(cached);
+      sendSuccess(res, cached);
       return;
     }
   }
 
   if (!items || !Array.isArray(items) || items.length === 0) {
-    res.status(400).json({ error: "items (array) required" }); return;
+    sendValidationError(res, "items (array) required"); return;
   }
 
   /* Per-item validation — prevents negative-price injection that could
@@ -342,13 +343,13 @@ router.post("/", customerAuth, async (req, res) => {
             !Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0,
   );
   if (badItem) {
-    res.status(400).json({ error: "Each item must have a valid positive price and quantity" }); return;
+    sendValidationError(res, "Each item must have a valid positive price and quantity"); return;
   }
 
   /* ── Server-side price verification — every item must have a productId ── */
   const missingProductId = (items as Array<Record<string, unknown>>).find((it: Record<string, unknown>) => !it.productId);
   if (missingProductId) {
-    res.status(400).json({ error: "Each item must include a valid productId" }); return;
+    sendValidationError(res, "Each item must include a valid productId"); return;
   }
 
   const productIds = (items as Array<Record<string, unknown>>).map((it: Record<string, unknown>) => it.productId);
@@ -383,18 +384,12 @@ router.post("/", customerAuth, async (req, res) => {
     }
 
     if (unavailable.length > 0) {
-      res.status(400).json({
-        error: `The following items are no longer available: ${unavailable.join(", ")}. Please remove them from your cart.`,
-        unavailableItems: unavailable,
-      });
+      sendErrorWithData(res, `The following items are no longer available: ${unavailable.join(", ")}. Please remove them from your cart.`, { unavailableItems: unavailable }, 400);
       return;
     }
 
     if (priceChanges.length > 0) {
-      res.status(409).json({
-        error: `Prices have changed for some items: ${priceChanges.join("; ")}. Please review your cart.`,
-        priceChanges,
-      });
+      sendErrorWithData(res, `Prices have changed for some items: ${priceChanges.join("; ")}. Please review your cart.`, { priceChanges }, 409);
       return;
     }
   }  /* end price verification block */
@@ -405,7 +400,7 @@ router.post("/", customerAuth, async (req, res) => {
   );
 
   if (itemsTotal <= 0) {
-    res.status(400).json({ error: "Order total must be greater than 0" }); return;
+    sendValidationError(res, "Order total must be greater than 0"); return;
   }
 
   /* ── Load platform settings once ── */
@@ -413,17 +408,17 @@ router.post("/", customerAuth, async (req, res) => {
 
   /* ── 1st gate: service feature flags (fail-fast before any calculation) ── */
   if (type === "mart" && (s["feature_mart"] ?? "on") === "off") {
-    res.status(503).json({ error: "Mart grocery service is currently unavailable. Please try again later." }); return;
+    sendError(res, "Mart grocery service is currently unavailable. Please try again later.", 503); return;
   }
   if (type === "food" && (s["feature_food"] ?? "on") === "off") {
-    res.status(503).json({ error: "Food delivery service is currently unavailable. Please try again later." }); return;
+    sendError(res, "Food delivery service is currently unavailable. Please try again later.", 503); return;
   }
   /* app_status maintenance gate */
   if ((s["app_status"] ?? "active") === "maintenance") {
     const mainKey = (s["security_maintenance_key"] ?? "").trim();
     const bypass  = ((req.headers["x-maintenance-key"] as string) ?? "").trim();
     if (!mainKey || bypass !== mainKey) {
-      res.status(503).json({ error: s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!" }); return;
+      sendError(res, s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!", 503); return;
     }
   }
 
@@ -432,18 +427,18 @@ router.post("/", customerAuth, async (req, res) => {
   const vendorMinOrder = parseFloat(s["vendor_min_order"] ?? "100");
   const effectiveMinOrder = Math.max(minOrder, vendorMinOrder);
   if (itemsTotal < effectiveMinOrder) {
-    res.status(400).json({ error: `Minimum order amount is Rs. ${effectiveMinOrder}` }); return;
+    sendValidationError(res, `Minimum order amount is Rs. ${effectiveMinOrder}`); return;
   }
 
   const maxCart = parseFloat(s["order_max_cart_value"] ?? "50000");
   if (itemsTotal > maxCart) {
-    res.status(400).json({ error: `Cart value cannot exceed Rs. ${maxCart}. Please split into multiple orders.` }); return;
+    sendValidationError(res, `Cart value cannot exceed Rs. ${maxCart}. Please split into multiple orders.`); return;
   }
 
   /* ── Scheduled order gate ── */
   const scheduleEnabled = (s["order_schedule_enabled"] ?? "off") === "on";
   if (req.body.scheduledAt && !scheduleEnabled) {
-    res.status(400).json({ error: "Scheduled orders are not available at this time." }); return;
+    sendValidationError(res, "Scheduled orders are not available at this time."); return;
   }
 
   /* ── Delivery fee, GST, COD fee — via shared utility (see lib/fees.ts) ── */
@@ -460,7 +455,7 @@ router.post("/", customerAuth, async (req, res) => {
   if (promoCode) {
     const promoResult = await validatePromoCode(promoCode, itemsTotal, type ?? "mart");
     if (!promoResult.valid) {
-      res.status(400).json({ error: promoResult.error ?? "Invalid promo code" }); return;
+      sendValidationError(res, promoResult.error ?? "Invalid promo code"); return;
     }
     promoDiscount = promoResult.discount;
     promoId = promoResult.promoId ?? null;
@@ -474,14 +469,14 @@ router.post("/", customerAuth, async (req, res) => {
 
   /* ── Fetch user for fraud checks ── */
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { sendNotFound(res, "User not found"); return; }
 
   /* ── Banned/inactive check ── */
   if (user.isBanned) {
-    res.status(403).json({ error: "Your account has been suspended. You cannot place orders." }); return;
+    sendForbidden(res, "Your account has been suspended. You cannot place orders."); return;
   }
   if (!user.isActive) {
-    res.status(403).json({ error: "Your account is inactive. Please contact support." }); return;
+    sendForbidden(res, "Your account is inactive. Please contact support."); return;
   }
 
   /* ── Customer daily order cap (always enforced from Customer Settings) ── */
@@ -494,7 +489,7 @@ router.post("/", customerAuth, async (req, res) => {
     .where(and(eq(ordersTable.userId, userId), gte(ordersTable.createdAt, todayStart)));
   const custDailyCount = Number(custDailyResult?.c ?? 0);
   if (custDailyCount >= custMaxPerDay) {
-    res.status(429).json({ error: `Aaj ke liye order limit (${custMaxPerDay} orders) reach ho gayi. Kal dobara try karein.` }); return;
+    sendError(res, `Aaj ke liye order limit (${custMaxPerDay} orders) reach ho gayi. Kal dobara try karein.`, 429); return;
   }
 
   /* ── Fake order / fraud detection ── */
@@ -503,7 +498,7 @@ router.post("/", customerAuth, async (req, res) => {
     const maxDailyOrders = parseInt(s["security_max_daily_orders"] ?? "20", 10);
     if (custDailyCount >= maxDailyOrders) {
       addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily order limit: ${custDailyCount}/${maxDailyOrders}`, severity: "medium" });
-      res.status(429).json({ error: `Daily order limit reached (${maxDailyOrders} orders per day). Please try again tomorrow.` }); return;
+      sendError(res, `Daily order limit reached (${maxDailyOrders} orders per day). Please try again tomorrow.`, 429); return;
     }
 
     /* New account order limit (first 7 days) */
@@ -517,7 +512,7 @@ router.post("/", customerAuth, async (req, res) => {
       const totalOrders = Number(totalOrdersResult?.c ?? 0);
       if (totalOrders >= newAcctLimit) {
         addSecurityEvent({ type: "new_account_limit", ip, userId, details: `New account ${userId} hit order limit: ${totalOrders}/${newAcctLimit}`, severity: "medium" });
-        res.status(429).json({ error: `New accounts are limited to ${newAcctLimit} orders in the first 7 days. Please contact support if you need assistance.` }); return;
+        sendError(res, `New accounts are limited to ${newAcctLimit} orders in the first 7 days. Please contact support if you need assistance.`, 429); return;
       }
     }
 
@@ -531,7 +526,7 @@ router.post("/", customerAuth, async (req, res) => {
         .where(and(eq(ordersTable.deliveryAddress, deliveryAddress), gte(ordersTable.createdAt, oneHourAgo)));
       if (sameAddrOrders.length >= sameAddrLimit) {
         addSecurityEvent({ type: "same_address_limit", ip, userId, details: `Same address limit hit: ${deliveryAddress} (${sameAddrOrders.length} orders/hr)`, severity: "high" });
-        res.status(429).json({ error: `Too many orders to the same address. Please try again later.` }); return;
+        sendError(res, `Too many orders to the same address. Please try again later.`, 429); return;
       }
     }
   }
@@ -540,7 +535,7 @@ router.post("/", customerAuth, async (req, res) => {
   if (paymentMethod === "cash") {
     const codEnabled = (s["cod_enabled"] ?? "on") === "on";
     if (!codEnabled) {
-      res.status(400).json({ error: "Cash on Delivery is currently not available" }); return;
+      sendValidationError(res, "Cash on Delivery is currently not available"); return;
     }
 
     /* ── Per-service COD flag ── */
@@ -548,12 +543,12 @@ router.post("/", customerAuth, async (req, res) => {
     const codAllowedForService = (s[serviceKey] ?? "on") !== "off";
     if (!codAllowedForService) {
       const label = type === "mart" ? "Mart" : type === "food" ? "Food" : type === "pharmacy" ? "Pharmacy" : "Parcel";
-      res.status(400).json({ error: `Cash on Delivery is not available for ${label} orders. Please choose another payment method.` }); return;
+      sendValidationError(res, `Cash on Delivery is not available for ${label} orders. Please choose another payment method.`); return;
     }
 
     const codMax = parseFloat(s["cod_max_amount"] ?? "5000");
     if (total > codMax) {
-      res.status(400).json({ error: `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.` }); return;
+      sendValidationError(res, `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.`); return;
     }
 
     /* ── COD verification threshold ── */
@@ -570,10 +565,10 @@ router.post("/", customerAuth, async (req, res) => {
     const payMinOnline = parseFloat(s["payment_min_online"] ?? "50");
     const payMaxOnline = parseFloat(s["payment_max_online"] ?? "100000");
     if (total < payMinOnline) {
-      res.status(400).json({ error: `Minimum online payment is Rs. ${payMinOnline}` }); return;
+      sendValidationError(res, `Minimum online payment is Rs. ${payMinOnline}`); return;
     }
     if (total > payMaxOnline) {
-      res.status(400).json({ error: `Maximum online payment is Rs. ${payMaxOnline}. Please split your order or use another method.` }); return;
+      sendValidationError(res, `Maximum online payment is Rs. ${payMaxOnline}. Please split your order or use another method.`); return;
     }
   }
 
@@ -581,12 +576,12 @@ router.post("/", customerAuth, async (req, res) => {
   if (paymentMethod === "wallet") {
     const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
     if (!walletEnabled) {
-      res.status(400).json({ error: "Wallet payments are currently disabled" }); return;
+      sendValidationError(res, "Wallet payments are currently disabled"); return;
     }
 
     const [walletUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (walletUser && (walletUser.blockedServices || "").split(",").map(s2 => s2.trim()).includes("wallet")) {
-      res.status(403).json({ error: "wallet_frozen", message: "Your wallet has been temporarily frozen. Contact support." }); return;
+      sendForbidden(res, "wallet_frozen", "Your wallet has been temporarily frozen. Contact support."); return;
     }
 
     try {
@@ -641,11 +636,10 @@ router.post("/", customerAuth, async (req, res) => {
         if (io) io.to(`user:${userId}`).emit("wallet:balance", { balance: newBalance });
       }
 
-      res.status(201).json(mapped);
-      /* Notify online riders via socket so their Home screen refreshes instantly */
+      sendCreated(res, mapped);
       notifyOnlineRidersOfOrder(order.id, type || "mart").catch(() => {});
     } catch (e: unknown) {
-      res.status(400).json({ error: e.message });
+      sendValidationError(res, (e as Error).message);
     }
     return;
   }
@@ -676,11 +670,10 @@ router.post("/", customerAuth, async (req, res) => {
     if (idempotencyKey) {
       idempotencyCache.set(`${userId}:${idempotencyKey}`, { ...mapped, _ts: Date.now() });
     }
-    res.status(201).json(mapped);
-    /* Notify online riders via socket so their Home screen refreshes instantly */
+    sendCreated(res, mapped);
     notifyOnlineRidersOfOrder(order!.id, type || "mart").catch(() => {});
   } catch (e: unknown) {
-    res.status(500).json({ error: "Order could not be created. Please try again." });
+    sendError(res, "Order could not be created. Please try again.", 500);
   }
 });
 
@@ -690,11 +683,11 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 200) : null;
 
   const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
-  if (!existingOrder) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!existingOrder) { sendNotFound(res, "Order not found"); return; }
 
   /* Only the order owner can cancel */
   if (existingOrder.userId !== userId) {
-    res.status(403).json({ error: "You cannot cancel another user's order." }); return;
+    sendForbidden(res, "You cannot cancel another user's order."); return;
   }
 
   /* Enforce cancel window */
@@ -703,14 +696,12 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   const ageMs = Date.now() - new Date(existingOrder.createdAt).getTime();
   const ageMin = ageMs / 60_000;
   if (ageMin > cancelWindowMin) {
-    res.status(400).json({
-      error: `Orders can only be cancelled within ${cancelWindowMin} minutes of placement. Please contact support.`,
-    }); return;
+    sendValidationError(res, `Orders can only be cancelled within ${cancelWindowMin} minutes of placement. Please contact support.`); return;
   }
 
   /* Only pending/confirmed orders can be customer-cancelled */
   if (!["pending", "confirmed"].includes(existingOrder.status)) {
-    res.status(400).json({ error: "This order can no longer be cancelled." }); return;
+    sendValidationError(res, "This order can no longer be cancelled."); return;
   }
 
   const isWallet = existingOrder.paymentMethod === "wallet";
@@ -754,14 +745,14 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       req.log?.info({ orderId: order.id, reason }, "Order cancelled with reason");
     }
 
-    res.json({
+    sendSuccess(res, {
       ...mapOrder(order),
       refundAmount,
       refundMethod: isWallet ? "wallet" : null,
       cancelReason: reason,
     });
   } catch (e: unknown) {
-    res.status(400).json({ error: e.message || "Could not cancel order" });
+    sendValidationError(res, (e as Error).message || "Could not cancel order");
   }
 });
 
@@ -774,20 +765,20 @@ router.post("/:id/refund-request", customerAuth, async (req, res) => {
       .where(and(eq(ordersTable.id, orderId), eq(ordersTable.userId, userId)))
       .limit(1);
 
-    if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+    if (!order) { sendNotFound(res, "Order not found"); return; }
 
     if (!["delivered", "completed"].includes(order.status)) {
-      res.status(400).json({ error: "Refund can only be requested for delivered orders" });
+      sendValidationError(res, "Refund can only be requested for delivered orders");
       return;
     }
 
     if (order.paymentMethod === "cod" || order.paymentMethod === "cash") {
-      res.status(400).json({ error: "Cash orders are not eligible for refund" });
+      sendValidationError(res, "Cash orders are not eligible for refund");
       return;
     }
 
     if (order.paymentStatus === "refund_requested" || order.refundedAt) {
-      res.status(400).json({ error: "Refund has already been requested for this order" });
+      sendValidationError(res, "Refund has already been requested for this order");
       return;
     }
 
@@ -799,9 +790,9 @@ router.post("/:id/refund-request", customerAuth, async (req, res) => {
     const updatedOrder = { ...order, paymentStatus: "refund_requested" as typeof order.paymentStatus };
     broadcastOrderUpdate(mapOrder(updatedOrder), order.vendorId);
 
-    res.json({ success: true, message: "Refund request submitted", refundStatus: "requested" });
+    sendSuccess(res, { refundStatus: "requested" }, "Refund request submitted");
   } catch (e: unknown) {
-    res.status(500).json({ error: e.message || "Could not process refund request" });
+    sendError(res, (e as Error).message || "Could not process refund request", 500);
   }
 });
 

@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { Alert } from "react-native";
 import { useAuth } from "@/context/AuthContext";
+import { unwrapApiResponse } from "../utils/api";
 
 export interface CartItem {
   productId: string;
@@ -181,7 +182,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setIsValidating(false);
         return { valid: false, cartChanged: false };
       }
-      const data = await res.json();
+      const data = unwrapApiResponse(await res.json());
       if (!data.valid) {
         let cartChanged = false;
         if (Array.isArray(data.items)) {
@@ -320,7 +321,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         headers: tkn ? { Authorization: `Bearer ${tkn}` } : {},
       });
       if (res.ok) {
-        const d = await res.json();
+        const d = unwrapApiResponse(await res.json());
         const order = d.order || d;
         if (order && order.id) {
           resolveOrderAck(oid);

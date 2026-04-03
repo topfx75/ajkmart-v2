@@ -9,6 +9,7 @@ import multer from "multer";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { logger } from "../lib/logger.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads/kyc");
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"];

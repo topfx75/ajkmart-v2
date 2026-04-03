@@ -2,7 +2,10 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { productsTable, productVariantsTable, flashDealsTable } from "@workspace/db/schema";
 import { eq, ilike, and, SQL, gte, lte, gt, desc, asc, sql, isNotNull } from "drizzle-orm";
+import { z } from "zod";
 import { generateId } from "../lib/id.js";
+import { sendSuccess, sendCreated, sendNotFound, sendError } from "../lib/response.js";
+import { validateBody } from "../middleware/validate.js";
 import { adminAuth, getPlatformSettings } from "./admin.js";
 
 const router: IRouter = Router();
@@ -38,7 +41,7 @@ router.get("/flash-deals", async (req, res) => {
   );
   const dealMap = new Map(activeDeals.map(d => [d.productId, d]));
 
-  res.json({
+  sendSuccess(res, {
     products: products.map(p => {
       const price = parseFloat(p.price);
       const origPrice = p.originalPrice ? parseFloat(p.originalPrice) : price;
@@ -66,7 +69,7 @@ router.get("/search", async (req, res) => {
   const offset = (page - 1) * perPage;
 
   if (!q || typeof q !== "string" || !q.trim()) {
-    res.json({ products: [], total: 0, page, perPage, totalPages: 0 });
+    sendSuccess(res, { products: [], total: 0, page, perPage, totalPages: 0 });
     return;
   }
 
@@ -97,7 +100,7 @@ router.get("/search", async (req, res) => {
 
   const total = countResult[0]?.total ?? 0;
 
-  res.json({
+  sendSuccess(res, {
     products: allProducts.map(p => ({
       ...p,
       price: parseFloat(p.price),
@@ -120,7 +123,7 @@ router.get("/", async (req, res) => {
       const featureKey = `feature_${type}`;
       const enabled = (s[featureKey] ?? "on") === "on";
       if (!enabled) {
-        res.status(503).json({ error: `${type.charAt(0).toUpperCase() + type.slice(1)} service is currently disabled`, products: [], total: 0 });
+        sendError(res, `${type.charAt(0).toUpperCase() + type.slice(1)} service is currently disabled`, 503, "یہ سروس فی الحال بند ہے۔");
         return;
       }
     } catch {}
@@ -149,7 +152,7 @@ router.get("/", async (req, res) => {
   }
 
   const products = await db.select().from(productsTable).where(and(...conditions)).orderBy(orderBy);
-  res.json({
+  sendSuccess(res, {
     products: products.map(p => ({
       ...p,
       price: parseFloat(p.price),
@@ -163,7 +166,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const [product] = await db.select().from(productsTable).where(eq(productsTable.id, req.params["id"]!)).limit(1);
   if (!product) {
-    res.status(404).json({ error: "Product not found" });
+    sendNotFound(res, "Product not found", "پروڈکٹ نہیں ملی۔");
     return;
   }
   if (product.type) {
@@ -171,7 +174,7 @@ router.get("/:id", async (req, res) => {
       const s = await getPlatformSettings();
       const featureKey = `feature_${product.type}`;
       if ((s[featureKey] ?? "on") !== "on") {
-        res.status(503).json({ error: `${product.type.charAt(0).toUpperCase() + product.type.slice(1)} service is currently disabled` });
+        sendError(res, `${product.type.charAt(0).toUpperCase() + product.type.slice(1)} service is currently disabled`, 503, "یہ سروس فی الحال بند ہے۔");
         return;
       }
     } catch {}
@@ -186,7 +189,7 @@ router.get("/:id", async (req, res) => {
     ))
     .orderBy(asc(productVariantsTable.sortOrder));
 
-  res.json({
+  sendSuccess(res, {
     ...product,
     price: parseFloat(product.price),
     originalPrice: product.originalPrice ? parseFloat(product.originalPrice) : undefined,
@@ -200,7 +203,18 @@ router.get("/:id", async (req, res) => {
   });
 });
 
-router.post("/", adminAuth, async (req, res) => {
+const createProductSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+  price: z.number().positive("Price must be positive"),
+  category: z.string().min(1, "Category is required"),
+  type: z.string().optional(),
+  image: z.string().optional(),
+  vendorId: z.string().optional(),
+  unit: z.string().optional(),
+});
+
+router.post("/", adminAuth, validateBody(createProductSchema), async (req, res) => {
   const { name, description, price, category, type, image, vendorId, unit } = req.body;
   const [product] = await db.insert(productsTable).values({
     id: generateId(),
@@ -214,7 +228,7 @@ router.post("/", adminAuth, async (req, res) => {
     unit,
     inStock: true,
   }).returning();
-  res.status(201).json({
+  sendCreated(res, {
     ...product!,
     price: parseFloat(product!.price),
   });

@@ -2,7 +2,10 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { notificationsTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { z } from "zod";
 import { generateId } from "../lib/id.js";
+import { sendSuccess, sendCreated, sendNotFound, sendForbidden } from "../lib/response.js";
+import { validateBody } from "../middleware/validate.js";
 import { customerAuth } from "../middleware/security.js";
 import { adminAuth } from "./admin.js";
 import { t } from "@workspace/i18n";
@@ -10,7 +13,6 @@ import { getUserLanguage } from "../lib/getUserLanguage.js";
 
 const router: IRouter = Router();
 
-/* GET /notifications — list notifications for the authenticated user */
 router.get("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
 
@@ -32,47 +34,50 @@ router.get("/", customerAuth, async (req, res) => {
   }
 
   const unreadCount = notifs.filter(n => !n.isRead).length;
-  res.json({
+  sendSuccess(res, {
     notifications: notifs.reverse().map(n => ({ ...n, createdAt: n.createdAt.toISOString() })),
     unreadCount,
   });
 });
 
-/* POST /notifications — admin-only; uses centralized adminAuth middleware */
-router.post("/", adminAuth, async (req, res) => {
-  const { userId, title, body, type, icon, link } = req.body;
-  if (!userId || !title || !body) { res.status(400).json({ error: "userId, title, body required" }); return; }
-  const id = generateId();
-  await db.insert(notificationsTable).values({ id, userId, title, body, type: type || "system", icon: icon || "notifications-outline", link: link || null, isRead: false });
-  res.json({ id, success: true });
+const createNotifSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  title: z.string().min(1, "title is required"),
+  body: z.string().min(1, "body is required"),
+  type: z.string().optional(),
+  icon: z.string().optional(),
+  link: z.string().nullable().optional(),
 });
 
-/* PATCH /notifications/read-all — mark all as read for auth user */
+router.post("/", adminAuth, validateBody(createNotifSchema), async (req, res) => {
+  const { userId, title, body, type, icon, link } = req.body;
+  const id = generateId();
+  await db.insert(notificationsTable).values({ id, userId, title, body, type: type || "system", icon: icon || "notifications-outline", link: link || null, isRead: false });
+  sendCreated(res, { id });
+});
+
 router.patch("/read-all", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   await db.update(notificationsTable).set({ isRead: true }).where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.isRead, false)));
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
-/* PATCH /notifications/:id/read */
 router.patch("/:id/read", customerAuth, async (req, res) => {
   const userId = req.customerId!;
-  /* Verify ownership */
   const [notif] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, String(req.params["id"]))).limit(1);
-  if (!notif) { res.status(404).json({ error: "Not found" }); return; }
-  if (notif.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!notif) { sendNotFound(res, "Not found", "نوٹیفکیشن نہیں ملی۔"); return; }
+  if (notif.userId !== userId) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
   await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.id, String(req.params["id"])));
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
-/* DELETE /notifications/:id */
 router.delete("/:id", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const [notif] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, String(req.params["id"]))).limit(1);
-  if (!notif) { res.status(404).json({ error: "Not found" }); return; }
-  if (notif.userId !== userId) { res.status(403).json({ error: "Access denied" }); return; }
+  if (!notif) { sendNotFound(res, "Not found", "نوٹیفکیشن نہیں ملی۔"); return; }
+  if (notif.userId !== userId) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
   await db.delete(notificationsTable).where(eq(notificationsTable.id, String(req.params["id"])));
-  res.json({ success: true });
+  sendSuccess(res, null);
 });
 
 export default router;

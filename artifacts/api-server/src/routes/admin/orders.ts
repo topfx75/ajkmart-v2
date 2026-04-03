@@ -19,7 +19,7 @@ import {
   ensureDefaultRideServices, ensureDefaultLocations, formatSvc,
   type AdminRequest, revokeAllUserSessions,
 } from "../admin-shared.js";
-
+import { sendSuccess, sendError, sendNotFound, sendValidationError, sendErrorWithData } from "../../lib/response.js";
 
 const router = Router();
 router.get("/orders", async (req, res) => {
@@ -30,7 +30,7 @@ router.get("/orders", async (req, res) => {
     .filter(o => !status || o.status === status)
     .filter(o => !type || o.type === type);
 
-  res.json({
+  sendSuccess(res, {
     orders: filtered.map(o => ({
       ...o,
       total: parseFloat(String(o.total)),
@@ -47,13 +47,13 @@ router.patch("/orders/:id/status", async (req, res) => {
 
   /* For wallet-paid → cancelled: do status update + wallet refund in ONE transaction */
   const [preOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-  if (!preOrder) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!preOrder) { sendNotFound(res, "Order not found"); return; }
 
   let order = preOrder;
 
   const NON_CANCELLABLE_STATUSES = ["delivered", "completed"];
   if (status === "cancelled" && NON_CANCELLABLE_STATUSES.includes(preOrder.status)) {
-    res.status(400).json({ error: `Cannot cancel an order that is already ${preOrder.status}.` }); return;
+    sendValidationError(res, `Cannot cancel an order that is already ${preOrder.status}.`); return;
   }
 
   if (status === "cancelled" && preOrder.paymentMethod === "wallet" && !preOrder.refundedAt) {
@@ -84,7 +84,7 @@ router.patch("/orders/:id/status", async (req, res) => {
       if (err.message === "ALREADY_REFUNDED") return null;
       throw err;
     });
-    if (!txResult) { res.status(409).json({ error: "Order has already been refunded" }); return; }
+    if (!txResult) { sendError(res, "Order has already been refunded", 409); return; }
     order = txResult;
     /* Notifications after successful commit */
     await sendUserNotification(preOrder.userId, "Order Refund 💰", `Rs. ${refundAmt.toFixed(0)} aapki wallet mein refund ho gaya — Order #${orderId.slice(-6).toUpperCase()}`, "mart", "wallet-outline");
@@ -94,7 +94,7 @@ router.patch("/orders/:id/status", async (req, res) => {
       .set({ status, updatedAt: new Date() })
       .where(eq(ordersTable.id, orderId))
       .returning();
-    if (!updated) { res.status(404).json({ error: "Order not found" }); return; }
+    if (!updated) { sendNotFound(res, "Order not found"); return; }
     order = updated;
   }
 
@@ -126,31 +126,30 @@ router.patch("/orders/:id/status", async (req, res) => {
     }
   }
 
-  res.json({ ...order, total: parseFloat(String(order.total)) });
+  sendSuccess(res, { ...order, total: parseFloat(String(order.total)) });
 });
 
 router.post("/orders/:id/refund", async (req, res) => {
   const { amount, reason } = req.body;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!order) { sendNotFound(res, "Order not found"); return; }
 
   /* Only allow refunds for terminal orders */
   if (order.status !== "delivered" && order.status !== "cancelled") {
-    res.status(400).json({ error: "Refund only allowed for delivered or cancelled orders" }); return;
+    sendValidationError(res, "Refund only allowed for delivered or cancelled orders"); return;
   }
 
   /* Only wallet-paid orders can be wallet-refunded */
   if (order.paymentMethod !== "wallet") {
-    res.status(400).json({ error: "Refund only applies to wallet-paid orders" }); return;
+    sendValidationError(res, "Refund only applies to wallet-paid orders"); return;
   }
 
   /* Fast-path: pre-check before entering transaction */
   if (order.refundedAt) {
-    res.status(409).json({
-      error: "Order has already been refunded",
+    sendErrorWithData(res, "Order has already been refunded", {
       refundedAt: order.refundedAt,
       refundedAmount: order.refundedAmount ? parseFloat(String(order.refundedAmount)) : null,
-    });
+    }, 409);
     return;
   }
 
@@ -160,10 +159,10 @@ router.post("/orders/:id/refund", async (req, res) => {
     ? parseFloat(String(amount))
     : NaN;
   if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-    res.status(400).json({ error: "amount must be a positive number" }); return;
+    sendValidationError(res, "amount must be a positive number"); return;
   }
   const refundAmt = Math.min(parsedAmount, maxRefund);
-  if (refundAmt <= 0) { res.status(400).json({ error: "Refund amount must be positive" }); return; }
+  if (refundAmt <= 0) { sendValidationError(res, "Refund amount must be positive"); return; }
 
   const now = new Date();
   let alreadyRefunded = false;
@@ -197,7 +196,7 @@ router.post("/orders/:id/refund", async (req, res) => {
   });
 
   if (alreadyRefunded) {
-    res.status(409).json({ error: "Order has already been refunded" }); return;
+    sendError(res, "Order has already been refunded", 409); return;
   }
 
   await sendUserNotification(
@@ -208,7 +207,7 @@ router.post("/orders/:id/refund", async (req, res) => {
     "wallet-outline"
   );
 
-  res.json({ success: true, refundedAmount: refundAmt, orderId: order.id });
+  sendSuccess(res, { success: true, refundedAmount: refundAmt, orderId: order.id });
 });
 router.get("/pharmacy-orders", async (_req, res) => {
   const orders = await db
@@ -216,7 +215,7 @@ router.get("/pharmacy-orders", async (_req, res) => {
     .from(pharmacyOrdersTable)
     .orderBy(desc(pharmacyOrdersTable.createdAt))
     .limit(200);
-  res.json({
+  sendSuccess(res, {
     orders: orders.map(o => ({
       ...o,
       total: parseFloat(o.total),
@@ -234,7 +233,7 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
     .set({ status, updatedAt: new Date() })
     .where(eq(pharmacyOrdersTable.id, req.params["id"]!))
     .returning();
-  if (!order) { res.status(404).json({ error: "Not found" }); return; }
+  if (!order) { sendNotFound(res, "Not found"); return; }
 
   const pharmNotifKeys = PHARMACY_NOTIF_KEYS[status];
   if (pharmNotifKeys) {
@@ -253,7 +252,7 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
     await sendUserNotification(order.userId, t("notifPharmacyRefund", pharmRefundLang), t("notifPharmacyRefundBody", pharmRefundLang).replace("{amount}", refundAmt.toFixed(0)), "pharmacy", "wallet-outline");
   }
 
-  res.json({ ...order, total: parseFloat(order.total) });
+  sendSuccess(res, { ...order, total: parseFloat(order.total) });
 });
 
 /* ── Parcel Bookings ── */
@@ -263,7 +262,7 @@ router.get("/parcel-bookings", async (_req, res) => {
     .from(parcelBookingsTable)
     .orderBy(desc(parcelBookingsTable.createdAt))
     .limit(200);
-  res.json({
+  sendSuccess(res, {
     bookings: bookings.map(b => ({
       ...b,
       fare: parseFloat(b.fare),
@@ -281,7 +280,7 @@ router.patch("/parcel-bookings/:id/status", async (req, res) => {
     .set({ status, updatedAt: new Date() })
     .where(eq(parcelBookingsTable.id, req.params["id"]!))
     .returning();
-  if (!booking) { res.status(404).json({ error: "Not found" }); return; }
+  if (!booking) { sendNotFound(res, "Not found"); return; }
 
   const parcelNotifKeys = PARCEL_NOTIF_KEYS[status];
   if (parcelNotifKeys) {
@@ -300,13 +299,13 @@ router.patch("/parcel-bookings/:id/status", async (req, res) => {
     await sendUserNotification(booking.userId, t("notifParcelRefund", parcelRefundLang), t("notifParcelRefundBody", parcelRefundLang).replace("{amount}", refundAmt.toFixed(0)), "parcel", "wallet-outline");
   }
 
-  res.json({ ...booking, fare: parseFloat(booking.fare) });
+  sendSuccess(res, { ...booking, fare: parseFloat(booking.fare) });
 });
 router.get("/pharmacy-enriched", async (_req, res) => {
   const orders = await db.select().from(pharmacyOrdersTable).orderBy(desc(pharmacyOrdersTable.createdAt)).limit(200);
   const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
-  res.json({
+  sendSuccess(res, {
     orders: orders.map(o => ({
       ...o,
       total: parseFloat(String(o.total)),
@@ -324,7 +323,7 @@ router.get("/parcel-enriched", async (_req, res) => {
   const bookings = await db.select().from(parcelBookingsTable).orderBy(desc(parcelBookingsTable.createdAt)).limit(200);
   const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
-  res.json({
+  sendSuccess(res, {
     bookings: bookings.map(b => ({
       ...b,
       fare: parseFloat(b.fare),
@@ -354,7 +353,7 @@ router.get("/transactions-enriched", async (_req, res) => {
   const totalCredit = enriched.filter(t => t.type === "credit").reduce((s, t) => s + t.amount, 0);
   const totalDebit = enriched.filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0);
 
-  res.json({ transactions: enriched, total: transactions.length, totalCredit, totalDebit });
+  sendSuccess(res, { transactions: enriched, total: transactions.length, totalCredit, totalDebit });
 });
 
 /* ── Delete User ── */
@@ -362,7 +361,7 @@ router.get("/orders-enriched", async (_req, res) => {
   const orders = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt)).limit(200);
   const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
-  res.json({
+  sendSuccess(res, {
     orders: orders.map(o => ({
       ...o,
       total: parseFloat(String(o.total)),
@@ -386,7 +385,7 @@ router.get("/rides-enriched", async (_req, res) => {
   ]);
   const userMap    = Object.fromEntries(users.map(u => [u.id, u]));
   const bidCountMap = Object.fromEntries(bidCounts.map(b => [b.rideId, Number(b.total)]));
-  res.json({
+  sendSuccess(res, {
     rides: rides.map(r => ({
       ...r,
       fare:        parseFloat(r.fare),
@@ -426,9 +425,9 @@ router.patch("/orders/:id/assign-rider", async (req, res) => {
     .set({ riderId: riderId || null, riderName, riderPhone, updatedAt: new Date() })
     .where(eq(ordersTable.id, req.params["id"]!))
     .returning();
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!order) { sendNotFound(res, "Order not found"); return; }
   addAuditEntry({ action: "order_rider_assigned", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Rider ${riderName ?? riderId ?? "unassigned"} assigned to order ${req.params["id"]}`, result: "success" });
-  res.json({ success: true, order: { ...order, total: parseFloat(String(order.total)), riderName, riderPhone } });
+  sendSuccess(res, { success: true, order: { ...order, total: parseFloat(String(order.total)), riderName, riderPhone } });
 });
 
 /* ── PATCH /admin/vendors/:id/commission — set per-vendor commission override ── */

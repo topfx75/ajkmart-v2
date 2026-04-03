@@ -13,6 +13,7 @@ import { eq, count, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
+import { sendSuccess, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendUnauthorized, sendValidationError } from "../lib/response.js";
 import {
   checkAdminIPWhitelist,
   addAuditEntry,
@@ -551,7 +552,7 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
   if (!checkAdminIPWhitelist(req, settings)) {
     addAuditEntry({ action: "admin_ip_blocked", ip, details: `Admin access denied: IP not in whitelist`, result: "fail" });
     addSecurityEvent({ type: "admin_ip_blocked", ip, details: `Admin access denied from IP: ${ip}`, severity: "critical" });
-    res.status(403).json({ error: "Access denied. Your IP address is not whitelisted for admin access." });
+    sendForbidden(res, "Access denied. Your IP address is not whitelisted for admin access.");
     return;
   }
 
@@ -561,7 +562,7 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
     if (!adminPayload) {
       addAuditEntry({ action: "admin_jwt_invalid", ip, details: `Invalid admin JWT for ${req.method} ${req.url}`, result: "fail" });
       addSecurityEvent({ type: "invalid_admin_jwt", ip, details: `Invalid/expired admin JWT used for ${req.url}`, severity: "high" });
-      res.status(401).json({ error: "Admin session expired or invalid. Please log in again." });
+      sendUnauthorized(res, "Admin session expired or invalid. Please log in again.");
       return;
     }
 
@@ -576,13 +577,13 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
         const isMfaRoute = req.url.includes("/mfa/");
         if (!isMfaRoute) {
           if (!totpHeader) {
-            res.status(401).json({ error: "MFA required. Please provide your TOTP code.", mfaRequired: true });
+            sendErrorWithData(res, "MFA required. Please provide your TOTP code.", { mfaRequired: true }, 401);
             return;
           }
           if (!verifyTotpToken(totpHeader, sub.totpSecret)) {
             addAuditEntry({ action: "admin_totp_failed", ip, adminId: sub.id, details: `Invalid TOTP for ${sub.name}`, result: "fail" });
             addSecurityEvent({ type: "invalid_admin_totp", ip, userId: sub.id, details: `Wrong TOTP code`, severity: "high" });
-            res.status(401).json({ error: "Invalid TOTP code. Please try again with your authenticator app." });
+            sendUnauthorized(res, "Invalid TOTP code. Please try again with your authenticator app.");
             return;
           }
         }
@@ -623,7 +624,7 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
         const maxMs = tokenHrs * 60 * 60 * 1000;
         if (msSinceLogin > maxMs) {
           addAuditEntry({ action: "admin_token_expired", ip, adminId: sub.id, details: `Admin token expired for ${sub.name} (${tokenHrs}h limit)`, result: "fail" });
-          res.status(401).json({ error: `Admin session expired after ${tokenHrs} hours. Please log in again.` });
+          sendUnauthorized(res, `Admin session expired after ${tokenHrs} hours. Please log in again.`);
           return;
         }
       }
@@ -635,13 +636,13 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
         const isMfaRoute = req.url.includes("/mfa/");
         if (!isMfaRoute) {
           if (!totpHeader) {
-            res.status(401).json({ error: "MFA required. Please provide your TOTP code in the x-admin-totp header.", mfaRequired: true });
+            sendErrorWithData(res, "MFA required. Please provide your TOTP code in the x-admin-totp header.", { mfaRequired: true }, 401);
             return;
           }
           if (!verifyTotpToken(totpHeader, sub.totpSecret!)) {
             addAuditEntry({ action: "admin_totp_failed", ip, adminId: sub.id, details: `Invalid TOTP for ${sub.name}`, result: "fail" });
             addSecurityEvent({ type: "invalid_admin_totp", ip, userId: sub.id, details: `Wrong TOTP code used by ${sub.name}`, severity: "high" });
-            res.status(401).json({ error: "Invalid TOTP code. Please try again with your authenticator app." });
+            sendUnauthorized(res, "Invalid TOTP code. Please try again with your authenticator app.");
             return;
           }
         }
@@ -659,13 +660,13 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
 
     addAuditEntry({ action: "admin_auth_failed", ip, details: `Invalid admin secret for ${req.method} ${req.url}`, result: "fail" });
     addSecurityEvent({ type: "invalid_admin_secret", ip, details: `Invalid admin secret used for ${req.url}`, severity: "high" });
-    res.status(401).json({ error: "Unauthorized. Invalid admin secret." });
+    sendUnauthorized(res, "Unauthorized. Invalid admin secret.");
     return;
   }
 
   /* No auth provided */
   addAuditEntry({ action: "admin_auth_missing", ip, details: `No admin credentials provided for ${req.method} ${req.url}`, result: "fail" });
-  res.status(401).json({ error: "Unauthorized. Admin authentication required (x-admin-token or x-admin-secret)." });
+  sendUnauthorized(res, "Unauthorized. Admin authentication required (x-admin-token or x-admin-secret).");
 }
 
 export async function sendUserNotification(userId: string, title: string, body: string, type: string, icon: string) {

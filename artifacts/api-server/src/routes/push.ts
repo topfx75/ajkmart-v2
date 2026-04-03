@@ -6,6 +6,7 @@ import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 import { getVapidPublicKey } from "../lib/webpush.js";
 import { z } from "zod/v4";
+import { sendSuccess, sendError, sendValidationError } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -18,13 +19,13 @@ const subscribeSchema = z.object({
 
 router.get("/vapid-key", (_req, res) => {
   const key = getVapidPublicKey();
-  if (!key) { res.status(503).json({ error: "Push notifications not configured" }); return; }
-  res.json({ publicKey: key });
+  if (!key) { sendError(res, "Push notifications not configured", 503); return; }
+  sendSuccess(res, { publicKey: key });
 });
 
 router.post("/subscribe", customerAuth, async (req, res) => {
   const parsed = subscribeSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message ?? "Invalid subscription data"); return; }
   const userId = req.customerId!;
   const { endpoint, p256dh, auth, role } = parsed.data;
 
@@ -33,7 +34,7 @@ router.post("/subscribe", customerAuth, async (req, res) => {
 
   const id = generateId();
   await db.insert(pushSubscriptionsTable).values({ id, userId, role, endpoint, p256dh, authKey: auth });
-  res.json({ success: true, id });
+  sendSuccess(res, { id });
 });
 
 router.delete("/unsubscribe", customerAuth, async (req, res) => {
@@ -45,7 +46,7 @@ router.delete("/unsubscribe", customerAuth, async (req, res) => {
   } else {
     await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.userId, userId));
   }
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 export default router;

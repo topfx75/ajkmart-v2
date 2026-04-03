@@ -8,6 +8,7 @@ import { customerAuth, riderAuth, addSecurityEvent, idorGuard } from "../middlew
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -49,7 +50,7 @@ router.post("/estimate", async (req, res) => {
   const preptimeMin = parseInt(s["order_preptime_min"] ?? "15", 10);
   const fare = calcParcelFare(baseFee, perKgRate, weight);
   const estimatedTime = `${preptimeMin + 30}–${preptimeMin + 60} min`;
-  res.json({ fare, estimatedTime, parcelType, baseFee, perKgRate, weightKg: weight ?? 0 });
+  sendSuccess(res, { fare, estimatedTime, parcelType, baseFee, perKgRate, weightKg: weight ?? 0 });
 });
 
 router.get("/", customerAuth, async (req, res) => {
@@ -59,7 +60,7 @@ router.get("/", customerAuth, async (req, res) => {
     .from(parcelBookingsTable)
     .where(eq(parcelBookingsTable.userId, userId))
     .orderBy(parcelBookingsTable.createdAt);
-  res.json({ bookings: bookings.map(mapBooking).reverse(), total: bookings.length });
+  sendSuccess(res, { bookings: bookings.map(mapBooking).reverse(), total: bookings.length });
 });
 
 router.get("/:id", customerAuth, async (req, res) => {
@@ -70,11 +71,11 @@ router.get("/:id", customerAuth, async (req, res) => {
     .where(eq(parcelBookingsTable.id, String(req.params["id"])))
     .limit(1);
   if (!booking) {
-    res.status(404).json({ error: "Parcel booking not found" });
+    sendNotFound(res, "Parcel booking not found");
     return;
   }
   if (idorGuard(res, booking.userId, userId)) return;
-  res.json(mapBooking(booking));
+  sendSuccess(res, mapBooking(booking));
 });
 
 router.post("/", customerAuth, async (req, res) => {
@@ -86,7 +87,7 @@ router.post("/", customerAuth, async (req, res) => {
   } = req.body;
 
   if (!senderName || !senderPhone || !pickupAddress || !receiverName || !receiverPhone || !dropAddress || !parcelType || !paymentMethod) {
-    res.status(400).json({ error: "Missing required fields" });
+    sendValidationError(res, "Missing required fields");
     return;
   }
 
@@ -97,14 +98,14 @@ router.post("/", customerAuth, async (req, res) => {
     const mainKey = (s["security_maintenance_key"] ?? "").trim();
     const bypass  = ((req.headers["x-maintenance-key"] as string) ?? "").trim();
     if (!mainKey || bypass !== mainKey) {
-      res.status(503).json({ error: s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!" }); return;
+      sendError(res, s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!", 503); return;
     }
   }
 
   // Feature flag check
   const parcelEnabled = (s["feature_parcel"] ?? "on") === "on";
   if (!parcelEnabled) {
-    res.status(503).json({ error: "Parcel delivery service is currently disabled" }); return;
+    sendError(res, "Parcel delivery service is currently disabled", 503); return;
   }
 
   /* ── Fraud detection (mirrors orders.ts pattern) ── */
@@ -112,10 +113,10 @@ router.post("/", customerAuth, async (req, res) => {
   {
     const [userRecord] = await db.select({ isBanned: usersTable.isBanned, isActive: usersTable.isActive, createdAt: usersTable.createdAt }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (userRecord?.isBanned) {
-      res.status(403).json({ error: "Your account has been suspended." }); return;
+      sendForbidden(res, "Your account has been suspended."); return;
     }
     if (userRecord && !userRecord.isActive) {
-      res.status(403).json({ error: "Your account is inactive. Please contact support." }); return;
+      sendForbidden(res, "Your account is inactive. Please contact support."); return;
     }
 
     if ((s["security_fake_order_detect"] ?? "off") === "on") {
@@ -125,7 +126,7 @@ router.post("/", customerAuth, async (req, res) => {
       const dailyCount = Number(dailyResult?.c ?? 0);
       if (dailyCount >= maxDailyOrders) {
         addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily parcel limit: ${dailyCount}/${maxDailyOrders}`, severity: "medium" });
-        res.status(429).json({ error: `Daily parcel booking limit (${maxDailyOrders}) reached. Please try again tomorrow.` }); return;
+        sendError(res, `Daily parcel booking limit (${maxDailyOrders}) reached. Please try again tomorrow.`, 429); return;
       }
 
       if (dropAddress) {
@@ -135,7 +136,7 @@ router.post("/", customerAuth, async (req, res) => {
         const sameAddrCount = Number(sameAddrOrders[0]?.c ?? 0);
         if (sameAddrCount >= sameAddrLimit) {
           addSecurityEvent({ type: "same_address_limit", ip, userId, details: `Parcel same-address limit hit: ${dropAddress} (${sameAddrCount}/hr)`, severity: "high" });
-          res.status(429).json({ error: "Too many parcel bookings to this address. Please try again later." }); return;
+          sendError(res, "Too many parcel bookings to this address. Please try again later.", 429); return;
         }
       }
     }
@@ -156,15 +157,15 @@ router.post("/", customerAuth, async (req, res) => {
   if (paymentMethod === "cash") {
     const codEnabled = (s["cod_enabled"] ?? "on") === "on";
     if (!codEnabled) {
-      res.status(400).json({ error: "Cash on Delivery is currently not available" }); return;
+      sendValidationError(res, "Cash on Delivery is currently not available"); return;
     }
     const codAllowedForParcel = (s["cod_allowed_parcel"] ?? "on") !== "off";
     if (!codAllowedForParcel) {
-      res.status(400).json({ error: "Cash on Delivery is not available for Parcel orders. Please choose another payment method." }); return;
+      sendValidationError(res, "Cash on Delivery is not available for Parcel orders. Please choose another payment method."); return;
     }
     const codMax = parseFloat(s["cod_max_amount"] ?? "5000");
     if (totalFare > codMax) {
-      res.status(400).json({ error: `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.` }); return;
+      sendValidationError(res, `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.`); return;
     }
     /* ── COD verification threshold — flag high-value cash orders ── */
     const verifyThreshold = parseFloat(s["cod_verification_threshold"] ?? "0");
@@ -177,12 +178,12 @@ router.post("/", customerAuth, async (req, res) => {
   if (paymentMethod === "wallet") {
     const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
     if (!walletEnabled) {
-      res.status(400).json({ error: "Wallet payments are currently disabled" }); return;
+      sendValidationError(res, "Wallet payments are currently disabled"); return;
     }
 
     const [wUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (wUser && (wUser.blockedServices || "").split(",").map(sv => sv.trim()).includes("wallet")) {
-      res.status(403).json({ error: "wallet_frozen", message: "Your wallet has been temporarily frozen. Contact support." }); return;
+      sendForbidden(res, "wallet_frozen", "Your wallet has been temporarily frozen. Contact support."); return;
     }
 
     try {
@@ -224,9 +225,9 @@ router.post("/", customerAuth, async (req, res) => {
         type: "parcel", icon: "cube-outline", link: `/(tabs)/orders`,
       }).catch(() => {});
 
-      res.status(201).json({ ...mapBooking(booking), gstAmount });
+      sendCreated(res, { ...mapBooking(booking), gstAmount });
     } catch (e: unknown) {
-      res.status(400).json({ error: e.message });
+      sendValidationError(res, e.message);
     }
     return;
   }
@@ -249,7 +250,7 @@ router.post("/", customerAuth, async (req, res) => {
     type: "parcel", icon: "cube-outline", link: `/(tabs)/orders`,
   }).catch(() => {});
 
-  res.status(201).json({ ...mapBooking(booking!), gstAmount });
+  sendCreated(res, { ...mapBooking(booking!), gstAmount });
 });
 
 router.patch("/:id/cancel", customerAuth, async (req, res) => {
@@ -262,17 +263,17 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     .where(eq(parcelBookingsTable.id, bookingId))
     .limit(1);
 
-  if (!booking) { res.status(404).json({ error: "Parcel booking not found" }); return; }
+  if (!booking) { sendNotFound(res, "Parcel booking not found"); return; }
   if (idorGuard(res, booking.userId, userId)) return;
   if (!["pending", "accepted"].includes(booking.status)) {
-    res.status(409).json({ error: "Parcel cannot be cancelled at this stage" }); return;
+    sendError(res, "Parcel cannot be cancelled at this stage", 409); return;
   }
 
   const s = await getPlatformSettings();
   const cancelWindowMin = parseFloat(String(s["order_cancel_window_min"] ?? "5"));
   const minutesSincePlaced = (Date.now() - booking.createdAt.getTime()) / 60000;
   if (booking.status === "pending" && minutesSincePlaced > cancelWindowMin) {
-    res.status(409).json({ error: `Cancellation window of ${cancelWindowMin} minutes has passed` }); return;
+    sendError(res, `Cancellation window of ${cancelWindowMin} minutes has passed`, 409); return;
   }
 
   let refundAmount = 0;
@@ -309,8 +310,8 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       });
       return updated;
     }).catch((err: unknown) => {
-      if (err?.httpStatus) { res.status(err.httpStatus).json({ error: err.message }); }
-      else { res.status(500).json({ error: "Cancel failed" }); }
+      if (err?.httpStatus) { sendError(res, err.message, err.httpStatus); }
+      else { sendError(res, "Cancel failed", 500); }
       return undefined;
     });
     if (!cancelledBooking) return;
@@ -322,7 +323,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       type: "parcel", icon: "wallet-outline",
     }).catch(() => {});
     refundAmount = refund;
-    res.json({ ...mapBooking(cancelledBooking), refundAmount });
+    sendSuccess(res, { ...mapBooking(cancelledBooking), refundAmount });
     return;
   }
 
@@ -335,8 +336,8 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     ))
     .returning();
 
-  if (!cancelled) { res.status(409).json({ error: "Parcel cannot be cancelled at this stage" }); return; }
-  res.json({ ...mapBooking(cancelled), refundAmount });
+  if (!cancelled) { sendError(res, "Parcel cannot be cancelled at this stage", 409); return; }
+  sendSuccess(res, { ...mapBooking(cancelled), refundAmount });
 });
 
 router.patch("/:id/status", riderAuth, async (req, res) => {
@@ -346,7 +347,7 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
   /* Whitelist allowed status transitions — prevents arbitrary string injection */
   const allowedStatuses = ["picked_up", "in_transit", "delivered", "cancelled"];
   if (!allowedStatuses.includes(status)) {
-    res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(", ")}` }); return;
+    sendValidationError(res, `Invalid status. Allowed: ${allowedStatuses.join(", ")}`); return;
   }
 
   /* Ownership check: rider must be accepting (parcel unassigned) or already the assigned rider */
@@ -355,12 +356,12 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
     .from(parcelBookingsTable)
     .where(eq(parcelBookingsTable.id, String(req.params["id"])))
     .limit(1);
-  if (!booking) { res.status(404).json({ error: "Parcel booking not found" }); return; }
+  if (!booking) { sendNotFound(res, "Parcel booking not found"); return; }
 
   const isUnassigned  = !booking.riderId;
   const isAssignedToMe = booking.riderId === riderId;
   if (!isUnassigned && !isAssignedToMe) {
-    res.status(403).json({ error: "This parcel is assigned to another rider" }); return;
+    sendForbidden(res, "This parcel is assigned to another rider"); return;
   }
 
   if (status === "picked_up" && isUnassigned) {
@@ -370,10 +371,10 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
       .where(and(eq(parcelBookingsTable.id, String(req.params["id"])), sql`rider_id IS NULL`))
       .returning();
     if (!updated) {
-      res.status(409).json({ error: "This parcel has already been accepted by another rider" });
+      sendError(res, "This parcel has already been accepted by another rider", 409);
       return;
     }
-    res.json(mapBooking(updated));
+    sendSuccess(res, mapBooking(updated));
   } else {
     const [updated] = await db
       .update(parcelBookingsTable)
@@ -381,10 +382,10 @@ router.patch("/:id/status", riderAuth, async (req, res) => {
       .where(eq(parcelBookingsTable.id, String(req.params["id"])))
       .returning();
     if (!updated) {
-      res.status(404).json({ error: "Parcel booking not found" });
+      sendNotFound(res, "Parcel booking not found");
       return;
     }
-    res.json(mapBooking(updated));
+    sendSuccess(res, mapBooking(updated));
   }
 });
 

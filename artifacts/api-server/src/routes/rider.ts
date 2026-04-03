@@ -11,6 +11,7 @@ import { sendPushToUser } from "../lib/webpush.js";
 import { z } from "zod";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
+import { sendSuccess, sendCreated, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendUnauthorized, sendValidationError, sendTooManyRequests } from "../lib/response.js";
 
 function normalizeVehicleType(raw: string | null | undefined): string {
   const v = (raw ?? "").trim().toLowerCase();
@@ -133,28 +134,28 @@ async function riderAuth(req: Request, res: Response, next: NextFunction) {
   /* Include machine-readable `code` in all auth-denial responses so the frontend
      api.ts can reliably detect auth vs. business-rule 403s and trigger logout
      only for genuine auth failures, not policy blocks (e.g. "withdrawals disabled"). */
-  if (!raw) { res.status(401).json({ code: "AUTH_REQUIRED", error: "Authentication required" }); return; }
+  if (!raw) { sendErrorWithData(res, "Authentication required", { code: "AUTH_REQUIRED" }, 401); return; }
 
   const payload = verifyUserJwt(raw);
-  if (!payload) { res.status(401).json({ code: "TOKEN_INVALID", error: "Invalid or expired session. Please log in again." }); return; }
+  if (!payload) { sendErrorWithData(res, "Invalid or expired session. Please log in again.", { code: "TOKEN_INVALID" }, 401); return; }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-  if (!user) { res.status(401).json({ code: "AUTH_REQUIRED", error: "User not found" }); return; }
-  if (user.isBanned) { res.status(401).json({ code: "ACCOUNT_BANNED", error: "Your account has been permanently banned. Please contact support." }); return; }
+  if (!user) { sendErrorWithData(res, "User not found", { code: "AUTH_REQUIRED" }, 401); return; }
+  if (user.isBanned) { sendErrorWithData(res, "Your account has been permanently banned. Please contact support.", { code: "ACCOUNT_BANNED" }, 401); return; }
   if (!user.isActive) {
-    res.status(403).json({ code: "AUTH_REQUIRED", error: "Account is inactive" }); return;
+    sendErrorWithData(res, "Account is inactive", { code: "AUTH_REQUIRED" }, 403); return;
   }
 
   /* Token version check — invalidates all outstanding JWTs after logout / password change / ban */
   if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
-    res.status(401).json({ code: "TOKEN_EXPIRED", error: "Session revoked. Please log in again." }); return;
+    sendErrorWithData(res, "Session revoked. Please log in again.", { code: "TOKEN_EXPIRED" }, 401); return;
   }
 
   /* Enforce rider role — check BOTH the JWT claim and the DB roles field */
   const dbRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
   const jwtRoles = (payload.roles || payload.role || "").split(",").map((r: string) => r.trim());
   if (!dbRoles.includes("rider") || !jwtRoles.includes("rider")) {
-    res.status(403).json({ code: "ROLE_DENIED", error: "Access denied. This portal is for riders only." }); return;
+    sendErrorWithData(res, "Access denied. This portal is for riders only.", { code: "ROLE_DENIED" }, 403); return;
   }
 
   req.riderId = user.id;
@@ -201,7 +202,7 @@ router.get("/me", async (req, res) => {
   const [ratingRow] = await db.select({ avg: avg(reviewsTable.rating) }).from(reviewsTable).where(eq(reviewsTable.riderId, riderId));
   const avgRating = ratingRow?.avg ? parseFloat(parseFloat(String(ratingRow.avg)).toFixed(1)) : null;
 
-  res.json({
+  sendSuccess(res, {
     id: user.id, phone: user.phone, name: user.name, email: user.email,
     username: user.username,
     role: user.role, roles: user.roles,
@@ -217,7 +218,6 @@ router.get("/me", async (req, res) => {
     accountLevel: user.accountLevel, kycStatus: user.kycStatus,
     lastLoginAt: user.lastLoginAt, createdAt: user.createdAt,
     vehiclePhoto: user.vehiclePhoto,
-    /* Document photo URLs parsed from the documents JSON column */
     ...(() => {
       try {
         const docs = JSON.parse(user.documents || "{}");
@@ -237,13 +237,13 @@ router.get("/me", async (req, res) => {
 /* ── PATCH /rider/online — Toggle online status ── */
 router.patch("/online", async (req, res) => {
   const parsed = onlineSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const { isOnline } = parsed.data;
   /* Block pending-approval riders from going online */
   if (isOnline && (riderUser.approvalStatus ?? "pending") !== "approved") {
-    res.status(403).json({ error: "Your account is pending re-verification. You cannot go online until an admin approves your profile." }); return;
+    sendForbidden(res, "Your account is pending re-verification. You cannot go online until an admin approves your profile."); return;
   }
   await db.update(usersTable).set({ isOnline: !!isOnline, updatedAt: new Date() }).where(eq(usersTable.id, riderId));
 
@@ -303,13 +303,13 @@ router.patch("/online", async (req, res) => {
     });
   } catch { /* non-critical */ }
 
-  res.json({ success: true, isOnline: !!isOnline });
+  sendSuccess(res, { isOnline: !!isOnline });
 });
 
 /* ── PATCH /rider/profile — Update profile ── */
 router.patch("/profile", async (req, res) => {
   const parsed = profileSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
   const riderId = req.riderId!;
   const currentUser = req.riderUser!;
   const { name, email, cnic, address, city, emergencyContact, vehicleType, vehiclePlate, vehicleRegNo, drivingLicense, bankName, bankAccount, bankAccountTitle, avatar, cnicDocUrl, licenseDocUrl, regDocUrl, vehiclePhoto } = parsed.data;
@@ -329,7 +329,7 @@ router.patch("/profile", async (req, res) => {
   if (bankAccountTitle !== undefined) updates.bankAccountTitle = bankAccountTitle;
   if (avatar           !== undefined) {
     if (avatar && !avatar.startsWith("/api/uploads/")) {
-      res.status(400).json({ error: "Avatar must be an uploaded file URL" });
+      sendValidationError(res, "Avatar must be an uploaded file URL");
       return;
     }
     updates.avatar = avatar;
@@ -338,13 +338,13 @@ router.patch("/profile", async (req, res) => {
      regDocUrl) to avoid schema migration. vehiclePhoto uses its dedicated DB column. */
   if (cnicDocUrl !== undefined || licenseDocUrl !== undefined || regDocUrl !== undefined) {
     if (cnicDocUrl && !cnicDocUrl.startsWith("/api/uploads/")) {
-      res.status(400).json({ error: "cnicDocUrl must be an uploaded file URL" }); return;
+      sendValidationError(res, "cnicDocUrl must be an uploaded file URL"); return;
     }
     if (licenseDocUrl && !licenseDocUrl.startsWith("/api/uploads/")) {
-      res.status(400).json({ error: "licenseDocUrl must be an uploaded file URL" }); return;
+      sendValidationError(res, "licenseDocUrl must be an uploaded file URL"); return;
     }
     if (regDocUrl && !regDocUrl.startsWith("/api/uploads/")) {
-      res.status(400).json({ error: "regDocUrl must be an uploaded file URL" }); return;
+      sendValidationError(res, "regDocUrl must be an uploaded file URL"); return;
     }
     let existingDocs: Record<string, string> = {};
     try { existingDocs = JSON.parse(currentUser.documents || "{}"); } catch { /* ignore */ }
@@ -356,7 +356,7 @@ router.patch("/profile", async (req, res) => {
   /* vehiclePhoto uses the dedicated `vehicle_photo` column in the users table */
   if (vehiclePhoto !== undefined) {
     if (vehiclePhoto && !vehiclePhoto.startsWith("/api/uploads/")) {
-      res.status(400).json({ error: "vehiclePhoto must be an uploaded file URL" }); return;
+      sendValidationError(res, "vehiclePhoto must be an uploaded file URL"); return;
     }
     updates.vehiclePhoto = vehiclePhoto;
   }
@@ -376,9 +376,9 @@ router.patch("/profile", async (req, res) => {
   } catch (dbErr: unknown) {
     const msg = dbErr?.message || "";
     if (msg.includes("unique") || msg.includes("duplicate")) {
-      res.status(409).json({ error: "A profile field conflicts with an existing record (e.g. duplicate CNIC)" });
+      sendError(res, "A profile field conflicts with an existing record (e.g. duplicate CNIC)", 409);
     } else {
-      res.status(500).json({ error: "Failed to update profile. Please try again." });
+      sendError(res, "Failed to update profile. Please try again.", 500);
     }
     return;
   }
@@ -393,7 +393,7 @@ router.patch("/profile", async (req, res) => {
     }).catch(() => {});
   }
 
-  res.json({
+  sendSuccess(res, {
     id: user.id, name: user.name, phone: user.phone, email: user.email,
     username: user.username,
     avatar: user.avatar,
@@ -407,7 +407,6 @@ router.patch("/profile", async (req, res) => {
     accountLevel: user.accountLevel, kycStatus: user.kycStatus,
     createdAt: user.createdAt, lastLoginAt: user.lastLoginAt,
     vehiclePhoto: user.vehiclePhoto,
-    /* Document photo URLs parsed from the documents JSON column */
     ...(() => {
       try {
         const docs = JSON.parse(user.documents || "{}");
@@ -492,7 +491,7 @@ router.get("/requests", async (req, res) => {
     })
     .sort((a, b) => (a.riderDistanceKm ?? 999) - (b.riderDistanceKm ?? 999));
 
-  res.json({
+  sendSuccess(res, {
     orders: orders.map(o => ({ ...o, total: safeNum(o.total) })),
     rides: filteredRides,
   });
@@ -543,23 +542,23 @@ router.get("/active", async (req, res) => {
     };
   }
 
-  res.json({ order: enrichedOrder, ride: enrichedRide });
+  sendSuccess(res, { order: enrichedOrder, ride: enrichedRide });
 });
 
 /* ── POST /rider/orders/:id/accept — Accept an order ──
    Uses WHERE riderId IS NULL to prevent two riders accepting the same order (race condition) */
 router.post("/orders/:id/accept", async (req, res) => {
   const paramParsed = idParamSchema.safeParse(req.params);
-  if (!paramParsed.success) { res.status(400).json({ error: "Invalid order ID" }); return; }
+  if (!paramParsed.success) { sendValidationError(res, "Invalid order ID"); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const orderId   = paramParsed.data.id;
 
   if (riderUser.isRestricted) {
-    res.status(403).json({ error: "Your account is restricted. You cannot accept new orders. Contact support for assistance." }); return;
+    sendForbidden(res, "Your account is restricted. You cannot accept new orders. Contact support for assistance."); return;
   }
   if ((riderUser.approvalStatus ?? "pending") !== "approved") {
-    res.status(403).json({ error: "Your account is pending re-verification. You cannot accept orders until an admin approves your profile." }); return;
+    sendForbidden(res, "Your account is pending re-verification. You cannot accept orders until an admin approves your profile."); return;
   }
 
   const s = await getPlatformSettings();
@@ -572,7 +571,7 @@ router.post("/orders/:id/accept", async (req, res) => {
   const cashAllowed = (s["rider_cash_allowed"] ?? "on") === "on";
   if (!cashAllowed) {
     if (targetOrder?.paymentMethod === "cash" || targetOrder?.paymentMethod === "cod") {
-      res.status(403).json({ error: "Cash-on-delivery orders are currently not available for riders." }); return;
+      sendForbidden(res, "Cash-on-delivery orders are currently not available for riders."); return;
     }
   }
 
@@ -585,12 +584,11 @@ router.post("/orders/:id/accept", async (req, res) => {
         .from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
       const currentBal = safeNum(riderRow?.walletBalance);
       if (currentBal < minBalance) {
-        res.status(403).json({
-          error: `Minimum wallet balance required for cash orders is Rs. ${minBalance}. Your balance: Rs. ${currentBal.toFixed(0)}. Please top up your wallet to accept cash orders.`,
+        sendErrorWithData(res, `Minimum wallet balance required for cash orders is Rs. ${minBalance}. Your balance: Rs. ${currentBal.toFixed(0)}. Please top up your wallet to accept cash orders.`, {
           code: "BELOW_MIN_BALANCE",
           required: minBalance,
           current: currentBal,
-        }); return;
+        }, 403); return;
       }
     }
   }
@@ -603,7 +601,7 @@ router.post("/orders/:id/accept", async (req, res) => {
   ]);
   const activeCount = (activeOrders[0]?.c ?? 0) + (activeRides[0]?.c ?? 0);
   if (activeCount >= maxDeliveries) {
-    res.status(429).json({ error: `Maximum ${maxDeliveries} active deliveries allowed. Complete a current delivery first.` }); return;
+    sendError(res, `Maximum ${maxDeliveries} active deliveries allowed. Complete a current delivery first.`, 429); return;
   }
 
   // Atomic accept: only succeeds if riderId is still NULL in DB
@@ -616,8 +614,8 @@ router.post("/orders/:id/accept", async (req, res) => {
   if (!updated) {
     // Either not found OR already taken by another rider
     const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-    if (!existing) { res.status(404).json({ error: "Order not found" }); return; }
-    res.status(409).json({ error: "Order already taken by another rider" }); return;
+    if (!existing) { sendNotFound(res, "Order not found"); return; }
+    sendError(res, "Order already taken by another rider", 409); return;
   }
 
   const orderAcceptLang = await getUserLanguage(updated.userId);
@@ -628,7 +626,7 @@ router.post("/orders/:id/accept", async (req, res) => {
     type: "order", icon: "bicycle-outline",
   }).catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
 
-  res.json({ ...updated, total: safeNum(updated.total) });
+  sendSuccess(res, { ...updated, total: safeNum(updated.total) });
 });
 
 /* ── POST /rider/orders/:id/reject — Rider explicitly rejects/skips an order ──
@@ -636,14 +634,14 @@ router.post("/orders/:id/accept", async (req, res) => {
    for future broadcasts of the same order. No penalty is applied. */
 router.post("/orders/:id/reject", async (req, res) => {
   const paramParsed = idParamSchema.safeParse(req.params);
-  if (!paramParsed.success) { res.status(400).json({ error: "Invalid order ID" }); return; }
+  if (!paramParsed.success) { sendValidationError(res, "Invalid order ID"); return; }
   const riderId = req.riderId!;
   const orderId = paramParsed.data.id;
   const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 200) : "skipped";
 
   const [order] = await db.select({ id: ordersTable.id, status: ordersTable.status })
     .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  if (!order) { sendNotFound(res, "Order not found"); return; }
 
   await db.insert(notificationsTable).values({
     id: generateId(), userId: riderId,
@@ -652,7 +650,7 @@ router.post("/orders/:id/reject", async (req, res) => {
     type: "system", icon: "close-circle-outline",
   }).catch(() => {});
 
-  res.json({ success: true, orderId, reason });
+  sendSuccess(res, { orderId, reason });
 });
 
 /* ── Cancellation penalty helper ──
@@ -785,7 +783,7 @@ router.get("/cancel-stats", async (req, res) => {
   const monthTrips = (monthDeliveredRow[0]?.c ?? 0) + (monthCompletedRow[0]?.c ?? 0) + monthCount;
   const cancelRate = monthTrips > 0 ? parseFloat(((monthCount / monthTrips) * 100).toFixed(1)) : null;
 
-  res.json({
+  sendSuccess(res, {
     today:        { cancels: todayCount  },
     week:         { cancels: weekCount   },
     month:        { cancels: monthCount  },
@@ -801,16 +799,16 @@ router.get("/cancel-stats", async (req, res) => {
 /* ── PATCH /rider/orders/:id/status — Update order status (delivered) ── */
 router.patch("/orders/:id/status", async (req, res) => {
   const parsed = orderStatusSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid status" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid status"); return; }
   const riderId = req.riderId!;
   const { status, proofPhoto } = parsed.data;
 
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId))).limit(1);
-  if (!order) { res.status(404).json({ error: "Order not found or not yours" }); return; }
+  if (!order) { sendNotFound(res, "Order not found or not yours"); return; }
 
   /* Proof photo is mandatory for delivery confirmation — prevents fraudulent delivery claims */
   if (status === "delivered" && !proofPhoto) {
-    res.status(400).json({ error: "Proof of delivery photo is required to mark an order as delivered. Please upload a photo." }); return;
+    sendValidationError(res, "Proof of delivery photo is required to mark an order as delivered. Please upload a photo."); return;
   }
 
   /* ── Rider Cancel: clear riderId + reset to preparing so another rider can pick it up ── */
@@ -827,7 +825,7 @@ router.patch("/orders/:id/status", async (req, res) => {
       title: t("notifRiderChange", riderChangeLang) + " 🔄", body: t("notifRiderChangeBody", riderChangeLang),
       type: "order", icon: "refresh-outline",
     }).catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
-    res.json({
+    sendSuccess(res, {
       ...cancelled, total: safeNum(cancelled?.total || 0), status: "cancelled_by_rider",
       cancelPenalty: penalty,
     }); return;
@@ -842,7 +840,7 @@ router.patch("/orders/:id/status", async (req, res) => {
   };
   const allowedNext = ORDER_RIDER_TRANSITIONS[order.status] || [];
   if (!allowedNext.includes(status)) {
-    res.status(400).json({ error: `Cannot change order from "${order.status}" to "${status}". Allowed: ${allowedNext.join(", ") || "none"}.` }); return;
+    sendValidationError(res, `Cannot change order from "${order.status}" to "${status}". Allowed: ${allowedNext.join(", ") || "none"}.`); return;
   }
 
   const updateData: Record<string, any> = { status, updatedAt: new Date() };
@@ -988,27 +986,27 @@ router.patch("/orders/:id/status", async (req, res) => {
     }
   } else {
     const [row] = await db.update(ordersTable).set(updateData).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId))).returning();
-    if (!row) { res.status(404).json({ error: "Order not found or not yours" }); return; }
+    if (!row) { sendNotFound(res, "Order not found or not yours"); return; }
     updated = row;
   }
 
-  res.json({ ...updated, total: safeNum(updated.total) });
+  sendSuccess(res, { ...updated, total: safeNum(updated.total) });
 });
 
 /* ── POST /rider/rides/:id/accept — Accept a ride ──
    Uses WHERE riderId IS NULL to prevent two riders accepting same ride (race condition) */
 router.post("/rides/:id/accept", async (req, res) => {
   const paramParsed = idParamSchema.safeParse(req.params);
-  if (!paramParsed.success) { res.status(400).json({ error: "Invalid ride ID" }); return; }
+  if (!paramParsed.success) { sendValidationError(res, "Invalid ride ID"); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const rideId    = paramParsed.data.id;
 
   if (riderUser.isRestricted) {
-    res.status(403).json({ error: "Your account is restricted. You cannot accept new rides. Contact support for assistance." }); return;
+    sendForbidden(res, "Your account is restricted. You cannot accept new rides. Contact support for assistance."); return;
   }
   if ((riderUser.approvalStatus ?? "pending") !== "approved") {
-    res.status(403).json({ error: "Your account is pending re-verification. You cannot accept rides until an admin approves your profile." }); return;
+    sendForbidden(res, "Your account is pending re-verification. You cannot accept rides until an admin approves your profile."); return;
   }
 
   // Check max simultaneous deliveries limit
@@ -1020,12 +1018,12 @@ router.post("/rides/:id/accept", async (req, res) => {
   ]);
   const activeCount = (activeOrders[0]?.c ?? 0) + (activeRides[0]?.c ?? 0);
   if (activeCount >= maxDeliveries) {
-    res.status(429).json({ error: `Maximum ${maxDeliveries} active deliveries allowed. Complete a current delivery first.` }); return;
+    sendError(res, `Maximum ${maxDeliveries} active deliveries allowed. Complete a current delivery first.`, 429); return;
   }
 
   /* Check if this is a bargaining ride — load it first */
   const [targetRide] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!targetRide) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!targetRide) { sendNotFound(res, "Ride not found"); return; }
 
   /* ── Minimum wallet balance gate for cash rides ── */
   if (targetRide.paymentMethod === "cash") {
@@ -1035,12 +1033,11 @@ router.post("/rides/:id/accept", async (req, res) => {
         .from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
       const currentBal = safeNum(riderRow?.walletBalance);
       if (currentBal < minBalance) {
-        res.status(403).json({
-          error: `Minimum wallet balance required for cash rides is Rs. ${minBalance}. Your balance: Rs. ${currentBal.toFixed(0)}. Please top up your wallet first.`,
+        sendErrorWithData(res, `Minimum wallet balance required for cash rides is Rs. ${minBalance}. Your balance: Rs. ${currentBal.toFixed(0)}. Please top up your wallet first.`, {
           code: "BELOW_MIN_BALANCE",
           required: minBalance,
           current: currentBal,
-        }); return;
+        }, 403); return;
       }
     }
   }
@@ -1058,9 +1055,9 @@ router.post("/rides/:id/accept", async (req, res) => {
     const fareAmt = safeNum(agreedFare);
     const [customer] = await db.select({ walletBalance: usersTable.walletBalance })
       .from(usersTable).where(eq(usersTable.id, targetRide.userId)).limit(1);
-    if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+    if (!customer) { sendNotFound(res, "Customer not found"); return; }
     if (safeNum(customer.walletBalance) < fareAmt) {
-      res.status(400).json({ error: "Customer has insufficient wallet balance" }); return;
+      sendValidationError(res, "Customer has insufficient wallet balance"); return;
     }
   }
 
@@ -1113,14 +1110,14 @@ router.post("/rides/:id/accept", async (req, res) => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "";
     if (msg.includes("Insufficient wallet balance")) {
-      res.status(402).json({ error: msg, code: "INSUFFICIENT_WALLET" }); return;
+      sendErrorWithData(res, msg, { code: "INSUFFICIENT_WALLET" }, 402); return;
     }
     logger.error("[rider] ride accept transaction failed:", msg);
-    res.status(500).json({ error: "Failed to accept ride. Please try again." }); return;
+    sendError(res, "Failed to accept ride. Please try again.", 500); return;
   }
 
   if (!updated) {
-    res.status(409).json({ error: "Ride already taken by another rider" }); return;
+    sendError(res, "Ride already taken by another rider", 409); return;
   }
 
   const rideAssignLang = await getUserLanguage(updated.userId);
@@ -1139,7 +1136,7 @@ router.post("/rides/:id/accept", async (req, res) => {
   emitRideOtp(updated.userId, updated.id, tripOtp);
 
   emitRideDispatchUpdate({ rideId: updated.id, action: "accepted", status: "accepted" });
-  res.json({ ...updated, fare: safeNum(updated.fare), distance: safeNum(updated.distance), tripOtp });
+  sendSuccess(res, { ...updated, fare: safeNum(updated.fare), distance: safeNum(updated.distance), tripOtp });
 });
 
 /* ── POST /rider/rides/:id/verify-otp — Verify customer OTP before starting trip ── */
@@ -1149,46 +1146,46 @@ router.post("/rides/:id/verify-otp", async (req, res) => {
   const { otp } = req.body ?? {};
 
   if (!otp || typeof otp !== "string") {
-    res.status(400).json({ error: "OTP is required" }); return;
+    sendValidationError(res, "OTP is required"); return;
   }
 
   const [ride] = await db.select().from(ridesTable)
     .where(and(eq(ridesTable.id, rideId), eq(ridesTable.riderId, riderId)))
     .limit(1);
 
-  if (!ride) { res.status(404).json({ error: "Ride not found or not yours" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found or not yours"); return; }
   if (ride.status !== "arrived") {
-    res.status(400).json({ error: "OTP can only be verified when you have marked Arrived" }); return;
+    sendValidationError(res, "OTP can only be verified when you have marked Arrived"); return;
   }
   if (ride.otpVerified) {
-    res.json({ success: true, message: "OTP already verified" }); return;
+    sendSuccess(res, undefined, "OTP already verified"); return;
   }
   if (!ride.tripOtp) {
-    res.status(400).json({ error: "No OTP found for this ride" }); return;
+    sendValidationError(res, "No OTP found for this ride"); return;
   }
   if (ride.tripOtp.trim() !== otp.trim()) {
-    res.status(400).json({ error: "Incorrect OTP. Please check with your customer.", code: "OTP_MISMATCH" }); return;
+    sendErrorWithData(res, "Incorrect OTP. Please check with your customer.", { code: "OTP_MISMATCH" }, 400); return;
   }
 
   await db.update(ridesTable).set({ otpVerified: true, updatedAt: new Date() }).where(eq(ridesTable.id, rideId));
   emitRideDispatchUpdate({ rideId, action: "otp-verified", status: ride.status });
-  res.json({ success: true, message: "OTP verified. You may now start the trip." });
+  sendSuccess(res, undefined, "OTP verified. You may now start the trip.");
 });
 
 /* ── PATCH /rider/rides/:id/status — Update ride status (completed/cancelled) ── */
 router.patch("/rides/:id/status", async (req, res) => {
   const parsed = rideStatusSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid status" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid status"); return; }
   const riderId = req.riderId!;
   const { status, lat, lng } = parsed.data;
 
   const [ride] = await db.select().from(ridesTable).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found or not yours" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found or not yours"); return; }
 
   /* ── State Machine: enforce valid transitions ── */
   const allowed = RIDE_STATUS_TRANSITIONS[ride.status];
   if (!allowed || !allowed.includes(status)) {
-    res.status(400).json({ error: `Cannot transition from "${ride.status}" to "${status}". Allowed: ${(allowed || []).join(", ") || "none"}` }); return;
+    sendValidationError(res, `Cannot transition from "${ride.status}" to "${status}". Allowed: ${(allowed || []).join(", ") || "none"}`); return;
   }
 
   /* ── Proximity check: "arrived" requires rider to be near pickup ── */
@@ -1209,21 +1206,18 @@ router.patch("/rides/:id/status", async (req, res) => {
     }
 
     if (riderLat == null || riderLng == null) {
-      res.status(400).json({ error: "Unable to verify your location. Please enable GPS and try again." }); return;
+      sendValidationError(res, "Unable to verify your location. Please enable GPS and try again."); return;
     }
 
     const distKm = calcDistance(riderLat, riderLng, parseFloat(ride.pickupLat), parseFloat(ride.pickupLng));
     if (distKm * 1000 > proximityM) {
-      res.status(400).json({ error: `You must be within ${proximityM}m of the pickup location to mark arrived. Current distance: ${(distKm * 1000).toFixed(0)}m` }); return;
+      sendValidationError(res, `You must be within ${proximityM}m of the pickup location to mark arrived. Current distance: ${(distKm * 1000).toFixed(0)}m`); return;
     }
   }
 
   /* ── OTP gate: in_transit requires OTP verification ── */
   if (status === "in_transit" && !ride.otpVerified) {
-    res.status(400).json({
-      error: "Customer OTP not verified. Ask the customer for the 4-digit code, then tap 'Verify OTP'.",
-      code: "OTP_REQUIRED",
-    });
+    sendErrorWithData(res, "Customer OTP not verified. Ask the customer for the 4-digit code, then tap 'Verify OTP'.", { code: "OTP_REQUIRED" }, 400);
     return;
   }
 
@@ -1342,7 +1336,7 @@ router.patch("/rides/:id/status", async (req, res) => {
       .set({ status, updatedAt: now, ...timestampFields })
       .where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId)))
       .returning();
-    if (!row) { res.status(404).json({ error: "Ride not found or not yours" }); return; }
+    if (!row) { sendNotFound(res, "Ride not found or not yours"); return; }
     updated = row;
     /* Web Push: rider arrived at pickup */
     if (status === "arrived") {
@@ -1356,22 +1350,22 @@ router.patch("/rides/:id/status", async (req, res) => {
   }
 
   emitRideDispatchUpdate({ rideId: updated.id, action: "status-change", status });
-  res.json({ ...updated, fare: safeNum(updated.fare), distance: safeNum(updated.distance) });
+  sendSuccess(res, { ...updated, fare: safeNum(updated.fare), distance: safeNum(updated.distance) });
 });
 
 /* ── POST /rider/rides/:id/counter — Rider submits a bid on a bargaining ride (InDrive multi-bid) ── */
 router.post("/rides/:id/counter", async (req, res) => {
   const parsed = counterSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "counterFare required" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "counterFare required"); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const rideId    = req.params["id"]!;
   const { counterFare, note } = parsed.data;
 
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
   if (ride.status !== "bargaining") {
-    res.status(400).json({ error: "This ride is not in bargaining state" }); return;
+    sendValidationError(res, "This ride is not in bargaining state"); return;
   }
 
   const parsedCounter = safeNum(counterFare);
@@ -1379,10 +1373,10 @@ router.post("/rides/:id/counter", async (req, res) => {
   const offeredAmt    = safeNum(ride.offeredFare ?? 0);
 
   if (parsedCounter > platformFare) {
-    res.status(400).json({ error: `Counter offer cannot exceed platform fare (Rs. ${platformFare.toFixed(0)})` }); return;
+    sendValidationError(res, `Counter offer cannot exceed platform fare (Rs. ${platformFare.toFixed(0)})`); return;
   }
   if (parsedCounter <= offeredAmt) {
-    res.status(400).json({ error: `Counter offer must be higher than customer's offer (Rs. ${offeredAmt.toFixed(0)})` }); return;
+    sendValidationError(res, `Counter offer must be higher than customer's offer (Rs. ${offeredAmt.toFixed(0)})`); return;
   }
 
   const MAX_BIDS_PER_RIDER_PER_RIDE = 3;
@@ -1440,7 +1434,7 @@ router.post("/rides/:id/counter", async (req, res) => {
   } catch (e: unknown) {
     const err = e as { statusCode?: number; message?: string };
     const status = err.statusCode ?? 400;
-    res.status(status).json({ error: err.message ?? "Bid failed" });
+    sendError(res, err.message ?? "Bid failed", status);
     return;
   }
 
@@ -1455,7 +1449,7 @@ router.post("/rides/:id/counter", async (req, res) => {
   }
 
   emitRideDispatchUpdate({ rideId, action: "bid", status: "bargaining" });
-  res.json({ success: true, bid: { ...bid, fare: safeNum(bid!.fare) } });
+  sendSuccess(res, { bid: { ...bid, fare: safeNum(bid!.fare) } });
 });
 
 /* ── POST /rider/rides/:id/reject-offer — Rider dismisses a bargaining ride (local dismiss, no DB lock) ── */
@@ -1470,7 +1464,7 @@ router.post("/rides/:id/reject-offer", async (req, res) => {
     .set({ status: "rejected", updatedAt: new Date() })
     .where(and(eq(rideBidsTable.rideId, rideId), eq(rideBidsTable.riderId, riderId), eq(rideBidsTable.status, "pending")));
 
-  res.json({ success: true, message: "Ride dismissed" });
+  sendSuccess(res, undefined, "Ride dismissed");
 });
 
 /* ── GET /rider/history — Delivery history ── */
@@ -1498,7 +1492,7 @@ router.get("/history", async (req, res) => {
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
    .slice(offsetParam, offsetParam + limitParam);
 
-  res.json({ history: combined });
+  sendSuccess(res, { history: combined });
 });
 
 /* ── GET /rider/reviews — Reviews received by this rider (excludes hidden/deleted) ── */
@@ -1623,7 +1617,7 @@ router.get("/reviews", async (req, res) => {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, pageLimit);
 
-  res.json({ reviews, avgRating, total, starBreakdown });
+  sendSuccess(res, { reviews, avgRating, total, starBreakdown });
 });
 
 /* ── GET /rider/earnings — Earnings summary ── */
@@ -1660,7 +1654,7 @@ router.get("/earnings", async (req, res) => {
   const weekTotal  = (safeNum(weekOrders[0]?.s)  + safeNum(weekRides[0]?.s))  * riderKeepPct + safeNum(weekBonus[0]?.s);
   const monthTotal = (safeNum(monthOrders[0]?.s) + safeNum(monthRides[0]?.s)) * riderKeepPct + safeNum(monthBonus[0]?.s);
 
-  res.json({
+  sendSuccess(res, {
     today:  { earnings: parseFloat(todayTotal.toFixed(2)), deliveries: (todayOrders[0]?.c ?? 0) + (todayRides[0]?.c ?? 0) },
     week:   { earnings: parseFloat(weekTotal.toFixed(2)),  deliveries: (weekOrders[0]?.c  ?? 0) + (weekRides[0]?.c  ?? 0) },
     month:  { earnings: parseFloat(monthTotal.toFixed(2)), deliveries: (monthOrders[0]?.c ?? 0) + (monthRides[0]?.c ?? 0) },
@@ -1676,7 +1670,7 @@ router.get("/wallet/transactions", async (req, res) => {
     .where(eq(walletTransactionsTable.userId, riderId))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(limit);
-  res.json({
+  sendSuccess(res, {
     balance: safeNum(user.walletBalance),
     transactions: txns.map(t => ({ ...t, amount: safeNum(t.amount) })),
   });
@@ -1685,7 +1679,7 @@ router.get("/wallet/transactions", async (req, res) => {
 /* ── POST /rider/wallet/withdraw — Atomic withdrawal (prevents race condition) ── */
 router.post("/wallet/withdraw", async (req, res) => {
   const parsed = withdrawSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
   const riderId = req.riderId!;
   const { amount, accountTitle, accountNumber, bankName, paymentMethod, note } = parsed.data;
   const amt = amount;
@@ -1695,12 +1689,12 @@ router.post("/wallet/withdraw", async (req, res) => {
   const minPayout = parseFloat(s["rider_min_payout"] ?? "500");
   const maxPayout = parseFloat(s["rider_max_payout"] ?? "50000");
 
-  if (!withdrawalEnabled) { res.status(403).json({ error: "Withdrawals are currently paused by admin. Please try again later." }); return; }
-  if (!amt || amt <= 0)  { res.status(400).json({ error: "Valid amount required" }); return; }
-  if (amt < minPayout)   { res.status(400).json({ error: `Minimum withdrawal is Rs. ${minPayout}` }); return; }
-  if (amt > maxPayout)   { res.status(400).json({ error: `Maximum single withdrawal is Rs. ${maxPayout}` }); return; }
+  if (!withdrawalEnabled) { sendForbidden(res, "Withdrawals are currently paused by admin. Please try again later."); return; }
+  if (!amt || amt <= 0)  { sendValidationError(res, "Valid amount required"); return; }
+  if (amt < minPayout)   { sendValidationError(res, `Minimum withdrawal is Rs. ${minPayout}`); return; }
+  if (amt > maxPayout)   { sendValidationError(res, `Maximum single withdrawal is Rs. ${maxPayout}`); return; }
   if (!accountTitle || !accountNumber || !bankName) {
-    res.status(400).json({ error: "Account title, number and bank name are required" }); return;
+    sendValidationError(res, "Account title, number and bank name are required"); return;
   }
 
   try {
@@ -1736,9 +1730,9 @@ router.post("/wallet/withdraw", async (req, res) => {
       type: "wallet", icon: "cash-outline",
     }).catch((err: Error) => { logger.error("[rider] background op failed:", err.message); });
 
-    res.json({ success: true, newBalance: parseFloat(result.toFixed(2)), amount: amt, txId });
+    sendSuccess(res, { newBalance: parseFloat(result.toFixed(2)), amount: amt, txId });
   } catch (e: unknown) {
-    res.status(400).json({ error: e.message });
+    sendValidationError(res, (e as Error).message);
   }
 });
 
@@ -1756,7 +1750,7 @@ router.get("/cod-summary", async (req, res) => {
   ]);
   const totalCollected = safeNum(codAgg[0]?.total);
   const totalVerified  = safeNum(verifiedAgg[0]?.total);
-  res.json({
+  sendSuccess(res, {
     totalCollected,
     totalVerified,
     netOwed:       Math.max(0, totalCollected - totalVerified),
@@ -1820,14 +1814,14 @@ router.get("/notifications", async (req, res) => {
     .where(eq(notificationsTable.userId, riderId))
     .orderBy(desc(notificationsTable.createdAt))
     .limit(30);
-  res.json({ notifications: notifs, unread: notifs.filter((n: Record<string, unknown>) => !n.isRead).length });
+  sendSuccess(res, { notifications: notifs, unread: notifs.filter((n: Record<string, unknown>) => !n.isRead).length });
 });
 
 /* ── PATCH /rider/notifications/read-all ── */
 router.patch("/notifications/read-all", async (req, res) => {
   const riderId = req.riderId!;
   await db.update(notificationsTable).set({ isRead: true }).where(eq(notificationsTable.userId, riderId));
-  res.json({ success: true });
+  sendSuccess(res);
 });
 
 /* ── PATCH /rider/notifications/:id/read ── */
@@ -1836,23 +1830,22 @@ router.patch("/notifications/:id/read", async (req, res) => {
     const riderId = req.riderId!;
     const { id } = req.params;
     if (!id || typeof id !== "string") {
-      return res.status(400).json({ error: "Invalid notification id" });
+      sendValidationError(res, "Invalid notification id"); return;
     }
     await db.update(notificationsTable)
       .set({ isRead: true })
       .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, riderId)));
-    /* Confirm the update with a follow-up SELECT — avoids relying on fragile rowCount/changes fields */
     const [updated] = await db.select({ id: notificationsTable.id, isRead: notificationsTable.isRead })
       .from(notificationsTable)
       .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, riderId)))
       .limit(1);
     if (!updated) {
-      return res.status(404).json({ error: "Notification not found" });
+      sendNotFound(res, "Notification not found"); return;
     }
-    return res.json({ success: true });
+    sendSuccess(res); return;
   } catch (err) {
     logger.error("Failed to mark notification read:", err);
-    return res.status(500).json({ error: "Failed to mark notification as read" });
+    sendError(res, "Failed to mark notification as read", 500); return;
   }
 });
 
@@ -1864,7 +1857,7 @@ router.get("/wallet/min-balance", async (req, res) => {
   const depositEnabled = (s["rider_deposit_enabled"] ?? "on") === "on";
   const [user] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
   const currentBalance = safeNum(user?.walletBalance);
-  res.json({
+  sendSuccess(res, {
     minBalance,
     depositEnabled,
     currentBalance,
@@ -1876,7 +1869,7 @@ router.get("/wallet/min-balance", async (req, res) => {
 /* ── POST /rider/wallet/deposit — Submit a manual deposit request ── */
 router.post("/wallet/deposit", async (req, res) => {
   const parsed = depositSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
   const riderId = req.riderId!;
   const { amount, paymentMethod, accountNumber, transactionId, note } = parsed.data;
   const amt = amount;
@@ -1885,12 +1878,12 @@ router.post("/wallet/deposit", async (req, res) => {
   const depositEnabled = (s["rider_deposit_enabled"] ?? "on") === "on";
 
   if (!depositEnabled) {
-    res.status(403).json({ error: "Deposits are currently disabled by admin. Please contact support." }); return;
+    sendForbidden(res, "Deposits are currently disabled by admin. Please contact support."); return;
   }
-  if (!amt || amt <= 0) { res.status(400).json({ error: "Valid amount required" }); return; }
-  if (amt < 100) { res.status(400).json({ error: "Minimum deposit is Rs. 100" }); return; }
-  if (!paymentMethod) { res.status(400).json({ error: "Payment method required" }); return; }
-  if (!transactionId?.trim()) { res.status(400).json({ error: "Transaction ID is required for verification" }); return; }
+  if (!amt || amt <= 0) { sendValidationError(res, "Valid amount required"); return; }
+  if (amt < 100) { sendValidationError(res, "Minimum deposit is Rs. 100"); return; }
+  if (!paymentMethod) { sendValidationError(res, "Payment method required"); return; }
+  if (!transactionId?.trim()) { sendValidationError(res, "Transaction ID is required for verification"); return; }
 
   /* Build explicit allowlist of currently-enabled payment methods */
   const PAYMENT_METHOD_SETTING: Record<string, string> = {
@@ -1901,7 +1894,7 @@ router.post("/wallet/deposit", async (req, res) => {
     .map(([key]) => key);
   const methodKey = paymentMethod.toLowerCase().replace(/\s+/g, "");
   if (enabledMethods.length > 0 && !enabledMethods.includes(methodKey)) {
-    res.status(400).json({ error: `Payment method '${paymentMethod}' is not enabled. Available: ${enabledMethods.join(", ")}.` }); return;
+    sendValidationError(res, `Payment method '${paymentMethod}' is not enabled. Available: ${enabledMethods.join(", ")}.`); return;
   }
 
   const txId = generateId();
@@ -1921,7 +1914,7 @@ router.post("/wallet/deposit", async (req, res) => {
     type: "wallet", icon: "wallet-outline",
   }).catch(e => logger.error("deposit notif insert failed:", e));
 
-  res.json({ success: true, txId, amount: amt });
+  sendSuccess(res, { txId, amount: amt });
 });
 
 /* Per-rider in-memory rate limiter for GPS location endpoint: max 1 request per 5 seconds */
@@ -1931,14 +1924,14 @@ const LOCATION_RATE_INTERVAL_MS = 5_000;
 /* ── PATCH /rider/location — GPS heartbeat: rider sends periodic location updates ── */
 router.patch("/location", async (req, res) => {
   const parsed = locationSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid location data" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid location data"); return; }
   const riderId = req.riderId!;
 
   /* Per-rider rate limit: 1 update per 5 seconds */
   const now = Date.now();
   const lastSent = locationRateStore.get(riderId) ?? 0;
   if (now - lastSent < LOCATION_RATE_INTERVAL_MS) {
-    res.status(429).json({ error: "Location update rate limit exceeded. Please wait before sending another update.", retryAfterMs: LOCATION_RATE_INTERVAL_MS - (now - lastSent) });
+    sendErrorWithData(res, "Location update rate limit exceeded. Please wait before sending another update.", { retryAfterMs: LOCATION_RATE_INTERVAL_MS - (now - lastSent) }, 429);
     return;
   }
   locationRateStore.set(riderId, now);
@@ -1948,7 +1941,7 @@ router.patch("/location", async (req, res) => {
   const settings = await getCachedSettings();
 
   if (settings["security_gps_tracking"] === "off") {
-    res.status(403).json({ error: "GPS tracking is currently disabled by admin." }); return;
+    sendForbidden(res, "GPS tracking is currently disabled by admin."); return;
   }
 
   /* ── Server-side distance throttling ── */
@@ -1965,7 +1958,7 @@ router.patch("/location", async (req, res) => {
       const a = Math.sin(dLat / 2) ** 2 + Math.cos(pLat * Math.PI / 180) * Math.cos(latitude * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
       const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       if (dist < minDistanceMeters) {
-        res.json({ success: true, skipped: true, reason: "distance_threshold", updatedAt: new Date().toISOString() });
+        sendSuccess(res, { skipped: true, reason: "distance_threshold", updatedAt: new Date().toISOString() });
         return;
       }
     }
@@ -1980,12 +1973,11 @@ router.patch("/location", async (req, res) => {
       /* Reject low-accuracy pings — cell-tower or Wi-Fi triangulation produces
          very high accuracy values (100-1000m+) and must not update live locations
          or be used for proximity checks like "arrived". */
-      res.status(422).json({
-        error: `GPS accuracy (${Math.round(accuracy)}m) exceeds the allowed threshold (${minAccuracyMeters}m). Please move to an open area or enable high-accuracy GPS.`,
+      sendErrorWithData(res, `GPS accuracy (${Math.round(accuracy)}m) exceeds the allowed threshold (${minAccuracyMeters}m). Please move to an open area or enable high-accuracy GPS.`, {
         code: "GPS_ACCURACY_LOW",
         accuracy,
         threshold: minAccuracyMeters,
-      });
+      }, 422);
       return;
     }
   }
@@ -2064,12 +2056,11 @@ router.patch("/location", async (req, res) => {
           }
         }
         /* Reject on ALL spoof hits — never broadcast a spoofed ping */
-        res.status(422).json({
-          error: "GPS location rejected: movement speed is physically impossible or mock GPS detected. Please disable mock location apps.",
+        sendErrorWithData(res, "GPS location rejected: movement speed is physically impossible or mock GPS detected. Please disable mock location apps.", {
           autoOffline,
           code: "GPS_SPOOF_DETECTED",
           hit: newHits,
-        }); return;
+        }, 422); return;
       } else if (currentHits > 0) {
         locationRateStore.set(spoofHitKey, 0);
       }
@@ -2165,7 +2156,7 @@ router.patch("/location", async (req, res) => {
     updatedAt,
   });
 
-  res.json({ success: true, updatedAt });
+  sendSuccess(res, { updatedAt });
 });
 
 /* ── POST /rider/location/batch — Replay queued offline GPS pings ── */
@@ -2183,7 +2174,7 @@ const batchLocationSchema = z.object({
 
 router.post("/location/batch", async (req, res) => {
   const parsed = batchLocationSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
   const riderId = req.riderId!;
 
   const settings = await getCachedSettings();
@@ -2293,7 +2284,7 @@ router.post("/location/batch", async (req, res) => {
     });
   }
 
-  res.json({ success: true, inserted, skipped, total: sorted.length });
+  sendSuccess(res, { inserted, skipped, total: sorted.length });
 });
 
 /* ── GET /rider/wallet/deposits — Deposit history ── */
@@ -2303,7 +2294,7 @@ router.get("/wallet/deposits", async (req, res) => {
     .where(and(eq(walletTransactionsTable.userId, riderId), eq(walletTransactionsTable.type, "deposit")))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(20);
-  res.json({ deposits: deposits.map(d => ({ ...d, amount: safeNum(d.amount) })) });
+  sendSuccess(res, { deposits: deposits.map(d => ({ ...d, amount: safeNum(d.amount) })) });
 });
 
 /* ── Ignore penalty helper ── */
@@ -2391,15 +2382,14 @@ router.post("/rides/:id/ignore", async (req, res) => {
   const rideId = req.params["id"]!;
 
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { res.status(404).json({ error: "Ride not found" }); return; }
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
   if (!["searching", "bargaining"].includes(ride.status)) {
-    res.status(400).json({ error: "Ride is no longer available" }); return;
+    sendValidationError(res, "Ride is no longer available"); return;
   }
 
   const penalty = await handleIgnorePenalty(riderId);
 
-  res.json({
-    success: true,
+  sendSuccess(res, {
     rideId,
     ignorePenalty: penalty,
   });
@@ -2421,7 +2411,7 @@ router.get("/ignore-stats", async (req, res) => {
       gte(riderPenaltiesTable.createdAt, today),
     ));
 
-  res.json({
+  sendSuccess(res, {
     dailyIgnores: countRow?.c ?? 0,
     dailyLimit: limit,
     penaltyAmount: penaltyAmt,
@@ -2436,7 +2426,7 @@ router.get("/penalty-history", async (req, res) => {
     .where(eq(riderPenaltiesTable.riderId, riderId))
     .orderBy(desc(riderPenaltiesTable.createdAt))
     .limit(50);
-  res.json({
+  sendSuccess(res, {
     penalties: penalties.map(p => ({
       ...p,
       amount: safeNum(p.amount),
@@ -2455,11 +2445,11 @@ const sosSchema = z.object({
 router.post("/sos", async (req, res) => {
   const settings = await getCachedSettings();
   if ((settings["feature_sos"] ?? "on") !== "on") {
-    res.status(503).json({ error: "SOS feature is currently disabled" }); return;
+    sendError(res, "SOS feature is currently disabled", 503); return;
   }
 
   const parsed = sosSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid SOS data" }); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid SOS data"); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const { latitude, longitude, rideId } = parsed.data;
@@ -2516,7 +2506,7 @@ router.post("/sos", async (req, res) => {
     createdAt: now.toISOString(),
   });
 
-  res.json({ success: true, alertId, sentAt: now.toISOString() });
+  sendSuccess(res, { alertId, sentAt: now.toISOString() });
 });
 
 const osrmQuerySchema = z.object({
@@ -2530,7 +2520,7 @@ const osrmQuerySchema = z.object({
 router.get("/osrm-route", async (req, res) => {
   const parsed = osrmQuerySchema.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message || "fromLat, fromLng, toLat, toLng required (valid coordinates)" }); return;
+    sendValidationError(res, parsed.error.issues[0]?.message || "fromLat, fromLng, toLat, toLng required (valid coordinates)"); return;
   }
   const { fromLat, fromLng, toLat, toLng } = parsed.data;
 
@@ -2544,7 +2534,7 @@ router.get("/osrm-route", async (req, res) => {
     clearTimeout(timeout);
 
     if (!resp.ok) {
-      res.status(502).json({ error: "Routing service unavailable" }); return;
+      sendError(res, "Routing service unavailable", 502); return;
     }
 
     const data = await resp.json() as {
@@ -2558,7 +2548,7 @@ router.get("/osrm-route", async (req, res) => {
     };
 
     if (data.code !== "Ok" || !data.routes?.length) {
-      res.status(404).json({ error: "No route found" }); return;
+      sendNotFound(res, "No route found"); return;
     }
 
     const route = data.routes[0]!;
@@ -2572,7 +2562,7 @@ router.get("/osrm-route", async (req, res) => {
       maneuverLng: step.maneuver.location?.[0] ?? null,
     })));
 
-    res.json({
+    sendSuccess(res, {
       distanceM: Math.round(route.distance),
       durationSec: Math.round(route.duration),
       geometry: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng })),
@@ -2581,9 +2571,9 @@ router.get("/osrm-route", async (req, res) => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Routing request failed";
     if (msg.includes("aborted") || msg.includes("abort")) {
-      res.status(504).json({ error: "Routing service timed out" }); return;
+      sendError(res, "Routing service timed out", 504); return;
     }
-    res.status(502).json({ error: "Could not fetch route" }); return;
+    sendError(res, "Could not fetch route", 502); return;
   }
 });
 

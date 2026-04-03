@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
+import { unwrapApiResponse } from "../utils/api";
 
 const API_DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
 const CACHE_MS = 30_000;
@@ -315,7 +316,7 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
         clearTimeout(timeoutId);
       }
       if (!res.ok) throw new Error("config fetch failed");
-      const raw = await res.json();
+      const raw = unwrapApiResponse(await res.json());
       const parsed: PlatformConfig = {
         appStatus: raw.platform?.appStatus === "maintenance" ? "maintenance" : "active",
         features: {
