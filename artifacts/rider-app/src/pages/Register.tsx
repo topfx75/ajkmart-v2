@@ -46,10 +46,10 @@ function formatCnic(val: string): string {
 }
 
 const VEHICLE_TYPES = [
-  { value: "Bike / Motorcycle", labelKey: "bikeMotorcycle" as TranslationKey },
-  { value: "Car", labelKey: "carVehicle" as TranslationKey },
-  { value: "Rickshaw / QingQi", labelKey: "rickshawVan" as TranslationKey },
-  { value: "Van", labelKey: "vanVehicle" as TranslationKey },
+  { value: "bike", labelKey: "bikeMotorcycle" as TranslationKey },
+  { value: "car", labelKey: "carVehicle" as TranslationKey },
+  { value: "rickshaw", labelKey: "rickshawVan" as TranslationKey },
+  { value: "van", labelKey: "vanVehicle" as TranslationKey },
 ];
 
 const AJK_CITIES = [

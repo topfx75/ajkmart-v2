@@ -98,6 +98,19 @@ const eventLogSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
+function normalizeVehicleType(raw: string | null | undefined): string {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (!v) return "";
+  if (v === "bike" || v.startsWith("bike") || v.includes("motorcycle")) return "bike";
+  if (v === "car") return "car";
+  if (v === "rickshaw" || v.includes("rickshaw") || v.includes("qingqi")) return "rickshaw";
+  if (v === "van") return "van";
+  if (v === "daba") return "daba";
+  if (v === "bicycle") return "bicycle";
+  if (v === "on_foot" || v === "on foot") return "on_foot";
+  return v;
+}
+
 async function broadcastRide(rideId: string) {
   try {
     const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -144,8 +157,9 @@ async function broadcastRide(rideId: string) {
         .from(usersTable).where(eq(usersTable.id, r.userId)).limit(1);
       if (!user || !user.isActive || user.isBanned || user.isRestricted) continue;
       if (ride.type) {
-        const vt = (user.vehicleType ?? "").trim();
-        if (!vt || vt !== ride.type) continue;
+        const rideVt = normalizeVehicleType(ride.type);
+        const riderVt = normalizeVehicleType(user.vehicleType);
+        if (!riderVt || riderVt !== rideVt) continue;
       }
 
       const activeRiderRides = await db.select({ id: ridesTable.id })

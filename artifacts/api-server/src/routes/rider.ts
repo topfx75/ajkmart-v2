@@ -12,6 +12,19 @@ import { z } from "zod";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 
+function normalizeVehicleType(raw: string | null | undefined): string {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (!v) return "";
+  if (v === "bike" || v.startsWith("bike") || v.includes("motorcycle")) return "bike";
+  if (v === "car") return "car";
+  if (v === "rickshaw" || v.includes("rickshaw") || v.includes("qingqi")) return "rickshaw";
+  if (v === "van") return "van";
+  if (v === "daba") return "daba";
+  if (v === "bicycle") return "bicycle";
+  if (v === "on_foot" || v === "on foot") return "on_foot";
+  return v;
+}
+
 const router: IRouter = Router();
 
 const safeNum = (v: unknown, def = 0) => { const n = parseFloat(String(v ?? def)); return isNaN(n) ? def : n; };
@@ -307,7 +320,7 @@ router.patch("/profile", async (req, res) => {
   if (address          !== undefined) updates.address          = address;
   if (city             !== undefined) updates.city             = city;
   if (emergencyContact !== undefined) updates.emergencyContact = emergencyContact;
-  if (vehicleType      !== undefined) updates.vehicleType      = vehicleType;
+  if (vehicleType      !== undefined) updates.vehicleType      = normalizeVehicleType(vehicleType) || vehicleType;
   if (vehiclePlate     !== undefined) updates.vehiclePlate     = vehiclePlate;
   if (vehicleRegNo     !== undefined) updates.vehicleRegNo     = vehicleRegNo;
   if (drivingLicense   !== undefined) updates.drivingLicense   = drivingLicense;
@@ -424,7 +437,7 @@ router.get("/requests", async (req, res) => {
   const radiusKm = parseFloat(s["dispatch_min_radius_km"] ?? "5");
 
   const riderUser = req.riderUser! as Record<string, unknown>;
-  const riderVehicle = (String(riderUser.vehicleType ?? "")).trim().toLowerCase();
+  const riderVehicle = normalizeVehicleType(String(riderUser.vehicleType ?? ""));
 
   const [orders, rides, myBids, riderLoc] = await Promise.all([
     db.select().from(ordersTable)
@@ -471,7 +484,7 @@ router.get("/requests", async (req, res) => {
     })
     .filter(r => {
       if (riderVehicle && r.type) {
-        const rideType = String(r.type).toLowerCase();
+        const rideType = normalizeVehicleType(r.type);
         if (rideType !== riderVehicle && rideType !== "any") return false;
       }
       if (r.riderDistanceKm === null) return true;

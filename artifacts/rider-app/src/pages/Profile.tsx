@@ -20,7 +20,8 @@ const fc = (n: number, currencySymbol = "Rs.") => `${currencySymbol} ${Math.roun
 
 const CITIES   = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Other"];
 const BANKS    = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
-const VEHICLES = ["Bike / Motorcycle","Car","Rickshaw / QingQi","Bicycle","On Foot"];
+const VEHICLES = ["bike","car","rickshaw","bicycle","on_foot"];
+const VEHICLE_LABELS: Record<string, string> = { bike: "Bike / Motorcycle", car: "Car", rickshaw: "Rickshaw / QingQi", bicycle: "Bicycle", on_foot: "On Foot", van: "Van" };
 
 const INPUT  = "w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-200 focus:bg-white transition-all";
 const SELECT = "w-full h-12 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-200 appearance-none transition-all";
@@ -505,7 +506,7 @@ export default function Profile() {
                 </span>
                 {user?.vehicleType && (
                   <span className="text-[11px] bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full font-bold">
-                    {user.vehicleType.split("/")[0].trim()}
+                    {VEHICLE_LABELS[user.vehicleType] ?? user.vehicleType}
                   </span>
                 )}
               </div>
@@ -702,7 +703,7 @@ export default function Profile() {
                       <label className={LABEL}>{T("vehicleTypeRequired")}</label>
                       <select value={vehicleType} onChange={e => setVehicleType(e.target.value)} className={SELECT}>
                         <option value="">{T("selectVehicle")}</option>
-                        {VEHICLES.map(v => <option key={v} value={v}>{v}</option>)}
+                        {VEHICLES.map(v => <option key={v} value={v}>{VEHICLE_LABELS[v] ?? v}</option>)}
                       </select>
                     </div>
                     <div>

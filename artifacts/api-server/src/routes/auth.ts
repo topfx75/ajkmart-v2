@@ -46,6 +46,19 @@ function hashOtp(otp: string): string {
   return createHash("sha256").update(otp).digest("hex");
 }
 
+function normalizeVehicleTypeForStorage(raw: string): string {
+  const v = raw.trim().toLowerCase();
+  if (!v) return raw;
+  if (v === "bike" || v.startsWith("bike") || v.includes("motorcycle")) return "bike";
+  if (v === "car") return "car";
+  if (v === "rickshaw" || v.includes("rickshaw") || v.includes("qingqi")) return "rickshaw";
+  if (v === "van") return "van";
+  if (v === "daba") return "daba";
+  if (v === "bicycle") return "bicycle";
+  if (v === "on_foot" || v === "on foot") return "on_foot";
+  return v;
+}
+
 function generateVerificationToken(): string {
   return randomBytes(32).toString("hex");
 }
@@ -2044,7 +2057,7 @@ router.post("/register", verifyCaptcha, async (req, res) => {
     approvalStatus: needsApproval ? "pending" : "approved",
     cnic: cnicValue || null,
     nationalId: cnicValue || null,
-    vehicleType: vehicleType || null,
+    vehicleType: vehicleType ? normalizeVehicleTypeForStorage(vehicleType) : null,
     vehicleRegNo: vehicleRegNo || null,
     vehiclePlate: vehiclePlate || vehicleRegNo || null,
     drivingLicense: drivingLicense || null,
@@ -2463,7 +2476,7 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
     emailOtpCode: tokenHash,
     emailOtpExpiry: verificationExpiry,
     ...(cnic ? { cnic: cnic.trim() } : {}),
-    ...(vehicleType ? { vehicleType: vehicleType.trim() } : {}),
+    ...(vehicleType ? { vehicleType: normalizeVehicleTypeForStorage(vehicleType) } : {}),
     ...(resolvedVehicleRegNo ? { vehicleRegNo: resolvedVehicleRegNo.trim() } : {}),
     ...(drivingLicense ? { drivingLicense: drivingLicense.trim() } : {}),
     ...(address ? { address: address.trim() } : {}),
