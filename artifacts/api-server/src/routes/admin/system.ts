@@ -10,7 +10,7 @@ import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNot
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
-  sendUserNotification, logger,
+  sendUserNotification, logger, DEFAULT_PLATFORM_SETTINGS,
   ORDER_NOTIF_KEYS, RIDE_NOTIF_KEYS, PHARMACY_NOTIF_KEYS, PARCEL_NOTIF_KEYS,
   checkAdminLoginLockout, recordAdminLoginFailure, resetAdminLoginAttempts,
   addAuditEntry, addSecurityEvent, getClientIp,
