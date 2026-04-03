@@ -156,6 +156,10 @@ export default function Products() {
   };
   const closeForm = () => { setShowAdd(false); setEditProd(null); setForm({ ...EMPTY }); };
 
+  const handlePullRefresh = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: ["vendor-products"] });
+  }, [qc]);
+
   const Toast = toast ? (
     <div className="fixed top-0 left-0 right-0 z-50 flex justify-center toast-in"
       style={{ paddingTop: "calc(env(safe-area-inset-top,0px) + 8px)", paddingLeft: "16px", paddingRight: "16px" }}>
@@ -429,10 +433,6 @@ export default function Products() {
       {Toast}
     </div>
   );
-
-  const handlePullRefresh = useCallback(async () => {
-    await qc.invalidateQueries({ queryKey: ["vendor-products"] });
-  }, [qc]);
 
   /* ── Product List ── */
   return (

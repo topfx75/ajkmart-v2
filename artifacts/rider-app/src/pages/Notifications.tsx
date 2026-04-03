@@ -245,11 +245,11 @@ export default function Notifications() {
     ride:   notifs.filter(n => n.type === "ride").length,
   };
 
-  if (isLoading) return <SkeletonNotifications />;
-
   const handlePullRefresh = useCallback(async () => {
     await qc.invalidateQueries({ queryKey: ["rider-notifications"] });
   }, [qc]);
+
+  if (isLoading) return <SkeletonNotifications />;
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="min-h-screen bg-[#F5F6F8]">

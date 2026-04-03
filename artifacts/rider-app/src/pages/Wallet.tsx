@@ -329,6 +329,13 @@ export default function Wallet() {
     return groups;
   }, [filtered]);
 
+  const handlePullRefresh = useCallback(async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["rider-wallet"] }),
+      qc.invalidateQueries({ queryKey: ["rider-withdrawals"] }),
+    ]);
+  }, [qc]);
+
   if (isLoading) {
     return (
       <div className="bg-[#F5F6F8] min-h-screen">
@@ -389,13 +396,6 @@ export default function Wallet() {
       </div>
     );
   }
-
-  const handlePullRefresh = useCallback(async () => {
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: ["rider-wallet"] }),
-      qc.invalidateQueries({ queryKey: ["rider-withdrawals"] }),
-    ]);
-  }, [qc]);
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="bg-[#F5F6F8] min-h-screen">
