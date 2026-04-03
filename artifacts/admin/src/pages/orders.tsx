@@ -7,8 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ShoppingBag, Search, User, Package, Phone, TrendingUp, AlertTriangle, CheckCircle2, Download, CalendarDays, UserCheck } from "lucide-react";
+import { MobileDrawer } from "@/components/MobileDrawer";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/useLanguage";
@@ -451,16 +451,13 @@ export default function Orders() {
         )}
       </div>
 
-      {/* Order Detail Modal */}
-      <Dialog open={!!selectedOrder} onOpenChange={open => { if (!open) { setSelectedOrder(null); setShowCancelConfirm(false); setShowRefundConfirm(false); } }}>
-        <DialogContent className="w-[95vw] max-w-lg rounded-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-indigo-600" />
-              Order Detail
-              {selectedOrder && <StatusBadge status={selectedOrder.status} />}
-            </DialogTitle>
-          </DialogHeader>
+      {/* Order Detail — Bottom Sheet on mobile, Dialog on desktop */}
+      <MobileDrawer
+        open={!!selectedOrder}
+        onClose={() => { setSelectedOrder(null); setShowCancelConfirm(false); setShowRefundConfirm(false); }}
+        title={<><ShoppingBag className="w-5 h-5 text-indigo-600" /> Order Detail {selectedOrder && <StatusBadge status={selectedOrder.status} />}</>}
+        dialogClassName="w-[95vw] max-w-lg rounded-3xl max-h-[90vh] overflow-y-auto"
+      >
 
           {selectedOrder && (
             <div className="space-y-4 mt-2">
@@ -728,8 +725,7 @@ export default function Orders() {
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+      </MobileDrawer>
     </PullToRefresh>
   );
 }

@@ -130,6 +130,6 @@ export function StatusBadge({ status }: { status: string }) {
     in_transit:       { label: "🚗 In Transit",   className: "bg-orange-100 text-orange-700 border-orange-200" },
   };
   const cfg = map[status] ?? { label: status, className: "bg-gray-100 text-gray-600 border-gray-200" };
-  return <Badge variant="outline" className={`text-xs font-semibold ${cfg.className}`}>{cfg.label}</Badge>;
+  return <Badge variant="outline" className={`text-[10px] font-bold rounded-full px-2.5 py-0.5 uppercase tracking-wide border-0 ${cfg.className}`}>{cfg.label}</Badge>;
 }
 

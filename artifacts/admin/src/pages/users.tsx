@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { MobileDrawer } from "@/components/MobileDrawer";
 
 const ROLE_COLORS: Record<string, string> = {
   customer: "bg-blue-100 text-blue-700 border-blue-200",
@@ -51,13 +52,12 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
   const isVendor = userRoles.includes("vendor");
 
   return (
-    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-[#1A56DB]">
-            <Activity className="w-5 h-5" /> Activity — {userName}
-          </DialogTitle>
-        </DialogHeader>
+    <MobileDrawer
+      open
+      onClose={onClose}
+      title={<><Activity className="w-5 h-5 text-indigo-600" /> Activity — {userName}</>}
+      dialogClassName="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-2xl"
+    >
 
         <div className="bg-gradient-to-r from-[#1A56DB]/5 to-blue-50 rounded-xl p-3 space-y-2 border border-blue-100">
           <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Profile Details</p>
@@ -215,8 +215,7 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </MobileDrawer>
   );
 }
 
@@ -344,15 +343,12 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-lg max-h-[90dvh] overflow-y-auto rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-[#1A56DB]">
-            <Shield className="w-5 h-5" />
-            Security — {user.name || user.phone}
-          </DialogTitle>
-        </DialogHeader>
-
+    <MobileDrawer
+      open
+      onClose={onClose}
+      title={<><Shield className="w-5 h-5 text-indigo-600" /> Security — {user.name || user.phone}</>}
+      dialogClassName="w-[95vw] max-w-lg max-h-[90dvh] overflow-y-auto rounded-2xl"
+    >
         <div className="space-y-5 mt-2">
           <div className="bg-gradient-to-r from-[#1A56DB]/5 to-blue-50 rounded-xl px-4 py-3 flex items-center gap-3 border border-blue-100">
             <div className="w-10 h-10 rounded-full bg-[#1A56DB]/10 flex items-center justify-center text-[#1A56DB] font-bold">
@@ -578,8 +574,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </MobileDrawer>
   );
 }
 
@@ -669,14 +664,12 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
   const toggleCheck = (key: string) => setChecklist(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
-    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" /> KYC Documents — {user.name || user.phone}
-          </DialogTitle>
-        </DialogHeader>
-
+    <MobileDrawer
+      open
+      onClose={onClose}
+      title={<><FileText className="w-5 h-5 text-indigo-600" /> KYC Documents — {user.name || user.phone}</>}
+      dialogClassName="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-2xl"
+    >
         <div className="flex flex-wrap gap-3 mt-1">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
             <span className="font-semibold text-muted-foreground">CNIC:</span>
@@ -785,8 +778,7 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </MobileDrawer>
   );
 }
 

@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { MobileDrawer } from "@/components/MobileDrawer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -179,17 +180,12 @@ function RideDetailModal({
   };
 
   return (
-    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-2xl rounded-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 flex-wrap">
-            <Car className="w-5 h-5 text-green-600" />
-            Ride Detail
-            <StatusBadge status={ride.status} />
-            <span className="font-mono text-xs text-muted-foreground ml-auto">#{ride.id.slice(-8).toUpperCase()}</span>
-          </DialogTitle>
-        </DialogHeader>
-
+    <MobileDrawer
+      open
+      onClose={onClose}
+      title={<><Car className="w-5 h-5 text-emerald-600" /> Ride Detail <StatusBadge status={ride.status} /> <span className="font-mono text-xs text-muted-foreground ml-auto">#{ride.id.slice(-8).toUpperCase()}</span></>}
+      dialogClassName="w-[95vw] max-w-2xl rounded-3xl max-h-[90vh] overflow-y-auto"
+    >
         <div className="space-y-4 mt-1">
           {/* Customer & Rider */}
           <div className="grid grid-cols-2 gap-3">
@@ -532,8 +528,7 @@ function RideDetailModal({
             </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </MobileDrawer>
   );
 }
 
