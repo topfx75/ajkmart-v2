@@ -145,9 +145,17 @@ router.get("/:id/track", customerAuth, async (req, res) => {
   });
 });
 
+const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
+
 router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
-  const { items, prescriptionNote, prescriptionPhotoUri, deliveryAddress, contactPhone, paymentMethod } = req.body;
+  const rawBody = req.body;
+  const items = rawBody.items;
+  const prescriptionNote = rawBody.prescriptionNote;
+  const prescriptionPhotoUri = rawBody.prescriptionPhotoUri;
+  const deliveryAddress = typeof rawBody.deliveryAddress === "string" ? stripHtml(rawBody.deliveryAddress) : rawBody.deliveryAddress;
+  const contactPhone = rawBody.contactPhone;
+  const paymentMethod = rawBody.paymentMethod;
 
   let resolvedPhotoUrl: string | null = null;
   if (prescriptionPhotoUri?.trim()) {

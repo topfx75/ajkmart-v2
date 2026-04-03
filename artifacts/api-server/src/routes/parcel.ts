@@ -12,17 +12,19 @@ import { isInServiceZone } from "../lib/geofence.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 import { z } from "zod";
 
+const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
+
 const createParcelSchema = z.object({
-  senderName: z.string().min(1, "senderName is required").max(100, "senderName too long"),
+  senderName: z.string().min(1, "senderName is required").max(100, "senderName too long").transform(stripHtml),
   senderPhone: z.string().min(7, "senderPhone is required").max(20, "senderPhone too long"),
-  pickupAddress: z.string().min(1, "pickupAddress is required").max(500, "pickupAddress too long"),
-  receiverName: z.string().min(1, "receiverName is required").max(100, "receiverName too long"),
+  pickupAddress: z.string().min(1, "pickupAddress is required").max(500, "pickupAddress too long").transform(stripHtml),
+  receiverName: z.string().min(1, "receiverName is required").max(100, "receiverName too long").transform(stripHtml),
   receiverPhone: z.string().min(7, "receiverPhone is required").max(20, "receiverPhone too long"),
-  dropAddress: z.string().min(1, "dropAddress is required").max(500, "dropAddress too long"),
+  dropAddress: z.string().min(1, "dropAddress is required").max(500, "dropAddress too long").transform(stripHtml),
   parcelType: z.string().min(1, "parcelType is required").max(50, "parcelType too long"),
   paymentMethod: z.enum(["cash", "wallet", "cod"], { errorMap: () => ({ message: "paymentMethod must be cash, wallet, or cod" }) }),
   weight: z.number().positive().max(500, "weight cannot exceed 500 kg").optional(),
-  description: z.string().max(500, "description too long").optional(),
+  description: z.string().max(500, "description too long").transform(s => stripHtml(s)).optional(),
   pickupLat: z.number().min(-90).max(90).optional(),
   pickupLng: z.number().min(-180).max(180).optional(),
 });

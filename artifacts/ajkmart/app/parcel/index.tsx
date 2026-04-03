@@ -327,7 +327,7 @@ function ParcelScreenInner() {
         receiverName, receiverPhone: normalizePhone(receiverPhone), dropAddress,
         parcelType: parcelType!, weight: w,
         description: description || undefined,
-        paymentMethod: payMethod as "cash" | "wallet",
+        paymentMethod: payMethod as "cash" | "wallet" | "cod",
         ...(finalPickupLat !== undefined && finalPickupLng !== undefined ? { pickupLat: finalPickupLat, pickupLng: finalPickupLng } : {}),
         ...(finalDropLat !== undefined && finalDropLng !== undefined ? { dropLat: finalDropLat, dropLng: finalDropLng } : {}),
       };
