@@ -6,7 +6,7 @@ import {
   notificationsTable,
   ordersTable, ridesTable, productsTable, riderPenaltiesTable, rideRatingsTable, reviewsTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -78,7 +78,7 @@ router.get("/vendors", async (_req, res) => {
       totalOrders: count(),
       totalRevenue: sum(ordersTable.total),
       pendingOrders: sql<number>`COUNT(*) FILTER (WHERE ${ordersTable.status} = 'pending')`,
-    }).from(ordersTable).where(sql`${ordersTable.vendorId} = ANY(${sql.raw(`ARRAY[${vendorIds.map(id => `'${id}'`).join(",")}]`)})`).groupBy(ordersTable.vendorId).catch(() => []);
+    }).from(ordersTable).where(inArray(ordersTable.vendorId, vendorIds)).groupBy(ordersTable.vendorId).catch(() => []);
   }
 
   const statsMap = Object.fromEntries(orderStats.map(s => [s.vendorId, s]));
