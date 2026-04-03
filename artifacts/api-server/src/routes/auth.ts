@@ -2214,14 +2214,14 @@ router.post("/forgot-password", verifyCaptcha, async (req, res) => {
     const resolved = await findUserByIdentifier(identifier);
     if (resolved.user) {
       if (resolved.idType === "phone") {
-        phone = resolved.user.phone;
+        phone = resolved.user.phone ?? undefined;
       } else if (resolved.idType === "email") {
-        email = resolved.user.email;
+        email = resolved.user.email ?? undefined;
       } else if (resolved.idType === "username") {
         if (resolved.user.email) {
-          email = resolved.user.email;
+          email = resolved.user.email ?? undefined;
         } else if (resolved.user.phone) {
-          phone = resolved.user.phone;
+          phone = resolved.user.phone ?? undefined;
         }
       }
     }
@@ -2300,7 +2300,7 @@ router.post("/forgot-password", verifyCaptcha, async (req, res) => {
       .set({ emailOtpCode: hashOtp(otp), emailOtpExpiry: otpExpiry, updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
-    await sendPasswordResetEmail(email, otp, user.name ?? undefined, forgotLang);
+    await sendPasswordResetEmail(email!, otp, user.name ?? undefined, forgotLang);
   }
 
   writeAuthAuditLog("forgot_password", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
@@ -2390,14 +2390,14 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
     const resolved = await findUserByIdentifier(identifier);
     if (resolved.user) {
       if (resolved.idType === "phone") {
-        phone = resolved.user.phone;
+        phone = resolved.user.phone ?? undefined;
       } else if (resolved.idType === "email") {
-        email = resolved.user.email;
+        email = resolved.user.email ?? undefined;
       } else if (resolved.idType === "username") {
         if (resolved.user.email) {
-          email = resolved.user.email;
+          email = resolved.user.email ?? undefined;
         } else if (resolved.user.phone) {
-          phone = resolved.user.phone;
+          phone = resolved.user.phone ?? undefined;
         }
       }
     }

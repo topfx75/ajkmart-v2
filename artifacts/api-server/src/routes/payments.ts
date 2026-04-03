@@ -268,13 +268,13 @@ router.post("/initiate", customerAuth, async (req, res) => {
   if (order.userId !== callerId) { sendForbidden(res, "Access denied — order does not belong to you"); return; }
 
   const s = await getPlatformSettings();
-  const amountPaisa = Math.round(parseFloat(amount) * 100);
+  const amountPaisa = Math.round(amount * 100);
 
   const providerCfg = getProviderConfig(s, gateway);
 
   /* ── JazzCash ── */
   if (gateway === "jazzcash") {
-    const amountErr = providerCfg ? validatePaymentAmount(providerCfg, parseFloat(amount), "JazzCash") : "JazzCash is not configured";
+    const amountErr = providerCfg ? validatePaymentAmount(providerCfg, amount, "JazzCash") : "JazzCash is not configured";
     if (amountErr) {
       sendError(res, amountErr, providerCfg?.enabled === false ? 503 : 400); return;
     }
@@ -288,7 +288,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
         name:       s["jazzcash_manual_name"]         ?? "",
         number:     s["jazzcash_manual_number"]       ?? "",
         instructions: s["jazzcash_manual_instructions"] ?? "Number par payment bhejein aur transaction ID share karein.",
-        amount:     parseFloat(amount),
+        amount:     amount,
         orderId,
       });
       return;
@@ -308,7 +308,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
         status: "pending_manual_verification",
         message: "JazzCash digital payment is temporarily unavailable. Please pay via bank transfer or contact support to complete your order.",
         orderId,
-        amount: parseFloat(amount),
+        amount: amount,
         supportNote: "Your order will be processed once payment is confirmed by admin.",
       }); return;
     }
@@ -354,7 +354,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
 
   /* ── EasyPaisa ── */
   if (gateway === "easypaisa") {
-    const amountErr = providerCfg ? validatePaymentAmount(providerCfg, parseFloat(amount), "EasyPaisa") : "EasyPaisa is not configured";
+    const amountErr = providerCfg ? validatePaymentAmount(providerCfg, amount, "EasyPaisa") : "EasyPaisa is not configured";
     if (amountErr) {
       sendError(res, amountErr, providerCfg?.enabled === false ? 503 : 400); return;
     }
@@ -368,7 +368,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
         name:       s["easypaisa_manual_name"]         ?? "",
         number:     s["easypaisa_manual_number"]       ?? "",
         instructions: s["easypaisa_manual_instructions"] ?? "Number par payment bhejein aur transaction ID share karein.",
-        amount:     parseFloat(amount),
+        amount:     amount,
         orderId,
       });
       return;
@@ -388,13 +388,13 @@ router.post("/initiate", customerAuth, async (req, res) => {
         status: "pending_manual_verification",
         message: "EasyPaisa digital payment is temporarily unavailable. Please pay via bank transfer or contact support to complete your order.",
         orderId,
-        amount: parseFloat(amount),
+        amount: amount,
         supportNote: "Your order will be processed once payment is confirmed by admin.",
       }); return;
     }
 
     const txnRef    = `EP${Date.now()}`;
-    const amountStr = parseFloat(amount).toFixed(2);
+    const amountStr = amount.toFixed(2);
     const hash      = buildEasyPaisaHash([storeId, txnRef, amountStr, "PKR", mobileNumber || ""], hashKey || "sandbox_key");
 
     const payload = {

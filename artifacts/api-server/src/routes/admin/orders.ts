@@ -4,7 +4,7 @@ import {
   usersTable,
   walletTransactionsTable,
   notificationsTable,
-  ordersTable, pharmacyOrdersTable, parcelBookingsTable, ridesTable,
+  ordersTable, pharmacyOrdersTable, parcelBookingsTable, ridesTable, rideBidsTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import {
@@ -400,14 +400,6 @@ router.get("/rides-enriched", async (_req, res) => {
   });
 });
 
-/** Revoke all active refresh tokens and bump tokenVersion for a user — immediate session invalidation. */
-async function revokeAllUserSessions(userId: string): Promise<void> {
-  await db.update(usersTable)
-    .set({ tokenVersion: sql`token_version + 1` })
-    .where(eq(usersTable.id, userId));
-  await db.delete(refreshTokensTable)
-    .where(eq(refreshTokensTable.userId, userId));
-}
 
 /* ── User Security Management ── */
 router.patch("/orders/:id/assign-rider", async (req, res) => {

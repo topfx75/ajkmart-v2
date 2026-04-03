@@ -201,7 +201,7 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
       role: user.role, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"),
     }});
   } catch (e: unknown) {
-    sendError(res, e?.message || "Avatar upload failed");
+    sendError(res, (e as Error)?.message || "Avatar upload failed");
   }
 });
 
@@ -344,7 +344,7 @@ router.delete("/delete-account", async (req, res) => {
 
     sendSuccess(res, null, "اکاؤنٹ حذف ہو گیا اور تمام ڈیٹا گمنام ہو گیا۔");
   } catch (e: unknown) {
-    sendError(res, e.message || "Could not delete account");
+    sendError(res, (e as Error).message || "Could not delete account");
   }
 });
 

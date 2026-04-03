@@ -24,6 +24,7 @@ import {
   invalidateSettingsCache,
   getCachedSettings,
   ADMIN_TOKEN_TTL_HRS,
+  auditLog,
 } from "../middleware/security.js";
 import { verifyTotpToken } from "../services/totp.js";
 import { verifyAdminSecret } from "../services/password.js";
@@ -45,7 +46,7 @@ export function stripUser(u: Record<string, unknown>) {
 }
 
 export { generateId, getUserLanguage, t, type TranslationKey };
-export { checkAdminIPWhitelist, addAuditEntry, addSecurityEvent, getClientIp, signAdminJwt, verifyAdminJwt, invalidateSettingsCache, getCachedSettings, ADMIN_TOKEN_TTL_HRS };
+export { checkAdminIPWhitelist, addAuditEntry, addSecurityEvent, getClientIp, signAdminJwt, verifyAdminJwt, invalidateSettingsCache, getCachedSettings, ADMIN_TOKEN_TTL_HRS, auditLog };
 export { verifyTotpToken };
 export { verifyAdminSecret };
 export { logger };
@@ -597,8 +598,8 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
     }
 
     ((req as AdminRequest) as AdminRequest).adminRole = adminPayload.role;
-    ((req as AdminRequest) as AdminRequest).adminId   = adminPayload.adminId;
-    ((req as AdminRequest) as AdminRequest).adminName = adminPayload.name;
+    ((req as AdminRequest) as AdminRequest).adminId   = adminPayload.adminId ?? undefined;
+    ((req as AdminRequest) as AdminRequest).adminName = adminPayload.name ?? undefined;
     ((req as AdminRequest) as AdminRequest).adminIp   = ip;
     addAuditEntry({ action: "admin_access", ip, details: `Admin JWT access: ${adminPayload.name} (${adminPayload.role}) ${req.method} ${req.url}`, result: "success" });
     next();
@@ -656,7 +657,7 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
 
       ((req as AdminRequest) as AdminRequest).adminRole = sub.role;
       ((req as AdminRequest) as AdminRequest).adminId   = sub.id;
-      ((req as AdminRequest) as AdminRequest).adminName = sub.name;
+      ((req as AdminRequest) as AdminRequest).adminName = sub.name ?? undefined;
       ((req as AdminRequest) as AdminRequest).adminIp   = ip;
       await db.update(adminAccountsTable).set({ lastLoginAt: new Date() }).where(eq(adminAccountsTable.id, sub.id));
       addAuditEntry({ action: "admin_login", ip, adminId: sub.id, details: `Sub-admin ${sub.name} (${sub.role}) accessed ${req.method} ${req.url}`, result: "success" });

@@ -703,7 +703,7 @@ router.post("/orders/:id/assign-rider", requireRole("vendor"), async (req, res) 
   await db.insert(notificationsTable).values({
     id: generateId(), userId: rider.id,
     title: "📦 New Delivery Assigned",
-    body: `You have been assigned a delivery order #${orderId.slice(-6).toUpperCase()}. Head to the vendor.`,
+    body: `You have been assigned a delivery order #${String(orderId).slice(-6).toUpperCase()}. Head to the vendor.`,
     type: "order", icon: "bicycle-outline",
   }).catch(() => {});
 
@@ -763,7 +763,7 @@ router.post("/orders/:id/auto-assign", requireRole("vendor"), async (req, res) =
   await db.insert(notificationsTable).values({
     id: generateId(), userId: nearest.id,
     title: "📦 New Delivery Assigned (Auto)",
-    body: `Order #${orderId.slice(-6).toUpperCase()} has been auto-assigned to you. Head to the vendor!`,
+    body: `Order #${String(orderId).slice(-6).toUpperCase()} has been auto-assigned to you. Head to the vendor!`,
     type: "order", icon: "bicycle-outline",
   }).catch(() => {});
 

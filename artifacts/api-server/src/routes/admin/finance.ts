@@ -17,7 +17,7 @@ import {
   signAdminJwt, verifyAdminJwt, invalidateSettingsCache, getCachedSettings,
   ADMIN_TOKEN_TTL_HRS, verifyTotpToken, verifyAdminSecret,
   ensureDefaultRideServices, ensureDefaultLocations, formatSvc,
-  type AdminRequest, revokeAllUserSessions, serializeSosAlert,
+  type AdminRequest, type TranslationKey, revokeAllUserSessions, serializeSosAlert,
 } from "../admin-shared.js";
 import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
 
@@ -71,7 +71,7 @@ router.get("/vendors", async (_req, res) => {
   ).orderBy(desc(usersTable.createdAt));
 
   const vendorIds = vendors.map(v => v.id);
-  let orderStats: unknown[] = [];
+  let orderStats: { vendorId: string | null; totalOrders: number; totalRevenue: string | null; pendingOrders: number }[] = [];
   if (vendorIds.length > 0) {
     orderStats = await db.select({
       vendorId: ordersTable.vendorId,
@@ -194,8 +194,8 @@ router.get("/riders", async (_req, res) => {
           .groupBy(rideRatingsTable.riderId)
       : Promise.resolve([]),
   ]);
-  const penaltyMap = new Map(penaltyRows.map((r: Record<string, unknown>) => [r.riderId, parseFloat(r.total ?? "0")]));
-  const ratingMap = new Map(ratingRows.map((r: Record<string, unknown>) => [r.riderId, { avg: parseFloat(r.avgRating ?? "0"), count: r.ratingCount }]));
+  const penaltyMap = new Map(penaltyRows.map((r: Record<string, unknown>) => [r.riderId, parseFloat(String(r.total ?? "0"))]));
+  const ratingMap = new Map(ratingRows.map((r: Record<string, unknown>) => [r.riderId, { avg: parseFloat(String(r.avgRating ?? "0")), count: r.ratingCount }]));
 
   sendSuccess(res, {
     riders: riders.map(r => ({

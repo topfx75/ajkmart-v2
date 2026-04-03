@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { serviceZonesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 import { invalidateZoneCache } from "../../lib/geofence.js";
 import type { AdminRequest } from "../admin.js";
 
@@ -53,7 +53,7 @@ router.post("/", async (req, res) => {
   }).returning();
 
   invalidateZoneCache();
-  sendSuccess(res, zone, 201);
+  sendCreated(res, zone);
 });
 
 /* ── PUT /admin/service-zones/:id — update a zone ── */

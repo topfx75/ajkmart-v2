@@ -16,8 +16,8 @@ import {
   addAuditEntry, addSecurityEvent, getClientIp,
   signAdminJwt, verifyAdminJwt, invalidateSettingsCache, getCachedSettings,
   ADMIN_TOKEN_TTL_HRS, verifyTotpToken, verifyAdminSecret,
-  ensureDefaultRideServices, ensureDefaultLocations, formatSvc,
-  type AdminRequest,
+  ensureDefaultRideServices, formatSvc,
+  type AdminRequest, auditLog,
 } from "../admin-shared.js";
 import { emitRideDispatchUpdate } from "../../lib/socketio.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
@@ -641,7 +641,7 @@ router.post("/rides/:id/cancel", async (req, res) => {
       }
     });
   } catch (txErr: unknown) {
-    addAuditEntry({ action: "ride_cancel", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Ride ${rideId} cancel failed — transaction error: ${txErr.message}`, result: "fail" });
+    addAuditEntry({ action: "ride_cancel", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Ride ${rideId} cancel failed — transaction error: ${(txErr as Error).message}`, result: "fail" });
     sendError(res, "Cancellation failed: could not complete transaction", 500);
     return;
   }
@@ -680,7 +680,7 @@ router.post("/rides/:id/refund", async (req, res) => {
       });
     });
   } catch (txErr: unknown) {
-    addAuditEntry({ action: "ride_refund", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Ride ${rideId} refund failed — transaction error: ${txErr.message}`, result: "fail" });
+    addAuditEntry({ action: "ride_refund", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Ride ${rideId} refund failed — transaction error: ${(txErr as Error).message}`, result: "fail" });
     sendError(res, "Refund failed: could not complete transaction", 500);
     return;
   }

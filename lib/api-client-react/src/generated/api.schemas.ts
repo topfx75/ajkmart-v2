@@ -381,8 +381,13 @@ export type RideStatus = (typeof RideStatus)[keyof typeof RideStatus];
 
 export const RideStatus = {
   searching: "searching",
+  bargaining: "bargaining",
+  accepted: "accepted",
+  arrived: "arrived",
+  in_transit: "in_transit",
   confirmed: "confirmed",
   in_progress: "in_progress",
+  no_riders: "no_riders",
   completed: "completed",
   cancelled: "cancelled",
 } as const;
@@ -393,7 +398,23 @@ export type RidePaymentMethod =
 export const RidePaymentMethod = {
   cash: "cash",
   wallet: "wallet",
+  jazzcash: "jazzcash",
+  easypaisa: "easypaisa",
 } as const;
+
+export interface RideBid {
+  id: string;
+  riderId: string;
+  riderName?: string;
+  offer: number;
+  status: string;
+  createdAt: string;
+  ratingAvg?: number | null;
+  totalRides?: number;
+  vehiclePlate?: string | null;
+  vehicleType?: string | null;
+  note?: string | null;
+}
 
 export interface Ride {
   id: string;
@@ -413,6 +434,14 @@ export interface Ride {
   riderPhone?: string;
   paymentMethod: RidePaymentMethod;
   createdAt: string;
+  riderLat?: number | null;
+  riderLng?: number | null;
+  riderLocAge?: number | null;
+  riderAvgRating?: number | null;
+  estimatedFare?: number;
+  broadcastTimeoutSec?: number;
+  minOffer?: number;
+  bids?: RideBid[];
 }
 
 export type BookRideRequestType =

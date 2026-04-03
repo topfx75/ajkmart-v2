@@ -6,7 +6,7 @@ import {
   notificationsTable,
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, platformSettingsTable, adminAccountsTable, authAuditLogTable, refreshTokensTable, rideRatingsTable, riderPenaltiesTable, reviewsTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, type SQL } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -19,7 +19,7 @@ import {
   ensureDefaultRideServices, ensureDefaultLocations, formatSvc,
   type AdminRequest, serializeSosAlert,
 } from "../admin-shared.js";
-import { emitSosNew, emitSosAcknowledged, emitSosResolved } from "../../lib/socketio.js";
+import { emitSosNew, emitSosAcknowledged, emitSosResolved, type SosAlertPayload } from "../../lib/socketio.js";
 import { hashPassword } from "../../services/password.js";
 import { sendSuccess, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
 import { auditLog, securityEvents, blockIP, unblockIP, isIPBlocked, getBlockedIPList, getActiveLockouts, unlockPhone } from "../../middleware/security.js";
@@ -301,7 +301,7 @@ router.get("/auth-audit-log", adminAuth, async (req, res) => {
   const event  = req.query["event"] as string | undefined;
   const userId = req.query["userId"] as string | undefined;
 
-  const conditions: unknown[] = [];
+  const conditions: SQL[] = [];
   if (event)  conditions.push(eq(authAuditLogTable.event, event));
   if (userId) conditions.push(eq(authAuditLogTable.userId, userId));
 
@@ -489,7 +489,7 @@ router.get("/search", async (req, res) => {
   }
 
   const [users, rides, orders, pharmacy] = await Promise.all([
-    safeSearchQuery<UserResult>("users", () =>
+    safeSearchQuery<UserResult>("users", async () =>
       db.select({
         id:    usersTable.id,
         name:  usersTable.name,
@@ -528,7 +528,7 @@ router.get("/search", async (req, res) => {
       .limit(5)
     ),
 
-    safeSearchQuery<OrderResult>("orders", () =>
+    safeSearchQuery<OrderResult>("orders", async () =>
       db.select({
         id:              ordersTable.id,
         status:          ordersTable.status,
@@ -649,7 +649,7 @@ router.get("/reviews", adminAuth, async (req, res) => {
   const dateTo        = req.query["dateTo"]   as string | undefined;
 
   /* ── Order Reviews ── */
-  const orderConditions: unknown[] = [];
+  const orderConditions: SQL[] = [];
   if (starsFilter) orderConditions.push(eq(reviewsTable.rating, parseInt(starsFilter)));
   if (statusFilter === "hidden")  orderConditions.push(eq(reviewsTable.hidden, true));
   if (statusFilter === "deleted") orderConditions.push(isNotNull(reviewsTable.deletedAt));
@@ -663,7 +663,7 @@ router.get("/reviews", adminAuth, async (req, res) => {
   if (subjectFilter === "rider")  orderConditions.push(isNotNull(reviewsTable.riderId));
 
   /* ── Ride Ratings ── */
-  const rideConditions: unknown[] = [];
+  const rideConditions: SQL[] = [];
   if (starsFilter) rideConditions.push(eq(rideRatingsTable.stars, parseInt(starsFilter)));
   if (statusFilter === "hidden")  rideConditions.push(eq(rideRatingsTable.hidden, true));
   if (statusFilter === "deleted") rideConditions.push(isNotNull(rideRatingsTable.deletedAt));
@@ -793,7 +793,7 @@ router.delete("/ride-ratings/:id", adminAuth, async (req, res) => {
 router.get("/reviews/export", async (req, res) => {
   const { status, type } = req.query as Record<string, string>;
 
-  const conditions: unknown[] = [];
+  const conditions: SQL[] = [];
   if (status && status !== "all") conditions.push(eq(reviewsTable.status, status));
   if (type && type !== "all") conditions.push(eq(reviewsTable.orderType, type));
 
@@ -1067,6 +1067,8 @@ router.post("/jobs/rating-suspension", async (req, res) => {
   });
 });
 
+const ALLOWED_SOS_STATUSES = new Set(["pending", "acknowledged", "resolved"]);
+
 /* ── POST /admin/riders/:id/override-suspension — override auto-suspension ─ */
 router.get("/sos/alerts", async (req, res) => {
   const page   = Math.max(1, parseInt(String(req.query["page"]  || "1"),  10));
@@ -1125,7 +1127,7 @@ router.patch("/sos/alerts/:id/acknowledge", async (req, res) => {
     .where(eq(notificationsTable.id, alertId));
 
   const [updatedAck] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, alertId)).limit(1);
-  const fullAckPayload = serializeSosAlert(updatedAck);
+  const fullAckPayload = serializeSosAlert(updatedAck) as SosAlertPayload;
   try { emitSosAcknowledged(fullAckPayload); } catch { /* non-critical */ }
   sendSuccess(res, { ok: true, alert: fullAckPayload });
 });
@@ -1150,7 +1152,7 @@ router.patch("/sos/alerts/:id/resolve", async (req, res) => {
     .where(eq(notificationsTable.id, alertId));
 
   const [updatedRes] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, alertId)).limit(1);
-  const fullResPayload = serializeSosAlert(updatedRes);
+  const fullResPayload = serializeSosAlert(updatedRes) as SosAlertPayload;
   try { emitSosResolved(fullResPayload); } catch { /* non-critical */ }
   sendSuccess(res, { ok: true, alert: fullResPayload });
 });

@@ -241,7 +241,7 @@ router.post("/", customerAuth, async (req, res) => {
 
       sendCreated(res, { ...mapBooking(booking), gstAmount });
     } catch (e: unknown) {
-      sendValidationError(res, e.message);
+      sendValidationError(res, (e as Error).message);
     }
     return;
   }
@@ -324,7 +324,8 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       });
       return updated;
     }).catch((err: unknown) => {
-      if (err?.httpStatus) { sendError(res, err.message, err.httpStatus); }
+      const e = err as { httpStatus?: number; message?: string };
+      if (e?.httpStatus) { sendError(res, e.message ?? "Cancel failed", e.httpStatus); }
       else { sendError(res, "Cancel failed", 500); }
       return undefined;
     });

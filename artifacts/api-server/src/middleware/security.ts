@@ -986,7 +986,7 @@ export async function verifyCaptcha(req: Request, res: Response, next: NextFunct
     });
 
     if (!resp.ok) {
-      logger.error("[CAPTCHA] Google API returned non-OK status:", resp.status);
+      logger.error(`[CAPTCHA] Google API returned non-OK status: ${resp.status}`);
       res.status(502).json({ success: false, error: "CAPTCHA verification service unavailable. Please try again.", message: "CAPTCHA تصدیق کی سروس دستیاب نہیں ہے۔" });
       return;
     }

@@ -17,7 +17,7 @@ import {
   signAdminJwt, verifyAdminJwt, invalidateSettingsCache, getCachedSettings,
   ADMIN_TOKEN_TTL_HRS, verifyTotpToken, verifyAdminSecret,
   ensureDefaultRideServices, ensureDefaultLocations, formatSvc,
-  type AdminRequest,
+  type AdminRequest, type TranslationKey,
 } from "../admin-shared.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 
@@ -429,13 +429,13 @@ router.post("/flash-deals", async (req, res) => {
   }
   const [deal] = await db.insert(flashDealsTable).values({
     id:           generateId(),
-    productId:    body.productId,
-    title:        body.title    || null,
-    badge:        body.badge    || "FLASH",
+    productId:    body.productId as string,
+    title:        (body.title as string)    || null,
+    badge:        (body.badge as string)    || "FLASH",
     discountPct:  body.discountPct  ? String(body.discountPct)  : null,
     discountFlat: body.discountFlat ? String(body.discountFlat) : null,
-    startTime:    new Date(body.startTime),
-    endTime:      new Date(body.endTime),
+    startTime:    new Date(body.startTime as string),
+    endTime:      new Date(body.endTime as string),
     dealStock:    body.dealStock  ? Number(body.dealStock)  : null,
     isActive:     body.isActive !== false,
   }).returning();
@@ -449,8 +449,8 @@ router.patch("/flash-deals/:id", async (req, res) => {
   if (body.badge        !== undefined) updates.badge        = body.badge;
   if (body.discountPct  !== undefined) updates.discountPct  = body.discountPct  ? String(body.discountPct)  : null;
   if (body.discountFlat !== undefined) updates.discountFlat = body.discountFlat ? String(body.discountFlat) : null;
-  if (body.startTime    !== undefined) updates.startTime    = new Date(body.startTime);
-  if (body.endTime      !== undefined) updates.endTime      = new Date(body.endTime);
+  if (body.startTime    !== undefined) updates.startTime    = new Date(body.startTime as string);
+  if (body.endTime      !== undefined) updates.endTime      = new Date(body.endTime as string);
   if (body.dealStock    !== undefined) updates.dealStock    = body.dealStock ? Number(body.dealStock) : null;
   if (body.isActive     !== undefined) updates.isActive     = body.isActive;
   const [deal] = await db.update(flashDealsTable).set(updates).where(eq(flashDealsTable.id, req.params["id"]!)).returning();
@@ -498,12 +498,12 @@ router.post("/promo-codes", async (req, res) => {
       maxDiscount:    body.maxDiscount    ? String(body.maxDiscount)    : null,
       usageLimit:     body.usageLimit     ? Number(body.usageLimit)     : null,
       appliesTo:      body.appliesTo      || "all",
-      expiresAt:      body.expiresAt      ? new Date(body.expiresAt)    : null,
+      expiresAt:      body.expiresAt      ? new Date(body.expiresAt as string) : null,
       isActive:       body.isActive !== false,
     }).returning();
     sendCreated(res, code);
   } catch (e: unknown) {
-    if (e.code === "23505") { sendError(res, "Promo code already exists", 409); return; }
+    if ((e as { code?: string }).code === "23505") { sendError(res, "Promo code already exists", 409); return; }
     throw e;
   }
 });

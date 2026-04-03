@@ -174,12 +174,15 @@ router.get("/autocomplete", async (req, res) => {
       return;
     }
 
-    const predictions = (data.predictions ?? []).map((p: Record<string, unknown>) => ({
-      placeId:       p.place_id,
-      description:   p.description,
-      mainText:      p.structured_formatting?.main_text ?? p.description,
-      secondaryText: p.structured_formatting?.secondary_text ?? "",
-    }));
+    const predictions = (data.predictions ?? []).map((p: Record<string, unknown>) => {
+      const sf = p["structured_formatting"] as Record<string, string> | undefined;
+      return {
+        placeId:       p["place_id"],
+        description:   p["description"],
+        mainText:      sf?.["main_text"] ?? p["description"],
+        secondaryText: sf?.["secondary_text"] ?? "",
+      };
+    });
 
     res.json({ predictions, source: "google" });
   } catch (err) {

@@ -320,9 +320,9 @@ router.patch("/online", async (req, res) => {
         }).onConflictDoUpdate({
           target: liveLocationsTable.userId,
           set: { onlineSince: now, updatedAt: now },
-        }).catch((e: Record<string, unknown>) => { logger.warn("[rider] live_location seed failed:", e?.message); });
+        }).catch((e: unknown) => { logger.warn("[rider] live_location seed failed:", (e as Error)?.message); });
       }
-    } catch (e: unknown) { logger.warn("[rider] live_location seed failed:", e?.message); }
+    } catch (e: unknown) { logger.warn("[rider] live_location seed failed:", (e as Error)?.message); }
   }
 
   /* Emit real-time status event to admin-fleet */
@@ -406,7 +406,7 @@ router.patch("/profile", async (req, res) => {
     const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, riderId)).returning();
     user = updated;
   } catch (dbErr: unknown) {
-    const msg = dbErr?.message || "";
+    const msg = (dbErr as Error)?.message || "";
     if (msg.includes("unique") || msg.includes("duplicate")) {
       sendError(res, "A profile field conflicts with an existing record (e.g. duplicate CNIC)", 409);
     } else {

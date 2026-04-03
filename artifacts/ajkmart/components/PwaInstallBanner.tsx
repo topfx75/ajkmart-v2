@@ -62,7 +62,7 @@ export function PwaInstallBanner() {
   if (!visible || Platform.OS !== "web") return null;
 
   return (
-    <View style={s.wrapper} accessibilityRole="banner">
+    <View style={s.wrapper} accessibilityRole="header">
       <View style={s.left}>
         <View style={s.iconBox}>
           <Text style={{ fontSize: 20 }}>🛒</Text>

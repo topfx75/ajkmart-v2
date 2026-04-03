@@ -101,15 +101,15 @@ router.post("/admin-accounts", async (req, res) => {
   try {
     const [account] = await db.insert(adminAccountsTable).values({
       id:          generateId(),
-      name:        body.name,
-      secret:      hashAdminSecret(body.secret),
-      role:        body.role        || "manager",
-      permissions: body.permissions || "",
+      name:        body.name as string,
+      secret:      hashAdminSecret(body.secret as string),
+      role:        (body.role as string)        || "manager",
+      permissions: (body.permissions as string) || "",
       isActive:    body.isActive !== false,
     }).returning();
     res.status(201).json({ ...account, secret: "••••••", createdAt: account.createdAt.toISOString() });
   } catch (e: unknown) {
-    if (e.code === "23505") { res.status(409).json({ error: "Secret already in use" }); return; }
+    if ((e as { code?: string }).code === "23505") { res.status(409).json({ error: "Secret already in use" }); return; }
     throw e;
   }
 });
@@ -123,7 +123,7 @@ router.patch("/admin-accounts/:id", async (req, res) => {
   if (body.isActive    !== undefined) updates.isActive    = body.isActive;
   if (body.secret      !== undefined) {
     if (body.secret === getAdminSecret()) { res.status(400).json({ error: "Cannot use the master secret" }); return; }
-    updates.secret = hashAdminSecret(body.secret);
+    updates.secret = hashAdminSecret(body.secret as string);
   }
   const [account] = await db.update(adminAccountsTable).set(updates).where(eq(adminAccountsTable.id, req.params["id"]!)).returning();
   if (!account) { res.status(404).json({ error: "Admin account not found" }); return; }
@@ -163,54 +163,6 @@ router.post("/rotate-secret", adminAuth, (req, res) => {
   });
 });
 
-/* ── GET /admin/security-events — suspicious activity log ── */
-router.get("/security-events", adminAuth, (req, res) => {
-  const limit    = Math.min(parseInt(String(req.query["limit"]    || "200")), 1000);
-  const severity = req.query["severity"] as string | undefined;
-  const type     = req.query["type"]     as string | undefined;
-
-  let events = [...securityEvents];
-  if (severity) events = events.filter(e => e.severity === severity);
-  if (type)     events = events.filter(e => e.type.includes(type));
-
-  res.json({
-    events: events.slice(0, limit),
-    total: events.length,
-    summary: {
-      critical: securityEvents.filter(e => e.severity === "critical").length,
-      high:     securityEvents.filter(e => e.severity === "high").length,
-      medium:   securityEvents.filter(e => e.severity === "medium").length,
-      low:      securityEvents.filter(e => e.severity === "low").length,
-    },
-  });
-});
-
-/* ── GET /admin/blocked-ips — list all blocked IPs ── */
-router.get("/blocked-ips", adminAuth, async (_req, res) => {
-  const blocked = await getBlockedIPList();
-  res.json({
-    blocked,
-    total: blocked.length,
-  });
-});
-
-/* ── POST /admin/blocked-ips — block an IP ── */
-router.post("/blocked-ips", adminAuth, async (req, res) => {
-  const { ip, reason } = req.body as { ip: string; reason?: string };
-  if (!ip) { res.status(400).json({ error: "ip required" }); return; }
-
-  await blockIP(ip.trim());
-  addAuditEntry({
-    action: "manual_block_ip",
-    ip: getClientIp(req),
-    adminId: req.adminId!,
-    details: `IP ${ip} manually blocked. Reason: ${reason || "No reason given"}`,
-    result: "success",
-  });
-  addSecurityEvent({ type: "ip_manually_blocked", ip, details: `Admin manually blocked IP: ${ip}. Reason: ${reason || "none"}`, severity: "high" });
-  const blocked = await getBlockedIPList();
-  res.json({ success: true, blocked: ip, totalBlocked: blocked.length });
-});
 router.get("/me/language", adminAuth, async (req, res) => {
   const adminId = req.adminId;
   if (!adminId) {

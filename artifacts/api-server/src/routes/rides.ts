@@ -370,10 +370,10 @@ const toISO = (v: unknown) => v ? (v instanceof Date ? v.toISOString() : v) : nu
 function formatRide(r: Record<string, unknown>) {
   return {
     ...r,
-    fare:          parseFloat(r.fare         ?? "0"),
-    distance:      parseFloat(r.distance     ?? "0"),
-    offeredFare:   r.offeredFare  ? parseFloat(r.offeredFare)  : null,
-    counterFare:   r.counterFare  ? parseFloat(r.counterFare)  : null,
+    fare:          parseFloat(String(r.fare         ?? "0")),
+    distance:      parseFloat(String(r.distance     ?? "0")),
+    offeredFare:   r.offeredFare  ? parseFloat(String(r.offeredFare))  : null,
+    counterFare:   r.counterFare  ? parseFloat(String(r.counterFare))  : null,
     bargainRounds: r.bargainRounds ?? 0,
     createdAt:     toISO(r.createdAt),
     updatedAt:     toISO(r.updatedAt),
@@ -461,7 +461,7 @@ router.post("/estimate", async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 422;
     const code = e instanceof RideApiError ? e.code : "ESTIMATE_FAILED";
-    sendErrorWithData(res, e.message, { code }, status);
+    sendErrorWithData(res, (e as Error).message, { code }, status);
   }
 });
 
@@ -539,7 +539,7 @@ router.post("/", customerAuth, async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 422;
     const code = e instanceof RideApiError ? e.code : "FARE_CALCULATION_FAILED";
-    sendErrorWithData(res, e.message, { code }, status); return;
+    sendErrorWithData(res, (e as Error).message, { code }, status); return;
   }
 
   const bargainEnabled  = (s["ride_bargaining_enabled"] ?? "on") === "on";
@@ -665,7 +665,7 @@ router.post("/", customerAuth, async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 400;
     const code = e instanceof RideApiError ? e.code : "BOOKING_FAILED";
-    sendErrorWithData(res, e.message, { code }, status);
+    sendErrorWithData(res, (e as Error).message, { code }, status);
   }
 });
 
@@ -904,7 +904,7 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
   } catch (e: unknown) {
     const status = e instanceof RideApiError ? e.httpStatus : 400;
     const code = e instanceof RideApiError ? e.code : "ACCEPT_BID_FAILED";
-    sendErrorWithData(res, e.message, { code }, status);
+    sendErrorWithData(res, (e as Error).message, { code }, status);
     return;
   }
 

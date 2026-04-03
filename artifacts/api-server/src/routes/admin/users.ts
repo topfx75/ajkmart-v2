@@ -4,6 +4,7 @@ import {
   usersTable,
   walletTransactionsTable,
   notificationsTable,
+  ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import {
@@ -381,8 +382,8 @@ router.patch("/users/bulk-ban", async (req, res) => {
   const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
   if (!ids?.length) { sendValidationError(res, "ids required"); return; }
   const updates = action === "ban"
-    ? { isBanned: true, isActive: false, banReason: reason || "Banned by admin", updatedAt: new Date() }
-    : { isBanned: false, isActive: true, banReason: null as unknown, updatedAt: new Date() };
+    ? { isBanned: true, isActive: false, banReason: (reason || "Banned by admin") as string | null, updatedAt: new Date() }
+    : { isBanned: false, isActive: true, banReason: null as string | null, updatedAt: new Date() };
   for (const id of ids) {
     await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).catch(() => {});
   }

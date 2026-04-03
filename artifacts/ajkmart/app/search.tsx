@@ -99,7 +99,7 @@ export default function UniversalSearchScreen() {
   const { data: catData } = useGetCategories({});
   const allCategories = (catData?.categories || []).flatMap(cat => [
     cat,
-    ...(cat.children || []),
+    ...((cat as any).children || []),
   ]);
 
   const inputRef = useRef<TextInput>(null);
@@ -159,12 +159,11 @@ export default function UniversalSearchScreen() {
           searchProducts({
             q: q.trim(),
             type: svc,
-            category: params.category || undefined,
+            category: filterCategory || params.category || undefined,
             sort: sortBy !== "relevance" ? sortBy : undefined,
             minPrice: minPrice || undefined,
             maxPrice: maxPrice || undefined,
             minRating: minRating || undefined,
-            category: filterCategory || undefined,
             page,
             perPage: 20,
           }).then((data) => ({

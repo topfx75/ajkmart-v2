@@ -63,8 +63,8 @@ router.post("/", customerAuth, async (req, res) => {
 });
 
 function getAdminFromReq(req: Request): { adminId: string; adminName: string } {
-  const adminId = (req as Record<string, unknown>).adminId as string | undefined;
-  const adminName = (req as Record<string, unknown>).adminName as string | undefined;
+  const adminId = (req as unknown as Record<string, unknown>).adminId as string | undefined;
+  const adminName = (req as unknown as Record<string, unknown>).adminName as string | undefined;
   return { adminId: adminId ?? "admin", adminName: adminName ?? "Admin" };
 }
 

@@ -450,8 +450,8 @@ export default function ProductDetailScreen() {
 
   const images: string[] = [];
   if (product?.image) images.push(product.image);
-  if (product?.images && Array.isArray(product.images)) {
-    for (const img of product.images) {
+  if ((product as any)?.images && Array.isArray((product as any).images)) {
+    for (const img of (product as any).images) {
       if (img && !images.includes(img)) images.push(img);
     }
   }

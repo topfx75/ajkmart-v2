@@ -107,7 +107,7 @@ async function restoreTables(tables: Record<string, any[]>) {
       }
       restored[key] = rows.length;
     } catch (e: unknown) {
-      errors.push(`${key}: ${e.message}`);
+      errors.push(`${key}: ${(e as Error).message}`);
     }
   }
   return { restored, errors };
