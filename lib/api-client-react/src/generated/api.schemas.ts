@@ -81,6 +81,28 @@ export interface Product {
   deliveryTime?: string;
 }
 
+export interface ReviewsSummary {
+  average: number;
+  total: number;
+  breakdown: Record<number, number>;
+}
+
+export interface ProductVariant {
+  id: string;
+  productId: string;
+  name: string;
+  price: number;
+  originalPrice?: number;
+  inStock: boolean;
+  attributes?: Record<string, unknown> | null;
+  sortOrder?: number;
+}
+
+export interface ProductDetail extends Product {
+  variants: ProductVariant[];
+  reviewsSummary: ReviewsSummary;
+}
+
 export interface ProductListResponse {
   products: Product[];
   total: number;

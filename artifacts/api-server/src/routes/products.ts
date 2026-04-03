@@ -156,7 +156,7 @@ router.get("/search", async (req, res) => {
 
   let conditions: SQL[];
   if (useFullText) {
-    const ftCondition = sql`to_tsvector('simple', coalesce(${productsTable.name}, '') || ' ' || coalesce(${productsTable.description}, '')) @@ to_tsquery('simple', ${tsQueryStr + ":*"})`;
+    const ftCondition = sql`to_tsvector('english', coalesce(${productsTable.name}, '') || ' ' || coalesce(${productsTable.description}, '')) @@ to_tsquery('english', ${tsQueryStr + ":*"})`;
     conditions = [...baseConditions, ftCondition];
   } else {
     conditions = [...baseConditions, ilike(productsTable.name, `%${trimmed}%`)];
@@ -173,7 +173,7 @@ router.get("/search", async (req, res) => {
     orderBy = desc(productsTable.createdAt);
   } else if (useFullText) {
     orderBy = desc(
-      sql`ts_rank(to_tsvector('simple', coalesce(${productsTable.name}, '') || ' ' || coalesce(${productsTable.description}, '')), to_tsquery('simple', ${tsQueryStr + ":*"}))`
+      sql`ts_rank(to_tsvector('english', coalesce(${productsTable.name}, '') || ' ' || coalesce(${productsTable.description}, '')), to_tsquery('english', ${tsQueryStr + ":*"}))`
     );
   } else {
     orderBy = desc(productsTable.reviewCount);
