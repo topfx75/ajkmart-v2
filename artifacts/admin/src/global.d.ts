@@ -9,4 +9,5 @@
    Actual types are provided by the package's own bundled declarations when
    Vite resolves it. */
 declare module "react-map-gl";
+declare module "react-map-gl/mapbox";
 declare module "mapbox-gl";

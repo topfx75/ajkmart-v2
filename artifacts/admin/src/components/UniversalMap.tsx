@@ -165,8 +165,8 @@ function LeafletMap({
 
 /* Dynamic import wrapper — only executed when Mapbox is active */
 const MapboxMapLazy = lazy(() =>
-  /* react-map-gl is installed as a dependency; Vite resolves it correctly */
-  import("react-map-gl").then(rgl => {
+  /* react-map-gl v8 uses subpath exports — import the mapbox entry directly */
+  import("react-map-gl/mapbox").then(rgl => {
     const { default: MapGL, Marker: MapboxMarker, Source, Layer, NavigationControl } = rgl;
 
     function MapboxMapImpl(props: UniversalMapProps) {
