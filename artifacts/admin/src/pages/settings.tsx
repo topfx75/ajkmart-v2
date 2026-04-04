@@ -189,15 +189,15 @@ export default function SettingsPage() {
   const appNameBlank = appNameValue === "";
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-4 max-w-5xl">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-slate-100 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
             <Settings2 className="w-5 h-5 text-slate-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-display font-bold text-foreground">App Settings</h1>
+            <h1 className="text-xl sm:text-2xl font-display font-bold text-foreground">App Settings</h1>
             <p className="text-sm">
               {dirtyKeys.size > 0
                 ? <span className="text-amber-600 font-medium">{dirtyKeys.size} unsaved change{dirtyKeys.size > 1 ? "s" : ""}</span>
@@ -207,7 +207,7 @@ export default function SettingsPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => { loadSettings(); toast({ title: "Reloaded" }); }} disabled={loading} className="h-9 rounded-xl gap-2">
-            <RefreshCw className="w-4 h-4" /> Reset
+            <RefreshCw className="w-4 h-4" /> <span className="hidden xs:inline">Reset</span>
           </Button>
           <Button onClick={handleSave} disabled={saving || dirtyKeys.size === 0 || appNameBlank} title={appNameBlank ? "App Name cannot be blank" : undefined} className="h-9 rounded-xl gap-2 shadow-sm">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -216,10 +216,35 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* ── Mobile: horizontal scrollable category picker ── */}
+      <div className="md:hidden overflow-x-auto -mx-1 px-1 pb-1">
+        <div className="flex gap-1.5 w-max">
+          {CAT_ORDER.map(cat => {
+            const cfg = CATEGORY_CONFIG[cat];
+            const Icon = cfg.icon;
+            const isActive = activeTab === cat;
+            const dirty = dirtyCounts[cat] || 0;
+            const hasSettings = (grouped[cat]?.length ?? 0) > 0 || cat === "payment" || cat === "system" || cat === "security";
+            if (!hasSettings) return null;
+            return (
+              <button key={cat} onClick={() => setActiveTab(cat)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all border ${
+                  isActive ? `${cfg.activeBg} text-white border-transparent shadow-sm` : "bg-white border-border/60 text-foreground hover:bg-muted/40"
+                }`}
+              >
+                <Icon className={`w-3 h-3 flex-shrink-0 ${isActive ? "text-white" : cfg.color}`} />
+                {cfg.label}
+                {dirty > 0 && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isActive ? "bg-white/25 text-white" : "bg-amber-100 text-amber-700"}`}>{dirty}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Two-panel layout */}
       <div className="flex gap-4 items-start">
-        {/* LEFT sidebar */}
-        <div className="w-56 flex-shrink-0 bg-white rounded-2xl border border-border/60 shadow-sm overflow-hidden sticky top-4">
+        {/* LEFT sidebar — desktop only */}
+        <div className="hidden md:flex w-56 flex-shrink-0 flex-col bg-white rounded-2xl border border-border/60 shadow-sm overflow-hidden sticky top-4">
           {/* Sidebar header */}
           <div className="px-4 pt-4 pb-2 border-b border-border/30">
             <div className="flex items-center gap-2">
@@ -315,7 +340,7 @@ export default function SettingsPage() {
               </div>
             </div>
             {/* Section body */}
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {activeTab === "payment" ? (
                 <PaymentSection
                   localValues={localValues} dirtyKeys={dirtyKeys}

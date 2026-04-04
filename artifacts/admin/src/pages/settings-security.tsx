@@ -193,14 +193,16 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
 
   return (
     <div className="space-y-4">
-      {/* Sub-tab bar */}
-      <div className="flex flex-wrap gap-1.5 bg-muted/50 p-1.5 rounded-xl">
-        {SEC_TABS.map(t => (
-          <button key={t.id} onClick={() => setSecTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${secTab === t.id ? `${t.active} text-white shadow-sm` : "text-muted-foreground hover:bg-white"}`}>
-            <span>{t.emoji}</span> {t.label}
-          </button>
-        ))}
+      {/* Sub-tab bar — horizontally scrollable on mobile */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-1.5 bg-muted/50 p-1.5 rounded-xl w-max min-w-full">
+          {SEC_TABS.map(t => (
+            <button key={t.id} onClick={() => setSecTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all ${secTab === t.id ? `${t.active} text-white shadow-sm` : "text-muted-foreground hover:bg-white"}`}>
+              <span>{t.emoji}</span> {t.label}
+            </button>
+          ))}
+        </div>
       </div>
       <p className="text-xs text-muted-foreground px-1">{SEC_TABS.find(t => t.id === secTab)?.desc}</p>
 

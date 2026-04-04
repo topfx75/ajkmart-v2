@@ -289,22 +289,24 @@ export default function AppManagement() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-muted p-1 rounded-xl w-fit overflow-x-auto">
-        {[
-          { id: "overview",    label: "📊 Overview" },
-          { id: "admins",      label: "👥 Admin Accounts" },
-          { id: "maintenance", label: "🔧 Services & Maintenance" },
-          { id: "audit-log",   label: "📋 Audit Log" },
-        ].map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id as any)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${tab === t.id ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs — scrollable on mobile */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-1 bg-muted p-1 rounded-xl w-max min-w-full">
+          {[
+            { id: "overview",    label: "📊 Overview" },
+            { id: "admins",      label: "👥 Admin Accounts" },
+            { id: "maintenance", label: "🔧 Services & Maintenance" },
+            { id: "audit-log",   label: "📋 Audit Log" },
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id as any)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${tab === t.id ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ══ Overview Tab ══ */}
