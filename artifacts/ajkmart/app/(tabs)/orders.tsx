@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { router } from "expo-router";
 import React, { useState, useCallback, useRef } from "react";
 import {
@@ -889,7 +890,7 @@ function SectionHeader({ title, count, active }: { title: string; count: number;
   );
 }
 
-export default function OrdersScreen() {
+function OrdersScreen() {
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
   const { addItem } = useCart();
@@ -1779,3 +1780,5 @@ const styles = StyleSheet.create({
   sectionErrTxt: { flex: 1, ...Typ.bodyMedium, fontSize: 13, color: C.redDark },
   sectionErrRetry: { ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.red },
 });
+
+export default withErrorBoundary(OrdersScreen);

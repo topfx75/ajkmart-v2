@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { router } from "expo-router";
 import * as Location from "expo-location";
 import React, { useState, useEffect, useRef } from "react";
@@ -273,7 +274,7 @@ function AddressPickerModal({
   );
 }
 
-export default function CartScreen() {
+function CartScreen() {
   const insets = useSafeAreaInsets();
   const { user, updateUser, token, socket } = useAuth();
   const {
@@ -1465,3 +1466,5 @@ const styles = StyleSheet.create({
   emptyBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14 },
   emptyBtnText: { ...Typ.buttonSmall, color: C.textInverse },
 });
+
+export default withErrorBoundary(CartScreen);

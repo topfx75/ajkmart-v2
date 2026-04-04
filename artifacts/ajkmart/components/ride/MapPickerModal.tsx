@@ -42,9 +42,14 @@ export function MapPickerModal({
 }: Props) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    if (visible) setLoading(true);
+    if (visible) {
+      setLoading(true);
+      setHasError(false);
+    }
   }, [visible]);
 
   const lat = initialLat ?? 33.7294;
@@ -73,6 +78,12 @@ export function MapPickerModal({
     [onConfirm],
   );
 
+  const handleRetry = () => {
+    setHasError(false);
+    setLoading(true);
+    setRetryKey(k => k + 1);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -90,25 +101,46 @@ export function MapPickerModal({
         </View>
 
         <View style={styles.mapWrap}>
-          {loading && (
+          {loading && !hasError && (
             <View style={styles.loader}>
               <ActivityIndicator size="large" color={C.primary} />
               <Text style={styles.loaderTxt}>Loading map...</Text>
             </View>
           )}
-          <WebView
-            source={{ uri: src }}
-            style={[styles.webview, loading && styles.hidden]}
-            onLoad={() => setLoading(false)}
-            onError={() => setLoading(false)}
-            onMessage={handleMessage}
-            javaScriptEnabled
-            domStorageEnabled
-            geolocationEnabled
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            mixedContentMode="compatibility"
-          />
+
+          {hasError ? (
+            <View style={styles.errorWrap}>
+              <View style={styles.errorIconCircle}>
+                <Ionicons name="wifi-outline" size={32} color={C.textMuted} />
+              </View>
+              <Text style={styles.errorTitle}>Map Unavailable</Text>
+              <Text style={styles.errorMsg}>
+                Unable to load the map. Please check your connection and try again.
+              </Text>
+              <TouchableOpacity activeOpacity={0.7} style={styles.retryBtn} onPress={handleRetry}>
+                <Ionicons name="refresh" size={16} color="#fff" />
+                <Text style={styles.retryTxt}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.7} style={styles.closeBtn} onPress={onClose}>
+                <Text style={styles.closeTxt}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <WebView
+              key={retryKey}
+              source={{ uri: src }}
+              style={[styles.webview, loading && styles.hidden]}
+              onLoad={() => setLoading(false)}
+              onError={() => { setLoading(false); setHasError(true); }}
+              onMessage={handleMessage}
+              javaScriptEnabled
+              domStorageEnabled
+              geolocationEnabled
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              mixedContentMode="compatibility"
+            />
+          )}
         </View>
       </View>
     </Modal>
@@ -168,6 +200,59 @@ const styles = StyleSheet.create({
   },
   loaderTxt: {
     fontFamily: Font.medium,
+    fontSize: 14,
+    color: C.textMuted,
+  },
+  errorWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+    gap: 12,
+  },
+  errorIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: C.surfaceSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  errorTitle: {
+    fontFamily: Font.bold,
+    fontSize: 18,
+    color: C.text,
+    textAlign: "center",
+  },
+  errorMsg: {
+    fontFamily: Font.regular,
+    fontSize: 14,
+    color: C.textMuted,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: C.primary,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    marginTop: 8,
+  },
+  retryTxt: {
+    fontFamily: Font.bold,
+    fontSize: 15,
+    color: "#fff",
+  },
+  closeBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+  },
+  closeTxt: {
+    fontFamily: Font.semiBold,
     fontSize: 14,
     color: C.textMuted,
   },

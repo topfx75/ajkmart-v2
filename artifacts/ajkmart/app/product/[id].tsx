@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useState, useRef, useEffect, useCallback } from "react";
@@ -345,7 +346,7 @@ function FullScreenImageViewer({
   );
 }
 
-export default function ProductDetailScreen() {
+function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 20 : insets.top;
@@ -1147,3 +1148,5 @@ const variantStyles = StyleSheet.create({
   chipPriceSelected: { color: C.primary },
   oosLabel: { ...Typ.tiny, color: C.danger, marginTop: 2 },
 });
+
+export default withErrorBoundary(ProductDetailScreen);

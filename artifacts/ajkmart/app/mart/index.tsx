@@ -22,6 +22,7 @@ import { T as Typ, Font } from "@/constants/typography";
 import { useCart } from "@/context/CartContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { withServiceGuard } from "@/components/ServiceGuard";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { useGetProducts, useGetCategories } from "@workspace/api-client-react";
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { CartSwitchModal } from "@/components/CartSwitchModal";
@@ -454,7 +455,7 @@ function MartScreenInner() {
   );
 }
 
-export default withServiceGuard("mart", MartScreenInner);
+export default withErrorBoundary(withServiceGuard("mart", MartScreenInner));
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },

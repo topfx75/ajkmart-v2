@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -392,6 +393,10 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
       return;
     }
     if (!idempotencyKey) return;
+    if (!selectedMethod) {
+      setErr("Please select a payment method before submitting.");
+      return;
+    }
     setSubmitting(true);
     setErr("");
     try {
@@ -403,7 +408,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
         },
         body: JSON.stringify({
           amount: parseFloat(amount),
-          paymentMethod: selectedMethod!.id,
+          paymentMethod: selectedMethod.id,
           transactionId: normalizedTxId,
           idempotencyKey,
           accountNumber: senderAcNo.trim() || undefined,
@@ -425,7 +430,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
           const merged = Array.from(new Set([...existing, normalizedTxId])).slice(-100);
           return AsyncStorage.setItem(SUBMITTED_TX_KEY, JSON.stringify(merged));
         })
-        .catch((err) => console.warn("[Wallet] Failed to persist submitted tx id:", err instanceof Error ? err.message : String(err)));
+        .catch((err) => { if (__DEV__) console.warn("[Wallet] Failed to persist submitted tx id:", err instanceof Error ? err.message : String(err)); });
       setStep("done");
       onSuccess();
     } catch {
@@ -744,7 +749,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
   );
 }
 
-export default function WalletScreen() {
+function WalletScreen() {
   const insets = useSafeAreaInsets();
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
@@ -1340,3 +1345,5 @@ const ws = StyleSheet.create({
   actionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 16, paddingVertical: 16, marginTop: 4 },
   actionBtnTxt: { ...Typ.h3, fontSize: 16, color: C.textInverse },
 });
+
+export default withErrorBoundary(WalletScreen);

@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -1301,7 +1302,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
   );
 }
 
-export default function ProfileScreen() {
+function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout, updateUser, token } = useAuth();
   const { showToast } = useToast();
@@ -2073,4 +2074,6 @@ const addrItem = StyleSheet.create({
   setDefTxt: { ...typography.smallMedium, color: C.primary },
   delBtn: { width: 30, height: 30, borderRadius: radii.sm, alignItems: "center", justifyContent: "center" },
 });
+
+export default withErrorBoundary(ProfileScreen);
 

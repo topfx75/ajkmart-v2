@@ -22,6 +22,7 @@ import { T as Typ, Font } from "@/constants/typography";
 import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
 import { useCart } from "@/context/CartContext";
 import { withServiceGuard } from "@/components/ServiceGuard";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { useGetProducts, useGetCategories } from "@workspace/api-client-react";
 import { CartSwitchModal } from "@/components/CartSwitchModal";
 import { AuthGateSheet, useAuthGate, useRoleGate, RoleBlockSheet } from "@/components/AuthGateSheet";
@@ -300,7 +301,7 @@ function FoodScreenInner() {
   );
 }
 
-export default withServiceGuard("food", FoodScreenInner);
+export default withErrorBoundary(withServiceGuard("food", FoodScreenInner));
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.background },

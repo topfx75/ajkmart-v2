@@ -24,6 +24,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { withServiceGuard } from "@/components/ServiceGuard";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { PermissionGuide } from "@/components/PermissionGuide";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -344,7 +345,7 @@ function ParcelScreenInner() {
       const payload: ParcelBookingPayload = {
         senderName, senderPhone: normalizePhone(senderPhone), pickupAddress,
         receiverName, receiverPhone: normalizePhone(receiverPhone), dropAddress,
-        parcelType: parcelType!, weight: w,
+        parcelType: parcelType ?? "", weight: w,
         description: description || undefined,
         paymentMethod: payMethod as "cash" | "wallet" | "cod",
         ...(finalPickupLat !== undefined && finalPickupLng !== undefined ? { pickupLat: finalPickupLat, pickupLng: finalPickupLng } : {}),
@@ -787,7 +788,7 @@ function ParcelScreenInner() {
   );
 }
 
-export default withServiceGuard("parcel", ParcelScreenInner);
+export default withErrorBoundary(withServiceGuard("parcel", ParcelScreenInner));
 
 const ss = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },

@@ -8,6 +8,7 @@ import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { withServiceGuard } from "@/components/ServiceGuard";
+import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { RideBookingForm } from "@/components/ride/RideBookingForm";
 import { RideTracker } from "@/components/ride/RideTracker";
 import { Ionicons } from "@expo/vector-icons";
@@ -304,4 +305,4 @@ function RideScreenInner() {
   return <RideBookingForm onBooked={(ride) => setBooked(ride)} prefillPickup={prefillPickup} prefillDrop={prefillDrop} prefillType={prefillType} />;
 }
 
-export default withServiceGuard("rides", RideScreenInner);
+export default withErrorBoundary(withServiceGuard("rides", RideScreenInner));

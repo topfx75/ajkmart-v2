@@ -190,7 +190,7 @@ function MagicLinkHandler() {
           }
         }
       } catch (err: any) {
-        console.warn("MagicLinkHandler error:", err.message || err);
+        if (__DEV__) console.warn("MagicLinkHandler error:", err.message || err);
       }
     };
 
