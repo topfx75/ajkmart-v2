@@ -31,7 +31,7 @@ import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useApiCall } from "@/hooks/useApiCall";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
-import { ServiceListSkeleton, FareEstimateSkeleton } from "@/components/ride/Skeletons";
+import { ServiceListSkeleton, FareEstimateSkeleton, HistoryRowSkeleton } from "@/components/ride/Skeletons";
 import { PermissionGuide } from "@/components/PermissionGuide";
 import {
   estimateFare,
@@ -229,6 +229,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
   const liveAnim = useRef(new Animated.Value(1)).current;
   const bookBtnScale = useRef(new Animated.Value(1)).current;
+  const bargainPanelH = useRef(new Animated.Value(0)).current;
+  const svcIndicatorX = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -240,6 +242,25 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     pulse.start();
     return () => pulse.stop();
   }, []);
+
+  useEffect(() => {
+    Animated.spring(bargainPanelH, {
+      toValue: showBargain ? 1 : 0,
+      useNativeDriver: false,
+      tension: 200,
+      friction: 20,
+    }).start();
+  }, [showBargain]);
+
+  useEffect(() => {
+    const idx = Math.max(0, services.findIndex((s) => s.key === rideType));
+    Animated.spring(svcIndicatorX, {
+      toValue: idx * 14,
+      useNativeDriver: false,
+      tension: 220,
+      friction: 14,
+    }).start();
+  }, [rideType, services]);
 
   const handleMapPickerConfirm = useCallback((result: MapPickerResult) => {
     setShowMapPicker(false);
@@ -1361,10 +1382,11 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         {servicesLoading ? (
           <ServiceListSkeleton />
         ) : (
+          <React.Fragment>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={{ marginHorizontal: -20, marginBottom: 16 }}
+            style={{ marginHorizontal: -20, marginBottom: 8 }}
             contentContainerStyle={{
               paddingHorizontal: 20,
               gap: 10,
@@ -1465,6 +1487,32 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               );
             })}
           </ScrollView>
+          {services.length > 1 && (
+            <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "center", marginTop: 10, height: 6, gap: 4 }}>
+              <Animated.View
+                style={{
+                  position: "absolute",
+                  left: svcIndicatorX,
+                  width: 20,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: services.find((s) => s.key === rideType)?.color ?? C.primary,
+                }}
+              />
+              {services.map((svc) => (
+                <View
+                  key={svc.key}
+                  style={{
+                    width: svc.key === rideType ? 20 : 6,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: svc.key === rideType ? "transparent" : C.borderLight,
+                  }}
+                />
+              ))}
+            </View>
+          )}
+          </React.Fragment>
         )}
 
         {estimating && <FareEstimateSkeleton />}
@@ -1573,7 +1621,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     <View
                       style={{
                         height: "100%",
-                        width: `${Math.min(estimateAgeMinutes / 5, 1) * 100}%`,
+                        width: `${(1 - Math.min(estimateAgeMinutes / 5, 1)) * 100}%`,
                         backgroundColor: estimateAgeMinutes >= 4 ? C.danger : estimateAgeMinutes >= 2 ? C.amberBrown : C.emerald,
                         borderRadius: 2,
                       }}
@@ -1763,7 +1811,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               />
             </Pressable>
 
-            {showBargain && (
+            <Animated.View
+              style={{
+                overflow: "hidden",
+                maxHeight: bargainPanelH.interpolate({ inputRange: [0, 1], outputRange: [0, 280] }),
+                opacity: bargainPanelH,
+              }}
+            >
               <View
                 style={{
                   backgroundColor: C.orangeBg,
@@ -1860,7 +1914,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   The rider can accept, counter, or reject your offer.
                 </Text>
               </View>
-            )}
+            </Animated.View>
           </View>
         )}
 
@@ -2003,8 +2057,11 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         >
           Payment
         </Text>
-        <View
-          style={{ flexDirection: "row", gap: 10, marginBottom: 14 }}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginBottom: 14 }}
+          contentContainerStyle={{ gap: 8, paddingRight: 20 }}
         >
           {payMethods.map((pm) => {
             const pmId = pm.id;
@@ -2021,27 +2078,29 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             const pmIcon: string = isCash ? "cash-outline" : isWallet ? "wallet-outline" : isJazzcash ? "phone-portrait-outline" : isEasypaisa ? "phone-portrait-outline" : "card-outline";
             const pmColor = isCash ? C.success : isWallet ? C.primary : isJazzcash ? C.red : isEasypaisa ? C.emerald : C.primary;
             const pmBg = isCash ? C.greenLightBg : isWallet ? C.blueBorder : isJazzcash ? C.redBorder : isEasypaisa ? C.greenLightBg : C.blueBorder;
-            const pmSubtext = isCash ? "Pay on arrival" : isWallet ? `Rs. ${(user?.walletBalance ?? 0).toLocaleString()}` : `Pay via ${pmLabel}`;
+            const balanceLabel = isWallet ? ` · Rs. ${(user?.walletBalance ?? 0).toLocaleString()}` : "";
             return (
               <Pressable
                 key={pmId}
                 onPress={() => setPayMethod(pmId)}
-                style={{
-                  flex: 1,
+                style={({ pressed }) => ({
+                  flexDirection: "row",
                   alignItems: "center",
-                  padding: 16,
-                  borderRadius: 16,
+                  gap: 7,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 24,
                   borderWidth: 1.5,
                   borderColor: active ? pmColor : C.border,
-                  backgroundColor: active ? `${pmColor}08` : C.textInverse,
-                  gap: 6,
-                }}
+                  backgroundColor: active ? `${pmColor}10` : C.textInverse,
+                  transform: [{ scale: pressed ? 0.95 : 1 }],
+                })}
               >
                 <View
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 14,
+                    width: 30,
+                    height: 30,
+                    borderRadius: 10,
                     backgroundColor: active ? pmBg : C.surfaceSecondary,
                     alignItems: "center",
                     justifyContent: "center",
@@ -2049,51 +2108,31 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 >
                   <Ionicons
                     name={pmIcon as any}
-                    size={22}
+                    size={16}
                     color={active ? pmColor : C.textSecondary}
                   />
                 </View>
                 <Text
                   style={{
-                    fontFamily: active
-                      ? Font.bold
-                      : Font.semiBold,
+                    fontFamily: active ? Font.bold : Font.semiBold,
                     fontSize: 13,
                     color: active ? C.text : C.textSecondary,
                   }}
                 >
-                  {pmLabel}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: Font.regular,
-                    fontSize: 11,
-                    color: insufficient ? C.danger : C.textMuted,
-                  }}
-                >
-                  {pmSubtext}
+                  {pmLabel}{balanceLabel}
                 </Text>
                 {active && (
-                  <View
-                    style={{
-                      position: "absolute",
-                      top: 8,
-                      right: 8,
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      backgroundColor: pmColor,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons name="checkmark" size={12} color={C.textInverse} />
+                  <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: pmColor, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="checkmark" size={10} color="#fff" />
                   </View>
+                )}
+                {insufficient && (
+                  <Ionicons name="alert-circle" size={14} color={C.danger} />
                 )}
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         <View
           style={{
@@ -2210,13 +2249,16 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         onRequestClose={() => setShowHistory(false)}
       >
         <View style={{ flex: 1, backgroundColor: C.background }}>
+          <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: C.border }} />
+          </View>
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              padding: 20,
-              backgroundColor: C.surface,
+              paddingHorizontal: 20,
+              paddingVertical: 14,
               borderBottomWidth: 1,
               borderBottomColor: C.border,
             }}
@@ -2245,10 +2287,11 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             </Pressable>
           </View>
           {histLoading ? (
-            <ActivityIndicator
-              color={C.primary}
-              style={{ marginTop: 40 }}
-            />
+            <View style={{ padding: 20 }}>
+              {[0, 1, 2, 3, 4].map((i) => (
+                <HistoryRowSkeleton key={i} dark={colorScheme === "dark"} />
+              ))}
+            </View>
           ) : history.length === 0 ? (
             <View
               style={{
