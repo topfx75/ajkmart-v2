@@ -706,8 +706,9 @@ Auth (OTP send/verify) → Profile (GET/PUT) → Products/Categories/Flash deals
 
 #### T001: Map Pin Location Picker
 - **`artifacts/api-server/src/routes/maps.ts`**: `/api/maps/picker` serves a full HTML+Leaflet page with `window.parent.postMessage` for location selection.
-- **`artifacts/ajkmart/components/MapPickerModal.tsx`**: WebView-based modal wrapper that captures `postMessage` events from the map picker.
-- **`artifacts/ajkmart/components/ride/RideBookingForm.tsx`**: Integrated MapPickerModal for both pickup and drop location selection via map pins.
+- **`artifacts/ajkmart/components/ride/MapPickerModal.tsx`**: Native WebView-based modal wrapper that captures `postMessage` events from the map picker.
+- **`artifacts/ajkmart/components/ride/MapPickerModal.web.tsx`**: Web-specific implementation using `<iframe>` instead of WebView, with origin validation (`event.origin === PICKER_ORIGIN`), `allow="geolocation"` attribute, and proper sandbox permissions.
+- **`artifacts/ajkmart/components/ride/RideBookingForm.tsx`**: Integrated MapPickerModal for both pickup and drop location selection via map pins. Layout compacted: reduced gradient header padding, smaller inputs/icons, compact service type cards (130px width, 120px minHeight), GPS button in header bar, tighter scroll area padding (16px vs 20px).
 
 #### T002: Scheduled Rides + Multi-Stop
 - **`artifacts/api-server/src/routes/rides.ts`**: Both wallet and cash ride INSERT calls persist `isScheduled`, `scheduledAt`, `stops`, `isPoolRide`; scheduled rides get status `"scheduled"`; broadcast skipped at booking.

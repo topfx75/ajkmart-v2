@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -43,8 +43,7 @@ export function MapPickerModal({
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
 
-  /* Reset loading state each time the modal opens */
-  React.useEffect(() => {
+  useEffect(() => {
     if (visible) setLoading(true);
   }, [visible]);
 
@@ -69,7 +68,6 @@ export function MapPickerModal({
           address: payload.address ?? `${payload.lat.toFixed(5)}, ${payload.lng.toFixed(5)}`,
         });
       } catch {
-        /* ignore malformed messages */
       }
     },
     [onConfirm],

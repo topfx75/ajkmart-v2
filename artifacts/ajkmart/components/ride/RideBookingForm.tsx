@@ -792,139 +792,128 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
-          paddingTop: topPad + 12,
-          paddingHorizontal: 20,
-          paddingBottom: 28,
+          paddingTop: topPad + 8,
+          paddingHorizontal: 16,
+          paddingBottom: 14,
         }}
       >
         <View style={rs.hdrRow}>
           <Pressable onPress={() => router.back()} style={rs.backBtnBlue}>
-            <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+            <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
           </Pressable>
-          <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={{ flex: 1, marginLeft: 10 }}>
             <Text
               style={{
                 fontFamily: Font.bold,
-                fontSize: 20,
+                fontSize: 17,
                 color: "#FFFFFF",
               }}
             >
               Book a Ride
             </Text>
+          </View>
+          <Pressable
+            onPress={handleMyLocation}
+            disabled={locLoading}
+            style={{
+              height: 34,
+              borderRadius: 10,
+              backgroundColor: "rgba(255,255,255,0.18)",
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 10,
+              gap: 5,
+              marginRight: 8,
+            }}
+          >
+            {locLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons
+                name="locate-outline"
+                size={14}
+                color={locDenied ? "#ff8888" : "#FFFFFF"}
+              />
+            )}
             <Text
               style={{
-                fontFamily: Font.regular,
-                fontSize: 12,
-                color: "rgba(255,255,255,0.75)",
-                marginTop: 2,
+                fontFamily: Font.medium,
+                fontSize: 11,
+                color: locDenied ? "#ff8888" : "rgba(255,255,255,0.9)",
               }}
             >
-              Anywhere in AJK
+              {locLoading ? "..." : locDenied ? "Denied" : "GPS"}
             </Text>
-          </View>
+          </Pressable>
           <Pressable
             onPress={() => {
               setShowHistory(true);
               fetchHistory();
             }}
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              backgroundColor: "rgba(255,255,255,0.2)",
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              backgroundColor: "rgba(255,255,255,0.18)",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Ionicons name="time-outline" size={20} color="#FFFFFF" />
+            <Ionicons name="time-outline" size={18} color="#FFFFFF" />
           </Pressable>
         </View>
 
         <View
           style={{
-            marginTop: 18,
+            marginTop: 10,
             backgroundColor: "#FFFFFF",
-            borderRadius: 20,
-            padding: 16,
+            borderRadius: 16,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
             ...Platform.select({
-              ios: { shadowColor: "#001A5C", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 16 },
-              android: { elevation: 6 },
-              web: { boxShadow: "0 6px 20px rgba(0,26,92,0.18)" },
+              ios: { shadowColor: "#001A5C", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 12 },
+              android: { elevation: 4 },
+              web: { boxShadow: "0 4px 14px rgba(0,26,92,0.14)" },
             }),
           }}
         >
-          <Pressable
-            onPress={handleMyLocation}
-            disabled={locLoading}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              paddingVertical: 6,
-              paddingHorizontal: 4,
-              marginBottom: 8,
-            }}
-          >
-            {locLoading ? (
-              <ActivityIndicator size="small" color={C.primary} />
-            ) : (
-              <Ionicons
-                name="locate-outline"
-                size={14}
-                color={locDenied ? C.red : C.primary}
-              />
-            )}
-            <Text
-              style={{
-                fontFamily: Font.medium,
-                fontSize: 12,
-                color: locDenied ? C.red : C.primary,
-              }}
-            >
-              {locLoading
-                ? "Locating..."
-                : locDenied
-                  ? "Location denied — tap to retry"
-                  : "Use my location"}
-            </Text>
-          </Pressable>
           {locDenied && (
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 paddingHorizontal: 4,
-                paddingBottom: 6,
-                gap: 6,
+                paddingBottom: 4,
+                gap: 5,
               }}
             >
-              <Ionicons name="warning-outline" size={12} color={C.red} />
+              <Ionicons name="warning-outline" size={11} color={C.red} />
               <Text
                 style={{
                   fontFamily: Font.regular,
-                  fontSize: 11,
+                  fontSize: 10,
                   color: C.red,
                   flex: 1,
                 }}
               >
-                Enable location in device settings or type pickup manually.
+                Location denied — type address or tap GPS to retry
               </Text>
             </View>
           )}
 
           <View style={{ flexDirection: "row", alignItems: "stretch", gap: 0 }}>
-            <View style={{ width: 24, alignItems: "center", paddingTop: 14 }}>
-              <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: C.emerald, borderWidth: 2, borderColor: `${C.emerald}40` }} />
-              <View style={{ flex: 1, width: 2, alignItems: "center", marginVertical: 3 }}>
-                {[0,1,2,3,4].map((i) => (
-                  <View key={i} style={{ width: 2, height: 4, backgroundColor: C.border, borderRadius: 1, marginBottom: 3, opacity: 0.8 }} />
+            <View style={{ width: 20, alignItems: "center", paddingTop: 12 }}>
+              <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: C.emerald, borderWidth: 2, borderColor: `${C.emerald}40` }} />
+              <View style={{ flex: 1, width: 1.5, alignItems: "center", marginVertical: 2 }}>
+                {[0,1,2].map((i) => (
+                  <View key={i} style={{ width: 1.5, height: 3, backgroundColor: C.border, borderRadius: 1, marginBottom: 2, opacity: 0.7 }} />
                 ))}
               </View>
-              <View style={{ width: 11, height: 11, borderRadius: 3, backgroundColor: C.red, borderWidth: 2, borderColor: `${C.red}40`, marginBottom: 14 }} />
+              <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: C.red, borderWidth: 2, borderColor: `${C.red}40`, marginBottom: 12 }} />
             </View>
 
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: C.borderLight, paddingBottom: 2 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: C.borderLight, paddingBottom: 1 }}>
                 <TextInput
                   value={pickup}
                   onChangeText={(v) => {
@@ -939,10 +928,10 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   style={{
                     flex: 1,
                     fontFamily: Font.medium,
-                    fontSize: 14,
+                    fontSize: 13,
                     color: C.text,
-                    paddingVertical: 10,
-                    paddingLeft: 8,
+                    paddingVertical: 8,
+                    paddingLeft: 6,
                   }}
                 />
                 {pickup.length > 0 && (
@@ -954,34 +943,34 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     }}
                     hitSlop={8}
                   >
-                    <Ionicons name="close-circle" size={15} color={C.textMuted} />
+                    <Ionicons name="close-circle" size={14} color={C.textMuted} />
                   </Pressable>
                 )}
                 <Pressable
                   onPress={() => { setMapPickerTarget("pickup"); setShowMapPicker(true); }}
                   hitSlop={8}
-                  style={{ marginLeft: 6, padding: 4 }}
+                  style={{ marginLeft: 4, padding: 3 }}
                 >
-                  <Ionicons name="map-outline" size={17} color={C.primary} />
+                  <Ionicons name="map-outline" size={16} color={C.primary} />
                 </Pressable>
               </View>
 
               {pickup !== "" && !pickupObj && pickupError ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3, marginLeft: 8 }}>
-                  <Ionicons name="alert-circle-outline" size={12} color={C.red} />
-                  <Text style={{ ...Typ.small, color: C.red }}>{pickupError}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2, marginLeft: 6 }}>
+                  <Ionicons name="alert-circle-outline" size={11} color={C.red} />
+                  <Text style={{ ...Typ.small, fontSize: 10, color: C.red }}>{pickupError}</Text>
                 </View>
               ) : null}
 
               {pickupFocus && (
                 <View style={ds.sugg}>
                   {pickupLoading && (
-                    <ActivityIndicator size="small" color={C.primary} style={{ padding: 8 }} />
+                    <ActivityIndicator size="small" color={C.primary} style={{ padding: 6 }} />
                   )}
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always">
-                    {pickupPreds.slice(0, 6).map((pred) => (
+                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{ maxHeight: 150 }}>
+                    {pickupPreds.slice(0, 5).map((pred) => (
                       <Pressable key={pred.placeId} onPress={() => selectPickup(pred)} style={ds.suggRow}>
-                        <Ionicons name="location-outline" size={14} color={C.emerald} />
+                        <Ionicons name="location-outline" size={13} color={C.emerald} />
                         <View style={{ flex: 1 }}>
                           <Text style={ds.suggTxt}>{pred.mainText}</Text>
                           {pred.secondaryText ? (
@@ -1008,10 +997,10 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   style={{
                     flex: 1,
                     fontFamily: Font.medium,
-                    fontSize: 14,
+                    fontSize: 13,
                     color: C.text,
-                    paddingVertical: 10,
-                    paddingLeft: 8,
+                    paddingVertical: 8,
+                    paddingLeft: 6,
                   }}
                 />
                 {drop.length > 0 && (
@@ -1022,27 +1011,27 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     }}
                     hitSlop={8}
                   >
-                    <Ionicons name="close-circle" size={15} color={C.textMuted} />
+                    <Ionicons name="close-circle" size={14} color={C.textMuted} />
                   </Pressable>
                 )}
                 <Pressable
                   onPress={() => { setMapPickerTarget("drop"); setShowMapPicker(true); }}
                   hitSlop={8}
-                  style={{ marginLeft: 6, padding: 4 }}
+                  style={{ marginLeft: 4, padding: 3 }}
                 >
-                  <Ionicons name="map-outline" size={17} color={C.red} />
+                  <Ionicons name="map-outline" size={16} color={C.red} />
                 </Pressable>
               </View>
 
               {dropFocus && (
                 <View style={ds.sugg}>
                   {dropLoading && (
-                    <ActivityIndicator size="small" color={C.red} style={{ padding: 8 }} />
+                    <ActivityIndicator size="small" color={C.red} style={{ padding: 6 }} />
                   )}
-                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always">
-                    {dropPreds.slice(0, 6).map((pred) => (
+                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{ maxHeight: 150 }}>
+                    {dropPreds.slice(0, 5).map((pred) => (
                       <Pressable key={pred.placeId} onPress={() => selectDrop(pred)} style={ds.suggRow}>
-                        <Ionicons name="location-outline" size={14} color={C.red} />
+                        <Ionicons name="location-outline" size={13} color={C.red} />
                         <View style={{ flex: 1 }}>
                           <Text style={ds.suggTxt}>{pred.mainText}</Text>
                           {pred.secondaryText ? (
@@ -1066,9 +1055,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 setDropObj(to);
               }}
               style={({ pressed }) => ({
-                width: 30,
-                height: 30,
-                borderRadius: 10,
+                width: 28,
+                height: 28,
+                borderRadius: 8,
                 backgroundColor: pressed ? C.blueBorder : C.surface,
                 borderWidth: 1,
                 borderColor: C.border,
@@ -1078,12 +1067,12 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 transform: [{ scale: pressed ? 0.9 : 1 }],
               })}
             >
-              <Ionicons name="swap-vertical" size={15} color={C.primary} />
+              <Ionicons name="swap-vertical" size={14} color={C.primary} />
             </Pressable>
           </View>
 
           {stops.map((stop, idx) => (
-            <View key={stop.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 }}>
+            <View key={stop.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
               <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.amberBrown }} />
               <TextInput
                 value={stopInputs[String(idx)] ?? stop.address}
@@ -1104,10 +1093,10 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && (
             <Pressable
               onPress={addStop}
-              style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, paddingVertical: 6, paddingHorizontal: 4 }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6, paddingVertical: 4, paddingHorizontal: 4 }}
             >
-              <Ionicons name="add-circle-outline" size={16} color={C.primary} />
-              <Text style={{ fontFamily: Font.medium, fontSize: 12, color: C.primary }}>Add Stop</Text>
+              <Ionicons name="add-circle-outline" size={14} color={C.primary} />
+              <Text style={{ fontFamily: Font.medium, fontSize: 11, color: C.primary }}>Add Stop</Text>
             </Pressable>
           )}
         </View>
@@ -1115,7 +1104,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 20 }}
+        contentContainerStyle={{ padding: 16 }}
       >
         {debtBalance > 0 && !debtDismissed && (
           <View
@@ -1226,8 +1215,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 16, marginHorizontal: -20 }}
-              contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+              style={{ marginBottom: 14, marginHorizontal: -16 }}
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
             >
               {popularSpots.map((spot) => (
                 <Pressable
@@ -1386,10 +1375,10 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={{ marginHorizontal: -20, marginBottom: 8 }}
+            style={{ marginHorizontal: -16, marginBottom: 8 }}
             contentContainerStyle={{
-              paddingHorizontal: 20,
-              gap: 10,
+              paddingHorizontal: 16,
+              gap: 8,
               flexDirection: "row",
             }}
           >
@@ -1404,55 +1393,55 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               const cardInner = (
                 <View
                   style={{
-                    borderRadius: active ? 19 : 20,
-                    padding: 16,
+                    borderRadius: active ? 15 : 16,
+                    padding: 12,
                     backgroundColor: active ? `${accentColor}0A` : C.textInverse,
                     ...(active ? {} : { borderWidth: 1.5, borderColor: C.border }),
                     overflow: "hidden",
-                    minHeight: 160,
+                    minHeight: 120,
                   }}
                 >
                   {active && (
-                    <View style={{ position: "absolute", top: 10, right: 10 }}>
-                      <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: accentColor, alignItems: "center", justifyContent: "center" }}>
-                        <Ionicons name="checkmark" size={11} color="#fff" />
+                    <View style={{ position: "absolute", top: 8, right: 8 }}>
+                      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: accentColor, alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name="checkmark" size={10} color="#fff" />
                       </View>
                     </View>
                   )}
                   <View
                     style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: 18,
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
                       backgroundColor: active ? `${accentColor}18` : C.surfaceSecondary,
                       alignItems: "center",
                       justifyContent: "center",
-                      marginBottom: 10,
+                      marginBottom: 8,
                     }}
                   >
-                    <Text style={{ fontSize: 30 }}>{svc.icon}</Text>
+                    <Text style={{ fontSize: 24 }}>{svc.icon}</Text>
                   </View>
-                  <Text style={{ fontFamily: Font.bold, fontSize: 16, color: active ? accentColor : C.text }}>
+                  <Text style={{ fontFamily: Font.bold, fontSize: 14, color: active ? accentColor : C.text }}>
                     {svc.name}
                   </Text>
                   {svc.nameUrdu ? (
-                    <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: Font.regular }}>
+                    <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: Font.regular }}>
                       {svc.nameUrdu}
                     </Text>
                   ) : null}
-                  <Text style={{ fontFamily: Font.semiBold, fontSize: 13, color: active ? accentColor : C.textSecondary, marginTop: 3 }}>
-                    From Rs. {svc.minFare}
+                  <Text style={{ fontFamily: Font.semiBold, fontSize: 12, color: active ? accentColor : C.textSecondary, marginTop: 2 }}>
+                    Rs. {svc.minFare}
                   </Text>
-                  <View style={{ gap: 4, marginTop: 8 }}>
-                    {feats.slice(0, 3).map((f) => (
-                      <View key={f} style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                  <View style={{ gap: 3, marginTop: 6 }}>
+                    {feats.slice(0, 2).map((f) => (
+                      <View key={f} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                         <Ionicons
                           name="checkmark-circle"
-                          size={11}
+                          size={10}
                           color={active ? accentColor : C.textMuted}
                         />
                         <Text
-                          style={{ fontFamily: Font.regular, fontSize: 11, color: C.textSecondary }}
+                          style={{ fontFamily: Font.regular, fontSize: 10, color: C.textSecondary }}
                           numberOfLines={1}
                         >
                           {f}
@@ -1467,8 +1456,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   key={svc.key}
                   onPress={() => setRideType(svc.key)}
                   style={({ pressed }) => ({
-                    width: 152,
-                    borderRadius: 21,
+                    width: 130,
+                    borderRadius: 17,
                     transform: [{ scale: pressed ? 0.96 : 1 }],
                     opacity: pressed ? 0.92 : 1,
                   })}
@@ -1478,7 +1467,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       colors={[accentColor, `${accentColor}70`, `${accentColor}30`]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
-                      style={{ borderRadius: 21, padding: 1.5 }}
+                      style={{ borderRadius: 17, padding: 1.5 }}
                     >
                       {cardInner}
                     </LinearGradient>
@@ -3008,10 +2997,10 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 const rs = StyleSheet.create({
   hdrRow: { flexDirection: "row", alignItems: "center" },
   backBtnBlue: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3021,29 +3010,29 @@ function makeDynStyles(C: typeof import("@/constants/colors").default.light) {
   return {
     sugg: {
       backgroundColor: C.surface,
-      borderRadius: 12,
-      marginTop: 6,
+      borderRadius: 10,
+      marginTop: 4,
       borderWidth: 1,
       borderColor: C.border,
-      maxHeight: 200,
+      maxHeight: 160,
     } as const,
     suggRow: {
       flexDirection: "row" as const,
       alignItems: "center" as const,
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
       borderBottomWidth: 1,
       borderBottomColor: C.borderLight,
     } as const,
     suggTxt: {
       fontFamily: Font.regular,
-      fontSize: 13,
+      fontSize: 12,
       color: C.text,
     } as const,
     suggSub: {
       fontFamily: Font.regular,
-      fontSize: 11,
+      fontSize: 10,
       color: C.textMuted,
       marginTop: 1,
     } as const,

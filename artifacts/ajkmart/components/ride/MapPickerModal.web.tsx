@@ -37,14 +37,15 @@ export function MapPickerModal({ visible, label = "Location", initialLat, initia
   const [loading, setLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const lat  = initialLat ?? 33.7294;
-  const lng  = initialLng ?? 73.3872;
-  const src  = `${PICKER_ORIGIN}/api/maps/picker?lat=${lat}&lng=${lng}&zoom=14&label=${encodeURIComponent(label)}`;
+  const lat = initialLat ?? 33.7294;
+  const lng = initialLng ?? 73.3872;
+  const src = `${PICKER_ORIGIN}/api/maps/picker?lat=${lat}&lng=${lng}&zoom=14&label=${encodeURIComponent(label)}`;
 
   useEffect(() => {
     if (!visible) { setLoading(true); return; }
 
     function handleMessage(e: MessageEvent) {
+      if (e.origin !== PICKER_ORIGIN) return;
       if (!e.data || e.data.type !== "MAP_PICKER_CONFIRM") return;
       const { lat, lng, address } = e.data as { lat: number; lng: number; address: string; type: string };
       if (typeof lat !== "number" || typeof lng !== "number") return;
@@ -57,7 +58,7 @@ export function MapPickerModal({ visible, label = "Location", initialLat, initia
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container, { paddingTop: 0 }]}>
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={12} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={C.text} />
@@ -73,17 +74,15 @@ export function MapPickerModal({ visible, label = "Location", initialLat, initia
               <Text style={styles.loaderTxt}>Loading map...</Text>
             </View>
           )}
-          {/* Web-specific iframe — compiled correctly by react-native-web */}
-          {(Platform as any).OS === "web" && (
-            <iframe
-              ref={iframeRef}
-              src={src}
-              style={{ width: "100%", height: "100%", border: "none", display: loading ? "none" : "block" }}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock"
-              onLoad={() => setLoading(false)}
-              title={`Map picker — ${label}`}
-            />
-          )}
+          <iframe
+            ref={iframeRef}
+            src={src}
+            style={{ width: "100%", height: "100%", border: "none", display: loading ? "none" : "block" }}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups"
+            allow="geolocation"
+            onLoad={() => setLoading(false)}
+            title={`Map picker — ${label}`}
+          />
         </View>
       </View>
     </Modal>
