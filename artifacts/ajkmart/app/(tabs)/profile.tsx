@@ -1860,6 +1860,14 @@ function ProfileScreen() {
   );
 }
 
+export default function ProfileScreen() {
+  return (
+    <ErrorBoundary>
+      <ProfileScreenInner />
+    </ErrorBoundary>
+  );
+}
+
 const lvl = StyleSheet.create({
   strip: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginHorizontal: spacing.lg, marginTop: spacing.md, backgroundColor: C.surface, borderRadius: radii.xl, padding: spacing.md, borderWidth: 1, borderColor: C.borderLight, ...shadows.sm },
   badge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radii.full, borderWidth: 1.5 },

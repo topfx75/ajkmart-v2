@@ -941,6 +941,14 @@ function ProductDetailScreen() {
   );
 }
 
+export default function ProductDetailScreen() {
+  return (
+    <ErrorBoundary>
+      <ProductDetailScreenInner />
+    </ErrorBoundary>
+  );
+}
+
 const rs = StyleSheet.create({
   card: { backgroundColor: C.surfaceSecondary, borderRadius: 14, padding: 14, gap: 8 },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },

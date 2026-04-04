@@ -342,7 +342,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
           setSubmittedTxIds(new Set(ids));
         }
       })
-      .catch((err) => console.warn("[Wallet] Failed to load submitted tx ids:", err instanceof Error ? err.message : String(err)));
+      .catch((err) => { if (__DEV__) console.warn("[Wallet] Failed to load submitted tx ids:", err instanceof Error ? err.message : String(err)); });
   }, []);
 
   useEffect(() => {
@@ -387,6 +387,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
 
   const handleSubmit = async () => {
     if (submitting) return;
+    if (!selectedMethod) { setErr("No payment method selected"); return; }
     const normalizedTxId = txId.trim();
     if (submittedTxIds.has(normalizedTxId)) {
       setErr("This transaction ID has already been submitted. Please check your wallet history.");
@@ -825,7 +826,7 @@ function WalletScreen() {
             setWalletFrozen(false);
           }
         })
-        .catch((err) => console.warn("[Wallet] Frozen-status check failed:", err instanceof Error ? err.message : String(err)));
+        .catch((err) => { if (__DEV__) console.warn("[Wallet] Frozen-status check failed:", err instanceof Error ? err.message : String(err)); });
     }
   }, [token]);
 
@@ -838,7 +839,7 @@ function WalletScreen() {
           if (d.error === "wallet_frozen") { setWalletFrozen(true); return; }
         } else { setWalletFrozen(false); }
       } catch (err) {
-        console.warn("[Wallet] Status check failed:", err instanceof Error ? err.message : String(err));
+        if (__DEV__) console.warn("[Wallet] Status check failed:", err instanceof Error ? err.message : String(err));
       }
     }
     const res = await refetch();
@@ -855,7 +856,7 @@ function WalletScreen() {
         .then(r => r.json())
         .then(unwrapApiResponse)
         .then(d => setPendingTopups({ count: d.count || 0, total: d.total || 0 }))
-        .catch((err) => console.warn("[Wallet] Pending topups fetch failed:", err instanceof Error ? err.message : String(err)));
+        .catch((err) => { if (__DEV__) console.warn("[Wallet] Pending topups fetch failed:", err instanceof Error ? err.message : String(err)); });
     }
   }, [token]);
 
@@ -905,7 +906,7 @@ function WalletScreen() {
       const data = unwrapApiResponse(await res.json());
       setSendReceiverName(data.name || "");
     } catch (err) {
-      console.warn("[Wallet] Receiver lookup failed:", err instanceof Error ? err.message : String(err));
+      if (__DEV__) console.warn("[Wallet] Receiver lookup failed:", err instanceof Error ? err.message : String(err));
     }
     setSendLoading(false);
     setSendStep("confirm");
@@ -1297,6 +1298,14 @@ function WalletScreen() {
       </Modal>
 
     </View>
+  );
+}
+
+export default function WalletScreen() {
+  return (
+    <ErrorBoundary>
+      <WalletScreenInner />
+    </ErrorBoundary>
   );
 }
 

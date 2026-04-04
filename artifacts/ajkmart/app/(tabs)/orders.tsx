@@ -1575,6 +1575,14 @@ function OrdersScreen() {
   );
 }
 
+export default function OrdersScreen() {
+  return (
+    <ErrorBoundary>
+      <OrdersScreenInner />
+    </ErrorBoundary>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 18 },

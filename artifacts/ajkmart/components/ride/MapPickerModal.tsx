@@ -103,8 +103,11 @@ export function MapPickerModal({
         <View style={styles.mapWrap}>
           {loading && !hasError && (
             <View style={styles.loader}>
-              <ActivityIndicator size="large" color={C.primary} />
+              <View style={styles.loaderIconWrap}>
+                <ActivityIndicator size="large" color={C.primary} />
+              </View>
               <Text style={styles.loaderTxt}>Loading map...</Text>
+              <Text style={styles.loaderSub}>This may take a moment</Text>
             </View>
           )}
 
@@ -130,7 +133,7 @@ export function MapPickerModal({
               key={retryKey}
               source={{ uri: src }}
               style={[styles.webview, loading && styles.hidden]}
-              onLoad={() => setLoading(false)}
+              onLoadEnd={() => setLoading(false)}
               onError={() => { setLoading(false); setHasError(true); }}
               onMessage={handleMessage}
               javaScriptEnabled
@@ -194,13 +197,27 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 10,
     zIndex: 10,
     backgroundColor: "#fff",
   },
+  loaderIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: C.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
   loaderTxt: {
     fontFamily: Font.medium,
-    fontSize: 14,
+    fontSize: 15,
+    color: C.text,
+  },
+  loaderSub: {
+    fontFamily: Font.regular,
+    fontSize: 13,
     color: C.textMuted,
   },
   errorWrap: {

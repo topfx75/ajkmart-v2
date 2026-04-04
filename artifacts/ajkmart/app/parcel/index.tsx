@@ -208,16 +208,16 @@ function ParcelScreenInner() {
               if (geoData?.formattedAddress) address = geoData.formattedAddress;
             }
           } catch (geoErr) {
-            console.warn("[Parcel] Reverse geocode failed:", geoErr instanceof Error ? geoErr.message : String(geoErr));
+            if (__DEV__) console.warn("[Parcel] Reverse geocode failed:", geoErr instanceof Error ? geoErr.message : String(geoErr));
           }
           if (cancelled) return;
           setPickupAddress(address);
         } catch (locErr) {
-          console.warn("[Parcel] GPS auto-fill failed:", locErr instanceof Error ? locErr.message : String(locErr));
+          if (__DEV__) console.warn("[Parcel] GPS auto-fill failed:", locErr instanceof Error ? locErr.message : String(locErr));
         }
       })
       .catch((err) => {
-        console.warn("[Parcel] Location init effect error:", err instanceof Error ? err.message : String(err));
+        if (__DEV__) console.warn("[Parcel] Location init effect error:", err instanceof Error ? err.message : String(err));
       });
     return () => { cancelled = true; };
   }, []);
@@ -226,7 +226,7 @@ function ParcelScreenInner() {
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (confirmed) {
-      AsyncStorage.removeItem(PARCEL_DRAFT_KEY).catch((err) => console.warn("[Parcel] Failed to clear draft:", err instanceof Error ? err.message : String(err)));
+      AsyncStorage.removeItem(PARCEL_DRAFT_KEY).catch((err) => { if (__DEV__) console.warn("[Parcel] Failed to clear draft:", err instanceof Error ? err.message : String(err)); });
       return;
     }
     if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
@@ -235,7 +235,7 @@ function ParcelScreenInner() {
         senderName, senderPhone, pickupAddress,
         receiverName, receiverPhone, dropAddress,
         parcelType, weight, description, step,
-      })).catch((err) => console.warn("[Parcel] Failed to save draft:", err instanceof Error ? err.message : String(err)));
+      })).catch((err) => { if (__DEV__) console.warn("[Parcel] Failed to save draft:", err instanceof Error ? err.message : String(err)); });
     }, 500);
     return () => { if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current); };
   }, [senderName, senderPhone, pickupAddress, receiverName, receiverPhone, dropAddress, parcelType, weight, description, step, confirmed]);
@@ -248,7 +248,7 @@ function ParcelScreenInner() {
           setPayMethod(data.methods[0]!.id);
         }
       })
-      .catch((err) => console.warn("[Parcel] Payment methods fetch failed:", err instanceof Error ? err.message : String(err)));
+      .catch((err) => { if (__DEV__) console.warn("[Parcel] Payment methods fetch failed:", err instanceof Error ? err.message : String(err)); });
   }, []);
 
   useEffect(() => {
@@ -256,7 +256,7 @@ function ParcelScreenInner() {
     setFareLoading(true);
     estimateParcel({ parcelType, weight: chargeableWeight > 0 ? chargeableWeight : undefined })
       .then(data => { if (data.fare) setEstimatedFare(data.fare); })
-      .catch((err) => console.warn("[Parcel] Fare estimate failed:", err instanceof Error ? err.message : String(err)))
+      .catch((err) => { if (__DEV__) console.warn("[Parcel] Fare estimate failed:", err instanceof Error ? err.message : String(err)); })
       .finally(() => setFareLoading(false));
   }, [parcelType, chargeableWeight]);
 
@@ -306,14 +306,14 @@ function ParcelScreenInner() {
           const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(pickupAddress)}`);
           const geo = await geoRes.json();
           if (geo?.lat && geo?.lng) { finalPickupLat = geo.lat; finalPickupLng = geo.lng; }
-        } catch (err) { console.warn("[Parcel] Pickup geocode failed:", err instanceof Error ? err.message : String(err)); }
+        } catch (err) { if (__DEV__) console.warn("[Parcel] Pickup geocode failed:", err instanceof Error ? err.message : String(err)); }
       }
       if (finalDropLat === undefined || finalDropLng === undefined) {
         try {
           const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(dropAddress)}`);
           const geo = await geoRes.json();
           if (geo?.lat && geo?.lng) { finalDropLat = geo.lat; finalDropLng = geo.lng; }
-        } catch (err) { console.warn("[Parcel] Drop geocode failed:", err instanceof Error ? err.message : String(err)); }
+        } catch (err) { if (__DEV__) console.warn("[Parcel] Drop geocode failed:", err instanceof Error ? err.message : String(err)); }
       }
 
       // Block booking if either address could not be geocoded
@@ -342,6 +342,11 @@ function ParcelScreenInner() {
       }
 
       const w = chargeableWeight > 0 ? chargeableWeight : (parseFloat(weight) || undefined);
+      if (!parcelType) {
+        showToast("Please select a parcel type", "error");
+        setLoading(false);
+        return;
+      }
       const payload: ParcelBookingPayload = {
         senderName, senderPhone: normalizePhone(senderPhone), pickupAddress,
         receiverName, receiverPhone: normalizePhone(receiverPhone), dropAddress,

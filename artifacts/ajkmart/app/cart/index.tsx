@@ -1363,6 +1363,14 @@ function CartScreen() {
   );
 }
 
+export default function CartScreen() {
+  return (
+    <ErrorBoundary>
+      <CartScreenInner />
+    </ErrorBoundary>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
 
