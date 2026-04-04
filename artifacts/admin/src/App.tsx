@@ -6,6 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PwaInstallBanner } from "@/components/PwaInstallBanner";
 import { useLanguage } from "@/lib/useLanguage";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { initSentry, setSentryUser } from "@/lib/sentry";
+import { initAnalytics, identifyUser } from "@/lib/analytics";
+import { registerPush } from "@/lib/push";
 
 // Layout & Pages
 import { AdminLayout } from "@/components/layout/AdminLayout";
@@ -132,6 +135,54 @@ function LanguageInit() {
   return null;
 }
 
+function IntegrationsInit() {
+  useEffect(() => {
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    fetch(`${base}/api/platform-config`)
+      .then(r => r.ok ? r.json() : null)
+      .then(raw => {
+        if (!raw) return;
+        const d = raw?.data ?? raw;
+        const integ = d?.integrations;
+        if (!integ) return;
+        if (integ.sentry && integ.sentryDsn) {
+          initSentry({
+            dsn: integ.sentryDsn,
+            environment: integ.sentryEnvironment || "production",
+            sampleRate: integ.sentrySampleRate ?? 1.0,
+            tracesSampleRate: integ.sentryTracesSampleRate ?? 0.1,
+          });
+        }
+        if (integ.analytics && integ.analyticsTrackingId) {
+          initAnalytics(integ.analyticsPlatform, integ.analyticsTrackingId, integ.analyticsDebug ?? false);
+        }
+      })
+      .catch(() => {});
+
+    /* Register admin push when token present */
+    const token = localStorage.getItem("ajkmart_admin_token");
+    if (token) {
+      Notification.requestPermission()
+        .then(perm => { if (perm === "granted") registerPush().catch(() => {}); })
+        .catch(() => {});
+      setSentryUser("admin");
+      identifyUser("admin");
+    }
+
+    /* Also listen for post-login storage events to init push */
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "ajkmart_admin_token" && e.newValue) {
+        Notification.requestPermission()
+          .then(perm => { if (perm === "granted") registerPush().catch(() => {}); })
+          .catch(() => {});
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+  return null;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -139,6 +190,7 @@ function App() {
         <TooltipProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <LanguageInit />
+            <IntegrationsInit />
             <Router />
           </WouterRouter>
           <Toaster />

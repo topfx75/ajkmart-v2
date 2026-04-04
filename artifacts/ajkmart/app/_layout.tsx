@@ -14,6 +14,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PwaInstallBanner } from "@/components/PwaInstallBanner";
 import { registerServiceWorker } from "@/utils/register-service-worker";
+import { initSentry, setSentryUser } from "@/utils/sentry";
+import { initAnalytics, trackScreen, identifyUser } from "@/utils/analytics";
+import { registerPush } from "@/utils/push";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
@@ -201,8 +204,29 @@ function MisconfigScreen() {
 }
 
 function RootLayoutNav() {
-  const { isSuspended, user } = useAuth();
+  const { isSuspended, user, token } = useAuth();
   const { config } = usePlatformConfig();
+
+  /* ── Init Sentry + Analytics from platform-config (web only) ── */
+  useEffect(() => {
+    const integ = config?.integrations;
+    if (!integ) return;
+    if (integ.sentry && integ.sentryDsn) {
+      initSentry(integ.sentryDsn, integ.sentryEnvironment, integ.sentrySampleRate).catch(() => {});
+    }
+    if (integ.analytics && integ.analyticsTrackingId) {
+      initAnalytics(integ.analyticsPlatform, integ.analyticsTrackingId, integ.analyticsDebug ?? false);
+      trackScreen("app_start");
+    }
+  }, [config?.integrations?.sentryDsn, config?.integrations?.analyticsTrackingId]);
+
+  /* ── Register push + identify user after login ── */
+  useEffect(() => {
+    if (!user || !token) return;
+    setSentryUser(String(user.id));
+    identifyUser(String(user.id));
+    registerPush(token).catch(() => {});
+  }, [user?.id, token]);
 
   if (isSuspended) return <SuspendedScreen />;
   if (config.appStatus === "maintenance" && user) return <MaintenanceScreen />;

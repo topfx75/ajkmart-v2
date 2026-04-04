@@ -8,6 +8,8 @@ import { SocketProvider } from "./lib/socket";
 import { registerDrainHandler, type QueuedPing } from "./lib/gpsQueue";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { registerPush } from "./lib/push";
+import { initSentry, setSentryUser } from "./lib/sentry";
+import { initAnalytics, trackEvent, identifyUser } from "./lib/analytics";
 import { api } from "./lib/api";
 import { BottomNav } from "./components/BottomNav";
 import { AnnouncementBar } from "./components/AnnouncementBar";
@@ -40,6 +42,27 @@ function AppRoutes() {
       await api.batchLocation(pings.map(({ id, ...rest }) => rest));
     });
   }, []);
+
+  /* ── Sentry + Analytics init from platform config ── */
+  useEffect(() => {
+    const integ = config?.integrations;
+    if (!integ) return;
+    if (integ.sentry && integ.sentryDsn) {
+      initSentry(integ.sentryDsn, integ.sentryEnvironment, integ.sentrySampleRate, integ.sentryTracesSampleRate);
+    }
+    if (integ.analytics && integ.analyticsTrackingId) {
+      initAnalytics(integ.analyticsPlatform, integ.analyticsTrackingId, integ.analyticsDebug ?? false);
+    }
+  }, [config?.integrations?.sentryDsn, config?.integrations?.analyticsTrackingId]);
+
+  /* ── Identify user in Sentry/Analytics after login ── */
+  useEffect(() => {
+    if (user) {
+      setSentryUser(String(user.id), user.email);
+      identifyUser(String(user.id));
+      trackEvent("rider_session_start");
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (user) {
