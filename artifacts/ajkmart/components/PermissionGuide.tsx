@@ -4,7 +4,7 @@ import {
   Alert,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   View,
@@ -96,12 +96,12 @@ export function PermissionGuide({ visible, type, customMessage, onClose }: Permi
           </View>
           <Text style={styles.title}>{cfg.title}</Text>
           <Text style={styles.message}>{customMessage ?? cfg.message}</Text>
-          <Pressable style={styles.primaryBtn} onPress={() => { onClose(); openDeviceSettings(); }}>
+          <TouchableOpacity activeOpacity={0.7} style={styles.primaryBtn} onPress={() => { onClose(); openDeviceSettings(); }}>
             <Text style={styles.primaryBtnText}>Open Settings</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryBtn} onPress={onClose}>
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7} style={styles.secondaryBtn} onPress={onClose}>
             <Text style={styles.secondaryBtnText}>Not Now</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>

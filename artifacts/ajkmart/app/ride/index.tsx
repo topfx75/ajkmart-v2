@@ -11,7 +11,7 @@ import { withServiceGuard } from "@/components/ServiceGuard";
 import { RideBookingForm } from "@/components/ride/RideBookingForm";
 import { RideTracker } from "@/components/ride/RideTracker";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, Text, Platform } from "react-native";
+import { TouchableOpacity, Text, Platform } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
@@ -126,12 +126,12 @@ function RideScreenInner() {
           padding: 32,
         }}
       >
-        <Pressable
+        <TouchableOpacity activeOpacity={0.7}
           onPress={() => router.back()}
           style={{ position: "absolute", top: topPad + 12, left: 16 }}
         >
           <Ionicons name="arrow-back" size={24} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
         <View
           style={{
             backgroundColor: C.surface,
@@ -183,7 +183,7 @@ function RideScreenInner() {
           >
             {T("rideUnavailableMsg")}
           </Text>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             style={{
               width: "100%",
               alignItems: "center",
@@ -202,7 +202,7 @@ function RideScreenInner() {
             >
               {T("backToHome")}
             </Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -254,7 +254,7 @@ function RideScreenInner() {
           >
             {T("rideLoadErrorMsg")}
           </Text>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             style={{
               width: "100%",
               alignItems: "center",
@@ -268,8 +268,8 @@ function RideScreenInner() {
             <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.textInverse }}>
               {T("tryAgain")}
             </Text>
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             style={{
               width: "100%",
               alignItems: "center",
@@ -282,7 +282,7 @@ function RideScreenInner() {
             <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.redBright }}>
               {T("backToHome")}
             </Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     );

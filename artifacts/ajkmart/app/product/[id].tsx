@@ -10,7 +10,7 @@ import {
   Image,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -56,9 +56,9 @@ function StarPicker({ rating, onRate, size = 32 }: { rating: number; onRate: (r:
   return (
     <View style={{ flexDirection: "row", gap: 6 }}>
       {[1, 2, 3, 4, 5].map(i => (
-        <Pressable key={i} onPress={() => onRate(i)}>
+        <TouchableOpacity activeOpacity={0.7} key={i} onPress={() => onRate(i)}>
           <Ionicons name={i <= rating ? "star" : "star-outline"} size={size} color={C.gold} />
-        </Pressable>
+        </TouchableOpacity>
       ))}
     </View>
   );
@@ -85,9 +85,9 @@ function ReviewCard({ review }: { review: ProductReview }) {
       {review.photos && review.photos.length > 0 && (
         <View style={rs.photoRow}>
           {review.photos.map((photo, i) => (
-            <Pressable key={i} onPress={() => setFullScreenPhoto(photo)}>
+            <TouchableOpacity activeOpacity={0.7} key={i} onPress={() => setFullScreenPhoto(photo)}>
               <Image source={{ uri: photo }} style={rs.photoThumb} />
-            </Pressable>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -101,14 +101,14 @@ function ReviewCard({ review }: { review: ProductReview }) {
         </View>
       )}
       <Modal visible={!!fullScreenPhoto} transparent animationType="fade" onRequestClose={() => setFullScreenPhoto(null)}>
-        <Pressable style={rs.fullScreenOverlay} onPress={() => setFullScreenPhoto(null)}>
-          <Pressable onPress={() => setFullScreenPhoto(null)} style={rs.fullScreenClose}>
+        <TouchableOpacity activeOpacity={0.7} style={rs.fullScreenOverlay} onPress={() => setFullScreenPhoto(null)}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setFullScreenPhoto(null)} style={rs.fullScreenClose}>
             <Ionicons name="close" size={24} color="#fff" />
-          </Pressable>
+          </TouchableOpacity>
           {fullScreenPhoto && (
             <Image source={{ uri: fullScreenPhoto }} style={rs.fullScreenImg} resizeMode="contain" />
           )}
-        </Pressable>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -194,9 +194,9 @@ function WriteReviewModal({
           <View style={wr.handle} />
           <View style={wr.header}>
             <Text style={wr.title}>Write a Review</Text>
-            <Pressable onPress={onClose} style={wr.closeBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={wr.closeBtn}>
               <Ionicons name="close" size={22} color={C.text} />
-            </Pressable>
+            </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
@@ -223,22 +223,22 @@ function WriteReviewModal({
               {photos.map((p, i) => (
                 <View key={i} style={wr.photoWrap}>
                   <Image source={{ uri: p.uri }} style={wr.photoPreview} />
-                  <Pressable onPress={() => removePhoto(i)} style={wr.photoRemove}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => removePhoto(i)} style={wr.photoRemove}>
                     <Ionicons name="close-circle" size={20} color={C.danger} />
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
               ))}
               {photos.length < 3 && (
-                <Pressable onPress={pickPhoto} style={wr.addPhotoBtn}>
+                <TouchableOpacity activeOpacity={0.7} onPress={pickPhoto} style={wr.addPhotoBtn}>
                   <Ionicons name="camera-outline" size={24} color={C.primary} />
                   <Text style={wr.addPhotoTxt}>Add</Text>
-                </Pressable>
+                </TouchableOpacity>
               )}
             </View>
 
             {error ? <Text style={wr.error}>{error}</Text> : null}
 
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={handleSubmit}
               disabled={submitting || rating === 0}
               style={[wr.submitBtn, (submitting || rating === 0) && wr.submitBtnDisabled]}
@@ -248,7 +248,7 @@ function WriteReviewModal({
               ) : (
                 <Text style={wr.submitBtnTxt}>Submit Review</Text>
               )}
-            </Pressable>
+            </TouchableOpacity>
           </ScrollView>
         </View>
       </View>
@@ -282,13 +282,13 @@ function ZoomableImage({ uri }: { uri: string }) {
       centerContent
       bouncesZoom
     >
-      <Pressable onPress={handleDoubleTap}>
+      <TouchableOpacity activeOpacity={0.7} onPress={handleDoubleTap}>
         <Image
           source={{ uri }}
           style={{ width: SCREEN_W, height: SCREEN_W }}
           resizeMode="contain"
         />
-      </Pressable>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -312,9 +312,9 @@ function FullScreenImageViewer({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={fs.overlay}>
-        <Pressable onPress={onClose} style={fs.closeBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={fs.closeBtn}>
           <Ionicons name="close" size={28} color="#fff" />
-        </Pressable>
+        </TouchableOpacity>
         <Text style={fs.zoomHint}>Pinch to zoom</Text>
         <FlatList
           data={images}
@@ -507,9 +507,9 @@ export default function ProductDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.floatingHeader, { paddingTop: topPad + 8 }]}>
-          <Pressable onPress={() => router.back()} style={styles.headerBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.headerBtn}>
             <Ionicons name="arrow-back" size={22} color={C.text} />
-          </Pressable>
+          </TouchableOpacity>
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
           <SkeletonBlock w={SCREEN_W} h={IMAGE_H} r={0} />
@@ -529,9 +529,9 @@ export default function ProductDetailScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.floatingHeader, { paddingTop: topPad + 8 }]}>
-          <Pressable onPress={() => router.back()} style={styles.headerBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.headerBtn}>
             <Ionicons name="arrow-back" size={22} color={C.text} />
-          </Pressable>
+          </TouchableOpacity>
         </View>
         <View style={styles.errorCenter}>
           <View style={styles.errorIconWrap}>
@@ -539,10 +539,10 @@ export default function ProductDetailScreen() {
           </View>
           <Text style={styles.errorTitle}>Could not load product</Text>
           <Text style={styles.errorSub}>Check your connection and try again</Text>
-          <Pressable onPress={() => refetch()} style={styles.retryBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={styles.retryBtn}>
             <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
             <Text style={styles.retryBtnTxt}>Retry</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -585,39 +585,39 @@ export default function ProductDetailScreen() {
 
       <Animated.View style={[styles.stickyHeader, { paddingTop: topPad + 8, opacity: headerOpacity }]}>
         <View style={styles.stickyHeaderInner}>
-          <Pressable onPress={() => router.back()} style={styles.headerBtnSolid}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.headerBtnSolid}>
             <Ionicons name="arrow-back" size={20} color={C.text} />
-          </Pressable>
+          </TouchableOpacity>
           <Text style={styles.stickyTitle} numberOfLines={1}>{product.name}</Text>
-          <Pressable onPress={() => router.push("/cart")} style={styles.headerBtnSolid}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/cart")} style={styles.headerBtnSolid}>
             <Ionicons name="bag-outline" size={20} color={C.text} />
             {itemCount > 0 && (
               <View style={styles.cartBadge}>
                 <Text style={styles.cartBadgeTxt}>{itemCount}</Text>
               </View>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </Animated.View>
 
       <View style={[styles.floatingHeader, { paddingTop: topPad + 8 }]}>
-        <Pressable onPress={() => router.back()} style={styles.headerBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={22} color={C.textInverse} />
-        </Pressable>
+        </TouchableOpacity>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Animated.View style={{ transform: [{ scale: heartScale }] }}>
-            <Pressable onPress={toggleWishlist} style={styles.headerBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={toggleWishlist} style={styles.headerBtn}>
               <Ionicons name={isInWishlist ? "heart" : "heart-outline"} size={22} color={isInWishlist ? C.danger : C.textInverse} />
-            </Pressable>
+            </TouchableOpacity>
           </Animated.View>
-          <Pressable onPress={() => router.push("/cart")} style={styles.headerBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/cart")} style={styles.headerBtn}>
             <Ionicons name="bag-outline" size={22} color={C.textInverse} />
             {itemCount > 0 && (
               <View style={styles.cartBadge}>
                 <Text style={styles.cartBadgeTxt}>{itemCount}</Text>
               </View>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -641,9 +641,9 @@ export default function ProductDetailScreen() {
                 setActiveImageIndex(idx);
               }}
               renderItem={({ item, index }) => (
-                <Pressable onPress={() => { setActiveImageIndex(index); setShowFullScreen(true); }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => { setActiveImageIndex(index); setShowFullScreen(true); }}>
                   <Image source={{ uri: item }} style={{ width: SCREEN_W, height: IMAGE_H }} resizeMode="cover" />
-                </Pressable>
+                </TouchableOpacity>
               )}
               keyExtractor={(_, i) => String(i)}
             />
@@ -718,7 +718,7 @@ export default function ProductDetailScreen() {
                   const isSelected = selectedVariant === v.id;
                   const vPrice = Number(v.price) || price;
                   return (
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       key={v.id}
                       onPress={() => setSelectedVariant(isSelected ? null : v.id)}
                       style={[variantStyles.chip, isSelected && variantStyles.chipSelected, !v.inStock && variantStyles.chipOos]}
@@ -726,7 +726,7 @@ export default function ProductDetailScreen() {
                       <Text style={[variantStyles.chipName, isSelected && variantStyles.chipNameSelected]}>{v.label}</Text>
                       <Text style={[variantStyles.chipPrice, isSelected && variantStyles.chipPriceSelected]}>Rs. {vPrice.toLocaleString()}</Text>
                       {!v.inStock && <Text style={variantStyles.oosLabel}>Out of Stock</Text>}
-                    </Pressable>
+                    </TouchableOpacity>
                   );
                 })}
               </ScrollView>
@@ -806,13 +806,13 @@ export default function ProductDetailScreen() {
           <View style={styles.reviewsSection}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <Text style={styles.sectionTitle}>Ratings & Reviews</Text>
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => isLoggedIn ? setShowWriteReview(true) : router.push("/auth")}
                 style={rs.writeBtn}
               >
                 <Ionicons name="create-outline" size={14} color={C.primary} />
                 <Text style={rs.writeBtnTxt}>Write Review</Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
 
             {(summary.total > 0 || (product.rating != null)) && (
@@ -856,9 +856,9 @@ export default function ProductDetailScreen() {
                 <Text style={rs.emptyTitle}>No reviews yet</Text>
                 <Text style={rs.emptySub}>Be the first to review this product</Text>
                 {!isLoggedIn && (
-                  <Pressable onPress={() => router.push("/auth")} style={rs.loginBtn}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/auth")} style={rs.loginBtn}>
                     <Text style={rs.loginBtnTxt}>Sign in to review</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
               </View>
             )}
@@ -874,7 +874,7 @@ export default function ProductDetailScreen() {
                     const rpOrig = Number(rp.originalPrice) || 0;
                     const rpDiscount = rpOrig > rp.price ? Math.round(((rpOrig - rp.price) / rpOrig) * 100) : 0;
                     return (
-                      <Pressable
+                      <TouchableOpacity activeOpacity={0.7}
                         key={rp.id}
                         onPress={() => router.push({ pathname: "/product/[id]", params: { id: rp.id } })}
                         style={styles.relatedCard}
@@ -895,7 +895,7 @@ export default function ProductDetailScreen() {
                           <Text style={styles.relatedName} numberOfLines={2}>{rp.name}</Text>
                           <Text style={styles.relatedPrice}>Rs. {rp.price}</Text>
                         </View>
-                      </Pressable>
+                      </TouchableOpacity>
                     );
                   })}
                 </View>
@@ -913,7 +913,7 @@ export default function ProductDetailScreen() {
           <Text style={styles.footerPrice}>Rs. {price.toLocaleString()}</Text>
         </View>
         <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={handleAdd}
             disabled={!product.inStock}
             style={[styles.addToCartBtn, added && styles.addToCartBtnDone, !product.inStock && styles.addToCartBtnDisabled]}
@@ -922,7 +922,7 @@ export default function ProductDetailScreen() {
             <Text style={styles.addToCartTxt}>
               {!product.inStock ? "Out of Stock" : added ? "Added to Cart!" : "Add to Cart"}
             </Text>
-          </Pressable>
+          </TouchableOpacity>
         </Animated.View>
       </View>
     </View>

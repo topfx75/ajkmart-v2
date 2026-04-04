@@ -9,7 +9,7 @@ import {
   Image,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -138,8 +138,8 @@ function AddressPickerModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!saving) { resetForm(); onClose(); } }}>
-      <Pressable style={styles.overlay} onPress={() => { if (!saving) { resetForm(); onClose(); } }}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+      <TouchableOpacity activeOpacity={0.7} style={styles.overlay} onPress={() => { if (!saving) { resetForm(); onClose(); } }}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.sheet} onPress={() => {}}>
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>{showForm ? "Add New Address" : "Choose Delivery Address"}</Text>
 
@@ -149,7 +149,7 @@ function AddressPickerModal({
                 <Text style={{ ...Typ.captionMedium, color: C.textSecondary, marginBottom: 6 }}>Label</Text>
                 <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                   {LABEL_PRESETS.map(l => (
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       key={l}
                       onPress={() => setNewLabel(l)}
                       style={{
@@ -159,7 +159,7 @@ function AddressPickerModal({
                       }}
                     >
                       <Text style={{ ...Typ.captionMedium, color: newLabel === l ? C.textInverse : C.text }}>{l}</Text>
-                    </Pressable>
+                    </TouchableOpacity>
                   ))}
                 </View>
               </View>
@@ -195,14 +195,14 @@ function AddressPickerModal({
               </View>
               {formError && <Text style={{ ...Typ.caption, color: C.red }}>{formError}</Text>}
               <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => resetForm()}
                   disabled={saving}
                   style={{ flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: "center", backgroundColor: C.surfaceSecondary, borderWidth: 1, borderColor: C.border }}
                 >
                   <Text style={{ ...Typ.buttonSmall, color: C.textSecondary }}>Cancel</Text>
-                </Pressable>
-                <Pressable
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={handleSave}
                   disabled={saving}
                   style={{ flex: 2, paddingVertical: 14, borderRadius: 14, alignItems: "center", backgroundColor: C.primary, opacity: saving ? 0.7 : 1 }}
@@ -211,7 +211,7 @@ function AddressPickerModal({
                     ? <ActivityIndicator size="small" color={C.textInverse} />
                     : <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.textInverse }}>Save & Select</Text>
                   }
-                </Pressable>
+                </TouchableOpacity>
               </View>
             </View>
           ) : (
@@ -229,7 +229,7 @@ function AddressPickerModal({
                   {addresses.map(addr => {
                     const isSel = selected === addr.id;
                     return (
-                      <Pressable
+                      <TouchableOpacity activeOpacity={0.7}
                         key={addr.id}
                         onPress={() => { onSelect(addr); onClose(); }}
                         style={[styles.addrOpt, isSel && styles.addrOptSel]}
@@ -250,24 +250,24 @@ function AddressPickerModal({
                           <Text style={styles.addrOptCity}>{addr.city}</Text>
                         </View>
                         {isSel && <Ionicons name="checkmark-circle" size={22} color={C.primary} />}
-                      </Pressable>
+                      </TouchableOpacity>
                     );
                   })}
                 </ScrollView>
               )}
-              <Pressable onPress={() => setShowForm(true)} style={[styles.addrOpt, { borderColor: C.primary, borderStyle: "dashed", marginTop: 8 }]}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => setShowForm(true)} style={[styles.addrOpt, { borderColor: C.primary, borderStyle: "dashed", marginTop: 8 }]}>
                 <View style={[styles.addrOptIcon, { backgroundColor: C.brandBlueSoft }]}>
                   <Ionicons name="add-outline" size={20} color={C.primary} />
                 </View>
                 <Text style={[styles.addrOptLabel, { color: C.primary }]}>Add New Address</Text>
-              </Pressable>
-              <Pressable onPress={onClose} style={styles.cancelBtn}>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={styles.cancelBtn}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
-              </Pressable>
+              </TouchableOpacity>
             </>
           )}
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -360,7 +360,7 @@ export default function CartScreen() {
             const d = unwrapApiResponse(await r.json()) as any;
             if (!mountedRef.current) return;
             if (d.status === "completed" || d.status === "success") {
-              const successData = { id: oid.slice(-6).toUpperCase(), time: "30-45 min", payMethod };
+              const successData = { id: (oid ?? "").slice(-6).toUpperCase(), time: "30-45 min", payMethod };
               setPendingOrderId(oid, successData);
               setPendingAck(true);
               startAckStuckTimer(60000);
@@ -833,8 +833,8 @@ export default function CartScreen() {
 
   const GatewayModal = () => (
     <Modal visible={showGwModal} transparent animationType="slide" onRequestClose={() => { if (!gwPaying) setShowGwModal(false); }}>
-      <Pressable style={styles.overlay} onPress={() => { if (!gwPaying) setShowGwModal(false); }}>
-        <Pressable style={[styles.sheet, { paddingBottom: 32 }]} onPress={() => {}}>
+      <TouchableOpacity activeOpacity={0.7} style={styles.overlay} onPress={() => { if (!gwPaying) setShowGwModal(false); }}>
+        <TouchableOpacity activeOpacity={0.7} style={[styles.sheet, { paddingBottom: 32 }]} onPress={() => {}}>
           <View style={styles.handle} />
           <View style={{ alignItems: "center", marginBottom: 20 }}>
             <Text style={{ fontSize: 36, marginBottom: 8 }}>{gwLogo}</Text>
@@ -862,7 +862,7 @@ export default function CartScreen() {
                 {numPadRows.map((row, ri) => (
                   <View key={ri} style={{ flexDirection: "row", gap: 8 }}>
                     {row.map((btn, ci) => (
-                      <Pressable
+                      <TouchableOpacity activeOpacity={0.7}
                         key={ci}
                         onPress={btn.action}
                         style={{
@@ -872,14 +872,14 @@ export default function CartScreen() {
                         }}
                       >
                         <Text style={{ ...Typ.title, color: btn.isOk ? C.textInverse : C.text }}>{btn.label}</Text>
-                      </Pressable>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 ))}
               </View>
-              <Pressable onPress={() => { if (!gwPaying) setShowGwModal(false); }} style={{ marginTop: 12, paddingVertical: 12, alignItems: "center" }}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => { if (!gwPaying) setShowGwModal(false); }} style={{ marginTop: 12, paddingVertical: 12, alignItems: "center" }}>
                 <Text style={{ ...Typ.bodyMedium, color: C.textSecondary }}>Cancel</Text>
-              </Pressable>
+              </TouchableOpacity>
             </>
           )}
 
@@ -900,8 +900,8 @@ export default function CartScreen() {
               <Text style={{ ...Typ.body, fontSize: 13, color: C.textSecondary, marginTop: 6 }}>Placing your order...</Text>
             </View>
           )}
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 
@@ -944,14 +944,14 @@ export default function CartScreen() {
             </Text>
           </View>
           <View style={styles.successBtns}>
-            <Pressable onPress={() => { clearOrderSuccess(); router.push("/(tabs)/orders"); }} style={styles.trackBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => { clearOrderSuccess(); router.push("/(tabs)/orders"); }} style={styles.trackBtn}>
               <Ionicons name="navigate-outline" size={16} color={C.textInverse} />
               <Text style={styles.trackBtnTxt}>Track Order</Text>
-            </Pressable>
-            <Pressable onPress={() => { clearOrderSuccess(); router.replace("/(tabs)"); }} style={styles.homeBtn}>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => { clearOrderSuccess(); router.replace("/(tabs)"); }} style={styles.homeBtn}>
               <Ionicons name="home-outline" size={16} color={C.primary} />
               <Text style={styles.homeBtnTxt}>Home</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -963,9 +963,9 @@ export default function CartScreen() {
       <View style={[styles.container, { backgroundColor: C.background }]}>
         <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border }]}>
           <View style={styles.headerRow}>
-            <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.backBtn}>
               <Ionicons name="arrow-back" size={22} color={C.text} />
-            </Pressable>
+            </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: C.text }]}>Cart</Text>
             <View style={{ width: 34 }} />
           </View>
@@ -977,14 +977,14 @@ export default function CartScreen() {
           <Text style={styles.emptyTitle}>Your Cart is Empty</Text>
           <Text style={styles.emptyText}>Add items from Mart or Food section</Text>
           <View style={styles.emptyBtns}>
-            <Pressable onPress={() => router.push("/mart")} style={styles.emptyBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/mart")} style={styles.emptyBtn}>
               <Ionicons name="storefront-outline" size={16} color={C.textInverse} />
               <Text style={styles.emptyBtnText}>Browse Mart</Text>
-            </Pressable>
-            <Pressable onPress={() => router.push("/food")} style={[styles.emptyBtn, { backgroundColor: C.food }]}>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/food")} style={[styles.emptyBtn, { backgroundColor: C.food }]}>
               <Ionicons name="restaurant-outline" size={16} color={C.textInverse} />
               <Text style={styles.emptyBtnText}>Order Food</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -1000,27 +1000,27 @@ export default function CartScreen() {
         style={[styles.header, { paddingTop: topPad + 8 }]}
       >
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={C.textInverse} />
-          </Pressable>
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>{cartType === "food" ? "Food Order" : "Mart Order"}</Text>
             <Text style={styles.headerSub}>{items.length} item{items.length !== 1 ? "s" : ""} in cart</Text>
           </View>
-          <Pressable onPress={() => setShowClearConfirm(true)} style={styles.clearBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setShowClearConfirm(true)} style={styles.clearBtn}>
             <Ionicons name="trash-outline" size={14} color={C.textInverse} />
             <Text style={styles.clearText}>Clear</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         {showClearConfirm && (
           <View style={styles.clearConfirm}>
             <Text style={styles.clearConfirmTxt}>Remove all items?</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable onPress={() => setShowClearConfirm(false)} style={styles.clearNo}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => setShowClearConfirm(false)} style={styles.clearNo}>
                 <Text style={styles.clearNoTxt}>No</Text>
-              </Pressable>
-              <Pressable onPress={() => {
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => {
                 const snapshot = [...items];
                 clearCart();
                 setShowClearConfirm(false);
@@ -1033,7 +1033,7 @@ export default function CartScreen() {
                 }, 5000);
               }} style={styles.clearYes}>
                 <Text style={styles.clearYesTxt}>Yes</Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1043,7 +1043,7 @@ export default function CartScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Your Items</Text>
           {items.map(item => (
-            <Pressable key={item.productId} onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.productId } })} style={styles.cartItem}>
+            <TouchableOpacity activeOpacity={0.7} key={item.productId} onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.productId } })} style={styles.cartItem}>
               <View style={[styles.itemThumb, { backgroundColor: item.type === "food" ? C.amberSoft : C.blueSoft }]}>
                 {item.image ? (
                   <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} resizeMode="cover" />
@@ -1060,22 +1060,22 @@ export default function CartScreen() {
                 <Text style={styles.itemUnit}>Rs. {item.price} each</Text>
               </View>
               <View style={styles.qtyControl}>
-                <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.productId, item.quantity - 1); }} style={styles.qtyBtn}>
+                <TouchableOpacity activeOpacity={0.7} onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.productId, item.quantity - 1); }} style={styles.qtyBtn}>
                   <Ionicons name={item.quantity === 1 ? "trash-outline" : "remove"} size={14} color={item.quantity === 1 ? C.danger : C.primary} />
-                </Pressable>
+                </TouchableOpacity>
                 <Text style={styles.qtyText}>{item.quantity}</Text>
-                <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.productId, item.quantity + 1); }} style={styles.qtyBtn}>
+                <TouchableOpacity activeOpacity={0.7} onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.productId, item.quantity + 1); }} style={styles.qtyBtn}>
                   <Ionicons name="add" size={14} color={C.primary} />
-                </Pressable>
+                </TouchableOpacity>
               </View>
               <Text style={styles.itemTotal}>Rs. {item.price * item.quantity}</Text>
-            </Pressable>
+            </TouchableOpacity>
           ))}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Delivery Address</Text>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => setShowAddrPicker(true)}
             style={styles.addrCard}
           >
@@ -1102,7 +1102,7 @@ export default function CartScreen() {
                 <Ionicons name="chevron-forward" size={14} color={C.primary} />
               </View>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.section, styles.etaRow]}>
@@ -1131,7 +1131,7 @@ export default function CartScreen() {
             const clr = colorMap[method.id] || { bg: C.surfaceSecondary, tint: C.textSecondary };
             const isGateway = method.id === "jazzcash" || method.id === "easypaisa";
             return (
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 key={method.id}
                 onPress={() => setPayMethod(method.id as PayMethod)}
                 style={[styles.payOption, sel && { borderColor: clr.tint, backgroundColor: clr.bg + "33" }]}
@@ -1165,7 +1165,7 @@ export default function CartScreen() {
                     {sel && <View style={[styles.radioDot, { backgroundColor: clr.tint }]} />}
                   </View>
                 )}
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -1182,9 +1182,9 @@ export default function CartScreen() {
                     <Text style={{ ...Typ.caption, color: C.emerald }}>Rs. {promoDiscount.toLocaleString()} discount applied!</Text>
                   </View>
                 </View>
-                <Pressable onPress={removePromo} style={{ padding: 8 }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={removePromo} style={{ padding: 8 }}>
                   <Ionicons name="close-circle" size={24} color={C.red} />
-                </Pressable>
+                </TouchableOpacity>
               </View>
             ) : (
               <View>
@@ -1203,7 +1203,7 @@ export default function CartScreen() {
                       fontFamily: Font.medium, letterSpacing: 1,
                     }}
                   />
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     onPress={applyPromo}
                     disabled={promoLoading || !promoInput.trim()}
                     style={{
@@ -1215,7 +1215,7 @@ export default function CartScreen() {
                       ? <ActivityIndicator size="small" color={C.textInverse} />
                       : <Text style={{ color: C.textInverse, ...Typ.buttonSmall, fontFamily: Font.bold }}>Apply</Text>
                     }
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
                 {promoError && (
                   <Text style={{ ...Typ.caption, color: C.red, marginTop: 6, marginLeft: 2 }}>{promoError}</Text>
@@ -1291,7 +1291,7 @@ export default function CartScreen() {
             </View>
           </View>
         ) : (
-          <Pressable style={[styles.checkoutBtn, (loading || addrLoading || promoLoading) && { opacity: 0.7 }]} onPress={handleCheckout} disabled={loading || addrLoading || promoLoading}>
+          <TouchableOpacity activeOpacity={0.7} style={[styles.checkoutBtn, (loading || addrLoading || promoLoading) && { opacity: 0.7 }]} onPress={handleCheckout} disabled={loading || addrLoading || promoLoading}>
             {loading ? <ActivityIndicator color={C.textInverse} size="small" /> : promoLoading ? (
               <>
                 <ActivityIndicator color={C.textInverse} size="small" />
@@ -1303,7 +1303,7 @@ export default function CartScreen() {
                 <Ionicons name="arrow-forward" size={18} color={C.textInverse} />
               </>
             )}
-          </Pressable>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -1326,7 +1326,7 @@ export default function CartScreen() {
         <View style={{ position: "absolute", bottom: 90, left: 16, right: 16, backgroundColor: C.slateDeep, borderRadius: 14, flexDirection: "row", alignItems: "center", padding: 14, gap: 10, shadowColor: C.text, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 10 }}>
           <Ionicons name="trash-outline" size={18} color={C.textMuted} />
           <Text style={{ flex: 1, ...Typ.bodyMedium, fontSize: 13, color: C.surfaceSecondary }}>Cart cleared</Text>
-          <Pressable onPress={() => {
+          <TouchableOpacity activeOpacity={0.7} onPress={() => {
             if (undoSnapshot) {
               restoreCart(undoSnapshot);
             }
@@ -1335,7 +1335,7 @@ export default function CartScreen() {
             if (undoClearTimerRef.current) clearTimeout(undoClearTimerRef.current);
           }}>
             <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.primary }}>Undo</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       )}
     </View>

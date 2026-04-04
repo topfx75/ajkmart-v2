@@ -8,7 +8,7 @@ import {
   Animated,
   Image,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   SectionList,
   StyleSheet,
@@ -275,9 +275,9 @@ export default function UniversalSearchScreen() {
   return (
     <View style={[s.screen, { paddingTop: topPad }]}>
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
         <View style={s.inputWrap}>
           <Ionicons name="search-outline" size={18} color={C.textMuted} />
           <TextInput
@@ -294,9 +294,9 @@ export default function UniversalSearchScreen() {
             onSubmitEditing={() => { if (query.trim()) fetchResults(query, true); }}
           />
           {query.length > 0 && (
-            <Pressable onPress={() => { setQuery(""); setSections([]); }}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => { setQuery(""); setSections([]); }}>
               <Ionicons name="close-circle" size={18} color={C.textMuted} />
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -304,18 +304,18 @@ export default function UniversalSearchScreen() {
       <View style={s.filterBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
           {SORT_OPTIONS.map((opt) => (
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               key={opt.key}
               onPress={() => { setSortBy(opt.key); if (query.trim()) fetchResults(query); }}
               style={[s.sortChip, sortBy === opt.key && s.sortChipActive]}
             >
               <Text style={[s.sortChipTxt, sortBy === opt.key && s.sortChipTxtActive]}>{opt.label}</Text>
-            </Pressable>
+            </TouchableOpacity>
           ))}
-          <Pressable onPress={() => setShowFilters(!showFilters)} style={[s.sortChip, showFilters && s.sortChipActive]}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setShowFilters(!showFilters)} style={[s.sortChip, showFilters && s.sortChipActive]}>
             <Ionicons name="options-outline" size={13} color={showFilters ? "#fff" : C.textSecondary} />
             <Text style={[s.sortChipTxt, showFilters && s.sortChipTxtActive]}>Filters</Text>
-          </Pressable>
+          </TouchableOpacity>
         </ScrollView>
         {showFilters && (
           <View style={s.filterPanel}>
@@ -335,13 +335,13 @@ export default function UniversalSearchScreen() {
             <View style={s.filterSection}>
               <Text style={s.filterSectionTitle}>Category</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                <Pressable onPress={() => setFilterCategory("")} style={[s.ratingChip, filterCategory === "" && s.ratingChipActive]}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setFilterCategory("")} style={[s.ratingChip, filterCategory === "" && s.ratingChipActive]}>
                   <Text style={[s.ratingChipTxt, filterCategory === "" && s.ratingChipTxtActive]}>All</Text>
-                </Pressable>
+                </TouchableOpacity>
                 {allCategories.map(cat => (
-                  <Pressable key={cat.id} onPress={() => setFilterCategory(filterCategory === cat.id ? "" : cat.id)} style={[s.ratingChip, filterCategory === cat.id && s.ratingChipActive]}>
+                  <TouchableOpacity activeOpacity={0.7} key={cat.id} onPress={() => setFilterCategory(filterCategory === cat.id ? "" : cat.id)} style={[s.ratingChip, filterCategory === cat.id && s.ratingChipActive]}>
                     <Text style={[s.ratingChipTxt, filterCategory === cat.id && s.ratingChipTxtActive]}>{cat.name}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
             </View>
@@ -350,9 +350,9 @@ export default function UniversalSearchScreen() {
               <Text style={s.filterSectionTitle}>Sort By</Text>
               <View style={s.ratingChipsRow}>
                 {SORT_OPTIONS.map(opt => (
-                  <Pressable key={opt.key} onPress={() => setSortBy(opt.key)} style={[s.ratingChip, sortBy === opt.key && s.ratingChipActive]}>
+                  <TouchableOpacity activeOpacity={0.7} key={opt.key} onPress={() => setSortBy(opt.key)} style={[s.ratingChip, sortBy === opt.key && s.ratingChipActive]}>
                     <Text style={[s.ratingChipTxt, sortBy === opt.key && s.ratingChipTxtActive]}>{opt.label}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -364,21 +364,21 @@ export default function UniversalSearchScreen() {
                   const isSelected = minRating === val;
                   const label = val === "" ? "Any" : `${val}★+`;
                   return (
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       key={val}
                       onPress={() => setMinRating(val)}
                       style={[s.ratingChip, isSelected && s.ratingChipActive]}
                     >
                       {val !== "" && <Ionicons name="star" size={11} color={isSelected ? "#fff" : "#F59E0B"} />}
                       <Text style={[s.ratingChipTxt, isSelected && s.ratingChipTxtActive]}>{label}</Text>
-                    </Pressable>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
             </View>
 
             <View style={s.filterActions}>
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => {
                   setMinPrice("");
                   setMaxPrice("");
@@ -390,11 +390,11 @@ export default function UniversalSearchScreen() {
                 style={s.filterClearBtn}
               >
                 <Text style={s.filterClearTxt}>Clear All</Text>
-              </Pressable>
-              <Pressable onPress={() => { if (query.trim()) fetchResults(query); }} style={s.filterApply}>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => { if (query.trim()) fetchResults(query); }} style={s.filterApply}>
                 <Ionicons name="checkmark" size={14} color="#fff" />
                 <Text style={s.filterApplyTxt}>Apply Filters</Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -414,10 +414,10 @@ export default function UniversalSearchScreen() {
           </View>
           <Text style={[s.emptyTxt, { color: "#EF4444" }]}>Search failed</Text>
           <Text style={s.emptySub}>Check your connection and try again</Text>
-          <Pressable onPress={() => fetchResults(query)} style={s.retryBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => fetchResults(query)} style={s.retryBtn}>
             <Ionicons name="refresh-outline" size={14} color="#fff" />
             <Text style={s.retryBtnTxt}>Retry</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -432,10 +432,10 @@ export default function UniversalSearchScreen() {
             {enabledServices.filter((sv) => sv !== "pharmacy").map((sv) => {
               const m = SERVICE_META[sv];
               return (
-                <Pressable key={sv} onPress={() => router.push(SERVICE_ROUTES[sv])} style={[s.ctaBtn, { backgroundColor: m.bg }]}>
+                <TouchableOpacity activeOpacity={0.7} key={sv} onPress={() => router.push(SERVICE_ROUTES[sv])} style={[s.ctaBtn, { backgroundColor: m.bg }]}>
                   <Ionicons name={m.icon} size={14} color={m.color} />
                   <Text style={[s.ctaBtnTxt, { color: m.color }]}>Browse {m.label}</Text>
-                </Pressable>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -449,20 +449,20 @@ export default function UniversalSearchScreen() {
               <View style={s.historyHeader}>
                 <Ionicons name="time-outline" size={16} color={C.textSecondary} />
                 <Text style={s.historyTitle}>Recent Searches</Text>
-                <Pressable onPress={clearHistory} style={s.clearHistoryBtn}>
+                <TouchableOpacity activeOpacity={0.7} onPress={clearHistory} style={s.clearHistoryBtn}>
                   <Text style={s.clearHistoryTxt}>Clear</Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
               <View style={s.historyChips}>
                 {searchHistory.map((term, i) => (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     key={`${term}-${i}`}
                     onPress={() => { setQuery(term); fetchResults(term, true); }}
                     style={s.historyChip}
                   >
                     <Ionicons name="time-outline" size={13} color={C.textMuted} />
                     <Text style={s.historyChipTxt}>{term}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -476,13 +476,13 @@ export default function UniversalSearchScreen() {
               </View>
               <View style={s.suggestChips}>
                 {trendingTerms.map((term) => (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     key={term}
                     onPress={() => { setQuery(term); fetchResults(term, true); }}
                     style={s.suggestChip}
                   >
                     <Text style={s.suggestChipTxt}>{term}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -494,12 +494,12 @@ export default function UniversalSearchScreen() {
               {enabledServices.map(sv => {
                 const m = SERVICE_META[sv];
                 return (
-                  <Pressable key={sv} onPress={() => router.push(SERVICE_ROUTES[sv])} style={[s.browseCard, { backgroundColor: m.bg }]}>
+                  <TouchableOpacity activeOpacity={0.7} key={sv} onPress={() => router.push(SERVICE_ROUTES[sv])} style={[s.browseCard, { backgroundColor: m.bg }]}>
                     <View style={[s.browseIconWrap, { backgroundColor: m.color + "20" }]}>
                       <Ionicons name={m.icon} size={24} color={m.color} />
                     </View>
                     <Text style={[s.browseLabel, { color: m.color }]}>{m.label}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -527,7 +527,7 @@ export default function UniversalSearchScreen() {
           onEndReached={loadNextPage}
           onEndReachedThreshold={0.3}
           renderItem={({ item }) => (
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })}
               style={s.card}
             >
@@ -565,15 +565,15 @@ export default function UniversalSearchScreen() {
                 </View>
               </View>
               {item.type === "pharmacy" ? (
-                <Pressable onPress={(e) => { e?.stopPropagation?.(); router.push("/pharmacy"); }} style={s.viewBtn}>
+                <TouchableOpacity activeOpacity={0.7} onPress={(e) => { e?.stopPropagation?.(); router.push("/pharmacy"); }} style={s.viewBtn}>
                   <Ionicons name="arrow-forward" size={16} color="#059669" />
-                </Pressable>
+                </TouchableOpacity>
               ) : (
-                <Pressable onPress={(e) => { e?.stopPropagation?.(); handleAdd(item); }} style={[s.addBtn, added[item.id] && s.addBtnDone]}>
+                <TouchableOpacity activeOpacity={0.7} onPress={(e) => { e?.stopPropagation?.(); handleAdd(item); }} style={[s.addBtn, added[item.id] && s.addBtnDone]}>
                   <Ionicons name={added[item.id] ? "checkmark" : "add"} size={18} color="#fff" />
-                </Pressable>
+                </TouchableOpacity>
               )}
-            </Pressable>
+            </TouchableOpacity>
           )}
           ListFooterComponent={loadingMore ? (
             <View style={s.loadMoreWrap}>

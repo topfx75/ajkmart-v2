@@ -10,7 +10,7 @@ import {
   Animated,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -178,8 +178,8 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={ws.overlay} onPress={onClose}>
-        <Pressable style={[ws.sheet, { maxHeight: "85%" }]} onPress={e => e.stopPropagation()}>
+      <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={onClose}>
+        <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { maxHeight: "85%" }]} onPress={e => e.stopPropagation()}>
           <View style={ws.handle} />
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
@@ -205,9 +205,9 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                     <Text style={{ ...Typ.h2, color: C.danger }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
                   </View>
                 </View>
-                <Pressable onPress={onClose} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 16, width: "100%" }]} accessibilityRole="button" accessibilityLabel="Done">
+                <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 16, width: "100%" }]} accessibilityRole="button" accessibilityLabel="Done">
                   <Text style={ws.actionBtnTxt}>Done</Text>
-                </Pressable>
+                </TouchableOpacity>
               </Animated.View>
             )}
 
@@ -217,7 +217,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 <Text style={{ ...Typ.body, color: C.textMuted, marginBottom: 18 }}>Choose your withdrawal method</Text>
                 <View style={{ gap: 10 }}>
                   {WITHDRAW_METHODS.map(m => (
-                    <Pressable key={m.id} onPress={() => { setSelectedMethod(m.id); setErr(""); setStep("details"); }} style={{ flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, padding: 16, backgroundColor: C.surface }} accessibilityRole="button" accessibilityLabel={`Withdraw via ${m.label}`}>
+                    <TouchableOpacity activeOpacity={0.7} key={m.id} onPress={() => { setSelectedMethod(m.id); setErr(""); setStep("details"); }} style={{ flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, padding: 16, backgroundColor: C.surface }} accessibilityRole="button" accessibilityLabel={`Withdraw via ${m.label}`}>
                       <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
                         <MethodIcon id={m.id} size={26} />
                       </View>
@@ -226,7 +226,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                         <Text style={{ ...Typ.caption, color: C.textMuted, marginTop: 2 }}>Withdraw to your {m.label} account</Text>
                       </View>
                       <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
-                    </Pressable>
+                    </TouchableOpacity>
                   ))}
                 </View>
               </View>
@@ -235,9 +235,9 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
             {step === "details" && selectedMethod && (
               <View>
                 <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 18 }}>
-                  <Pressable onPress={() => setStep("method")} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back to method selection">
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => setStep("method")} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back to method selection">
                     <Ionicons name="arrow-back" size={20} color={C.text} />
-                  </Pressable>
+                  </TouchableOpacity>
                   <Text style={[ws.sheetTitle, { marginBottom: 0 }]}>{WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label} Withdrawal</Text>
                 </View>
 
@@ -255,9 +255,9 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 </View>
                 <View style={ws.quickRow}>
                   {QUICK_AMOUNTS.map(a => (
-                    <Pressable key={a} onPress={() => setAmount(a.toString())} style={[ws.quickBtn, amount === a.toString() && ws.quickBtnActive]} accessibilityRole="button" accessibilityLabel={`Rs. ${a.toLocaleString()}`} accessibilityState={{ selected: amount === a.toString() }}>
+                    <TouchableOpacity activeOpacity={0.7} key={a} onPress={() => setAmount(a.toString())} style={[ws.quickBtn, amount === a.toString() && ws.quickBtnActive]} accessibilityRole="button" accessibilityLabel={`Rs. ${a.toLocaleString()}`} accessibilityState={{ selected: amount === a.toString() }}>
                       <Text style={[ws.quickTxt, amount === a.toString() && ws.quickTxtActive]}>Rs. {a.toLocaleString()}</Text>
-                    </Pressable>
+                    </TouchableOpacity>
                   ))}
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 14, backgroundColor: C.amberSoft, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: C.amberBorder }}>
@@ -296,19 +296,19 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                   </View>
                 ) : null}
 
-                <Pressable onPress={handleSubmit} disabled={submitting} style={[ws.actionBtn, { backgroundColor: C.danger }, submitting && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel="Submit withdrawal request" accessibilityState={{ disabled: submitting }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={handleSubmit} disabled={submitting} style={[ws.actionBtn, { backgroundColor: C.danger }, submitting && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel="Submit withdrawal request" accessibilityState={{ disabled: submitting }}>
                   {submitting ? <ActivityIndicator color={C.textInverse} /> : (
                     <>
                       <Ionicons name="arrow-up-outline" size={18} color={C.textInverse} />
                       <Text style={ws.actionBtnTxt}>Submit Withdrawal Request</Text>
                     </>
                   )}
-                </Pressable>
+                </TouchableOpacity>
               </View>
             )}
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -440,8 +440,8 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={ws.overlay} onPress={onClose}>
-        <Pressable style={[ws.sheet, { maxHeight: "90%" }]} onPress={e => e.stopPropagation()}>
+      <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={onClose}>
+        <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { maxHeight: "90%" }]} onPress={e => e.stopPropagation()}>
           <View style={ws.handle} />
 
           {step !== "done" && stepIdx >= 0 && (
@@ -479,9 +479,9 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                     <Text style={{ ...Typ.h2, color: C.success }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
                   </View>
                 </View>
-                <Pressable onPress={onClose} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 16, width: "100%" }]} accessibilityRole="button" accessibilityLabel="Done">
+                <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={[ws.actionBtn, { backgroundColor: C.primary, marginTop: 16, width: "100%" }]} accessibilityRole="button" accessibilityLabel="Done">
                   <Text style={ws.actionBtnTxt}>Done</Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -496,7 +496,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                     <Ionicons name="alert-circle-outline" size={28} color={C.danger} />
                     <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.text }}>Methods Unavailable</Text>
                     <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, textAlign: "center" }}>Could not load payment methods. Please try again.</Text>
-                    <Pressable onPress={() => {
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => {
                       setMethodsError(false);
                       setLoadingMethods(true);
                       fetch(`${API}/payments/methods`)
@@ -512,12 +512,12 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                     }} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.primary, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 }} accessibilityRole="button" accessibilityLabel="Try again to load payment methods">
                       <Ionicons name="refresh-outline" size={15} color={C.textInverse} />
                       <Text style={{ ...Typ.buttonSmall, color: C.textInverse }}>Try Again</Text>
-                    </Pressable>
+                    </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={{ gap: 10 }}>
                     {methods.map(m => (
-                      <Pressable key={m.id} onPress={() => selectMethod(m)} style={{ flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, padding: 16, backgroundColor: C.surface }} accessibilityRole="button" accessibilityLabel={`Deposit via ${m.label}`}>
+                      <TouchableOpacity activeOpacity={0.7} key={m.id} onPress={() => selectMethod(m)} style={{ flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, padding: 16, backgroundColor: C.surface }} accessibilityRole="button" accessibilityLabel={`Deposit via ${m.label}`}>
                         <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
                           <MethodIcon id={m.id} size={26} />
                         </View>
@@ -527,7 +527,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                           {m.manualNumber && <Text style={{ ...Typ.captionMedium, fontFamily: Font.semiBold, color: C.primary, marginTop: 3 }}>{m.manualNumber}</Text>}
                         </View>
                         <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
-                      </Pressable>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 )}
@@ -541,13 +541,13 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
 
                 <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 4, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
                   {selectedMethod.manualNumber && (
-                    <Pressable onPress={() => copyToClipboard(selectedMethod.manualNumber!)} style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }} accessibilityRole="button" accessibilityLabel={`Copy account number ${selectedMethod.manualNumber}`}>
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => copyToClipboard(selectedMethod.manualNumber!)} style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }} accessibilityRole="button" accessibilityLabel={`Copy account number ${selectedMethod.manualNumber}`}>
                       <View style={{ flex: 1 }}>
                         <Text style={{ ...Typ.small, color: C.textMuted }}>Account Number</Text>
                         <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.text, marginTop: 2 }}>{selectedMethod.manualNumber}</Text>
                       </View>
                       <Ionicons name="copy-outline" size={18} color={C.primary} />
-                    </Pressable>
+                    </TouchableOpacity>
                   )}
                   {selectedMethod.manualName && (
                     <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }}>
@@ -556,13 +556,13 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                     </View>
                   )}
                   {selectedMethod.iban && (
-                    <Pressable onPress={() => copyToClipboard(selectedMethod.iban!)} style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }} accessibilityRole="button" accessibilityLabel="Copy IBAN">
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => copyToClipboard(selectedMethod.iban!)} style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: C.border }} accessibilityRole="button" accessibilityLabel="Copy IBAN">
                       <View style={{ flex: 1 }}>
                         <Text style={{ ...Typ.small, color: C.textMuted }}>IBAN</Text>
                         <Text style={{ ...Typ.captionMedium, color: C.text, marginTop: 2 }}>{selectedMethod.iban}</Text>
                       </View>
                       <Ionicons name="copy-outline" size={18} color={C.primary} />
-                    </Pressable>
+                    </TouchableOpacity>
                   )}
                   {selectedMethod.bankName && (
                     <View style={{ padding: 14, borderBottomWidth: selectedMethod.manualInstructions ? 1 : 0, borderBottomColor: C.border }}>
@@ -583,13 +583,13 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                 </View>
 
                 <View style={{ flexDirection: "row", gap: 12 }}>
-                  <Pressable onPress={() => setStep("method")} style={[ws.actionBtn, { flex: 1, backgroundColor: C.surfaceSecondary }]} accessibilityRole="button" accessibilityLabel="Back">
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => setStep("method")} style={[ws.actionBtn, { flex: 1, backgroundColor: C.surfaceSecondary }]} accessibilityRole="button" accessibilityLabel="Back">
                     <Text style={[ws.actionBtnTxt, { color: C.text }]}>Back</Text>
-                  </Pressable>
-                  <Pressable onPress={goToAmount} style={[ws.actionBtn, { flex: 2, backgroundColor: C.primary }]} accessibilityRole="button" accessibilityLabel="Payment done, continue">
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.7} onPress={goToAmount} style={[ws.actionBtn, { flex: 2, backgroundColor: C.primary }]} accessibilityRole="button" accessibilityLabel="Payment done, continue">
                     <Ionicons name="checkmark-circle-outline" size={18} color={C.textInverse} />
                     <Text style={ws.actionBtnTxt}>Payment Done</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -613,9 +613,9 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                 </View>
                 <View style={ws.quickRow}>
                   {QUICK_AMOUNTS.map(a => (
-                    <Pressable key={a} onPress={() => setAmount(a.toString())} style={[ws.quickBtn, amount === a.toString() && ws.quickBtnActive]} accessibilityRole="button" accessibilityLabel={`Rs. ${a.toLocaleString()}`} accessibilityState={{ selected: amount === a.toString() }}>
+                    <TouchableOpacity activeOpacity={0.7} key={a} onPress={() => setAmount(a.toString())} style={[ws.quickBtn, amount === a.toString() && ws.quickBtnActive]} accessibilityRole="button" accessibilityLabel={`Rs. ${a.toLocaleString()}`} accessibilityState={{ selected: amount === a.toString() }}>
                       <Text style={[ws.quickTxt, amount === a.toString() && ws.quickTxtActive]}>Rs. {a.toLocaleString()}</Text>
-                    </Pressable>
+                    </TouchableOpacity>
                   ))}
                 </View>
 
@@ -663,12 +663,12 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                 ) : null}
 
                 <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
-                  <Pressable onPress={() => setStep("details")} style={[ws.actionBtn, { flex: 1, backgroundColor: C.surfaceSecondary }]} accessibilityRole="button" accessibilityLabel="Back">
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => setStep("details")} style={[ws.actionBtn, { flex: 1, backgroundColor: C.surfaceSecondary }]} accessibilityRole="button" accessibilityLabel="Back">
                     <Text style={[ws.actionBtnTxt, { color: C.text }]}>Back</Text>
-                  </Pressable>
-                  <Pressable onPress={goToConfirm} style={[ws.actionBtn, { flex: 2, backgroundColor: C.primary }]} accessibilityRole="button" accessibilityLabel="Review deposit">
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.7} onPress={goToConfirm} style={[ws.actionBtn, { flex: 2, backgroundColor: C.primary }]} accessibilityRole="button" accessibilityLabel="Review deposit">
                     <Text style={ws.actionBtnTxt}>Review</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -719,10 +719,10 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                 ) : null}
 
                 <View style={{ flexDirection: "row", gap: 12 }}>
-                  <Pressable onPress={() => { setStep("amount"); setErr(""); }} style={[ws.actionBtn, { flex: 1, backgroundColor: C.surfaceSecondary }]} accessibilityRole="button" accessibilityLabel="Edit deposit details">
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => { setStep("amount"); setErr(""); }} style={[ws.actionBtn, { flex: 1, backgroundColor: C.surfaceSecondary }]} accessibilityRole="button" accessibilityLabel="Edit deposit details">
                     <Text style={[ws.actionBtnTxt, { color: C.text }]}>Edit</Text>
-                  </Pressable>
-                  <Pressable onPress={handleSubmit} disabled={submitting} style={[ws.actionBtn, { flex: 2, backgroundColor: C.primary, opacity: submitting ? 0.6 : 1 }]} accessibilityRole="button" accessibilityLabel="Submit deposit request" accessibilityState={{ disabled: submitting }}>
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.7} onPress={handleSubmit} disabled={submitting} style={[ws.actionBtn, { flex: 2, backgroundColor: C.primary, opacity: submitting ? 0.6 : 1 }]} accessibilityRole="button" accessibilityLabel="Submit deposit request" accessibilityState={{ disabled: submitting }}>
                     {submitting ? (
                       <ActivityIndicator color={C.textInverse} />
                     ) : (
@@ -731,14 +731,14 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                         <Text style={ws.actionBtnTxt}>Submit Request</Text>
                       </>
                     )}
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
 
           </ScrollView>
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -946,10 +946,10 @@ export default function WalletScreen() {
         </View>
         <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, textAlign: "center", marginBottom: 8 }}>Sign In to Access Wallet</Text>
         <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 28 }}>Top up, send money, and manage all your transactions securely.</Text>
-        <Pressable onPress={() => router.push("/auth")} style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 36, flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button">
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/auth")} style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 36, flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button">
           <Ionicons name="person-circle-outline" size={18} color="#fff" />
           <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>Sign In / Register</Text>
-        </Pressable>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -963,14 +963,14 @@ export default function WalletScreen() {
       >
         <LinearGradient colors={[C.primaryDark, C.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingTop: topPad + 20, paddingHorizontal: 20, paddingBottom: 28 }}>
           {walletError && !data && !walletFrozen && (
-            <Pressable onPress={() => refetch()} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.redSoft, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: C.redMist }} accessibilityRole="button" accessibilityLabel="No network connection, tap to retry">
+            <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.redSoft, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: C.redMist }} accessibilityRole="button" accessibilityLabel="No network connection, tap to retry">
               <Ionicons name="cloud-offline-outline" size={20} color={C.red} />
               <View style={{ flex: 1 }}>
                 <Text style={{ ...Typ.body, fontFamily: Font.bold, color: C.redDeep }}>No network connection</Text>
                 <Text style={{ ...Typ.caption, color: C.redDeepest, marginTop: 2 }}>Showing last known balance. Tap to retry.</Text>
               </View>
               <Ionicons name="refresh-outline" size={16} color={C.red} />
-            </Pressable>
+            </TouchableOpacity>
           )}
 
           {walletFrozen ? (
@@ -1002,32 +1002,32 @@ export default function WalletScreen() {
               <Text style={{ ...Typ.body, fontSize: 13, color: "rgba(255,255,255,0.75)", marginBottom: 24 }}>{T("availableBalance")}</Text>
 
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable onPress={() => setShowDeposit(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel={T("topUp")}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowDeposit(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel={T("topUp")}>
                   <View style={[ws.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
                     <Ionicons name="add" size={20} color="#FFFFFF" />
                   </View>
                   <Text style={[ws.actionCardTxt, { color: "rgba(255,255,255,0.9)" }]}>{T("topUp")}</Text>
-                </Pressable>
-                <Pressable onPress={() => setShowWithdraw(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel="Withdraw money">
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowWithdraw(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel="Withdraw money">
                   <View style={[ws.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
                     <Ionicons name="arrow-up-outline" size={18} color="#FFFFFF" />
                   </View>
                   <Text style={[ws.actionCardTxt, { color: "rgba(255,255,255,0.9)" }]}>Withdraw</Text>
-                </Pressable>
+                </TouchableOpacity>
                 {p2pEnabled && (
-                  <Pressable onPress={() => setShowSend(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel={T("send")}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => setShowSend(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel={T("send")}>
                     <View style={[ws.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
                       <Ionicons name="send-outline" size={18} color="#FFFFFF" />
                     </View>
                     <Text style={[ws.actionCardTxt, { color: "rgba(255,255,255,0.9)" }]}>{T("send")}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
-                <Pressable onPress={() => setShowQR(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel={T("receive")}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowQR(true)} style={ws.actionCard} accessibilityRole="button" accessibilityLabel={T("receive")}>
                   <View style={[ws.actionCardIcon, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
                     <Ionicons name="qr-code-outline" size={18} color="#FFFFFF" />
                   </View>
                   <Text style={[ws.actionCardTxt, { color: "rgba(255,255,255,0.9)" }]}>{T("receive")}</Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
 
               {pendingTopups.count > 0 && (
@@ -1072,11 +1072,11 @@ export default function WalletScreen() {
             {transactions.length > 0 && (
               <View style={{ flexDirection: "row", gap: 6 }}>
                 {(["all", "credit", "debit"] as TxFilter[]).map(f => (
-                  <Pressable key={f} onPress={() => setTxFilter(f)} style={[ws.filterChip, txFilter === f && ws.filterChipActive]} accessibilityRole="tab" accessibilityLabel={f === "all" ? T("allFilter") : f === "credit" ? T("inFilter") : T("outFilter")} accessibilityState={{ selected: txFilter === f }}>
+                  <TouchableOpacity activeOpacity={0.7} key={f} onPress={() => setTxFilter(f)} style={[ws.filterChip, txFilter === f && ws.filterChipActive]} accessibilityRole="tab" accessibilityLabel={f === "all" ? T("allFilter") : f === "credit" ? T("inFilter") : T("outFilter")} accessibilityState={{ selected: txFilter === f }}>
                     <Text style={[ws.filterTxt, txFilter === f && ws.filterTxtActive]}>
                       {f === "all" ? T("allFilter") : f === "credit" ? T("inFilter") : T("outFilter")}
                     </Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -1103,14 +1103,14 @@ export default function WalletScreen() {
               <Text style={{ ...Typ.button, color: C.text }}>{transactions.length === 0 ? T("noTransactionLabel") : T("filterNoResultsLabel")}</Text>
               <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>{transactions.length === 0 ? T("noTransactionSub") : T("changeFilterLabel")}</Text>
               {transactions.length === 0 && (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => router.replace("/(tabs)")}
                   style={{ marginTop: 8, backgroundColor: C.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 11 }}
                   accessibilityRole="button"
                   accessibilityLabel="Explore services"
                 >
                   <Text style={{ color: C.textInverse, ...Typ.bodySemiBold }}>Explore Services</Text>
-                </Pressable>
+                </TouchableOpacity>
               )}
             </View>
           ) : (
@@ -1149,8 +1149,8 @@ export default function WalletScreen() {
       )}
 
       <Modal visible={showSend} transparent animationType="slide" onRequestClose={closeSendModal}>
-        <Pressable style={ws.overlay} onPress={closeSendModal}>
-          <Pressable style={ws.sheet} onPress={e => e.stopPropagation()}>
+        <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={closeSendModal}>
+          <TouchableOpacity activeOpacity={0.7} style={ws.sheet} onPress={e => e.stopPropagation()}>
             <View style={ws.handle} />
 
             {sendStep === "input" ? (
@@ -1190,21 +1190,21 @@ export default function WalletScreen() {
                   <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {minTransfer.toLocaleString()}</Text>
                 </View>
 
-                <Pressable onPress={handleSendContinue} disabled={!sendPhone || !sendAmount || sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, (!sendPhone || !sendAmount || sendLoading) && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel="Continue to confirm send" accessibilityState={{ disabled: !sendPhone || !sendAmount || sendLoading }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={handleSendContinue} disabled={!sendPhone || !sendAmount || sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, (!sendPhone || !sendAmount || sendLoading) && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel="Continue to confirm send" accessibilityState={{ disabled: !sendPhone || !sendAmount || sendLoading }}>
                   {sendLoading ? <ActivityIndicator color={C.textInverse} /> : (
                     <>
                       <Ionicons name="arrow-forward" size={17} color={C.textInverse} />
                       <Text style={ws.actionBtnTxt}>Continue</Text>
                     </>
                   )}
-                </Pressable>
+                </TouchableOpacity>
               </>
             ) : (
               <>
                 <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
-                  <Pressable onPress={() => setSendStep("input")} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back">
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => setSendStep("input")} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back">
                     <Ionicons name="arrow-back" size={20} color={C.text} />
-                  </Pressable>
+                  </TouchableOpacity>
                   <Text style={[ws.sheetTitle, { marginBottom: 0 }]}>Confirm Transfer</Text>
                 </View>
 
@@ -1228,27 +1228,27 @@ export default function WalletScreen() {
                   ) : null}
                 </View>
 
-                <Pressable onPress={() => setSendStep("input")} style={{ alignSelf: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Edit transfer details">
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setSendStep("input")} style={{ alignSelf: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Edit transfer details">
                   <Text style={{ ...Typ.buttonSmall, color: C.primary }}>Edit Details</Text>
-                </Pressable>
+                </TouchableOpacity>
 
-                <Pressable onPress={handleSendConfirm} disabled={sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, sendLoading && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={`Send Rs. ${parseFloat(sendAmount || "0").toLocaleString()}`} accessibilityState={{ disabled: sendLoading }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={handleSendConfirm} disabled={sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, sendLoading && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={`Send Rs. ${parseFloat(sendAmount || "0").toLocaleString()}`} accessibilityState={{ disabled: sendLoading }}>
                   {sendLoading ? <ActivityIndicator color={C.textInverse} /> : (
                     <>
                       <Ionicons name="send" size={17} color={C.textInverse} />
                       <Text style={ws.actionBtnTxt}>Send Rs. {parseFloat(sendAmount || "0").toLocaleString()}</Text>
                     </>
                   )}
-                </Pressable>
+                </TouchableOpacity>
               </>
             )}
-          </Pressable>
-        </Pressable>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
-        <Pressable style={[ws.overlay, { justifyContent: "center", paddingHorizontal: 32 }]} onPress={() => setShowQR(false)}>
-          <Pressable style={[ws.sheet, { borderRadius: 24, paddingVertical: 28 }]} onPress={e => e.stopPropagation()}>
+        <TouchableOpacity activeOpacity={0.7} style={[ws.overlay, { justifyContent: "center", paddingHorizontal: 32 }]} onPress={() => setShowQR(false)}>
+          <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { borderRadius: 24, paddingVertical: 28 }]} onPress={e => e.stopPropagation()}>
             <Text style={[ws.sheetTitle, { textAlign: "center" }]}>Receive Money</Text>
             <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 20 }}>
               Scan this QR code or share your phone number
@@ -1272,11 +1272,11 @@ export default function WalletScreen() {
               <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>{appName} users can send directly to your wallet</Text>
             </View>
 
-            <Pressable onPress={() => setShowQR(false)} style={[ws.actionBtn, { backgroundColor: C.primary }]} accessibilityRole="button" accessibilityLabel="Close QR code">
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowQR(false)} style={[ws.actionBtn, { backgroundColor: C.primary }]} accessibilityRole="button" accessibilityLabel="Close QR code">
               <Text style={ws.actionBtnTxt}>Close</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
     </View>

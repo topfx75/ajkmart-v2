@@ -10,7 +10,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -359,16 +359,16 @@ function ParcelScreenInner() {
   if (!parcelEnabled) {
     return (
       <View style={[ss.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
-        <Pressable onPress={() => router.back()} style={{ position: "absolute", top: topPad + 12, left: 16 }}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={{ position: "absolute", top: topPad + 12, left: 16 }}>
           <Ionicons name="arrow-back" size={24} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
         <View style={[ss.confirmCard, { borderColor: C.redSoft }]}>
           <Text style={{ fontSize: 52 }}>🚫</Text>
           <Text style={[ss.confirmTitle, { color: C.redBright }]}>{T("serviceUnavailable")}</Text>
           <Text style={ss.confirmSub}>{T("maintenanceApology")}</Text>
-          <Pressable style={[ss.doneBtn, { backgroundColor: C.redBg, width: "100%" }]} onPress={() => router.back()}>
+          <TouchableOpacity activeOpacity={0.7} style={[ss.doneBtn, { backgroundColor: C.redBg, width: "100%" }]} onPress={() => router.back()}>
             <Text style={[ss.doneBtnTxt, { color: C.redBright }]}>{T("backToHome")}</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -417,13 +417,13 @@ function ParcelScreenInner() {
             <Text style={ss.fareVal}>Rs. {confirmedFare.toLocaleString()}</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
-            <Pressable style={[ss.doneBtn, { flex: 1, backgroundColor: C.greenBg }]} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
+            <TouchableOpacity activeOpacity={0.7} style={[ss.doneBtn, { flex: 1, backgroundColor: C.greenBg }]} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
               <Text style={[ss.doneBtnTxt, { color: C.emerald }]}>{T("home")}</Text>
-            </Pressable>
-            <Pressable style={[ss.doneBtn, { flex: 2 }]} onPress={() => { setConfirmed(false); router.push("/(tabs)/orders"); }}>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} style={[ss.doneBtn, { flex: 2 }]} onPress={() => { setConfirmed(false); router.push("/(tabs)/orders"); }}>
               <Ionicons name="cube-outline" size={16} color={C.textInverse} style={{ marginRight: 4 }} />
               <Text style={ss.doneBtnTxt}>{T("trackParcel")}</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -434,9 +434,9 @@ function ParcelScreenInner() {
     <View style={ss.root}>
       <LinearGradient colors={[C.amberDark, C.amberBrown, C.amber]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[ss.header, { paddingTop: topPad + 14 }]}>
         <View style={ss.hdrRow}>
-          <Pressable onPress={() => router.back()} style={ss.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={ss.backBtn}>
             <Ionicons name="arrow-back" size={20} color={C.textInverse} />
-          </Pressable>
+          </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={ss.hdrTitle}>📦 {T("parcel")}</Text>
             <Text style={ss.hdrSub}>{T("parcelsAnywhere")}</Text>
@@ -459,13 +459,13 @@ function ParcelScreenInner() {
             <Text style={ss.label}>{T("yourPhone")} *</Text>
             <TextInput value={senderPhone} onChangeText={setSenderPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" maxLength={20} />
             <Text style={ss.label}>{T("pickupAddress")} *</Text>
-            <Pressable onPress={() => setShowLocPicker("pickup")} style={ss.locInput}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowLocPicker("pickup")} style={ss.locInput}>
               <Ionicons name="location-outline" size={16} color={pickupAddress ? C.text : C.textMuted} />
               <Text style={[ss.locInputTxt, !pickupAddress && { color: C.textMuted }]}>
                 {pickupAddress || T("selectPickupLocation")}
               </Text>
               <Ionicons name="chevron-down" size={14} color={C.textMuted} />
-            </Pressable>
+            </TouchableOpacity>
             <Text style={ss.label}>{T("orTypeManually")}</Text>
             <TextInput
               value={pickupAddress}
@@ -492,13 +492,13 @@ function ParcelScreenInner() {
             <Text style={ss.label}>{T("receiverPhone")} *</Text>
             <TextInput value={receiverPhone} onChangeText={setReceiverPhone} placeholder="03XX XXXXXXX" placeholderTextColor={C.textMuted} style={ss.input} keyboardType="phone-pad" maxLength={20} />
             <Text style={ss.label}>{T("dropAddress")} *</Text>
-            <Pressable onPress={() => setShowLocPicker("drop")} style={ss.locInput}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowLocPicker("drop")} style={ss.locInput}>
               <Ionicons name="location-outline" size={16} color={dropAddress ? C.text : C.textMuted} />
               <Text style={[ss.locInputTxt, !dropAddress && { color: C.textMuted }]}>
                 {dropAddress || T("selectDropLocation")}
               </Text>
               <Ionicons name="chevron-down" size={14} color={C.textMuted} />
-            </Pressable>
+            </TouchableOpacity>
             <Text style={ss.label}>{T("orTypeManually")}</Text>
             <TextInput
               value={dropAddress}
@@ -524,11 +524,11 @@ function ParcelScreenInner() {
               <Text style={ss.label}>{T("parcelType")} *</Text>
               <View style={ss.typeGrid}>
                 {PARCEL_TYPES.map(pt => (
-                  <Pressable key={pt.id} onPress={() => setParcelType(pt.id)} style={[ss.typeCard, parcelType === pt.id && ss.typeCardActive]}>
+                  <TouchableOpacity activeOpacity={0.7} key={pt.id} onPress={() => setParcelType(pt.id)} style={[ss.typeCard, parcelType === pt.id && ss.typeCardActive]}>
                     <Text style={{ fontSize: 24 }}>{pt.emoji}</Text>
                     <Text style={[ss.typeLabel, parcelType === pt.id && { color: C.amber }]}>{pt.label}</Text>
                     <Text style={ss.typeDesc}>{pt.desc}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -614,7 +614,7 @@ function ParcelScreenInner() {
                   ? `${T("availableBalance")}: Rs. ${(user?.walletBalance ?? 0).toLocaleString()}`
                   : (pm as any).description || pm.label;
                 return (
-                  <Pressable key={pm.id} onPress={() => setPayMethod(pm.id)} style={[ss.payOpt, active && ss.payOptActive]}>
+                  <TouchableOpacity activeOpacity={0.7} key={pm.id} onPress={() => setPayMethod(pm.id)} style={[ss.payOpt, active && ss.payOptActive]}>
                     <View style={[ss.payIcon, { backgroundColor: iconBg }]}>
                       <Ionicons name={iconName} size={22} color={iconColor} />
                     </View>
@@ -625,7 +625,7 @@ function ParcelScreenInner() {
                       <Text style={ss.paySub}>{subLabel}</Text>
                     </View>
                     {active && <Ionicons name="checkmark-circle" size={22} color={C.amber} />}
-                  </Pressable>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -670,25 +670,25 @@ function ParcelScreenInner() {
 
       <View style={[ss.navBar, { paddingBottom: insets.bottom + 12 }]}>
         {step > 0 && (
-          <Pressable style={ss.prevBtn} onPress={prev}>
+          <TouchableOpacity activeOpacity={0.7} style={ss.prevBtn} onPress={prev}>
             <Ionicons name="arrow-back" size={18} color={C.text} />
             <Text style={ss.prevBtnTxt}>{T("back")}</Text>
-          </Pressable>
+          </TouchableOpacity>
         )}
         {step < 3 ? (
-          <Pressable style={[ss.nextBtn, step === 0 && { marginLeft: "auto" }]} onPress={next}>
+          <TouchableOpacity activeOpacity={0.7} style={[ss.nextBtn, step === 0 && { marginLeft: "auto" }]} onPress={next}>
             <Text style={ss.nextBtnTxt}>{T("confirmLabel")}</Text>
             <Ionicons name="arrow-forward" size={18} color={C.textInverse} />
-          </Pressable>
+          </TouchableOpacity>
         ) : (
-          <Pressable style={[ss.nextBtn, loading && { opacity: 0.7 }]} onPress={bookParcel} disabled={loading}>
+          <TouchableOpacity activeOpacity={0.7} style={[ss.nextBtn, loading && { opacity: 0.7 }]} onPress={bookParcel} disabled={loading}>
             {loading ? <ActivityIndicator color={C.textInverse} /> : (
               <>
                 <Text style={ss.nextBtnTxt}>{T("parcel")} • Rs. {estimatedFare}</Text>
                 <Ionicons name="checkmark-circle" size={18} color={C.textInverse} />
               </>
             )}
-          </Pressable>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -699,9 +699,9 @@ function ParcelScreenInner() {
             <Text style={ss.locModalTitle}>
               {showLocPicker === "pickup" ? "📍 Pickup" : "🏁 Drop"} Location
             </Text>
-            <Pressable onPress={() => { setShowLocPicker(null); setLocSearch(""); }} style={ss.locCloseBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => { setShowLocPicker(null); setLocSearch(""); }} style={ss.locCloseBtn}>
               <Ionicons name="close" size={20} color={C.text} />
-            </Pressable>
+            </TouchableOpacity>
           </View>
 
           <View style={ss.locSearchRow}>
@@ -716,15 +716,15 @@ function ParcelScreenInner() {
             />
             {locLoading && <ActivityIndicator size="small" color={C.primary} />}
             {locSearch.length > 0 && !locLoading && (
-              <Pressable onPress={() => setLocSearch("")}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => setLocSearch("")}>
                 <Ionicons name="close-circle" size={16} color={C.textMuted} />
-              </Pressable>
+              </TouchableOpacity>
             )}
           </View>
 
           <ScrollView keyboardShouldPersistTaps="always">
             {predictions.map(pred => (
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 key={pred.placeId}
                 style={ss.locOption}
                 onPress={async () => {
@@ -758,7 +758,7 @@ function ParcelScreenInner() {
                   ) : null}
                 </View>
                 <Ionicons name="chevron-forward" size={14} color={C.textMuted} />
-              </Pressable>
+              </TouchableOpacity>
             ))}
             {predictions.length === 0 && !locLoading && locSearch.length > 2 && (
               <View style={{ padding: 24, alignItems: "center" }}>

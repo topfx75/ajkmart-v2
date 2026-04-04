@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -76,13 +76,13 @@ export function PwaInstallBanner() {
       </View>
       <View style={s.actions}>
         {!isIOS && (
-          <Pressable style={s.installBtn} onPress={handleInstall} accessibilityRole="button">
+          <TouchableOpacity activeOpacity={0.7} style={s.installBtn} onPress={handleInstall} accessibilityRole="button">
             <Text style={s.installTxt}>Install</Text>
-          </Pressable>
+          </TouchableOpacity>
         )}
-        <Pressable style={s.closeBtn} onPress={dismiss} accessibilityRole="button" accessibilityLabel="Dismiss">
+        <TouchableOpacity activeOpacity={0.7} style={s.closeBtn} onPress={dismiss} accessibilityRole="button" accessibilityLabel="Dismiss">
           <Ionicons name="close" size={16} color="rgba(255,255,255,0.6)" />
-        </Pressable>
+        </TouchableOpacity>
       </View>
     </View>
   );

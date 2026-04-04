@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import { Animated, TouchableOpacity, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 import Colors from "@/constants/colors";
@@ -70,7 +70,7 @@ export function WishlistHeart({
 
   return (
     <Animated.View style={[{ transform: [{ scale: heartScale }] }, style]}>
-      <Pressable
+      <TouchableOpacity activeOpacity={0.7}
         onPress={(e) => { e?.stopPropagation?.(); toggle(); }}
         style={s.btn}
         hitSlop={6}
@@ -80,7 +80,7 @@ export function WishlistHeart({
           size={size}
           color={isInWishlist ? C.danger : "rgba(255,255,255,0.9)"}
         />
-      </Pressable>
+      </TouchableOpacity>
     </Animated.View>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
-  ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View, Platform,
+  ActivityIndicator, Alert, TouchableOpacity, ScrollView, StyleSheet,
+  Text, TextInput, View, Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -143,16 +143,16 @@ export default function VanServiceScreen() {
       <LinearGradient colors={["#4338CA","#6366F1","#818CF8"]} start={{ x:0, y:0 }} end={{ x:1, y:1 }}
         style={[ss.headerGradient, { paddingTop: topPad + 14 }]}>
         <View style={ss.headerRow}>
-          <Pressable onPress={goBack} style={ss.backBtn} hitSlop={12}>
+          <TouchableOpacity activeOpacity={0.7} onPress={goBack} style={ss.backBtn} hitSlop={12}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
-          </Pressable>
+          </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={ss.headerTitle}>{title}</Text>
             {sub ? <Text style={ss.headerSub}>{sub}</Text> : null}
           </View>
-          <Pressable onPress={() => router.push("/van/bookings" as any)} hitSlop={12}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/van/bookings" as any)} hitSlop={12}>
             <Ionicons name="calendar-outline" size={22} color="rgba(255,255,255,0.85)" />
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </LinearGradient>
     );
@@ -171,7 +171,7 @@ export default function VanServiceScreen() {
               <Text style={ss.emptyDesc}>Van service routes will appear here.</Text>
             </View>
           ) : routes.map(r => (
-            <Pressable key={r.id} style={ss.routeCard} onPress={() => selectRoute(r)}>
+            <TouchableOpacity activeOpacity={0.7} key={r.id} style={ss.routeCard} onPress={() => selectRoute(r)}>
               <View style={ss.routeIcon}>
                 <Ionicons name="bus" size={22} color="#6366F1" />
               </View>
@@ -185,7 +185,7 @@ export default function VanServiceScreen() {
                 <Text style={ss.routeFareLabel}>per seat</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
-            </Pressable>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       )}
@@ -201,7 +201,7 @@ export default function VanServiceScreen() {
         {selectedRoute.schedules.length === 0 ? (
           <View style={ss.empty}><Text style={ss.emptyDesc}>No active schedules for this route.</Text></View>
         ) : selectedRoute.schedules.map(s => (
-          <Pressable key={s.id} style={[ss.scheduleCard, selectedSchedule?.id === s.id && ss.scheduleCardSelected]}
+          <TouchableOpacity activeOpacity={0.7} key={s.id} style={[ss.scheduleCard, selectedSchedule?.id === s.id && ss.scheduleCardSelected]}
             onPress={() => { setSelectedSchedule(s); setStep("date"); }}>
             <View style={ss.scheduleRow}>
               <Ionicons name="time-outline" size={20} color="#6366F1" />
@@ -216,7 +216,7 @@ export default function VanServiceScreen() {
               })}
             </View>
             {s.vehiclePlate ? <Text style={ss.vehicleText}>{s.vehicleModel || "Van"} · {s.vehiclePlate} · {s.totalSeats ?? "?"} seats</Text> : null}
-          </Pressable>
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </View>
@@ -237,11 +237,11 @@ export default function VanServiceScreen() {
           const dow = d.getDay() === 0 ? 7 : d.getDay();
           const running = (Array.isArray(selectedSchedule.daysOfWeek) ? selectedSchedule.daysOfWeek as number[] : []).includes(dow);
           return (
-            <Pressable key={iso} style={[ss.datePill, travelDate === iso && ss.datePillSelected, !running && ss.datePillDisabled]}
+            <TouchableOpacity activeOpacity={0.7} key={iso} style={[ss.datePill, travelDate === iso && ss.datePillSelected, !running && ss.datePillDisabled]}
               onPress={() => { if (!running) return; setTravelDate(iso); }}>
               <Text style={[ss.datePillText, travelDate === iso && ss.datePillTextSelected, !running && ss.datePillTextDisabled]}>{label}</Text>
               {!running && <Text style={ss.notRunning}>Not running</Text>}
-            </Pressable>
+            </TouchableOpacity>
           );
         })}
         <View style={{ height: 12 }} />
@@ -256,9 +256,9 @@ export default function VanServiceScreen() {
             maxLength={10}
           />
         </View>
-        <Pressable style={[ss.btnPrimary, loading && ss.btnDisabled]} onPress={() => checkAvailability(selectedSchedule.id, travelDate)} disabled={loading}>
+        <TouchableOpacity activeOpacity={0.7} style={[ss.btnPrimary, loading && ss.btnDisabled]} onPress={() => checkAvailability(selectedSchedule.id, travelDate)} disabled={loading}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={ss.btnPrimaryText}>Check Availability</Text>}
-        </Pressable>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -276,7 +276,7 @@ export default function VanServiceScreen() {
               <Ionicons name="calendar-outline" size={36} color={C.textMuted} />
               <Text style={ss.emptyTitle}>Not Running This Day</Text>
               <Text style={ss.emptyDesc}>This van does not operate on the selected date. Please choose a different date.</Text>
-              <Pressable style={[ss.btnPrimary, { marginTop: 16 }]} onPress={() => setStep("date")}><Text style={ss.btnPrimaryText}>Change Date</Text></Pressable>
+              <TouchableOpacity activeOpacity={0.7} style={[ss.btnPrimary, { marginTop: 16 }]} onPress={() => setStep("date")}><Text style={ss.btnPrimaryText}>Change Date</Text></TouchableOpacity>
             </View>
           ) : (
             <>
@@ -300,10 +300,10 @@ export default function VanServiceScreen() {
                   const booked = availability.bookedSeats.includes(num);
                   const sel = selectedSeats.includes(num);
                   return (
-                    <Pressable key={num} style={[ss.seat, booked ? ss.seatBooked : sel ? ss.seatSelected : ss.seatAvailable]} onPress={() => toggleSeat(num)} disabled={booked}>
+                    <TouchableOpacity activeOpacity={0.7} key={num} style={[ss.seat, booked ? ss.seatBooked : sel ? ss.seatSelected : ss.seatAvailable]} onPress={() => toggleSeat(num)} disabled={booked}>
                       <Ionicons name="person" size={14} color={booked ? "#EF4444" : sel ? "#16A34A" : "#6366F1"} />
                       <Text style={[ss.seatNum, { color: booked ? "#EF4444" : sel ? "#16A34A" : "#4338CA" }]}>{num}</Text>
-                    </Pressable>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -313,9 +313,9 @@ export default function VanServiceScreen() {
                   <Text style={ss.seatSummaryText}>
                     {selectedSeats.length} seat{selectedSeats.length > 1 ? "s" : ""} selected · Rs {(selectedSeats.length * parseFloat(selectedRoute.farePerSeat)).toFixed(0)}
                   </Text>
-                  <Pressable style={ss.btnPrimary} onPress={() => setStep("confirm")}>
+                  <TouchableOpacity activeOpacity={0.7} style={ss.btnPrimary} onPress={() => setStep("confirm")}>
                     <Text style={ss.btnPrimaryText}>Continue</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
               ) : null}
             </>
@@ -358,16 +358,16 @@ export default function VanServiceScreen() {
           <Text style={ss.sectionLabel}>Payment Method</Text>
           <View style={ss.payRow}>
             {(["cash","wallet"] as const).map(pm => (
-              <Pressable key={pm} style={[ss.payBtn, paymentMethod === pm && ss.payBtnSelected]} onPress={() => setPaymentMethod(pm)}>
+              <TouchableOpacity activeOpacity={0.7} key={pm} style={[ss.payBtn, paymentMethod === pm && ss.payBtnSelected]} onPress={() => setPaymentMethod(pm)}>
                 <Ionicons name={pm === "cash" ? "cash-outline" : "wallet-outline"} size={18} color={paymentMethod === pm ? "#fff" : C.textMuted} />
                 <Text style={[ss.payBtnText, paymentMethod === pm && { color: "#fff" }]}>{pm === "cash" ? "Cash" : "Wallet"}</Text>
-              </Pressable>
+              </TouchableOpacity>
             ))}
           </View>
 
-          <Pressable style={[ss.btnPrimary, bookingLoading && ss.btnDisabled]} onPress={bookSeats} disabled={bookingLoading}>
+          <TouchableOpacity activeOpacity={0.7} style={[ss.btnPrimary, bookingLoading && ss.btnDisabled]} onPress={bookSeats} disabled={bookingLoading}>
             {bookingLoading ? <ActivityIndicator color="#fff" /> : <Text style={ss.btnPrimaryText}>Confirm Booking</Text>}
-          </Pressable>
+          </TouchableOpacity>
         </ScrollView>
       </View>
     );

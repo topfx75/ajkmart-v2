@@ -5,7 +5,7 @@ import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -211,14 +211,14 @@ export default function ForgotPasswordScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
       <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
         <View style={[s.topSection, { paddingTop: topPad + 16 }]}>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={goBack}
             style={s.backBtn}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
             <Ionicons name="arrow-back" size={20} color="#fff" />
-          </Pressable>
+          </TouchableOpacity>
 
           <View style={s.headerIcon}>
             <Ionicons name="lock-closed" size={28} color="rgba(255,255,255,0.95)" />
@@ -236,7 +236,7 @@ export default function ForgotPasswordScreen() {
             <>
               <View style={s.methodTabs} accessibilityRole="tablist">
                 {isMethodEnabled(config.auth.phoneOtpEnabled) && (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     onPress={() => { setMethod("phone"); clearError(); }}
                     style={[s.methodTab, method === "phone" && s.methodTabActive]}
                     accessibilityRole="tab"
@@ -244,10 +244,10 @@ export default function ForgotPasswordScreen() {
                   >
                     <Ionicons name="call-outline" size={16} color={method === "phone" ? C.primary : C.textMuted} />
                     <Text style={[s.methodTabText, method === "phone" && s.methodTabTextActive]}>Phone</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
                 {isMethodEnabled(config.auth.emailOtpEnabled) && (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     onPress={() => { setMethod("email"); clearError(); }}
                     style={[s.methodTab, method === "email" && s.methodTabActive]}
                     accessibilityRole="tab"
@@ -255,7 +255,7 @@ export default function ForgotPasswordScreen() {
                   >
                     <Ionicons name="mail-outline" size={16} color={method === "email" ? C.primary : C.textMuted} />
                     <Text style={[s.methodTabText, method === "email" && s.methodTabTextActive]}>Email</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
               </View>
 
@@ -302,7 +302,7 @@ export default function ForgotPasswordScreen() {
 
               <DevOtpBanner otp={devOtp} />
 
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={handleSendResetCode}
                 style={[s.resendBtn, resendCooldown > 0 && s.resendDisabled]}
                 disabled={resendCooldown > 0}
@@ -312,7 +312,7 @@ export default function ForgotPasswordScreen() {
                 <Text style={[s.resendText, resendCooldown > 0 && { color: C.textMuted }]}>
                   {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Code"}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             </>
           )}
 
@@ -386,14 +386,14 @@ export default function ForgotPasswordScreen() {
             icon={step === "newPassword" ? "lock-closed-outline" : step === "otp" ? "checkmark-circle-outline" : undefined}
           />
 
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.replace("/auth")}
             style={s.loginLink}
             accessibilityLabel="Back to login"
             accessibilityRole="link"
           >
             <Text style={s.loginLinkText}>Back to Login</Text>
-          </Pressable>
+          </TouchableOpacity>
         </ScrollView>
       </LinearGradient>
     </KeyboardAvoidingView>

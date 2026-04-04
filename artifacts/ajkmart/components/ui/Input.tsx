@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   TextInput,
@@ -80,7 +80,7 @@ export function Input({
           {...props}
         />
         {showClear && !isPassword && (
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => {
               if (onClear) onClear();
               else if (props.onChangeText) props.onChangeText("");
@@ -89,16 +89,16 @@ export function Input({
             hitSlop={8}
           >
             <Ionicons name="close-circle" size={18} color={C.textMuted} />
-          </Pressable>
+          </TouchableOpacity>
         )}
         {isPassword && (
-          <Pressable onPress={() => setShowPwd((v) => !v)} style={styles.eyeBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setShowPwd((v) => !v)} style={styles.eyeBtn}>
             <Ionicons
               name={showPwd ? "eye-off-outline" : "eye-outline"}
               size={20}
               color={C.textMuted}
             />
-          </Pressable>
+          </TouchableOpacity>
         )}
         {rightElement && <View style={styles.rightElement}>{rightElement}</View>}
       </View>

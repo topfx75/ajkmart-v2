@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import {
   Modal as RNModal,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   View,
@@ -30,8 +30,8 @@ export function Modal({
 }: ModalProps) {
   return (
     <RNModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.content} onPress={(e) => e.stopPropagation()}>
+      <TouchableOpacity activeOpacity={0.7} style={styles.overlay} onPress={onClose}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.content} onPress={(e) => e.stopPropagation()}>
           {(title || showCloseButton) && (
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
@@ -39,15 +39,15 @@ export function Modal({
                 {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
               </View>
               {showCloseButton && (
-                <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
+                <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={styles.closeBtn} hitSlop={8}>
                   <Ionicons name="close" size={22} color={C.textSecondary} />
-                </Pressable>
+                </TouchableOpacity>
               )}
             </View>
           )}
           {children}
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </RNModal>
   );
 }

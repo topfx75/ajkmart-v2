@@ -5,7 +5,7 @@ import {
   Animated,
   Dimensions,
   Image,
-  Pressable,
+  TouchableOpacity,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -39,7 +39,7 @@ function WishlistCard({ item, onRemove }: { item: WishlistItem; onRemove: (produ
 
   return (
     <Animated.View style={{ transform: [{ scale: removeScale }] }}>
-      <Pressable
+      <TouchableOpacity activeOpacity={0.7}
         onPress={() => router.push({ pathname: "/product/[id]", params: { id: p.id } })}
         style={styles.card}
       >
@@ -54,12 +54,12 @@ function WishlistCard({ item, onRemove }: { item: WishlistItem; onRemove: (produ
               <Text style={styles.discTxt}>{discount}% OFF</Text>
             </View>
           )}
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={(e) => { e?.stopPropagation?.(); handleRemove(); }}
             style={styles.removeBtn}
           >
             <Ionicons name="heart" size={18} color={C.danger} />
-          </Pressable>
+          </TouchableOpacity>
         </View>
         <View style={styles.cardBody}>
           <Text style={styles.cardName} numberOfLines={2}>{p.name}</Text>
@@ -84,7 +84,7 @@ function WishlistCard({ item, onRemove }: { item: WishlistItem; onRemove: (produ
             </View>
           )}
         </View>
-      </Pressable>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -112,9 +112,9 @@ export default function WishlistScreen() {
     return (
       <ScreenContainer scroll={false}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={C.text} />
-          </Pressable>
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>My Wishlist</Text>
           <View style={{ width: 40 }} />
         </View>
@@ -124,9 +124,9 @@ export default function WishlistScreen() {
           </View>
           <Text style={styles.emptyTitle}>Sign in to view your wishlist</Text>
           <Text style={styles.emptySub}>Save your favorite products for later</Text>
-          <Pressable onPress={() => router.push("/auth" as Href)} style={styles.signInBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/auth" as Href)} style={styles.signInBtn}>
             <Text style={styles.signInBtnTxt}>Sign In</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </ScreenContainer>
     );
@@ -135,9 +135,9 @@ export default function WishlistScreen() {
   return (
     <ScreenContainer scroll={false}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>My Wishlist</Text>
         <View style={styles.countBadge}>
           <Text style={styles.countTxt}>{items?.length || 0}</Text>
@@ -167,10 +167,10 @@ export default function WishlistScreen() {
               <Ionicons name="cloud-offline-outline" size={48} color={C.textMuted} />
             </View>
             <Text style={styles.emptyTitle}>Could not load wishlist</Text>
-            <Pressable onPress={() => refetch()} style={styles.retryBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={styles.retryBtn}>
               <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
               <Text style={styles.retryBtnTxt}>Retry</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         ) : items && items.length === 0 ? (
           <View style={styles.emptyCenter}>
@@ -179,10 +179,10 @@ export default function WishlistScreen() {
             </View>
             <Text style={styles.emptyTitle}>Your wishlist is empty</Text>
             <Text style={styles.emptySub}>Tap the heart icon on products to save them here</Text>
-            <Pressable onPress={() => router.push("/(tabs)" as Href)} style={styles.browseBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/(tabs)" as Href)} style={styles.browseBtn}>
               <Ionicons name="basket-outline" size={16} color={C.textInverse} />
               <Text style={styles.browseBtnTxt}>Browse Products</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.grid}>

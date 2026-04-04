@@ -7,7 +7,6 @@ import {
   Dimensions,
   useWindowDimensions,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -55,9 +54,9 @@ function safeNavigate(route: string) {
   const knownRoutes = new Set<string>([
     ...Object.values(SERVICE_REGISTRY).map(s => String(s.route)),
     "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/cart", "/search",
-    "/van", "/van/bookings",
+    "/van", "/van/bookings", "/categories", "/wishlist", "/order", "/my-reviews",
   ]);
-  if (!route || (!knownRoutes.has(route) && !route.startsWith("/(tabs)"))) {
+  if (!route || (!knownRoutes.has(route) && !route.startsWith("/(tabs)") && !route.startsWith("/product/"))) {
     router.push("/(tabs)" as Href);
     return;
   }
@@ -89,14 +88,7 @@ function ServiceGridView({ services, isGuest }: { services: ServiceDefinition[];
             accessibilityRole="button"
             accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
           >
-            <LinearGradient colors={svc.iconGradient} style={sg.circle}>
-              <Ionicons name={svc.iconFocused} size={22} color="#fff" />
-              {isGuest && (
-                <View style={sg.lockBadge}>
-                  <Ionicons name="lock-closed" size={7} color="#fff" />
-                </View>
-              )}
-            </LinearGradient>
+            <LinearGradient colors={svc.iconGradient} style={sg.circle}><Ionicons name={svc.iconFocused} size={22} color="#fff" />{isGuest && (<View style={sg.lockBadge}><Ionicons name="lock-closed" size={7} color="#fff" /></View>)}</LinearGradient>
             <Text style={sg.label} numberOfLines={1}>{label}</Text>
           </TouchableOpacity>
         );
@@ -120,14 +112,7 @@ function ServiceListView({ services, isGuest }: { services: ServiceDefinition[];
             accessibilityRole="button"
             accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
           >
-            <LinearGradient colors={svc.iconGradient} style={sl.circle}>
-              <Ionicons name={svc.iconFocused} size={20} color="#fff" />
-              {isGuest && (
-                <View style={sg.lockBadge}>
-                  <Ionicons name="lock-closed" size={7} color="#fff" />
-                </View>
-              )}
-            </LinearGradient>
+            <LinearGradient colors={svc.iconGradient} style={sl.circle}><Ionicons name={svc.iconFocused} size={20} color="#fff" />{isGuest && (<View style={sg.lockBadge}><Ionicons name="lock-closed" size={7} color="#fff" /></View>)}</LinearGradient>
             <View style={sl.textWrap}>
               <Text style={sl.name}>{label}</Text>
               <Text style={sl.desc} numberOfLines={1}>{svc.description}</Text>
@@ -151,22 +136,22 @@ function ServiceSection({ services, isGuest, viewMode, onToggle }: {
       <View style={sg.header}>
         <Text style={sg.headerTitle}>Services</Text>
         <View style={sg.toggleRow}>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => onToggle("grid")}
             style={[sg.toggleBtn, viewMode === "grid" && sg.toggleBtnActive]}
             accessibilityRole="button"
             accessibilityLabel="Grid view"
           >
             <Ionicons name="grid" size={14} color={viewMode === "grid" ? "#fff" : C.textMuted} />
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => onToggle("list")}
             style={[sg.toggleBtn, viewMode === "list" && sg.toggleBtnActive]}
             accessibilityRole="button"
             accessibilityLabel="List view"
           >
             <Ionicons name="list" size={16} color={viewMode === "list" ? "#fff" : C.textMuted} />
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
       {viewMode === "grid"
@@ -312,7 +297,7 @@ function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabB
   return (
     <View style={tr.wrap}>
       {items.map((item, i) => (
-        <Pressable key={i} onPress={() => router.push(item.route as Href)} accessibilityRole="button" accessibilityLabel={`${item.label}. Tap to track`}>
+        <TouchableOpacity activeOpacity={0.7} key={i} onPress={() => router.push(item.route as Href)} accessibilityRole="button" accessibilityLabel={`${item.label}. Tap to track`}>
           <LinearGradient colors={[item.c1, item.c2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={tr.card}>
             <View style={tr.iconWrap}>
               <Ionicons name={item.icon} size={18} color="#fff" />
@@ -326,7 +311,7 @@ function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabB
               <Ionicons name="arrow-forward" size={12} color={item.c1} />
             </View>
           </LinearGradient>
-        </Pressable>
+        </TouchableOpacity>
       ))}
     </View>
   );
@@ -344,7 +329,7 @@ const tr = StyleSheet.create({
 
 function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: number; onPress: () => void; appName?: string }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${appName} Wallet, Rs. ${balance.toLocaleString()}, tap to open`} style={ws.wrap}>
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${appName} Wallet, Rs. ${balance.toLocaleString()}, tap to open`} style={ws.wrap}>
       <LinearGradient colors={["#0047B3", "#0066FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={ws.card}>
         <View style={ws.left}>
           <View style={ws.iconBox}>
@@ -360,7 +345,7 @@ function WalletStrip({ balance, onPress, appName = "AJKMart" }: { balance: numbe
           <Text style={ws.topupTxt}>Top Up</Text>
         </View>
       </LinearGradient>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -474,7 +459,7 @@ function DynamicBannerCarousel() {
           scrollEventThrottle={16}
         >
           {items.map((b) => (
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               key={b.id}
               onPress={() => handleBannerPress(b)}
               style={{ width: BANNER_W }}
@@ -520,7 +505,7 @@ function DynamicBannerCarousel() {
                   </View>
                 </LinearGradient>
               )}
-            </Pressable>
+            </TouchableOpacity>
           ))}
         </ScrollView>
         {items.length > 1 && (
@@ -678,7 +663,7 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
             ? Math.min(Math.round((item.soldCount / item.dealStock) * 100), 99)
             : 0;
           return (
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })}
               style={fd.card}
               accessibilityLabel={`${item.name} ${item.discountPercent}% OFF`}
@@ -721,7 +706,7 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
                 )}
                 <WishlistHeart productId={item.id} size={14} style={{ position: "absolute", top: 4, right: 4, zIndex: 10 }} />
               </View>
-            </Pressable>
+            </TouchableOpacity>
           );
         }}
       />
@@ -777,7 +762,7 @@ function TrendingSection() {
         contentContainerStyle={{ paddingHorizontal: H_PAD, gap: 10 }}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.push(`/product/${item.id}` as Href)}
             style={tr2.card}
           >
@@ -801,7 +786,7 @@ function TrendingSection() {
                 </View>
               ) : null}
             </View>
-          </Pressable>
+          </TouchableOpacity>
         )}
       />
     </View>
@@ -909,7 +894,7 @@ export default function HomeScreen() {
             <Ionicons name="megaphone" size={11} color="#fff" />
           </View>
           <Text style={s.announceTxt} numberOfLines={1}>{announcement}</Text>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => {
               setAnnounceDismissed(true);
               if (announceKey) AsyncStorage.setItem(announceKey, "1").catch(() => {});
@@ -919,7 +904,7 @@ export default function HomeScreen() {
             accessibilityLabel="Dismiss announcement"
           >
             <Ionicons name="close" size={16} color="rgba(255,255,255,0.8)" />
-          </Pressable>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -931,13 +916,13 @@ export default function HomeScreen() {
           style={[s.header, { paddingTop: (announcement && !announceDismissed) ? 8 : topPad + 8 }]}
         >
           <View style={s.hdrRow}>
-            <Pressable style={s.locBtn} onPress={() => {}}>
+            <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={() => {}}>
               <Ionicons name="location" size={14} color="#fff" />
               <Text style={s.locTxt} numberOfLines={1}>{platformConfig.platform.businessAddress || "AJK, Pakistan"}</Text>
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </Pressable>
+            </TouchableOpacity>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => router.push("/cart" as Href)}
                 style={s.iconBtn}
                 accessibilityRole="button"
@@ -949,11 +934,11 @@ export default function HomeScreen() {
                     <Text style={s.cartBadgeTxt}>{itemCount > 99 ? "99+" : itemCount}</Text>
                   </View>
                 )}
-              </Pressable>
+              </TouchableOpacity>
             </View>
           </View>
 
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.push("/search")}
             style={s.searchBar}
             accessibilityRole="search"
@@ -963,7 +948,7 @@ export default function HomeScreen() {
             <Text style={s.searchText}>{T("search")}</Text>
             <View style={s.searchDivider} />
             <Ionicons name="camera-outline" size={16} color={C.textMuted} />
-          </Pressable>
+          </TouchableOpacity>
         </LinearGradient>
       </Animated.View>
 
@@ -1029,7 +1014,7 @@ export default function HomeScreen() {
       </SmartRefresh>
 
       {user?.id && itemCount > 0 && (
-        <Pressable
+        <TouchableOpacity activeOpacity={0.7}
           onPress={() => router.push("/cart" as Href)}
           style={[s.cartFab, { bottom: TAB_H + insets.bottom + 16 }]}
           accessibilityRole="button"
@@ -1042,7 +1027,7 @@ export default function HomeScreen() {
               <Text style={s.cartFabBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
             </View>
           </LinearGradient>
-        </Pressable>
+        </TouchableOpacity>
       )}
     </View>
   );

@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import { TouchableOpacity, StyleSheet, View, type ViewStyle } from "react-native";
 import Colors, { radii, shadows } from "@/constants/colors";
 
 const C = Colors.light;
@@ -30,12 +30,12 @@ export function Card({
 
   if (onPress) {
     return (
-      <Pressable
+      <TouchableOpacity activeOpacity={0.7}
         onPress={onPress}
-        style={({ pressed }) => [...cardStyle, pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] }]}
+        style={cardStyle}
       >
         {children}
-      </Pressable>
+      </TouchableOpacity>
     );
   }
 

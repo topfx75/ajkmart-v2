@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
-  Pressable,
+  TouchableOpacity,
   View,
   Text,
   StyleSheet,
@@ -59,7 +59,7 @@ export function AnimatedPressable({
 
   return (
     <Animated.View style={[{ opacity: op, transform: [{ scale: sc }] }, style]}>
-      <Pressable
+      <TouchableOpacity activeOpacity={0.7}
         onPressIn={onIn}
         onPressOut={onOut}
         onPress={onPress}
@@ -71,7 +71,7 @@ export function AnimatedPressable({
         accessibilityState={accessibilityState}
       >
         {children}
-      </Pressable>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -96,9 +96,9 @@ export function SectionHeader({
         {subtitle ? <Text style={us.secSub}>{subtitle}</Text> : null}
       </View>
       {actionLabel && onAction ? (
-        <Pressable onPress={onAction} accessibilityRole="button" accessibilityLabel={actionLabel}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onAction} accessibilityRole="button" accessibilityLabel={actionLabel}>
           <Text style={us.secAction}>{actionLabel}</Text>
-        </Pressable>
+        </TouchableOpacity>
       ) : null}
     </View>
   );
@@ -139,7 +139,7 @@ export function FilterChip({
 }) {
   const accentColor = color ?? C.primary;
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       onPress={onPress}
       style={[us.chip, active && { backgroundColor: accentColor }]}
       accessibilityRole="tab"
@@ -148,7 +148,7 @@ export function FilterChip({
     >
       {icon ? <Ionicons name={icon} size={14} color={active ? C.textInverse : C.textSecondary} /> : null}
       <Text style={[us.chipText, active && { color: C.textInverse }]}>{label}</Text>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -229,13 +229,13 @@ export function ListItem({
 
   if (onPress) {
     return (
-      <Pressable
+      <TouchableOpacity activeOpacity={0.7}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? title}
       >
         {content}
-      </Pressable>
+      </TouchableOpacity>
     );
   }
   return content;
@@ -296,9 +296,9 @@ export function EmptyState({
       <Text style={us.emptyTitle}>{title}</Text>
       {subtitle ? <Text style={us.emptySub}>{subtitle}</Text> : null}
       {actionLabel && onAction ? (
-        <Pressable onPress={onAction} style={us.emptyCta} accessibilityRole="button" accessibilityLabel={actionLabel}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onAction} style={us.emptyCta} accessibilityRole="button" accessibilityLabel={actionLabel}>
           <Text style={us.emptyCtaTxt}>{actionLabel}</Text>
-        </Pressable>
+        </TouchableOpacity>
       ) : null}
     </View>
   );
@@ -341,9 +341,9 @@ export function CardSurface({
   const content = <View style={[us.surface, style]}>{children}</View>;
   if (onPress) {
     return (
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel}>
+      <TouchableOpacity activeOpacity={0.7} onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel}>
         {content}
-      </Pressable>
+      </TouchableOpacity>
     );
   }
   return content;
@@ -361,7 +361,7 @@ export function SearchHeader({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       onPress={onPress}
       style={[us.searchBar, style]}
       accessibilityRole="search"
@@ -372,11 +372,11 @@ export function SearchHeader({
       </View>
       <Text style={us.searchText}>{placeholder}</Text>
       {onFilterPress && (
-        <Pressable onPress={onFilterPress} style={us.searchFilter} accessibilityLabel="Filter">
+        <TouchableOpacity activeOpacity={0.7} onPress={onFilterPress} style={us.searchFilter} accessibilityLabel="Filter">
           <Ionicons name="options-outline" size={16} color={C.textMuted} />
-        </Pressable>
+        </TouchableOpacity>
       )}
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -396,7 +396,7 @@ export function CategoryPill({
   isActive?: boolean;
 }) {
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       onPress={onPress}
       style={us.catPill}
       accessibilityRole="button"
@@ -409,7 +409,7 @@ export function CategoryPill({
       <Text style={[us.catPillLabel, isActive && { color, fontFamily: Font.semiBold }]} numberOfLines={1}>
         {label}
       </Text>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 

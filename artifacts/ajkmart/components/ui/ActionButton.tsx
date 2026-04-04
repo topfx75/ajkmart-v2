@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import {
   ActivityIndicator,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   View,
@@ -56,17 +56,17 @@ export function ActionButton({
   const isDisabled = disabled || loading;
 
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       onPress={onPress}
       disabled={isDisabled}
-      style={({ pressed }) => [
+      style={[
         styles.base,
         {
           height: s.h,
           paddingHorizontal: s.px,
           backgroundColor: v.bg,
           borderRadius: radii.lg,
-          opacity: isDisabled ? 0.55 : pressed ? 0.85 : 1,
+          opacity: isDisabled ? 0.55 : 1,
         },
         v.border ? { borderWidth: 1.5, borderColor: v.border } : null,
         fullWidth ? { width: "100%" } : null,
@@ -89,7 +89,7 @@ export function ActionButton({
           {iconRight && <Ionicons name={iconRight} size={s.iconSize} color={v.text} />}
         </View>
       )}
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 

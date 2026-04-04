@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Pressable, type ViewStyle } from "react-native";
+import { Animated, TouchableOpacity, type ViewStyle } from "react-native";
 
 interface AnimatedPressableProps {
   children: React.ReactNode;
@@ -45,9 +45,9 @@ export function AnimatedPressable({
 
   return (
     <Animated.View style={[{ opacity, transform: [{ scale }] }, style]}>
-      <Pressable onPressIn={onPressIn} onPressOut={onPressOut} onPress={disabled ? undefined : onPress} style={{ flex: 1 }} disabled={disabled}>
+      <TouchableOpacity activeOpacity={0.8} onPressIn={onPressIn} onPressOut={onPressOut} onPress={disabled ? undefined : onPress} style={{ flex: 1 }} disabled={disabled}>
         {children}
-      </Pressable>
+      </TouchableOpacity>
     </Animated.View>
   );
 }

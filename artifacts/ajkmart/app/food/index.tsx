@@ -7,7 +7,7 @@ import {
   Animated,
   Image,
   Platform,
-  Pressable,
+  TouchableOpacity,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -61,7 +61,7 @@ function FoodCard({ item }: { item: any }) {
   };
 
   return (
-    <Pressable onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })} style={styles.foodCard}>
+    <TouchableOpacity activeOpacity={0.7} onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })} style={styles.foodCard}>
       <CartSwitchModal
         visible={showSwitchModal}
         targetService="Food"
@@ -98,24 +98,24 @@ function FoodCard({ item }: { item: any }) {
           <Text style={styles.foodPrice}>Rs. {item.price}</Text>
           {qtyInCart > 0 ? (
             <View style={styles.stepperRow}>
-              <Pressable onPress={(e) => { e?.stopPropagation?.(); qtyInCart <= 1 ? removeItem(item.id) : updateQuantity(item.id, qtyInCart - 1); }} style={styles.stepperBtn}>
+              <TouchableOpacity activeOpacity={0.7} onPress={(e) => { e?.stopPropagation?.(); qtyInCart <= 1 ? removeItem(item.id) : updateQuantity(item.id, qtyInCart - 1); }} style={styles.stepperBtn}>
                 <Ionicons name={qtyInCart <= 1 ? "trash-outline" : "remove"} size={14} color={C.red} />
-              </Pressable>
+              </TouchableOpacity>
               <Text style={styles.stepperQty}>{qtyInCart}</Text>
-              <Pressable onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.id, qtyInCart + 1); }} style={[styles.stepperBtn, { backgroundColor: C.accentSoft }]}>
+              <TouchableOpacity activeOpacity={0.7} onPress={(e) => { e?.stopPropagation?.(); updateQuantity(item.id, qtyInCart + 1); }} style={[styles.stepperBtn, { backgroundColor: C.accentSoft }]}>
                 <Ionicons name="add" size={14} color={C.amber} />
-              </Pressable>
+              </TouchableOpacity>
             </View>
           ) : (
             <Animated.View style={{ transform: [{ scale }] }}>
-              <Pressable onPress={(e) => handleAdd(e)} style={[styles.addBtn, added && styles.addBtnAdded]}>
+              <TouchableOpacity activeOpacity={0.7} onPress={(e) => handleAdd(e)} style={[styles.addBtn, added && styles.addBtnAdded]}>
                 <Ionicons name={added ? "checkmark" : "add"} size={16} color={C.textInverse} />
-              </Pressable>
+              </TouchableOpacity>
             </Animated.View>
           )}
         </View>
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -151,21 +151,21 @@ function FoodScreenInner() {
         style={[styles.header, { paddingTop: topPad + 12 }]}
       >
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={20} color={C.textInverse} />
-          </Pressable>
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Food Delivery</Text>
             <Text style={styles.headerSub}>Order from nearby restaurants</Text>
           </View>
-          <Pressable onPress={() => router.push("/cart")} style={styles.cartBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/cart")} style={styles.cartBtn}>
             <Ionicons name="bag-outline" size={22} color={C.textInverse} />
             {itemCount > 0 && (
               <View style={styles.cartBadge}>
                 <Text style={styles.cartBadgeTxt}>{itemCount}</Text>
               </View>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={17} color={C.textMuted} />
@@ -178,9 +178,9 @@ function FoodScreenInner() {
             maxLength={200}
           />
           {search.length > 0 && (
-            <Pressable onPress={() => setSearch("")}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setSearch("")}>
               <Ionicons name="close-circle" size={18} color={C.textMuted} />
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
       </LinearGradient>
@@ -192,12 +192,12 @@ function FoodScreenInner() {
             <Text style={{ ...Typ.buttonSmall, fontFamily: Font.bold, color: C.indigoDarkest }}>{cartType === "pharmacy" ? "Pharmacy cart active" : cartType === "mart" ? "Mart cart active" : "Another cart active"}</Text>
             <Text style={{ ...Typ.caption, color: C.indigoDarkest }}>Adding Food items will clear your existing cart</Text>
           </View>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => setClearBannerConfirm(true)}
             style={{ backgroundColor: C.indigoDark, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
           >
             <Text style={{ ...Typ.captionBold, color: C.textInverse }}>Clear Cart</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -211,23 +211,23 @@ function FoodScreenInner() {
 
       <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={C.food} />}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.catContent}>
-          <Pressable onPress={() => setSelectedCat(undefined)} style={[styles.catChip, !selectedCat && styles.catChipActive]}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setSelectedCat(undefined)} style={[styles.catChip, !selectedCat && styles.catChipActive]}>
             <Ionicons name="fast-food-outline" size={14} color={!selectedCat ? C.textInverse : C.food} />
             <Text style={[styles.catChipText, !selectedCat && styles.catChipTextActive]}>All</Text>
-          </Pressable>
+          </TouchableOpacity>
           {categories.map(c => (
-            <Pressable key={c.id} onPress={() => setSelectedCat(selectedCat === c.id ? undefined : c.id)} style={[styles.catChip, selectedCat === c.id && styles.catChipActive]}>
+            <TouchableOpacity activeOpacity={0.7} key={c.id} onPress={() => setSelectedCat(selectedCat === c.id ? undefined : c.id)} style={[styles.catChip, selectedCat === c.id && styles.catChipActive]}>
               <Ionicons name={c.icon as keyof typeof Ionicons.glyphMap} size={14} color={selectedCat === c.id ? C.textInverse : C.food} />
               <Text style={[styles.catChipText, selectedCat === c.id && styles.catChipTextActive]}>{c.name}</Text>
-            </Pressable>
+            </TouchableOpacity>
           ))}
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.push({ pathname: "/categories" as any, params: { type: "food" } })}
             style={[styles.catChip, { borderStyle: "dashed" as any }]}
           >
             <Ionicons name="apps-outline" size={14} color={C.food} />
             <Text style={styles.catChipText}>Browse All</Text>
-          </Pressable>
+          </TouchableOpacity>
         </ScrollView>
 
         {isLoading ? (
@@ -250,10 +250,10 @@ function FoodScreenInner() {
             </View>
             <Text style={styles.errorTitle}>Could not load</Text>
             <Text style={styles.errorSub}>Check your internet and retry</Text>
-            <Pressable onPress={() => refetch()} style={styles.retryBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={styles.retryBtn}>
               <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
               <Text style={styles.retryBtnTxt}>Retry</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         ) : items.length === 0 ? (
           <View style={styles.center}>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import Colors, { radii, spacing, typography } from "@/constants/colors";
 
 const C = Colors.light;
@@ -15,14 +15,14 @@ interface BottomSheetProps {
 export function BottomSheet({ visible, onClose, title, subtitle, children }: BottomSheetProps) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={e => e.stopPropagation()}>
+      <TouchableOpacity activeOpacity={0.7} style={styles.overlay} onPress={onClose}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.sheet} onPress={e => e.stopPropagation()}>
           <View style={styles.handle} />
           {title && <Text style={styles.title}>{title}</Text>}
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
           {children}
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }

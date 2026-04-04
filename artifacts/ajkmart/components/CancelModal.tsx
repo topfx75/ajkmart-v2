@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Modal,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   View,
@@ -100,8 +100,8 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={safeClose}>
-      <Pressable style={cm.backdrop} onPress={safeClose}>
-        <Pressable style={cm.sheet} onPress={() => {}}>
+      <TouchableOpacity activeOpacity={0.7} style={cm.backdrop} onPress={safeClose}>
+        <TouchableOpacity activeOpacity={0.7} style={cm.sheet} onPress={() => {}}>
           <View style={cm.handle} />
 
           <View style={cm.headerIconWrap}>
@@ -161,7 +161,7 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
             {reasons.map(r => {
               const active = selectedReason === r.key;
               return (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   key={r.key}
                   onPress={() => { setSelectedReason(r.key); setError(""); }}
                   style={[cm.reasonChip, active && cm.reasonChipActive]}
@@ -177,7 +177,7 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
                   {active && (
                     <Ionicons name="checkmark-circle" size={16} color="#DC2626" />
                   )}
-                </Pressable>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -185,12 +185,12 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
           {error ? <Text style={cm.error}>{error}</Text> : null}
 
           <View style={cm.btns}>
-            <Pressable style={cm.keepBtn} onPress={safeClose}>
+            <TouchableOpacity activeOpacity={0.7} style={cm.keepBtn} onPress={safeClose}>
               <Text style={cm.keepText}>
                 {isRide ? "Keep Ride" : isParcel ? "Keep Booking" : "Keep Order"}
               </Text>
-            </Pressable>
-            <Pressable
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7}
               style={[cm.confirmBtn, !selectedReason && { opacity: 0.5 }]}
               onPress={handleConfirm}
               disabled={loading || !selectedReason}
@@ -198,10 +198,10 @@ export function CancelModal({ target, cancellationFee, apiBase, token, onClose, 
               {loading
                 ? <ActivityIndicator size="small" color="#fff" />
                 : <Text style={cm.confirmText}>Confirm Cancel</Text>}
-            </Pressable>
+            </TouchableOpacity>
           </View>
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }

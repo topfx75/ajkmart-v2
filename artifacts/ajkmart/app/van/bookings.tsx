@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Alert, Pressable, RefreshControl,
+  ActivityIndicator, Alert, TouchableOpacity, RefreshControl,
   ScrollView, StyleSheet, Text, View,
 } from "react-native";
 import { router } from "expo-router";
@@ -99,13 +99,13 @@ export default function VanBookingsScreen() {
       <LinearGradient colors={["#4338CA","#6366F1","#818CF8"]} start={{ x:0,y:0 }} end={{ x:1,y:1 }}
         style={[ss.header, { paddingTop: topPad + 14 }]}>
         <View style={ss.headerRow}>
-          <Pressable onPress={() => router.back()} style={ss.backBtn} hitSlop={12}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={ss.backBtn} hitSlop={12}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
-          </Pressable>
+          </TouchableOpacity>
           <Text style={ss.headerTitle}>My Van Bookings</Text>
-          <Pressable onPress={() => router.push("/van" as any)} hitSlop={12}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/van" as any)} hitSlop={12}>
             <Ionicons name="add-circle-outline" size={24} color="rgba(255,255,255,0.85)" />
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 
@@ -113,7 +113,7 @@ export default function VanBookingsScreen() {
         <View style={ss.center}>
           <Ionicons name="person-circle-outline" size={48} color={C.textMuted} />
           <Text style={ss.emptyTitle}>Login to See Bookings</Text>
-          <Pressable style={ss.btnPrimary} onPress={() => router.push("/auth")}><Text style={ss.btnPrimaryText}>Login</Text></Pressable>
+          <TouchableOpacity activeOpacity={0.7} style={ss.btnPrimary} onPress={() => router.push("/auth")}><Text style={ss.btnPrimaryText}>Login</Text></TouchableOpacity>
         </View>
       ) : loading ? (
         <View style={ss.center}><ActivityIndicator color="#6366F1" size="large" /></View>
@@ -127,9 +127,9 @@ export default function VanBookingsScreen() {
               <Ionicons name="bus-outline" size={48} color={C.textMuted} />
               <Text style={ss.emptyTitle}>No Bookings Yet</Text>
               <Text style={ss.emptyDesc}>Your van seat bookings will appear here.</Text>
-              <Pressable style={[ss.btnPrimary, { marginTop: 20 }]} onPress={() => router.push("/van" as any)}>
+              <TouchableOpacity activeOpacity={0.7} style={[ss.btnPrimary, { marginTop: 20 }]} onPress={() => router.push("/van" as any)}>
                 <Text style={ss.btnPrimaryText}>Book a Seat</Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           ) : (
             bookings.map(b => {
@@ -152,7 +152,7 @@ export default function VanBookingsScreen() {
                     <View style={ss.detailItem}><Ionicons name={b.paymentMethod === "wallet" ? "wallet-outline" : "cash-outline"} size={14} color={C.textMuted} /><Text style={ss.detailText}>Rs {parseFloat(b.fare).toFixed(0)}</Text></View>
                   </View>
                   {canCancel && (
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       style={[ss.cancelBtn, cancelling === b.id && ss.cancelBtnDisabled]}
                       onPress={() => cancelBooking(b.id)}
                       disabled={cancelling === b.id}
@@ -160,7 +160,7 @@ export default function VanBookingsScreen() {
                       {cancelling === b.id ? <ActivityIndicator color="#DC2626" size="small" /> : (
                         <><Ionicons name="close-circle-outline" size={16} color="#DC2626" /><Text style={ss.cancelBtnText}>Cancel Booking</Text></>
                       )}
-                    </Pressable>
+                    </TouchableOpacity>
                   )}
                 </View>
               );

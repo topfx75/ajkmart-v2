@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   View,
@@ -82,9 +82,9 @@ export function MapPickerModal({
     >
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Pressable onPress={onClose} hitSlop={12} style={styles.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={onClose} hitSlop={12} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={C.text} />
-          </Pressable>
+          </TouchableOpacity>
           <Text style={styles.title}>Select {label}</Text>
           <View style={{ width: 40 }} />
         </View>

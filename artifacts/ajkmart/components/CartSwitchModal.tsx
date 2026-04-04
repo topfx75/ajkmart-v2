@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Modal, TouchableOpacity, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Colors, { spacing, radii, typography } from "@/constants/colors";
 
@@ -17,7 +17,7 @@ export function CartSwitchModal({ visible, targetService, currentService, onCanc
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={{ flex: 1, backgroundColor: C.overlay, justifyContent: "flex-end" }}>
-        <Pressable style={{ flex: 1 }} onPress={onCancel} />
+        <TouchableOpacity activeOpacity={0.7} style={{ flex: 1 }} onPress={onCancel} />
         <View style={{
           backgroundColor: C.surface,
           borderTopLeftRadius: 24,
@@ -38,7 +38,7 @@ export function CartSwitchModal({ visible, targetService, currentService, onCanc
               Your {currentService} cart has items in it. Switching to {targetService} will clear your current cart.
             </Text>
           </View>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={onConfirm}
             style={{
               backgroundColor: C.danger,
@@ -49,8 +49,8 @@ export function CartSwitchModal({ visible, targetService, currentService, onCanc
             }}
           >
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>Clear Cart & Switch</Text>
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             onPress={onCancel}
             style={{
               backgroundColor: C.surfaceSecondary,
@@ -60,7 +60,7 @@ export function CartSwitchModal({ visible, targetService, currentService, onCanc
             }}
           >
             <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: C.textSecondary }}>Keep Current Cart</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>

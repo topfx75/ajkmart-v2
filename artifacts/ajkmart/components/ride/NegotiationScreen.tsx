@@ -6,7 +6,7 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   Text,
   TextInput,
@@ -348,7 +348,7 @@ export function NegotiationScreen({
           <View
             style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
           >
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => router.push("/(tabs)")}
               hitSlop={8}
               style={{
@@ -361,7 +361,7 @@ export function NegotiationScreen({
               }}
             >
               <Ionicons name="chevron-back" size={20} color="#fff" />
-            </Pressable>
+            </TouchableOpacity>
             <View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Text
@@ -608,7 +608,7 @@ export function NegotiationScreen({
               </View>
             )}
             {(remaining <= 0 || connectionLost) && (
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={async () => {
                   try {
                     const res = await fetch(`${rideApiBase}/rides/${rideId}/retry`, {
@@ -646,7 +646,7 @@ export function NegotiationScreen({
                 <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#FCD34D" }}>
                   {connectionLost ? "Reconnect & Search Again" : "Refresh & Search Again"}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             )}
           </View>
         )}
@@ -851,7 +851,7 @@ export function NegotiationScreen({
                     {/* Accept + Counter button row */}
                     <View style={{ flexDirection: "row", gap: 10 }}>
                       {/* Accept */}
-                      <Pressable
+                      <TouchableOpacity activeOpacity={0.7}
                         onPress={() => acceptBid(bid.id)}
                         disabled={acceptBidId !== null}
                         style={{ flex: 3, opacity: acceptBidId !== null ? 0.6 : 1 }}
@@ -880,10 +880,10 @@ export function NegotiationScreen({
                             </>
                           )}
                         </LinearGradient>
-                      </Pressable>
+                      </TouchableOpacity>
 
                       {/* Counter */}
-                      <Pressable
+                      <TouchableOpacity activeOpacity={0.7}
                         onPress={() => {
                           setUpdateOfferInput(String(Math.round(bid.fare)));
                           setShowUpdateOffer(true);
@@ -907,7 +907,7 @@ export function NegotiationScreen({
                         <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#FCD34D" }}>
                           Counter
                         </Text>
-                      </Pressable>
+                      </TouchableOpacity>
                     </View>
                   </LinearGradient>
                 </View>
@@ -929,7 +929,7 @@ export function NegotiationScreen({
             colors={[cardBg, "rgba(255,255,255,0.03)"]}
             style={{ overflow: "hidden" }}
           >
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => {
                 setShowUpdateOffer((v) => !v);
                 setOfferError("");
@@ -986,7 +986,7 @@ export function NegotiationScreen({
                   color="rgba(255,255,255,0.5)"
                 />
               </View>
-            </Pressable>
+            </TouchableOpacity>
 
             {/* Animated slide-up body */}
             <Animated.View
@@ -1087,7 +1087,7 @@ export function NegotiationScreen({
                       }}
                     />
                   </View>
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     onPress={sendUpdateOffer}
                     disabled={updateOfferLoading || !updateOfferInput}
                     style={{
@@ -1119,7 +1119,7 @@ export function NegotiationScreen({
                         </Text>
                       )}
                     </LinearGradient>
-                  </Pressable>
+                  </TouchableOpacity>
                 </View>
               </View>
             </Animated.View>
@@ -1142,7 +1142,7 @@ export function NegotiationScreen({
           colors={["transparent", "rgba(15,23,42,0.95)"]}
           style={{ position: "absolute", top: -20, left: 0, right: 0, bottom: 0 }}
         />
-        <Pressable
+        <TouchableOpacity activeOpacity={0.7}
           onPress={() => openUnifiedCancelModal()}
           disabled={cancelling}
           style={{
@@ -1167,7 +1167,7 @@ export function NegotiationScreen({
               Cancel Offer
             </Text>
           )}
-        </Pressable>
+        </TouchableOpacity>
       </View>
 
       {cancelModalTarget && (

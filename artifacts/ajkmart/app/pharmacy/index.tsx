@@ -13,7 +13,7 @@ import {
   Image,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -82,18 +82,18 @@ function MedCard({ med, qty, onAdd, onRemove }: {
       <View style={s.qtyCtrl}>
         {qty > 0 ? (
           <>
-            <Pressable onPress={onRemove} style={s.qtyBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={onRemove} style={s.qtyBtn}>
               <Ionicons name="remove" size={16} color={C.purple} />
-            </Pressable>
+            </TouchableOpacity>
             <Text style={s.qtyTxt}>{qty}</Text>
-            <Pressable onPress={onAdd} style={s.qtyBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={onAdd} style={s.qtyBtn}>
               <Ionicons name="add" size={16} color={C.purple} />
-            </Pressable>
+            </TouchableOpacity>
           </>
         ) : (
-          <Pressable onPress={onAdd} style={s.addBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={onAdd} style={s.addBtn}>
             <Ionicons name="add" size={16} color={C.textInverse} />
-          </Pressable>
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -229,8 +229,8 @@ function PharmacyScreenInner() {
   const cartItems: CartItem[] = medicines
     .filter(m => pharmacyCartItems.some(ci => ci.productId === m.id))
     .map(m => {
-      const ci = pharmacyCartItems.find(ci => ci.productId === m.id)!;
-      return { ...m, qty: ci.quantity };
+      const ci = pharmacyCartItems.find(ci => ci.productId === m.id);
+      return { ...m, qty: ci?.quantity ?? 1 };
     });
 
   const cartTotal = cartItems.reduce((sum, m) => sum + m.price * m.qty, 0);
@@ -370,16 +370,16 @@ function PharmacyScreenInner() {
   if (!pharmacyEnabled) {
     return (
       <View style={[s.root, { justifyContent: "center", alignItems: "center", padding: 32 }]}>
-        <Pressable onPress={() => router.back()} style={{ position: "absolute", top: topPad + 12, left: 16 }}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={{ position: "absolute", top: topPad + 12, left: 16 }}>
           <Ionicons name="arrow-back" size={24} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
         <View style={[s.successCard, { borderColor: C.redSoft }]}>
           <Text style={{ fontSize: 52, marginBottom: 12 }}>🚫</Text>
           <Text style={[s.successTitle, { color: C.redBright }]}>{T("serviceUnavailable")}</Text>
           <Text style={[s.successSub, { marginBottom: 20 }]}>{T("maintenanceApology")}</Text>
-          <Pressable style={[s.successBtn, { backgroundColor: C.redBg }]} onPress={() => router.back()}>
+          <TouchableOpacity activeOpacity={0.7} style={[s.successBtn, { backgroundColor: C.redBg }]} onPress={() => router.back()}>
             <Text style={[s.successBtnTxt, { color: C.redBright }]}>{T("backToHome")}</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -419,17 +419,17 @@ function PharmacyScreenInner() {
             <Text style={s.successMetaTxt} numberOfLines={2}>{address}</Text>
           </View>
           <View style={{ flexDirection: "row", gap: 8, width: "100%", marginTop: 8 }}>
-            <Pressable style={[s.successBtn, { flex: 1, backgroundColor: C.purpleBg }]} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
+            <TouchableOpacity activeOpacity={0.7} style={[s.successBtn, { flex: 1, backgroundColor: C.purpleBg }]} onPress={() => { setConfirmed(false); router.push("/(tabs)"); }}>
               <Text style={[s.successBtnTxt, { color: C.purple }]}>{T("backToHome")}</Text>
-            </Pressable>
-            <Pressable style={[s.successBtn, { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 }]} onPress={() => { setConfirmed(false); router.push({ pathname: "/order", params: { orderId: confirmedOrderId, type: "pharmacy" } }); }}>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} style={[s.successBtn, { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6 }]} onPress={() => { setConfirmed(false); router.push({ pathname: "/order", params: { orderId: confirmedOrderId, type: "pharmacy" } }); }}>
               <Ionicons name="navigate-outline" size={15} color={C.textInverse} />
               <Text style={s.successBtnTxt}>Track Order</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
-          <Pressable style={[s.successBtn, { backgroundColor: C.purpleBg, marginTop: 8, width: "100%" }]} onPress={() => { setConfirmed(false); }}>
+          <TouchableOpacity activeOpacity={0.7} style={[s.successBtn, { backgroundColor: C.purpleBg, marginTop: 8, width: "100%" }]} onPress={() => { setConfirmed(false); }}>
             <Text style={[s.successBtnTxt, { color: C.purple }]}>{T("orderMore")}</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -439,18 +439,18 @@ function PharmacyScreenInner() {
     <View style={s.root}>
       <LinearGradient colors={[C.purpleVivid, C.purple, C.purpleMid]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.header, { paddingTop: topPad + 14 }]}>
         <View style={s.hdrRow}>
-          <Pressable onPress={() => router.back()} style={s.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={s.backBtn}>
             <Ionicons name="arrow-back" size={20} color={C.textInverse} />
-          </Pressable>
+          </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={s.hdrTitle}>💊 {T("pharmacy")}</Text>
             <Text style={s.hdrSub}>{T("medicinesDeliveredTo")}</Text>
           </View>
           {cartCount > 0 && (
-            <Pressable onPress={() => setShowCheckout(true)} style={s.cartPill}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowCheckout(true)} style={s.cartPill}>
               <Ionicons name="cart" size={16} color={C.textInverse} />
               <Text style={s.cartPillTxt}>{cartCount} {T("itemsLabel")}</Text>
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
         <View style={s.searchBar}>
@@ -464,18 +464,18 @@ function PharmacyScreenInner() {
             maxLength={200}
           />
           {search.length > 0 && (
-            <Pressable onPress={() => setSearch("")}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setSearch("")}>
               <Ionicons name="close-circle" size={16} color={C.textMuted} />
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
       </LinearGradient>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabsScroll} contentContainerStyle={s.tabsRow}>
         {categories.map(cat => (
-          <Pressable key={cat} onPress={() => setActiveTab(cat)} style={[s.tab, activeTab === cat && s.tabActive]}>
+          <TouchableOpacity activeOpacity={0.7} key={cat} onPress={() => setActiveTab(cat)} style={[s.tab, activeTab === cat && s.tabActive]}>
             <Text style={[s.tabTxt, activeTab === cat && s.tabTxtActive]}>{cat}</Text>
-          </Pressable>
+          </TouchableOpacity>
         ))}
       </ScrollView>
 
@@ -507,10 +507,10 @@ function PharmacyScreenInner() {
             </View>
             <Text style={s.errorTitle}>{T("cannotLoad")}</Text>
             <Text style={s.errorSub}>{T("checkInternet")}</Text>
-            <Pressable onPress={loadMeds} style={s.retryBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={loadMeds} style={s.retryBtn}>
               <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
               <Text style={s.retryBtnTxt}>{T("retry")}</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         ) : filtered.length === 0 ? (
           <View style={s.centerState}>
@@ -537,10 +537,10 @@ function PharmacyScreenInner() {
             <Text style={s.cartBarCount}>{cartCount} {T("medicines")}</Text>
             <Text style={s.cartBarTotal}>Rs. {cartTotal.toLocaleString()}</Text>
           </View>
-          <Pressable style={s.checkoutBtn} onPress={() => setShowCheckout(true)}>
+          <TouchableOpacity activeOpacity={0.7} style={s.checkoutBtn} onPress={() => setShowCheckout(true)}>
             <Text style={s.checkoutBtnTxt}>{T("placeOrder")}</Text>
             <Ionicons name="arrow-forward" size={16} color={C.textInverse} />
-          </Pressable>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -548,9 +548,9 @@ function PharmacyScreenInner() {
         <ScrollView style={s.modal} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>{T("orderSummary")}</Text>
-            <Pressable onPress={() => setShowCheckout(false)} style={s.modalCloseBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowCheckout(false)} style={s.modalCloseBtn}>
               <Ionicons name="close" size={20} color={C.text} />
-            </Pressable>
+            </TouchableOpacity>
           </View>
 
           <View style={s.section}>
@@ -578,10 +578,10 @@ function PharmacyScreenInner() {
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={s.label}>{T("deliveryAddress")} *</Text>
               {savedAddresses.length > 0 && (
-                <Pressable onPress={() => setShowAddressPicker(true)} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.purpleSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowAddressPicker(true)} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.purpleSoft, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
                   <Ionicons name="bookmark-outline" size={12} color={C.purple} />
                   <Text style={{ ...Typ.smallMedium, fontFamily: Font.semiBold, color: C.purple }}>Saved</Text>
-                </Pressable>
+                </TouchableOpacity>
               )}
             </View>
             <TextInput
@@ -615,28 +615,28 @@ function PharmacyScreenInner() {
               numberOfLines={3}
               maxLength={500}
             />
-            <Pressable onPress={pickPrescriptionPhoto} style={s.photoPickerBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={pickPrescriptionPhoto} style={s.photoPickerBtn}>
               <Ionicons name="camera-outline" size={18} color={C.purple} />
               <Text style={s.photoPickerTxt}>
                 {prescriptionPhotoUri ? "Change Prescription Photo" : "Attach Prescription Photo"}
               </Text>
-            </Pressable>
+            </TouchableOpacity>
             {prescriptionPhotoUri && (
               <View style={{ marginTop: 10, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: C.purpleBorder }}>
                 <Image source={{ uri: prescriptionPhotoUri }} style={{ width: "100%", height: 140 }} resizeMode="cover" />
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => setPrescriptionPhotoUri(null)}
                   style={{ position: "absolute", top: 8, right: 8, backgroundColor: C.overlayDark50, borderRadius: 12, padding: 4 }}
                 >
                   <Ionicons name="close" size={16} color={C.textInverse} />
-                </Pressable>
-                <Pressable
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={pickPrescriptionPhoto}
                   style={{ position: "absolute", bottom: 8, right: 8, backgroundColor: C.overlayPurple85, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 4 }}
                 >
                   <Ionicons name="refresh-outline" size={12} color={C.textInverse} />
                   <Text style={{ ...Typ.smallMedium, fontFamily: Font.semiBold, color: C.textInverse }}>Retry</Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -645,12 +645,12 @@ function PharmacyScreenInner() {
             <Text style={s.sectionTitle}>{T("paymentMethods")}</Text>
             <View style={s.payRow}>
               {cartTotal <= config.orderRules.maxCodAmount ? (
-                <Pressable onPress={() => setPayMethod("cash")} style={[s.payOpt, payMethod === "cash" && s.payOptActive]}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setPayMethod("cash")} style={[s.payOpt, payMethod === "cash" && s.payOptActive]}>
                   <View style={[s.payOptIconWrap, { backgroundColor: payMethod === "cash" ? C.emeraldSoft : C.surfaceSecondary }]}>
                     <Ionicons name="cash-outline" size={20} color={payMethod === "cash" ? C.emerald : C.textMuted} />
                   </View>
                   <Text style={[s.payOptTxt, payMethod === "cash" && { color: C.emerald }]}>{T("cashOnDelivery")}</Text>
-                </Pressable>
+                </TouchableOpacity>
               ) : (
                 <View style={[s.payOpt, { opacity: 0.4 }]}>
                   <View style={[s.payOptIconWrap, { backgroundColor: C.surfaceSecondary }]}>
@@ -660,7 +660,7 @@ function PharmacyScreenInner() {
                 </View>
               )}
               {config.features.wallet && (
-                <Pressable onPress={() => setPayMethod("wallet")} style={[s.payOpt, payMethod === "wallet" && s.payOptActive]}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setPayMethod("wallet")} style={[s.payOpt, payMethod === "wallet" && s.payOptActive]}>
                   <View style={[s.payOptIconWrap, { backgroundColor: payMethod === "wallet" ? C.blueSoft : C.surfaceSecondary }]}>
                     <Ionicons name="wallet-outline" size={20} color={payMethod === "wallet" ? C.primary : C.textMuted} />
                   </View>
@@ -668,7 +668,7 @@ function PharmacyScreenInner() {
                     <Text style={[s.payOptTxt, payMethod === "wallet" && { color: C.primary }]}>{T("wallet")}</Text>
                     <Text style={s.walletBal}>Rs. {(user?.walletBalance ?? 0).toLocaleString()} {T("availableBalance")}</Text>
                   </View>
-                </Pressable>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -683,7 +683,7 @@ function PharmacyScreenInner() {
             </View>
           )}
 
-          <Pressable style={[s.placeBtn, loading && { opacity: 0.7 }]} onPress={placeOrder} disabled={loading}>
+          <TouchableOpacity activeOpacity={0.7} style={[s.placeBtn, loading && { opacity: 0.7 }]} onPress={placeOrder} disabled={loading}>
             {loading ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <ActivityIndicator color={C.textInverse} />
@@ -697,16 +697,16 @@ function PharmacyScreenInner() {
                 <Ionicons name={uploadFailed ? "refresh-outline" : "checkmark-circle"} size={18} color={C.textInverse} />
               </>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </ScrollView>
       </Modal>
 
       <Modal visible={showAddressPicker} transparent animationType="fade" onRequestClose={() => setShowAddressPicker(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: C.overlayDark40, justifyContent: "flex-end" }} onPress={() => setShowAddressPicker(false)}>
+        <TouchableOpacity activeOpacity={0.7} style={{ flex: 1, backgroundColor: C.overlayDark40, justifyContent: "flex-end" }} onPress={() => setShowAddressPicker(false)}>
           <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 }}>
             <Text style={{ ...Typ.h3, fontSize: 16, color: C.text, marginBottom: 16 }}>Saved Addresses</Text>
             {savedAddresses.map((sa: any) => (
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 key={sa.id}
                 onPress={() => { setAddress(sa.address); setShowAddressPicker(false); }}
                 style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: C.purpleBg, borderRadius: 12, marginBottom: 8 }}
@@ -717,40 +717,40 @@ function PharmacyScreenInner() {
                   <Text style={{ ...Typ.caption, color: C.textMuted }} numberOfLines={1}>{sa.address}</Text>
                 </View>
                 {sa.isDefault && <View style={{ backgroundColor: C.purple, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}><Text style={{ ...Typ.smallMedium, fontSize: 10, color: C.textInverse }}>Default</Text></View>}
-              </Pressable>
+              </TouchableOpacity>
             ))}
           </View>
-        </Pressable>
+        </TouchableOpacity>
       </Modal>
 
       <Modal visible={showPhotoSourceModal} transparent animationType="fade" onRequestClose={() => setShowPhotoSourceModal(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: C.overlayDark40, justifyContent: "flex-end" }} onPress={() => setShowPhotoSourceModal(false)}>
+        <TouchableOpacity activeOpacity={0.7} style={{ flex: 1, backgroundColor: C.overlayDark40, justifyContent: "flex-end" }} onPress={() => setShowPhotoSourceModal(false)}>
           <View style={{ backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 34 }}>
             <Text style={{ ...Typ.h3, fontSize: 16, color: C.text, marginBottom: 16, textAlign: "center" }}>
               Attach Prescription
             </Text>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={takePhoto}
               style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: C.purpleBg, borderRadius: 14, marginBottom: 10 }}
             >
               <Ionicons name="camera-outline" size={22} color={C.purple} />
               <Text style={{ ...Typ.bodySemiBold, color: C.purple }}>Take Photo</Text>
-            </Pressable>
-            <Pressable
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7}
               onPress={pickFromGallery}
               style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: C.purpleBg, borderRadius: 14, marginBottom: 10 }}
             >
               <Ionicons name="image-outline" size={22} color={C.purple} />
               <Text style={{ ...Typ.bodySemiBold, color: C.purple }}>Choose from Gallery</Text>
-            </Pressable>
-            <Pressable
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => setShowPhotoSourceModal(false)}
               style={{ paddingVertical: 12, alignItems: "center" }}
             >
               <Text style={{ ...Typ.bodyMedium, color: C.textSecondary }}>Cancel</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
-        </Pressable>
+        </TouchableOpacity>
       </Modal>
       <PermissionGuide
         visible={permGuideVisible}

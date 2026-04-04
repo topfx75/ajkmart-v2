@@ -9,7 +9,7 @@ import {
   Linking,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -190,14 +190,14 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={sheet.overlay} onPress={onClose}>
-        <Pressable style={sheet.container} onPress={e => e.stopPropagation()}>
+      <TouchableOpacity activeOpacity={0.7} style={sheet.overlay} onPress={onClose}>
+        <TouchableOpacity activeOpacity={0.7} style={sheet.container} onPress={e => e.stopPropagation()}>
           <View style={sheet.handle} />
           <Text style={sheet.title}>Edit Profile</Text>
           <Text style={sheet.sub}>Update your information</Text>
 
           <View style={{ alignSelf: "center", alignItems: "center", marginBottom: spacing.lg, gap: 8 }}>
-            <Pressable onPress={pickAvatar} disabled={avatarUploading} style={{ position: "relative" }} accessibilityRole="button" accessibilityLabel="Change profile photo">
+            <TouchableOpacity activeOpacity={0.7} onPress={pickAvatar} disabled={avatarUploading} style={{ position: "relative" }} accessibilityRole="button" accessibilityLabel="Change profile photo">
               <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: avatarError ? C.danger : C.primary, overflow: "hidden" }}>
                 {avatarUploading
                   ? <ActivityIndicator color={C.primary} />
@@ -210,12 +210,12 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
               <View style={{ position: "absolute", bottom: 0, right: 0, backgroundColor: C.primary, borderRadius: 12, padding: 4 }}>
                 <Ionicons name="pencil" size={11} color={C.textInverse} />
               </View>
-            </Pressable>
+            </TouchableOpacity>
             {avatarError && pendingAsset && (
-              <Pressable onPress={() => uploadAvatar(pendingAsset)} disabled={avatarUploading} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.redSoft, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: C.redMist }} accessibilityRole="button" accessibilityLabel="Retry avatar upload">
+              <TouchableOpacity activeOpacity={0.7} onPress={() => uploadAvatar(pendingAsset)} disabled={avatarUploading} style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.redSoft, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: C.redMist }} accessibilityRole="button" accessibilityLabel="Retry avatar upload">
                 <Ionicons name="refresh-outline" size={13} color={C.danger} />
                 <Text style={{ ...Typ.smallMedium, fontFamily: Font.semiBold, color: C.danger }}>Retry Upload</Text>
-              </Pressable>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -287,10 +287,10 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", gap: 6, alignItems: "center", paddingRight: 12, paddingLeft: 8, height: 52 }}>
                 {cityList.map(c => (
-                  <Pressable key={c} onPress={() => setCity(c)}
+                  <TouchableOpacity activeOpacity={0.7} key={c} onPress={() => setCity(c)}
                     style={[chip.base, city === c && chip.active]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: city === c }}>
                     <Text style={[chip.text, city === c && chip.textActive]}>{c}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             </ScrollView>
@@ -304,15 +304,15 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
           ) : null}
 
           <View style={{ flexDirection: "row", gap: 10, marginTop: spacing.lg }}>
-            <Pressable onPress={onClose} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
+            <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
               <Text style={btnStyles.cancelTxt}>Cancel</Text>
-            </Pressable>
-            <Pressable onPress={save} disabled={saving} style={[btnStyles.save, saving && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Save changes" accessibilityState={{ disabled: saving }}>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} onPress={save} disabled={saving} style={[btnStyles.save, saving && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Save changes" accessibilityState={{ disabled: saving }}>
               {saving ? <ActivityIndicator color={C.textInverse} size="small" /> : <Text style={btnStyles.saveTxt}>Save Changes</Text>}
-            </Pressable>
+            </TouchableOpacity>
           </View>
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -397,13 +397,13 @@ function NotificationsModal({ visible, userId, token, onClose }: {
           </View>
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
             {unread > 0 && (
-              <Pressable onPress={markAll} disabled={marking} style={modalHdr.action} accessibilityRole="button" accessibilityLabel="Mark all as read">
+              <TouchableOpacity activeOpacity={0.7} onPress={markAll} disabled={marking} style={modalHdr.action} accessibilityRole="button" accessibilityLabel="Mark all as read">
                 {marking ? <ActivityIndicator size="small" color={C.primary} /> : <Text style={modalHdr.actionTxt}>Mark all as read</Text>}
-              </Pressable>
+              </TouchableOpacity>
             )}
-            <Pressable onPress={() => onClose(unread)} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close notifications">
+            <TouchableOpacity activeOpacity={0.7} onPress={() => onClose(unread)} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close notifications">
               <Ionicons name="close" size={20} color={C.text} />
-            </Pressable>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -428,7 +428,7 @@ function NotificationsModal({ visible, userId, token, onClose }: {
             {notifs.map(n => {
               const [icon, color, bg] = typeMap[n.type] || typeMap.system!;
               return (
-                <Pressable key={n.id} onPress={() => handleNotifPress(n)} style={[notifItem.wrap, !n.isRead && notifItem.unread]} accessibilityRole="button" accessibilityLabel={`${n.title}, ${n.body}${!n.isRead ? ", unread" : ""}`}>
+                <TouchableOpacity activeOpacity={0.7} key={n.id} onPress={() => handleNotifPress(n)} style={[notifItem.wrap, !n.isRead && notifItem.unread]} accessibilityRole="button" accessibilityLabel={`${n.title}, ${n.body}${!n.isRead ? ", unread" : ""}`}>
                   <View style={[notifItem.icon, { backgroundColor: bg }]}>
                     <Ionicons name={icon} size={19} color={color} />
                     {!n.isRead && <View style={notifItem.dot} />}
@@ -438,10 +438,10 @@ function NotificationsModal({ visible, userId, token, onClose }: {
                     <Text style={notifItem.body} numberOfLines={2}>{n.body}</Text>
                     <Text style={notifItem.time}>{relativeTime(n.createdAt)}</Text>
                   </View>
-                  <Pressable onPress={() => del(n.id)} style={notifItem.del} accessibilityRole="button" accessibilityLabel="Delete notification">
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => del(n.id)} style={notifItem.del} accessibilityRole="button" accessibilityLabel="Delete notification">
                     <Ionicons name="close" size={13} color={C.textMuted} />
-                  </Pressable>
-                </Pressable>
+                  </TouchableOpacity>
+                </TouchableOpacity>
               );
             })}
             <View style={{ height: 32 }} />
@@ -489,7 +489,7 @@ function DeleteAccountRow({ token }: { token?: string }) {
 
   return (
     <>
-      <Pressable
+      <TouchableOpacity activeOpacity={0.7}
         onPress={() => setConfirmVisible(true)}
         style={[privRow.wrap, { borderBottomWidth: 0 }]}
       >
@@ -501,7 +501,7 @@ function DeleteAccountRow({ token }: { token?: string }) {
           <Text style={privRow.sub}>Permanently remove your account and data</Text>
         </View>
         <Ionicons name="chevron-forward" size={15} color={C.textMuted} />
-      </Pressable>
+      </TouchableOpacity>
 
       <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => { setConfirmVisible(false); setConfirmText(""); }}>
         <View style={{ flex: 1, backgroundColor: C.overlay, justifyContent: "center", padding: spacing.xxl }}>
@@ -529,7 +529,7 @@ function DeleteAccountRow({ token }: { token?: string }) {
                 marginBottom: spacing.lg,
               }}
             />
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={handleDelete}
               disabled={deleting || confirmText.toLowerCase() !== "delete"}
               style={{
@@ -541,13 +541,13 @@ function DeleteAccountRow({ token }: { token?: string }) {
               {deleting
                 ? <ActivityIndicator color={C.textInverse} size="small" />
                 : <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.textInverse }}>Delete My Account</Text>}
-            </Pressable>
-            <Pressable
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => { setConfirmVisible(false); setConfirmText(""); }}
               style={{ borderRadius: radii.md, paddingVertical: spacing.md, alignItems: "center", backgroundColor: C.surfaceSecondary }}
             >
               <Text style={{ ...Typ.button, color: C.textSecondary }}>Cancel</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -740,16 +740,16 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
       <View style={{ flex: 1, backgroundColor: C.surface }}>
         <View style={modalHdr.wrap}>
           <Text style={modalHdr.title}>Privacy & Security</Text>
-          <Pressable onPress={onClose} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close privacy settings"><Ionicons name="close" size={20} color={C.text} /></Pressable>
+          <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close privacy settings"><Ionicons name="close" size={20} color={C.text} /></TouchableOpacity>
         </View>
         {loading ? <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} /> : loadError ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xxl }}>
             <Ionicons name="cloud-offline-outline" size={48} color={C.textMuted} />
             <Text style={{ ...typography.h3, color: C.text }}>Could not load settings</Text>
             <Text style={{ ...typography.caption, color: C.textMuted, textAlign: "center" }}>Check your connection and try again</Text>
-            <Pressable onPress={loadSettings} style={[primaryBtn.base, { paddingHorizontal: spacing.xxl }]} accessibilityRole="button" accessibilityLabel="Retry loading settings">
+            <TouchableOpacity activeOpacity={0.7} onPress={loadSettings} style={[primaryBtn.base, { paddingHorizontal: spacing.xxl }]} accessibilityRole="button" accessibilityLabel="Retry loading settings">
               <Text style={primaryBtn.txt}>Retry</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: 40 }}>
@@ -761,7 +761,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                     const selected = currentLang === opt.value;
                     const isUrduOpt = opt.value === "ur" || opt.value === "en_ur";
                     return (
-                      <Pressable
+                      <TouchableOpacity activeOpacity={0.7}
                         key={opt.value}
                         onPress={async () => { if (!selected && !langLoading) await setLanguage(opt.value as Language); }}
                         style={{
@@ -781,7 +781,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                           lineHeight: isUrduOpt ? 30 : 20,
                         }}>{opt.label}</Text>
                         {selected && <Ionicons name="checkmark-circle" size={20} color={C.primary} />}
-                      </Pressable>
+                      </TouchableOpacity>
                     );
                   })}
                 </View>
@@ -802,14 +802,14 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
             </Accordion>
             <Accordion title="🛡️ Security" icon="shield-checkmark-outline" iconColor={C.success} iconBg={C.successSoft}>
               <View style={secCard.wrap}>
-                <Pressable onPress={() => { setShowChangePass(v => !v); setPassError(""); }} style={privRow.wrap} accessibilityRole="button" accessibilityLabel="Change password">
+                <TouchableOpacity activeOpacity={0.7} onPress={() => { setShowChangePass(v => !v); setPassError(""); }} style={privRow.wrap} accessibilityRole="button" accessibilityLabel="Change password">
                   <View style={[privRow.icon, { backgroundColor: C.primarySoft }]}><Ionicons name="key-outline" size={17} color={C.primary} /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={privRow.label}>Change Password</Text>
                     <Text style={privRow.sub}>Update your account password</Text>
                   </View>
                   <Ionicons name={showChangePass ? "chevron-up" : "chevron-forward"} size={15} color={C.textMuted} />
-                </Pressable>
+                </TouchableOpacity>
                 {showChangePass && (
                   <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
                     <TextInput
@@ -828,9 +828,9 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                       style={{ borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontFamily: Font.regular, fontSize: 14, color: C.text, backgroundColor: C.surface }}
                     />
                     {passError ? <Text style={{ fontFamily: Font.regular, fontSize: 12, color: C.danger }}>{passError}</Text> : null}
-                    <Pressable onPress={handleChangePassword} disabled={passSaving} style={{ backgroundColor: C.primary, borderRadius: 8, paddingVertical: 10, alignItems: "center", opacity: passSaving ? 0.6 : 1 }} accessibilityRole="button" accessibilityLabel="Save new password">
+                    <TouchableOpacity activeOpacity={0.7} onPress={handleChangePassword} disabled={passSaving} style={{ backgroundColor: C.primary, borderRadius: 8, paddingVertical: 10, alignItems: "center", opacity: passSaving ? 0.6 : 1 }} accessibilityRole="button" accessibilityLabel="Save new password">
                       {passSaving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontFamily: Font.semiBold, fontSize: 14, color: "#fff" }}>Save Password</Text>}
-                    </Pressable>
+                    </TouchableOpacity>
                   </View>
                 )}
                 {isBioEnabled && (
@@ -846,7 +846,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   </View>
                 )}
                 {is2FAEnabled && (
-                  <Pressable onPress={handle2FAToggle} style={privRow.wrap} accessibilityRole="button" accessibilityLabel={`Two-factor authentication, ${user?.totpEnabled ? "enabled, tap to disable" : "tap to enable"}`}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={handle2FAToggle} style={privRow.wrap} accessibilityRole="button" accessibilityLabel={`Two-factor authentication, ${user?.totpEnabled ? "enabled, tap to disable" : "tap to enable"}`}>
                     <View style={[privRow.icon, { backgroundColor: C.successSoft }]}><Ionicons name="shield-outline" size={17} color={C.success} /></View>
                     <View style={{ flex: 1 }}>
                       <Text style={privRow.label}>Two-Factor Auth</Text>
@@ -858,13 +858,13 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                         <Ionicons name="chevron-forward" size={15} color={C.textMuted} />
                       </View>
                     )}
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
               </View>
             </Accordion>
             <Accordion title="⚙️ Account Actions" icon="settings-outline" iconColor={C.textSecondary} iconBg={C.surfaceSecondary}>
               <View style={secCard.wrap}>
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   disabled={exportingData || exportCooldown > 0}
                   onPress={() => {
                     if (exportCooldown > 0) return;
@@ -926,7 +926,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                   </View>
                   <View style={{ flex: 1 }}><Text style={privRow.label}>Download My Data</Text><Text style={privRow.sub}>{exportingData ? "Requesting export…" : exportCooldown > 0 ? `Available in ${exportCooldown}s` : "Export all your data"}</Text></View>
                   {!exportingData && <Ionicons name="chevron-forward" size={15} color={C.textMuted} />}
-                </Pressable>
+                </TouchableOpacity>
                 <DeleteAccountRow token={token} />
               </View>
             </Accordion>
@@ -937,9 +937,9 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
           <View style={{ flex: 1, backgroundColor: C.surface }}>
             <View style={modalHdr.wrap}>
               <Text style={modalHdr.title}>{backupCodes.length > 0 ? "Backup Codes" : "Setup 2FA"}</Text>
-              <Pressable onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close 2FA setup">
+              <TouchableOpacity activeOpacity={0.7} onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close 2FA setup">
                 <Ionicons name="close" size={20} color={C.text} />
-              </Pressable>
+              </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}>
               {backupCodes.length > 0 ? (
@@ -956,13 +956,13 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                       <Text key={i} style={{ ...typography.subtitle, color: C.amberDark, textAlign: "center", paddingVertical: 4, letterSpacing: 2 }}>{code}</Text>
                     ))}
                   </View>
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     onPress={() => { setShow2FASetup(false); setTwoFACode(""); setBackupCodes([]); setTwoFAError(""); }}
                     style={[primaryBtn.base, { marginTop: spacing.sm }]}
                     accessibilityRole="button" accessibilityLabel="Done, I've saved my backup codes"
                   >
                     <Text style={primaryBtn.txt}>Done — I've saved my codes</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 </>
               ) : (
                 <>
@@ -997,10 +997,10 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                       <Text style={errStyle.txt}>{twoFAError}</Text>
                     </View>
                   ) : null}
-                  <Pressable onPress={handleVerify2FASetup} disabled={twoFALoading}
+                  <TouchableOpacity activeOpacity={0.7} onPress={handleVerify2FASetup} disabled={twoFALoading}
                     style={[primaryBtn.base, twoFALoading && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Verify and enable 2FA" accessibilityState={{ disabled: twoFALoading }}>
                     {twoFALoading ? <ActivityIndicator color={C.textInverse} /> : <Text style={primaryBtn.txt}>Verify & Enable</Text>}
-                  </Pressable>
+                  </TouchableOpacity>
                 </>
               )}
             </ScrollView>
@@ -1025,15 +1025,15 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                 </View>
               ) : null}
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable onPress={() => { setShowDisable2FA(false); setDisableCode(""); setDisableTwoFAError(""); }} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
+                <TouchableOpacity activeOpacity={0.7} onPress={() => { setShowDisable2FA(false); setDisableCode(""); setDisableTwoFAError(""); }} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel="Cancel">
                   <Text style={btnStyles.cancelTxt}>Cancel</Text>
-                </Pressable>
-                <Pressable onPress={handleDisable2FA} disabled={twoFALoading}
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7} onPress={handleDisable2FA} disabled={twoFALoading}
                   style={[btnStyles.save, { backgroundColor: C.danger }, twoFALoading && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Disable two-factor authentication" accessibilityState={{ disabled: twoFALoading }}>
                   {twoFALoading ? <ActivityIndicator color={C.textInverse} /> : <Text style={btnStyles.saveTxt}>Disable</Text>}
-                </Pressable>
+                </TouchableOpacity>
               </View>
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => {
                   Alert.alert(
                     "Lost Authenticator?",
@@ -1050,7 +1050,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
                 <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.primary }}>
                   Lost access to authenticator app?
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -1103,7 +1103,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
     if (list.length >= 5) { showToast("Maximum 5 addresses allowed", "error"); return; }
     if (!addr.trim()) { showToast("Address is required", "error"); return; }
     setSaving(true);
-    const opt = LABEL_OPTS.find(o => o.label === label)!;
+    const opt = LABEL_OPTS.find(o => o.label === label) ?? LABEL_OPTS[0];
     try {
       await fetch(`${API}/addresses`, { method: "POST", headers: { "Content-Type": "application/json", ...authHdrs }, body: JSON.stringify({ label, address: addr.trim(), city, icon: opt.icon, isDefault: list.length === 0 }) });
       setAddr(""); setCity("Muzaffarabad"); setShowAdd(false); await load();
@@ -1129,7 +1129,7 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
   const saveEdit = async () => {
     if (!editAddr.trim()) { showToast("Address is required", "error"); return; }
     setEditSaving(true);
-    const opt = LABEL_OPTS.find(o => o.label === editLabel)!;
+    const opt = LABEL_OPTS.find(o => o.label === editLabel) ?? LABEL_OPTS[0];
     try {
       const r = await fetch(`${API}/addresses/${editId}`, {
         method: "PUT",
@@ -1162,11 +1162,11 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
         <View style={modalHdr.wrap}>
           <Text style={modalHdr.title}>Saved Addresses</Text>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            <Pressable onPress={() => { if (!showAdd && list.length >= 5) { showToast("Maximum 5 addresses allowed", "error"); return; } setShowAdd(v => !v); }} style={[addrHdr.addBtn, !showAdd && list.length >= 5 && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={showAdd ? "Cancel adding address" : list.length >= 5 ? "Maximum 5 addresses reached" : "Add new address"}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => { if (!showAdd && list.length >= 5) { showToast("Maximum 5 addresses allowed", "error"); return; } setShowAdd(v => !v); }} style={[addrHdr.addBtn, !showAdd && list.length >= 5 && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={showAdd ? "Cancel adding address" : list.length >= 5 ? "Maximum 5 addresses reached" : "Add new address"}>
               <Ionicons name={showAdd ? "close" : "add"} size={17} color={C.textInverse} />
               <Text style={addrHdr.addBtnTxt}>{showAdd ? "Cancel" : `Add New${list.length > 0 ? ` (${list.length}/5)` : ""}`}</Text>
-            </Pressable>
-            <Pressable onPress={onClose} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close addresses"><Ionicons name="close" size={20} color={C.text} /></Pressable>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7} onPress={onClose} style={modalHdr.close} accessibilityRole="button" accessibilityLabel="Close addresses"><Ionicons name="close" size={20} color={C.text} /></TouchableOpacity>
           </View>
         </View>
 
@@ -1174,10 +1174,10 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
           <View style={addrAdd.panel}>
             <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
               {LABEL_OPTS.map(o => (
-                <Pressable key={o.label} onPress={() => setLabel(o.label)} style={[chip.base, label === o.label && { backgroundColor: o.bg, borderColor: o.color }]} accessibilityRole="radio" accessibilityLabel={o.label} accessibilityState={{ selected: label === o.label }}>
+                <TouchableOpacity activeOpacity={0.7} key={o.label} onPress={() => setLabel(o.label)} style={[chip.base, label === o.label && { backgroundColor: o.bg, borderColor: o.color }]} accessibilityRole="radio" accessibilityLabel={o.label} accessibilityState={{ selected: label === o.label }}>
                   <Ionicons name={o.icon} size={13} color={label === o.label ? o.color : C.textMuted} />
                   <Text style={[chip.text, label === o.label && { color: o.color }]}>{o.label}</Text>
-                </Pressable>
+                </TouchableOpacity>
               ))}
             </View>
             <View style={addrAdd.fld}>
@@ -1186,15 +1186,15 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
               <View style={{ flexDirection: "row", gap: 6 }}>
                 {AJK_CITIES.map(c => (
-                  <Pressable key={c} onPress={() => setCity(c)} style={[chip.base, city === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: city === c }}>
+                  <TouchableOpacity activeOpacity={0.7} key={c} onPress={() => setCity(c)} style={[chip.base, city === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: city === c }}>
                     <Text style={[chip.text, city === c && { color: C.primary }]}>{c}</Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             </ScrollView>
-            <Pressable onPress={add} disabled={saving} style={[primaryBtn.base, saving && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Save address" accessibilityState={{ disabled: saving }}>
+            <TouchableOpacity activeOpacity={0.7} onPress={add} disabled={saving} style={[primaryBtn.base, saving && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="Save address" accessibilityState={{ disabled: saving }}>
               {saving ? <ActivityIndicator color={C.textInverse} size="small" /> : <Text style={primaryBtn.txt}>Save Address</Text>}
-            </Pressable>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -1203,15 +1203,15 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
             <Text style={{ fontSize: 52 }}>📍</Text>
             <Text style={empty.title}>No addresses</Text>
             <Text style={empty.sub}>Save your home or office address</Text>
-            <Pressable onPress={() => setShowAdd(true)} style={[primaryBtn.base, { flexDirection: "row", gap: 6, marginTop: spacing.md, alignSelf: "center", width: "auto", paddingHorizontal: spacing.xl }]} accessibilityRole="button" accessibilityLabel="Add address">
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowAdd(true)} style={[primaryBtn.base, { flexDirection: "row", gap: 6, marginTop: spacing.md, alignSelf: "center", width: "auto", paddingHorizontal: spacing.xl }]} accessibilityRole="button" accessibilityLabel="Add address">
               <Ionicons name="add" size={16} color={C.textInverse} />
               <Text style={primaryBtn.txt}>Add Address</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         ) : (
           <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: 10 }}>
             {list.map(a => {
-              const opt = LABEL_OPTS.find(o => o.label === a.label) || LABEL_OPTS[2]!;
+              const opt = LABEL_OPTS.find(o => o.label === a.label) ?? LABEL_OPTS[2];
               const isEditing = editId === a.id;
               return (
                 <View key={a.id} style={addrItem.wrap}>
@@ -1220,10 +1220,10 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
                         <View style={{ flexDirection: "row", gap: 6 }}>
                           {LABEL_OPTS.map(o => (
-                            <Pressable key={o.label} onPress={() => setEditLabel(o.label)} style={[chip.base, editLabel === o.label && { backgroundColor: o.bg, borderColor: o.color }]} accessibilityRole="radio" accessibilityLabel={o.label} accessibilityState={{ selected: editLabel === o.label }}>
+                            <TouchableOpacity activeOpacity={0.7} key={o.label} onPress={() => setEditLabel(o.label)} style={[chip.base, editLabel === o.label && { backgroundColor: o.bg, borderColor: o.color }]} accessibilityRole="radio" accessibilityLabel={o.label} accessibilityState={{ selected: editLabel === o.label }}>
                               <Ionicons name={o.icon} size={13} color={editLabel === o.label ? o.color : C.textMuted} />
                               <Text style={[chip.text, editLabel === o.label && { color: o.color }]}>{o.label}</Text>
-                            </Pressable>
+                            </TouchableOpacity>
                           ))}
                         </View>
                       </ScrollView>
@@ -1233,19 +1233,19 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.sm }}>
                         <View style={{ flexDirection: "row", gap: 6 }}>
                           {AJK_CITIES.map(c => (
-                            <Pressable key={c} onPress={() => setEditCity(c)} style={[chip.base, editCity === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: editCity === c }}>
+                            <TouchableOpacity activeOpacity={0.7} key={c} onPress={() => setEditCity(c)} style={[chip.base, editCity === c && { backgroundColor: C.primarySoft, borderColor: C.primary }]} accessibilityRole="radio" accessibilityLabel={c} accessibilityState={{ selected: editCity === c }}>
                               <Text style={[chip.text, editCity === c && { color: C.primary }]}>{c}</Text>
-                            </Pressable>
+                            </TouchableOpacity>
                           ))}
                         </View>
                       </ScrollView>
                       <View style={{ flexDirection: "row", gap: 8 }}>
-                        <Pressable onPress={saveEdit} disabled={editSaving} style={[primaryBtn.base, { flex: 1, opacity: editSaving ? 0.7 : 1 }]} accessibilityRole="button" accessibilityLabel="Save address changes" accessibilityState={{ disabled: editSaving }}>
+                        <TouchableOpacity activeOpacity={0.7} onPress={saveEdit} disabled={editSaving} style={[primaryBtn.base, { flex: 1, opacity: editSaving ? 0.7 : 1 }]} accessibilityRole="button" accessibilityLabel="Save address changes" accessibilityState={{ disabled: editSaving }}>
                           {editSaving ? <ActivityIndicator color={C.textInverse} size="small" /> : <Text style={primaryBtn.txt}>Save Changes</Text>}
-                        </Pressable>
-                        <Pressable onPress={cancelEdit} style={[primaryBtn.base, { backgroundColor: C.surfaceSecondary, paddingHorizontal: spacing.md, width: "auto" }]} accessibilityRole="button" accessibilityLabel="Cancel editing">
+                        </TouchableOpacity>
+                        <TouchableOpacity activeOpacity={0.7} onPress={cancelEdit} style={[primaryBtn.base, { backgroundColor: C.surfaceSecondary, paddingHorizontal: spacing.md, width: "auto" }]} accessibilityRole="button" accessibilityLabel="Cancel editing">
                           <Text style={[primaryBtn.txt, { color: C.textSecondary }]}>Cancel</Text>
-                        </Pressable>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   ) : (
@@ -1262,29 +1262,29 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
                         <Text style={addrItem.city}>{a.city}, AJK</Text>
                       </View>
                       <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-                        <Pressable onPress={() => startEdit(a)} style={addrItem.delBtn} accessibilityRole="button" accessibilityLabel={`Edit ${a.label} address`}>
+                        <TouchableOpacity activeOpacity={0.7} onPress={() => startEdit(a)} style={addrItem.delBtn} accessibilityRole="button" accessibilityLabel={`Edit ${a.label} address`}>
                           <Ionicons name="pencil-outline" size={16} color={C.primary} />
-                        </Pressable>
+                        </TouchableOpacity>
                         {!a.isDefault && (
-                          <Pressable onPress={() => setDefault(a.id)} disabled={settingDefault === a.id} style={addrItem.setDefBtn} accessibilityRole="button" accessibilityLabel={`Set ${a.label} as default`}>
+                          <TouchableOpacity activeOpacity={0.7} onPress={() => setDefault(a.id)} disabled={settingDefault === a.id} style={addrItem.setDefBtn} accessibilityRole="button" accessibilityLabel={`Set ${a.label} as default`}>
                             {settingDefault === a.id
                               ? <ActivityIndicator size="small" color={C.primary} />
                               : <Text style={addrItem.setDefTxt}>Set Default</Text>}
-                          </Pressable>
+                          </TouchableOpacity>
                         )}
                         {deleteConfirmId === a.id ? (
                           <View style={{ flexDirection: "row", gap: 6 }}>
-                            <Pressable onPress={() => del(a.id)} style={[addrItem.delBtn, { backgroundColor: C.dangerSoft, paddingHorizontal: 8 }]} accessibilityRole="button" accessibilityLabel="Confirm delete address">
+                            <TouchableOpacity activeOpacity={0.7} onPress={() => del(a.id)} style={[addrItem.delBtn, { backgroundColor: C.dangerSoft, paddingHorizontal: 8 }]} accessibilityRole="button" accessibilityLabel="Confirm delete address">
                               <Text style={{ ...typography.smallMedium, color: C.danger }}>Yes</Text>
-                            </Pressable>
-                            <Pressable onPress={() => setDeleteConfirmId(null)} style={[addrItem.delBtn, { backgroundColor: C.surfaceSecondary, paddingHorizontal: 8 }]} accessibilityRole="button" accessibilityLabel="Cancel delete">
+                            </TouchableOpacity>
+                            <TouchableOpacity activeOpacity={0.7} onPress={() => setDeleteConfirmId(null)} style={[addrItem.delBtn, { backgroundColor: C.surfaceSecondary, paddingHorizontal: 8 }]} accessibilityRole="button" accessibilityLabel="Cancel delete">
                               <Text style={{ ...typography.smallMedium, color: C.textMuted }}>No</Text>
-                            </Pressable>
+                            </TouchableOpacity>
                           </View>
                         ) : (
-                          <Pressable onPress={() => setDeleteConfirmId(a.id)} style={addrItem.delBtn} accessibilityRole="button" accessibilityLabel={`Delete ${a.label} address`}>
+                          <TouchableOpacity activeOpacity={0.7} onPress={() => setDeleteConfirmId(a.id)} style={addrItem.delBtn} accessibilityRole="button" accessibilityLabel={`Delete ${a.label} address`}>
                             <Ionicons name="trash-outline" size={16} color={C.danger} />
-                          </Pressable>
+                          </TouchableOpacity>
                         )}
                       </View>
                     </>
@@ -1449,7 +1449,7 @@ export default function ProfileScreen() {
     icon: keyof typeof Ionicons.glyphMap; label: string; sub?: string; onPress: () => void;
     iconColor?: string; iconBg?: string; right?: React.ReactNode; danger?: boolean; badge?: number;
   }) => (
-    <Pressable onPress={onPress} style={({ pressed }) => [row.wrap, pressed && { opacity: 0.65 }]} accessibilityRole="button" accessibilityLabel={`${label}${sub ? `, ${sub}` : ""}${badge && badge > 0 ? `, ${badge} new` : ""}`}>
+    <TouchableOpacity activeOpacity={0.65} onPress={onPress} style={row.wrap} accessibilityRole="button" accessibilityLabel={`${label}${sub ? `, ${sub}` : ""}${badge && badge > 0 ? `, ${badge} new` : ""}`}>
       <View style={[row.icon, { backgroundColor: iconBg }]}>
         <Ionicons name={icon} size={18} color={iconColor} />
       </View>
@@ -1459,7 +1459,7 @@ export default function ProfileScreen() {
       </View>
       {badge && badge > 0 ? <View style={row.badge}><Text style={row.badgeTxt}>{badge > 99 ? "99+" : badge}</Text></View> : null}
       {right ?? <Ionicons name="chevron-forward" size={15} color={C.textMuted} />}
-    </Pressable>
+    </TouchableOpacity>
   );
 
   if (!user?.id) {
@@ -1470,10 +1470,10 @@ export default function ProfileScreen() {
         </View>
         <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, textAlign: "center", marginBottom: 8 }}>Sign In to View Profile</Text>
         <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 28 }}>Manage your account, settings, addresses, and more — all in one place.</Text>
-        <Pressable onPress={() => router.push("/auth")} style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 36, flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button">
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/auth")} style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 36, flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button">
           <Ionicons name="person-circle-outline" size={18} color="#fff" />
           <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>Sign In / Register</Text>
-        </Pressable>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -1492,9 +1492,9 @@ export default function ProfileScreen() {
           <View style={[ph.blob, { width: 80,  height: 80,  bottom: 20, right: 40, opacity: 0.1 }]} />
 
           {/* Edit button top-right */}
-          <Pressable onPress={() => setShowEdit(true)} style={ph.editBtn} accessibilityRole="button" accessibilityLabel="Edit profile">
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setShowEdit(true)} style={ph.editBtn} accessibilityRole="button" accessibilityLabel="Edit profile">
             <Ionicons name="pencil" size={16} color="#fff" />
-          </Pressable>
+          </TouchableOpacity>
 
           {/* Centered avatar */}
           <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
@@ -1537,10 +1537,10 @@ export default function ProfileScreen() {
             {statsLoading ? (
               <ActivityIndicator color="rgba(255,255,255,0.8)" style={{ paddingVertical: 4 }} />
             ) : statsError ? (
-              <Pressable onPress={() => { setStatsLoading(true); setStatsError(false); fetchAll(); }} style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, justifyContent: "center" }} accessibilityRole="button" accessibilityLabel="Could not load stats, tap to retry">
+              <TouchableOpacity activeOpacity={0.7} onPress={() => { setStatsLoading(true); setStatsError(false); fetchAll(); }} style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, justifyContent: "center" }} accessibilityRole="button" accessibilityLabel="Could not load stats, tap to retry">
                 <Ionicons name="refresh-outline" size={16} color="rgba(255,255,255,0.8)" />
                 <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.8)" }}>Tap to retry</Text>
-              </Pressable>
+              </TouchableOpacity>
             ) : (
               <>
                 <View style={ph.stat}>
@@ -1584,7 +1584,7 @@ export default function ProfileScreen() {
         </View>
 
         {user?.kycStatus !== "verified" && (
-          <Pressable onPress={() => setShowEdit(true)} style={kyc.wrap} accessibilityRole="button" accessibilityLabel="Complete KYC verification">
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setShowEdit(true)} style={kyc.wrap} accessibilityRole="button" accessibilityLabel="Complete KYC verification">
             <View style={kyc.iconWrap}>
               <Ionicons name="document-text-outline" size={20} color={user?.kycStatus === "pending" ? C.accent : C.primary} />
             </View>
@@ -1599,7 +1599,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
-          </Pressable>
+          </TouchableOpacity>
         )}
 
         {(user?.username || user?.city || user?.area || user?.address || user?.latitude) && (
@@ -1833,19 +1833,19 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable onPress={() => setShowSignOutConfirm(false)} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel={T("cancelNo")}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowSignOutConfirm(false)} style={btnStyles.cancel} accessibilityRole="button" accessibilityLabel={T("cancelNo")}>
                   <Text style={btnStyles.cancelTxt}>{T("cancelNo")}</Text>
-                </Pressable>
-                <Pressable onPress={doSignOut} disabled={signingOut} style={[btnStyles.save, { backgroundColor: C.danger }, signingOut && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={T("signOutYes")}>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7} onPress={doSignOut} disabled={signingOut} style={[btnStyles.save, { backgroundColor: C.danger }, signingOut && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel={T("signOutYes")}>
                   {signingOut ? <ActivityIndicator color={C.textInverse} size="small" /> : <Text style={btnStyles.saveTxt}>{T("signOutYes")}</Text>}
-                </Pressable>
+                </TouchableOpacity>
               </View>
             </View>
           ) : (
-            <Pressable onPress={() => setShowSignOutConfirm(true)} style={signOut.btn} accessibilityRole="button" accessibilityLabel={T("signOutLabel")}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowSignOutConfirm(true)} style={signOut.btn} accessibilityRole="button" accessibilityLabel={T("signOutLabel")}>
               <Ionicons name="log-out-outline" size={20} color={C.danger} />
               <Text style={signOut.txt}>{T("signOutLabel")}</Text>
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
 

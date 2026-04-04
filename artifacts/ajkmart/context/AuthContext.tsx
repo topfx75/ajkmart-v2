@@ -143,6 +143,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshingRef = useRef(false);
+
   const scheduleProactiveRefresh = (tok: string) => {
     clearRefreshTimer();
     const exp = decodeJwtExp(tok);
@@ -150,6 +152,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const expiresAt = exp * 1000;
     const refreshIn = Math.max((expiresAt - Date.now()) - 60_000, 10_000);
     refreshTimerRef.current = setTimeout(async () => {
+      if (refreshingRef.current) return;
+      refreshingRef.current = true;
       try {
         const refreshToken = await secureGet(REFRESH_TOKEN_KEY);
         if (!refreshToken) {
@@ -191,6 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         scheduleProactiveRefresh(data.token!);
       } catch {
         await doLogoutRef.current();
+      } finally {
+        refreshingRef.current = false;
       }
     }, refreshIn);
   };

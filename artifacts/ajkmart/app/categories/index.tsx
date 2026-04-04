@@ -6,7 +6,7 @@ import {
   Dimensions,
   Image,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -80,15 +80,15 @@ export default function CategoriesBrowseScreen() {
   return (
     <View style={[s.container, { paddingTop: topPad }]}>
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={s.backBtn}>
           <Ionicons name="arrow-back" size={20} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
         <Text style={s.headerTitle}>
           {serviceType === "food" ? "Food Categories" : serviceType === "pharmacy" ? "Pharmacy" : "Categories"}
         </Text>
-        <Pressable onPress={() => router.push("/search")} style={s.searchBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/search")} style={s.searchBtn}>
           <Ionicons name="search-outline" size={20} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
       </View>
 
       {isLoading ? (
@@ -110,7 +110,7 @@ export default function CategoriesBrowseScreen() {
             {cats.map(cat => {
               const isActive = cat.id === selectedId;
               return (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   key={cat.id}
                   onPress={() => setSelectedId(cat.id)}
                   style={[s.sidebarItem, isActive && s.sidebarItemActive]}
@@ -136,7 +136,7 @@ export default function CategoriesBrowseScreen() {
                       </Text>
                     </View>
                   )}
-                </Pressable>
+                </TouchableOpacity>
               );
             })}
           </ScrollView>
@@ -160,7 +160,7 @@ export default function CategoriesBrowseScreen() {
                 {subCategories.map(sub => {
                   const subActive = subFilter === sub.id;
                   return (
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       key={sub.id}
                       onPress={() => setSubFilter(subActive ? null : sub.id)}
                       style={[s.subCard, subActive && s.subCardActive]}
@@ -176,7 +176,7 @@ export default function CategoriesBrowseScreen() {
                       {sub.productCount > 0 && (
                         <Text style={s.subCount}>{sub.productCount}</Text>
                       )}
-                    </Pressable>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -199,7 +199,7 @@ export default function CategoriesBrowseScreen() {
               {SORT_OPTIONS.map(opt => {
                 const active = sortBy === opt.key;
                 return (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     key={opt.key}
                     onPress={() => setSortBy(opt.key)}
                     style={[s.sortPill, active && s.sortPillActive]}
@@ -212,7 +212,7 @@ export default function CategoriesBrowseScreen() {
                     <Text style={[s.sortPillText, active && s.sortPillTextActive]}>
                       {opt.label}
                     </Text>
-                  </Pressable>
+                  </TouchableOpacity>
                 );
               })}
             </ScrollView>
@@ -234,7 +234,7 @@ export default function CategoriesBrowseScreen() {
                     ? Math.round(((Number(product.originalPrice) - Number(product.price)) / Number(product.originalPrice)) * 100)
                     : 0;
                   return (
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       key={product.id}
                       onPress={() => router.push({ pathname: "/product/[id]", params: { id: product.id } })}
                       style={s.productCard}
@@ -269,7 +269,7 @@ export default function CategoriesBrowseScreen() {
                           )}
                         </View>
                       </View>
-                    </Pressable>
+                    </TouchableOpacity>
                   );
                 })}
               </View>

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { SERVICE_REGISTRY, type ServiceKey } from "@/constants/serviceRegistry";
@@ -19,9 +19,9 @@ function ServiceUnavailableScreen({ serviceKey }: { serviceKey: ServiceKey }) {
 
   return (
     <View style={[s.root, { paddingTop: (Platform.OS === "web" ? 67 : insets.top) + 20 }]}>
-      <Pressable onPress={() => router.back()} style={s.backBtn}>
+      <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={s.backBtn}>
         <Ionicons name="arrow-back" size={22} color="#475569" />
-      </Pressable>
+      </TouchableOpacity>
 
       <View style={s.content}>
         <View style={s.iconWrap}>
@@ -31,10 +31,10 @@ function ServiceUnavailableScreen({ serviceKey }: { serviceKey: ServiceKey }) {
         <Text style={s.desc}>
           {serviceLabel} is not yet available in your area.{"\n"}We'll notify you when it launches!
         </Text>
-        <Pressable onPress={() => router.replace("/")} style={s.homeBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.replace("/")} style={s.homeBtn}>
           <Ionicons name="home-outline" size={18} color="#fff" />
           <Text style={s.homeBtnTxt}>Go to Home</Text>
-        </Pressable>
+        </TouchableOpacity>
       </View>
     </View>
   );

@@ -6,7 +6,7 @@ import {
   Linking,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -117,7 +117,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
   };
 
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       onPress={handleCardPress}
       style={styles.card}
       accessibilityRole="button"
@@ -146,7 +146,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
           </View>
         ))}
         {(order.items || []).length > 2 && (
-          <Pressable onPress={() => setItemsExpanded(prev => !prev)} style={styles.expandRow}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setItemsExpanded(prev => !prev)} style={styles.expandRow}>
             <Text style={styles.moreItems}>
               {itemsExpanded ? T("showLess") : `+${order.items.length - 2} ${T("moreItems")}`}
             </Text>
@@ -155,7 +155,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
               size={13}
               color={C.primary}
             />
-          </Pressable>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -192,10 +192,10 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       )}
 
       {canCancel ? (
-        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)} accessibilityRole="button" accessibilityLabel={`${T("cancelOrder")}, ${cancelMinsLeft} minutes left`}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.cancelBtn} onPress={() => onCancel(order)} accessibilityRole="button" accessibilityLabel={`${T("cancelOrder")}, ${cancelMinsLeft} minutes left`}>
           <Ionicons name="close-circle-outline" size={14} color={C.red} />
           <Text style={styles.cancelBtnText}>{T("cancelOrder")} ({cancelMinsLeft}m left)</Text>
-        </Pressable>
+        </TouchableOpacity>
       ) : isActive && (
         <View style={styles.cancelDisabledBar}>
           <Ionicons name="close-circle-outline" size={14} color={C.textMuted} />
@@ -210,10 +210,10 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       )}
 
       {canRate && (
-        <Pressable style={styles.rateBtn} onPress={() => onRate(order)} accessibilityRole="button" accessibilityLabel={T("rateOrder")}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.rateBtn} onPress={() => onRate(order)} accessibilityRole="button" accessibilityLabel={T("rateOrder")}>
           <Ionicons name="star-outline" size={14} color={C.gold} />
           <Text style={styles.rateBtnText}>{T("rateOrder")}</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {order._reviewed && (
@@ -224,17 +224,17 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
       )}
 
       {isDelivered && order.paymentMethod !== "cash" && order.paymentMethod !== "cod" && !order.refundStatus && (
-        <Pressable style={styles.refundRequestBtn} onPress={() => router.push(`/order?orderId=${order.id}&action=refund`)} accessibilityRole="button" accessibilityLabel="Request refund for this order">
+        <TouchableOpacity activeOpacity={0.7} style={styles.refundRequestBtn} onPress={() => router.push(`/order?orderId=${order.id}&action=refund`)} accessibilityRole="button" accessibilityLabel="Request refund for this order">
           <Ionicons name="return-down-back-outline" size={14} color={C.purple} />
           <Text style={styles.refundRequestBtnText}>{T("requestRefund") || "Request Refund"}</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {(isDelivered || isCancelled) && onReorder && order.items?.length > 0 && (
-        <Pressable style={styles.reorderBtn} onPress={() => onReorder(order)} accessibilityRole="button" accessibilityLabel="Reorder these items">
+        <TouchableOpacity activeOpacity={0.7} style={styles.reorderBtn} onPress={() => onReorder(order)} accessibilityRole="button" accessibilityLabel="Reorder these items">
           <Ionicons name="refresh-outline" size={14} color={C.primary} />
           <Text style={styles.reorderBtnText}>Reorder</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {isCancelled && order.paymentMethod !== "cash" && order.paymentMethod !== "cod" && refundDays > 0 && (
@@ -248,7 +248,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
         <Ionicons name="open-outline" size={11} color={C.textMuted} />
         <Text style={styles.tapHintText}>Tap for details</Text>
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -281,7 +281,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
   };
 
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       onPress={handleCardPress}
       style={styles.card}
       accessibilityRole="button"
@@ -343,9 +343,9 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
             {ride.riderPhone && <Text style={styles.riderPhone}>{ride.riderPhone}</Text>}
           </View>
           {ride.riderPhone && (
-            <Pressable onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)} style={styles.callBtn} accessibilityRole="button" accessibilityLabel={`Call rider ${ride.riderName}`}>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)} style={styles.callBtn} accessibilityRole="button" accessibilityLabel={`Call rider ${ride.riderName}`}>
               <Ionicons name="call-outline" size={16} color={C.textInverse} />
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
       )}
@@ -390,19 +390,19 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
       )}
 
       {canCancel && (
-        <Pressable style={styles.cancelBtn} onPress={() => onCancel(ride)} accessibilityRole="button" accessibilityLabel={["accepted", "arrived"].includes(ride.status) ? T("cancelRideFee") : T("cancelRide")}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.cancelBtn} onPress={() => onCancel(ride)} accessibilityRole="button" accessibilityLabel={["accepted", "arrived"].includes(ride.status) ? T("cancelRideFee") : T("cancelRide")}>
           <Ionicons name="close-circle-outline" size={14} color={C.red} />
           <Text style={styles.cancelBtnText}>
             {["accepted", "arrived"].includes(ride.status) ? T("cancelRideFee") : T("cancelRide")}
           </Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {reviews && isCompleted && !ride._reviewed && (
-        <Pressable style={styles.rateBtn} onPress={() => onRate({ ...ride, _type: "ride" })} accessibilityRole="button" accessibilityLabel="Rate this ride">
+        <TouchableOpacity activeOpacity={0.7} style={styles.rateBtn} onPress={() => onRate({ ...ride, _type: "ride" })} accessibilityRole="button" accessibilityLabel="Rate this ride">
           <Ionicons name="star-outline" size={14} color={C.gold} />
           <Text style={styles.rateBtnText}>Rate this ride</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {ride._reviewed && (
@@ -413,7 +413,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
       )}
 
       {(isCompleted || ride.status === "cancelled") && (
-        <Pressable
+        <TouchableOpacity activeOpacity={0.7}
           style={styles.bookAgainBtn}
           onPress={() => router.push({
             pathname: "/ride",
@@ -428,7 +428,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
         >
           <Ionicons name="repeat-outline" size={14} color={C.primary} />
           <Text style={styles.bookAgainBtnText}>Book Again</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {showStepper && (
@@ -468,7 +468,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel }: {
         <Ionicons name="open-outline" size={11} color={C.textMuted} />
         <Text style={styles.tapHintText}>{isActive ? "Tap to track" : "Tap for details"}</Text>
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -494,7 +494,7 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
   const cancelMinsLeft = Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
 
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       style={styles.card}
       onPress={() => router.push({ pathname: "/order", params: { orderId: order.id, type: "pharmacy" } })}
       accessibilityRole="button"
@@ -524,7 +524,7 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
           </View>
         ))}
         {(order.items || []).length > 2 && (
-          <Pressable onPress={() => setItemsExpanded(prev => !prev)} style={styles.expandRow}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setItemsExpanded(prev => !prev)} style={styles.expandRow}>
             <Text style={styles.moreItems}>
               {itemsExpanded ? T("showLess") : `+${order.items.length - 2} ${T("moreItems")}`}
             </Text>
@@ -533,7 +533,7 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
               size={13}
               color={C.primary}
             />
-          </Pressable>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -549,17 +549,17 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
       </View>
 
       {canCancel && (
-        <Pressable style={styles.cancelBtn} onPress={() => onCancel(order)} accessibilityRole="button" accessibilityLabel={`${T("cancelOrder")}, ${cancelMinsLeft} minutes left`}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.cancelBtn} onPress={() => onCancel(order)} accessibilityRole="button" accessibilityLabel={`${T("cancelOrder")}, ${cancelMinsLeft} minutes left`}>
           <Ionicons name="close-circle-outline" size={14} color={C.red} />
           <Text style={styles.cancelBtnText}>{T("cancelOrder")} ({cancelMinsLeft}m left)</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {reviews && isDelivered && !order._reviewed && (
-        <Pressable style={styles.rateBtn} onPress={() => onRate({ ...order, _type: "pharmacy" })} accessibilityRole="button" accessibilityLabel={T("rateOrder")}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.rateBtn} onPress={() => onRate({ ...order, _type: "pharmacy" })} accessibilityRole="button" accessibilityLabel={T("rateOrder")}>
           <Ionicons name="star-outline" size={14} color={C.gold} />
           <Text style={styles.rateBtnText}>{T("rateOrder")}</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       {order._reviewed && (
@@ -568,7 +568,7 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
           <Text style={styles.reviewedText}>{T("reviewedThanks")}</Text>
         </View>
       )}
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -586,7 +586,7 @@ function ParcelCard({ booking }: { booking: any }) {
   };
 
   return (
-    <Pressable
+    <TouchableOpacity activeOpacity={0.7}
       onPress={handleCardPress}
       style={styles.card}
       accessibilityRole="button"
@@ -647,7 +647,7 @@ function ParcelCard({ booking }: { booking: any }) {
       )}
 
       {(booking.status === "completed" || booking.status === "cancelled") && (
-        <Pressable
+        <TouchableOpacity activeOpacity={0.7}
           style={styles.bookAgainBtn}
           onPress={() => router.push({
             pathname: "/parcel",
@@ -662,14 +662,14 @@ function ParcelCard({ booking }: { booking: any }) {
         >
           <Ionicons name="repeat-outline" size={14} color={C.primary} />
           <Text style={styles.bookAgainBtnText}>Send Again</Text>
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       <View style={styles.tapHint}>
         <Ionicons name="open-outline" size={11} color={C.textMuted} />
         <Text style={styles.tapHintText}>{isActive ? "Tap to track" : "Tap for details"}</Text>
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -677,13 +677,13 @@ function StarPicker({ value, onChange }: { value: number; onChange: (v: number) 
   return (
     <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginVertical: 8 }} accessibilityRole="adjustable" accessibilityLabel={`Rating: ${value} of 5 stars`}>
       {[1, 2, 3, 4, 5].map(s => (
-        <Pressable key={s} onPress={() => onChange(s)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`${s} star${s > 1 ? "s" : ""}`} accessibilityState={{ selected: s <= value }}>
+        <TouchableOpacity activeOpacity={0.7} key={s} onPress={() => onChange(s)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`${s} star${s > 1 ? "s" : ""}`} accessibilityState={{ selected: s <= value }}>
           <Ionicons
             name={s <= value ? "star" : "star-outline"}
             size={36}
             color={s <= value ? C.gold : C.slateBorder}
           />
-        </Pressable>
+        </TouchableOpacity>
       ))}
     </View>
   );
@@ -773,8 +773,8 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={rm.backdrop} onPress={onClose}>
-        <Pressable style={rm.sheet} onPress={() => {}}>
+      <TouchableOpacity activeOpacity={0.7} style={rm.backdrop} onPress={onClose}>
+        <TouchableOpacity activeOpacity={0.7} style={rm.sheet} onPress={() => {}}>
           <View style={rm.handle} />
 
           <View style={rm.headerIconWrap}>
@@ -832,10 +832,10 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
           {error ? <Text style={rm.error}>{error}</Text> : null}
 
           <View style={rm.btns}>
-            <Pressable style={rm.cancelBtn} onPress={onClose}>
+            <TouchableOpacity activeOpacity={0.7} style={rm.cancelBtn} onPress={onClose}>
               <Text style={rm.cancelText}>{t("back")}</Text>
-            </Pressable>
-            <Pressable
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7}
               style={[rm.submitBtn, primaryRating === 0 && { opacity: 0.5 }]}
               onPress={submit}
               disabled={loading}
@@ -843,10 +843,10 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
               {loading
                 ? <ActivityIndicator size="small" color={C.textInverse} />
                 : <Text style={rm.submitText}>{t("submitReview")}</Text>}
-            </Pressable>
+            </TouchableOpacity>
           </View>
-        </Pressable>
-      </Pressable>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -1227,7 +1227,7 @@ export default function OrdersScreen() {
               <Text style={styles.emptyServicesLabel}>Quick Start</Text>
               <View style={styles.emptyServicesGrid}>
                 {quickServices.map(svc => (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     key={svc.route}
                     onPress={() => router.push(svc.route as any)}
                     style={[styles.emptyServiceCard, { backgroundColor: svc.bg, borderColor: svc.color + "30" }]}
@@ -1238,7 +1238,7 @@ export default function OrdersScreen() {
                     </View>
                     <Text style={[styles.emptyServiceLabel, { color: svc.color }]}>{svc.label}</Text>
                     <Ionicons name="arrow-forward" size={12} color={svc.color + "99"} />
-                  </Pressable>
+                  </TouchableOpacity>
                 ))}
               </View>
             </>
@@ -1318,14 +1318,14 @@ export default function OrdersScreen() {
           <Text style={styles.emptyFilterTitle}>{meta.label}</Text>
           <Text style={styles.emptyFilterSub}>{meta.msg}</Text>
           {meta.route && (
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => router.push(meta.route as any)}
               style={[styles.emptyFilterBtn, { backgroundColor: meta.color }]}
               accessibilityRole="button"
             >
               <Ionicons name="arrow-forward-circle-outline" size={16} color={C.textInverse} />
               <Text style={styles.emptyFilterBtnText}>Explore {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</Text>
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
       );
@@ -1343,25 +1343,25 @@ export default function OrdersScreen() {
         contentContainerStyle={styles.scroll}
       >
         {showRidesErr && (
-          <Pressable onPress={fetchRides} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load ride orders, tap to retry">
+          <TouchableOpacity activeOpacity={0.7} onPress={fetchRides} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load ride orders, tap to retry">
             <Ionicons name="car-outline" size={15} color={C.redDark} />
             <Text style={styles.sectionErrTxt}>Could not load ride orders</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
-          </Pressable>
+          </TouchableOpacity>
         )}
         {showPharmErr && (
-          <Pressable onPress={fetchPharmacy} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load pharmacy orders, tap to retry">
+          <TouchableOpacity activeOpacity={0.7} onPress={fetchPharmacy} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load pharmacy orders, tap to retry">
             <Ionicons name="medical-outline" size={15} color={C.redDark} />
             <Text style={styles.sectionErrTxt}>Could not load pharmacy orders</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
-          </Pressable>
+          </TouchableOpacity>
         )}
         {showParcelErr && (
-          <Pressable onPress={fetchParcel} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load parcel bookings, tap to retry">
+          <TouchableOpacity activeOpacity={0.7} onPress={fetchParcel} style={styles.sectionErrBanner} accessibilityRole="button" accessibilityLabel="Could not load parcel bookings, tap to retry">
             <Ionicons name="cube-outline" size={15} color={C.redDark} />
             <Text style={styles.sectionErrTxt}>Could not load parcel bookings</Text>
             <Text style={styles.sectionErrRetry}>Tap to retry</Text>
-          </Pressable>
+          </TouchableOpacity>
         )}
         {anyActive > 0 && (
           <>
@@ -1381,7 +1381,7 @@ export default function OrdersScreen() {
             {pastPharm.slice(0, historyLimit).map(o => <PharmacyCard key={o.id} order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} serverNow={serverNow} onRate={handleRate} onCancel={handleCancelPharmacy} />)}
             {pastParcel.slice(0, historyLimit).map(b => <ParcelCard key={b.id} booking={b} />)}
             {anyPast > historyLimit && (
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => setHistoryLimit(l => l + 5)}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: C.background, borderRadius: 16, marginTop: 4, borderWidth: 1, borderColor: C.border }}
                 accessibilityRole="button"
@@ -1391,7 +1391,7 @@ export default function OrdersScreen() {
                 <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>
                   Load More ({anyPast - historyLimit} remaining)
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             )}
           </>
         )}
@@ -1408,10 +1408,10 @@ export default function OrdersScreen() {
         </View>
         <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, textAlign: "center", marginBottom: 8 }}>Sign In to View Orders</Text>
         <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 28 }}>Track your orders, book rides, and manage all your activity in one place.</Text>
-        <Pressable onPress={() => router.push("/auth")} style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 36, flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button">
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/auth")} style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 36, flexDirection: "row", alignItems: "center", gap: 8 }} accessibilityRole="button">
           <Ionicons name="person-circle-outline" size={18} color="#fff" />
           <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>Sign In / Register</Text>
-        </Pressable>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -1489,7 +1489,7 @@ export default function OrdersScreen() {
 
               const isActive = activeTab === tab.key;
               return (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   key={tab.key}
                   onPress={() => setActiveTab(tab.key)}
                   style={[styles.tab, isActive && styles.tabActive]}
@@ -1508,7 +1508,7 @@ export default function OrdersScreen() {
                       <Text style={[styles.tabBadgeText, isActive && { color: C.textInverse }]}>{count}</Text>
                     </View>
                   )}
-                </Pressable>
+                </TouchableOpacity>
               );
             })}
           </ScrollView>

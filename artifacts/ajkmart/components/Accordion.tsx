@@ -4,7 +4,7 @@ import {
   Animated,
   LayoutAnimation,
   Platform,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   UIManager,
@@ -72,12 +72,11 @@ export default function Accordion({
 
   return (
     <View style={[styles.container, containerStyle]}>
-      <Pressable
+      <TouchableOpacity activeOpacity={0.7}
         onPress={toggle}
-        style={({ pressed }) => [
+        style={[
           styles.header,
           headerStyle,
-          pressed && { opacity: 0.7 },
         ]}
       >
         <View style={styles.headerLeft}>
@@ -96,7 +95,7 @@ export default function Accordion({
         <Animated.View style={{ transform: [{ rotate }] }}>
           <Ionicons name="chevron-down" size={16} color={C.textMuted} />
         </Animated.View>
-      </Pressable>
+      </TouchableOpacity>
       {open && <View style={styles.content}>{children}</View>}
     </View>
   );

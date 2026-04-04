@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import React, { useCallback } from "react";
 import {
   ActivityIndicator,
-  Pressable,
+  TouchableOpacity,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -91,9 +91,9 @@ export default function MyReviewsScreen() {
   return (
     <ScreenContainer scroll={false} backgroundColor="#f9fafb">
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} style={s.backBtn} hitSlop={10}>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={s.backBtn} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color="#111" />
-        </Pressable>
+        </TouchableOpacity>
         <Text style={s.headerTitle}>{t("myReviews")}</Text>
         <View style={{ width: 40 }} />
       </View>
@@ -106,9 +106,9 @@ export default function MyReviewsScreen() {
         <View style={s.centered}>
           <Ionicons name="alert-circle-outline" size={48} color={C.danger} />
           <Text style={s.errText}>{error}</Text>
-          <Pressable onPress={refetch} style={s.retryBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={refetch} style={s.retryBtn}>
             <Text style={s.retryTxt}>{t("retry")}</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView
@@ -127,14 +127,14 @@ export default function MyReviewsScreen() {
               <Ionicons name="star-outline" size={56} color="#d1d5db" />
               <Text style={s.emptyTitle}>{t("noReviews")}</Text>
               <Text style={s.emptySub}>{t("reviewsWillAppearHere")}</Text>
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => router.replace("/(tabs)")}
                 style={{ marginTop: 16, backgroundColor: C.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 11 }}
               >
                 <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
                   Place an Order
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           ) : (
             reviews.map(r => (

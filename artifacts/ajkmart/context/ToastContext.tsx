@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from "react";
-import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -44,9 +44,9 @@ function ToastBanner({ item, onDone }: { item: ToastItem; onDone: () => void }) 
     <Animated.View style={[ts.banner, { backgroundColor: c.bg, opacity, transform: [{ translateY }], top: Platform.OS === "web" ? 72 : insets.top + 10 }]}>
       <Ionicons name={c.icon as any} size={20} color={c.text} />
       <Text style={[ts.bannerTxt, { color: c.text }]} numberOfLines={3}>{item.message}</Text>
-      <Pressable onPress={onDone} style={ts.closeBtn}>
+      <TouchableOpacity activeOpacity={0.7} onPress={onDone} style={ts.closeBtn}>
         <Ionicons name="close" size={16} color={c.text} />
-      </Pressable>
+      </TouchableOpacity>
     </Animated.View>
   );
 }

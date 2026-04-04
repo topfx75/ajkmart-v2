@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors, { spacing, typography, shadows } from "@/constants/colors";
 
@@ -34,9 +34,9 @@ export function ScreenHeader({
     >
       <View style={styles.row}>
         {onBack && (
-          <Pressable onPress={onBack} style={styles.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={onBack} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={22} color={transparent ? "#fff" : C.text} />
-          </Pressable>
+          </TouchableOpacity>
         )}
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, transparent && { color: "#fff" }]}>{title}</Text>

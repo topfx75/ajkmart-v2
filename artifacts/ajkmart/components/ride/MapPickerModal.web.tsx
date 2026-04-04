@@ -3,7 +3,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   Text,
   View,
@@ -60,9 +60,9 @@ export function MapPickerModal({ visible, label = "Location", initialLat, initia
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, { paddingTop: 0 }]}>
         <View style={styles.header}>
-          <Pressable onPress={onClose} hitSlop={12} style={styles.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={onClose} hitSlop={12} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={C.text} />
-          </Pressable>
+          </TouchableOpacity>
           <Text style={styles.title}>Select {label}</Text>
           <View style={{ width: 40 }} />
         </View>

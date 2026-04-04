@@ -14,7 +14,7 @@ import {
   Linking,
   Modal,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   Text,
   TextInput,
@@ -798,9 +798,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         }}
       >
         <View style={rs.hdrRow}>
-          <Pressable onPress={() => router.back()} style={rs.backBtnBlue}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={rs.backBtnBlue}>
             <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
-          </Pressable>
+          </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text
               style={{
@@ -812,7 +812,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               Book a Ride
             </Text>
           </View>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={handleMyLocation}
             disabled={locLoading}
             style={{
@@ -844,8 +844,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             >
               {locLoading ? "..." : locDenied ? "Denied" : "GPS"}
             </Text>
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => {
               setShowHistory(true);
               fetchHistory();
@@ -860,7 +860,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             }}
           >
             <Ionicons name="time-outline" size={18} color="#FFFFFF" />
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         <View
@@ -935,7 +935,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   }}
                 />
                 {pickup.length > 0 && (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     onPress={() => {
                       setPickup("");
                       setPickupObj(null);
@@ -944,15 +944,15 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     hitSlop={8}
                   >
                     <Ionicons name="close-circle" size={14} color={C.textMuted} />
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => { setMapPickerTarget("pickup"); setShowMapPicker(true); }}
                   hitSlop={8}
                   style={{ marginLeft: 4, padding: 3 }}
                 >
                   <Ionicons name="map-outline" size={16} color={C.primary} />
-                </Pressable>
+                </TouchableOpacity>
               </View>
 
               {pickup !== "" && !pickupObj && pickupError ? (
@@ -969,7 +969,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   )}
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{ maxHeight: 150 }}>
                     {pickupPreds.slice(0, 5).map((pred) => (
-                      <Pressable key={pred.placeId} onPress={() => selectPickup(pred)} style={ds.suggRow}>
+                      <TouchableOpacity activeOpacity={0.7} key={pred.placeId} onPress={() => selectPickup(pred)} style={ds.suggRow}>
                         <Ionicons name="location-outline" size={13} color={C.emerald} />
                         <View style={{ flex: 1 }}>
                           <Text style={ds.suggTxt}>{pred.mainText}</Text>
@@ -977,7 +977,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                             <Text style={ds.suggSub} numberOfLines={1}>{pred.secondaryText}</Text>
                           ) : null}
                         </View>
-                      </Pressable>
+                      </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
@@ -1004,7 +1004,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   }}
                 />
                 {drop.length > 0 && (
-                  <Pressable
+                  <TouchableOpacity activeOpacity={0.7}
                     onPress={() => {
                       setDrop("");
                       setDropObj(null);
@@ -1012,15 +1012,15 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     hitSlop={8}
                   >
                     <Ionicons name="close-circle" size={14} color={C.textMuted} />
-                  </Pressable>
+                  </TouchableOpacity>
                 )}
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => { setMapPickerTarget("drop"); setShowMapPicker(true); }}
                   hitSlop={8}
                   style={{ marginLeft: 4, padding: 3 }}
                 >
                   <Ionicons name="map-outline" size={16} color={C.red} />
-                </Pressable>
+                </TouchableOpacity>
               </View>
 
               {dropFocus && (
@@ -1030,7 +1030,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   )}
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{ maxHeight: 150 }}>
                     {dropPreds.slice(0, 5).map((pred) => (
-                      <Pressable key={pred.placeId} onPress={() => selectDrop(pred)} style={ds.suggRow}>
+                      <TouchableOpacity activeOpacity={0.7} key={pred.placeId} onPress={() => selectDrop(pred)} style={ds.suggRow}>
                         <Ionicons name="location-outline" size={13} color={C.red} />
                         <View style={{ flex: 1 }}>
                           <Text style={ds.suggTxt}>{pred.mainText}</Text>
@@ -1038,14 +1038,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                             <Text style={ds.suggSub} numberOfLines={1}>{pred.secondaryText}</Text>
                           ) : null}
                         </View>
-                      </Pressable>
+                      </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
               )}
             </View>
 
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => {
                 const t = pickup;
                 const to = pickupObj;
@@ -1054,21 +1054,20 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 setDrop(t);
                 setDropObj(to);
               }}
-              style={({ pressed }) => ({
+              style={{
                 width: 28,
                 height: 28,
                 borderRadius: 8,
-                backgroundColor: pressed ? C.blueBorder : C.surface,
+                backgroundColor: C.surface,
                 borderWidth: 1,
                 borderColor: C.border,
-                alignItems: "center",
-                justifyContent: "center",
-                alignSelf: "center",
-                transform: [{ scale: pressed ? 0.9 : 1 }],
-              })}
+                alignItems: "center" as const,
+                justifyContent: "center" as const,
+                alignSelf: "center" as const,
+              }}
             >
               <Ionicons name="swap-vertical" size={14} color={C.primary} />
-            </Pressable>
+            </TouchableOpacity>
           </View>
 
           {stops.map((stop, idx) => (
@@ -1081,23 +1080,23 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 placeholderTextColor={C.textMuted}
                 style={{ flex: 1, fontFamily: Font.regular, fontSize: 14, color: C.text, paddingVertical: 8 }}
               />
-              <Pressable onPress={() => { setMapPickerTarget(idx); setShowMapPicker(true); }} hitSlop={8} style={{ padding: 4 }}>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => { setMapPickerTarget(idx); setShowMapPicker(true); }} hitSlop={8} style={{ padding: 4 }}>
                 <Ionicons name="map-outline" size={16} color={C.amberBrown} />
-              </Pressable>
-              <Pressable onPress={() => removeStop(idx)} hitSlop={8} style={{ padding: 4 }}>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => removeStop(idx)} hitSlop={8} style={{ padding: 4 }}>
                 <Ionicons name="close-circle" size={16} color={C.textMuted} />
-              </Pressable>
+              </TouchableOpacity>
             </View>
           ))}
 
           {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && (
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={addStop}
               style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6, paddingVertical: 4, paddingHorizontal: 4 }}
             >
               <Ionicons name="add-circle-outline" size={14} color={C.primary} />
               <Text style={{ fontFamily: Font.medium, fontSize: 11, color: C.primary }}>Add Stop</Text>
-            </Pressable>
+            </TouchableOpacity>
           )}
         </View>
       </LinearGradient>
@@ -1167,14 +1166,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   </Text>
                 </View>
               </View>
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => setDebtDismissed(true)}
                 hitSlop={8}
               >
                 <Ionicons name="close" size={16} color={C.redDeepest} />
-              </Pressable>
+              </TouchableOpacity>
             </View>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => router.push("/(tabs)/wallet")}
               style={{
                 flexDirection: "row",
@@ -1196,7 +1195,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               >
                 Pay Now
               </Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -1219,26 +1218,25 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
             >
               {popularSpots.map((spot) => (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   key={spot.id}
                   onPress={() => handleChip(spot)}
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
+                  style={{
+                    flexDirection: "row" as const,
+                    alignItems: "center" as const,
                     gap: 6,
-                    backgroundColor: pressed ? C.blueBorder : C.surface,
+                    backgroundColor: C.surface,
                     paddingHorizontal: 14,
                     paddingVertical: 8,
                     borderRadius: 50,
                     borderWidth: 1,
-                    borderColor: pressed ? C.primary : C.border,
-                    transform: [{ scale: pressed ? 0.95 : 1 }],
+                    borderColor: C.border,
                     ...Platform.select({
                       ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 },
                       android: { elevation: 1 },
                       web: { boxShadow: "0 1px 4px rgba(0,0,0,0.06)" },
                     }),
-                  })}
+                  }}
                 >
                   <Text style={{ fontSize: 13 }}>{spot.icon || "📍"}</Text>
                   <Text
@@ -1250,14 +1248,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   >
                     {spot.name}
                   </Text>
-                </Pressable>
+                </TouchableOpacity>
               ))}
             </ScrollView>
           </>
         )}
 
         {rideType === "school_shift" && (
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => setShowSchoolModal(true)}
             style={{
               marginBottom: 14,
@@ -1305,7 +1303,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={C.royalBlue} />
-          </Pressable>
+          </TouchableOpacity>
         )}
 
         {rideCfg.surgeEnabled && (
@@ -1452,15 +1450,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </View>
               );
               return (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   key={svc.key}
                   onPress={() => setRideType(svc.key)}
-                  style={({ pressed }) => ({
+                  style={{
                     width: 130,
                     borderRadius: 17,
-                    transform: [{ scale: pressed ? 0.96 : 1 }],
-                    opacity: pressed ? 0.92 : 1,
-                  })}
+                  }}
                 >
                   {active ? (
                     <LinearGradient
@@ -1472,7 +1468,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       {cardInner}
                     </LinearGradient>
                   ) : cardInner}
-                </Pressable>
+                </TouchableOpacity>
               );
             })}
           </ScrollView>
@@ -1522,7 +1518,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             }}
           >
             {pickupObj && dropObj && (
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={() => {
                   const url = `https://www.google.com/maps/dir/?api=1&origin=${pickupObj.lat},${pickupObj.lng}&destination=${dropObj.lat},${dropObj.lng}&travelmode=driving`;
                   Linking.openURL(url);
@@ -1538,7 +1534,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   <Ionicons name="navigate-outline" size={11} color={C.textInverse} />
                   <Text style={{ ...Typ.smallMedium, fontSize: 10, color: C.textInverse }}>Open in Maps</Text>
                 </View>
-              </Pressable>
+              </TouchableOpacity>
             )}
             <View style={{ padding: 18 }}>
               {estimateAgeMinutes >= 5 && (
@@ -1574,27 +1570,26 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     </View>
                   )}
                 </View>
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => {
                     if (pickupObj && dropObj) {
                       const url = `https://www.google.com/maps/dir/?api=1&origin=${pickupObj.lat},${pickupObj.lng}&destination=${dropObj.lat},${dropObj.lng}&travelmode=${rideType === "bike" || rideType === "rickshaw" ? "bicycling" : "driving"}`;
                       Linking.openURL(url);
                     }
                   }}
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
+                  style={{
+                    flexDirection: "row" as const,
+                    alignItems: "center" as const,
                     gap: 4,
-                    backgroundColor: pressed ? C.blueBorder : C.blueSoft,
+                    backgroundColor: C.blueSoft,
                     paddingHorizontal: 10,
                     paddingVertical: 5,
                     borderRadius: 10,
-                    transform: [{ scale: pressed ? 0.95 : 1 }],
-                  })}
+                  }}
                 >
                   <Ionicons name="navigate-outline" size={12} color={C.royalBlue} />
                   <Text style={{ fontSize: 11, color: C.royalBlue, fontFamily: Font.semiBold }}>Route</Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
               {estimateAgeMinutes < 5 && (
                 <View style={{ marginBottom: 10 }}>
@@ -1728,7 +1723,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
         {!estimating && estimate?.bargainEnabled && (
           <View style={{ marginBottom: 14 }}>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => {
                 setShowBargain((v) => !v);
                 setOfferedFare("");
@@ -1798,7 +1793,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 size={18}
                 color={showBargain ? C.orangeBrand : C.textMuted}
               />
-            </Pressable>
+            </TouchableOpacity>
 
             <Animated.View
               style={{
@@ -1866,13 +1861,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     }}
                   />
                   {offeredFare !== "" && (
-                    <Pressable onPress={() => setOfferedFare("")}>
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => setOfferedFare("")}>
                       <Ionicons
                         name="close-circle"
                         size={18}
                         color={C.silverBg}
                       />
-                    </Pressable>
+                    </TouchableOpacity>
                   )}
                 </View>
                 <TextInput
@@ -1953,7 +1948,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
         {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && (
           <View style={{ marginBottom: 14 }}>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => setIsScheduled(v => !v)}
               style={{
                 flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -1976,7 +1971,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </View>
               </View>
               <Ionicons name={isScheduled ? "chevron-up" : "chevron-down"} size={18} color={isScheduled ? C.primary : C.textMuted} />
-            </Pressable>
+            </TouchableOpacity>
             {isScheduled && (
               <View style={{ backgroundColor: C.blueSoft, borderWidth: 1, borderColor: C.blueBorder, borderTopWidth: 0, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, padding: 16, gap: 12 }}>
                 <View>
@@ -2008,7 +2003,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         )}
 
         {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && !isScheduled && (
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => setIsPoolRide(v => !v)}
             style={{
               flexDirection: "row", alignItems: "center", justifyContent: "space-between",
@@ -2033,7 +2028,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             <View style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: isPoolRide ? C.success : C.border, padding: 3, justifyContent: "center", alignItems: isPoolRide ? "flex-end" : "flex-start" }}>
               <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" }} />
             </View>
-          </Pressable>
+          </TouchableOpacity>
         )}
 
         <Text
@@ -2069,12 +2064,12 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             const pmBg = isCash ? C.greenLightBg : isWallet ? C.blueBorder : isJazzcash ? C.redBorder : isEasypaisa ? C.greenLightBg : C.blueBorder;
             const balanceLabel = isWallet ? ` · Rs. ${(user?.walletBalance ?? 0).toLocaleString()}` : "";
             return (
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 key={pmId}
                 onPress={() => setPayMethod(pmId)}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
+                style={{
+                  flexDirection: "row" as const,
+                  alignItems: "center" as const,
                   gap: 7,
                   paddingHorizontal: 14,
                   paddingVertical: 9,
@@ -2082,8 +2077,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   borderWidth: 1.5,
                   borderColor: active ? pmColor : C.border,
                   backgroundColor: active ? `${pmColor}10` : C.textInverse,
-                  transform: [{ scale: pressed ? 0.95 : 1 }],
-                })}
+                }}
               >
                 <View
                   style={{
@@ -2118,7 +2112,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 {insufficient && (
                   <Ionicons name="alert-circle" size={14} color={C.danger} />
                 )}
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
@@ -2183,7 +2177,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           </Text>
         </View>
 
-        <Pressable
+        <TouchableOpacity activeOpacity={0.7}
           onPress={handleBook}
           disabled={booking || !estimate}
           onPressIn={() => Animated.spring(bookBtnScale, { toValue: 0.96, useNativeDriver: false, tension: 300, friction: 10 }).start()}
@@ -2226,7 +2220,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               )}
             </LinearGradient>
           </Animated.View>
-        </Pressable>
+        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -2261,7 +2255,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             >
               Ride History
             </Text>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => setShowHistory(false)}
               style={{
                 width: 36,
@@ -2273,7 +2267,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               }}
             >
               <Ionicons name="close" size={18} color={C.text} />
-            </Pressable>
+            </TouchableOpacity>
           </View>
           {histLoading ? (
             <View style={{ padding: 20 }}>
@@ -2481,7 +2475,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             >
               School Shift Subscribe
             </Text>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => setShowSchoolModal(false)}
               style={{
                 width: 36,
@@ -2493,7 +2487,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               }}
             >
               <Ionicons name="close" size={18} color={C.text} />
-            </Pressable>
+            </TouchableOpacity>
           </View>
           <ScrollView
             style={{ flex: 1 }}
@@ -2554,7 +2548,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               </View>
             ) : (
               schoolRoutes.map((r: any) => (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   key={r.id}
                   onPress={() => setSelectedRoute(r)}
                   style={{
@@ -2719,7 +2713,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       />
                     )}
                   </View>
-                </Pressable>
+                </TouchableOpacity>
               ))
             )}
 
@@ -2812,7 +2806,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     </Text>
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       {(["morning", "afternoon", "both"] as const).map(s => (
-                        <Pressable
+                        <TouchableOpacity activeOpacity={0.7}
                           key={s}
                           onPress={() => setSchoolShift(s)}
                           style={{
@@ -2822,7 +2816,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                           }}
                         >
                           <Text style={{ fontSize: 12, fontFamily: Font.semiBold, color: schoolShift === s ? C.textInverse : C.textSecondary, textTransform: "capitalize" }}>{s}</Text>
-                        </Pressable>
+                        </TouchableOpacity>
                       ))}
                     </View>
                     {selectedRoute?.morningTime && schoolShift !== "afternoon" ? (
@@ -2860,7 +2854,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       <Text style={{ fontSize: 14, fontFamily: Font.medium, color: C.text }}>Auto-Renew Monthly</Text>
                       <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: Font.regular }}>Renew subscription every 30 days</Text>
                     </View>
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       onPress={() => setSchoolRecurring(r => !r)}
                       style={{
                         width: 48, height: 26, borderRadius: 13,
@@ -2872,7 +2866,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         width: 20, height: 20, borderRadius: 10, backgroundColor: C.surface,
                         alignSelf: schoolRecurring ? "flex-end" : "flex-start",
                       }} />
-                    </Pressable>
+                    </TouchableOpacity>
                   </View>
                   <View>
                     <Text
@@ -2938,7 +2932,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         : `Via ${payMethod}`}
                   </Text>
                 </View>
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={handleSchoolSubscribe}
                   disabled={subscribing}
                   style={{
@@ -2963,7 +2957,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                       ? "Subscribing..."
                       : `Subscribe · Rs. ${selectedRoute.monthlyPrice?.toLocaleString()}/mo`}
                   </Text>
-                </Pressable>
+                </TouchableOpacity>
               </>
             )}
           </ScrollView>

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import Colors, { radii, spacing, typography } from "@/constants/colors";
 
 const C = Colors.light;
@@ -54,9 +54,9 @@ export function Tag({
         {label}
       </Text>
       {onRemove && (
-        <Pressable onPress={onRemove} hitSlop={8}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onRemove} hitSlop={8}>
           <Ionicons name="close-circle" size={isSm ? 13 : 15} color={v.text} />
-        </Pressable>
+        </TouchableOpacity>
       )}
     </View>
   );

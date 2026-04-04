@@ -7,7 +7,7 @@ import {
   Image,
   Linking,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   StyleSheet,
   Text,
@@ -329,9 +329,9 @@ export default function OrderDetailScreen() {
     return (
       <View style={[s.root, { paddingTop: topPad }]}>
         <View style={s.headerBar}>
-          <Pressable onPress={goBack} style={s.backBtn}>
+          <TouchableOpacity activeOpacity={0.7} onPress={goBack} style={s.backBtn}>
             <Ionicons name="chevron-back" size={20} color={C.text} />
-          </Pressable>
+          </TouchableOpacity>
           <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : isRide ? "Ride Details" : "Order Details"}</Text>
           <View style={{ width: 36 }} />
         </View>
@@ -339,12 +339,12 @@ export default function OrderDetailScreen() {
           <Ionicons name="alert-circle-outline" size={48} color={C.textMuted} />
           <Text style={s.loadingText}>{isParcel ? "Parcel not found" : isRide ? "Ride not found" : "Order not found"}</Text>
           <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginTop: 4 }}>This order may have been removed or you may not have access.</Text>
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.replace("/(tabs)")}
             style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: C.primary, borderRadius: 14 }}
           >
             <Text style={{ ...Typ.bodySemiBold, color: C.textInverse }}>Go to Home</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -398,9 +398,9 @@ export default function OrderDetailScreen() {
   return (
     <View style={[s.root, { paddingTop: topPad }]}>
       <View style={s.headerBar}>
-        <Pressable onPress={goBack} style={s.backBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={goBack} style={s.backBtn}>
           <Ionicons name="chevron-back" size={20} color={C.text} />
-        </Pressable>
+        </TouchableOpacity>
         <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : isRide ? "Ride Details" : "Order Details"}</Text>
         <View style={{ width: 36 }} />
       </View>
@@ -455,7 +455,7 @@ export default function OrderDetailScreen() {
                 </View>
               </View>
               {order.deliveryAddress ? (
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => {
                     const encodedAddr = encodeURIComponent(order.deliveryAddress);
                     const url = Platform.OS === "ios"
@@ -472,7 +472,7 @@ export default function OrderDetailScreen() {
                     {order.deliveryAddress}
                   </Text>
                   <Ionicons name="open-outline" size={14} color={C.emerald} />
-                </Pressable>
+                </TouchableOpacity>
               ) : null}
             </View>
           </View>
@@ -625,9 +625,9 @@ export default function OrderDetailScreen() {
                 {order.riderPhone && <Text style={s.riderPhone}>{order.riderPhone}</Text>}
               </View>
               {order.riderPhone && (
-                <Pressable onPress={() => Linking.openURL(`tel:${order.riderPhone}`)} style={s.callBtn}>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => Linking.openURL(`tel:${order.riderPhone}`)} style={s.callBtn}>
                   <Ionicons name="call" size={18} color={C.textInverse} />
-                </Pressable>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -677,7 +677,7 @@ export default function OrderDetailScreen() {
         </View>
 
         {canCancel ? (
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             style={s.cancelOrderBtn}
             onPress={() => {
               const cancelMinsLeft = isParcelType
@@ -695,7 +695,7 @@ export default function OrderDetailScreen() {
           >
             <Ionicons name="close-circle-outline" size={16} color={C.red} />
             <Text style={s.cancelOrderBtnText}>{isRide ? "Cancel Ride" : isParcelType ? "Cancel Booking" : "Cancel Order"}</Text>
-          </Pressable>
+          </TouchableOpacity>
         ) : isActive && !isDelivered && (
           <View style={s.cancelDisabledBtn}>
             <Ionicons name="close-circle-outline" size={16} color={C.textMuted} />
@@ -713,7 +713,7 @@ export default function OrderDetailScreen() {
           <View style={s.refundSection}>
             <Text style={s.refundTitle}>{T("requestRefund")}</Text>
             <Text style={s.refundDesc}>Submit a refund request for this order. Refunds are typically processed within 3-5 business days.</Text>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               style={[s.refundBtn, refundRequesting && { opacity: 0.6 }]}
               onPress={handleRefundRequest}
               disabled={refundRequesting}
@@ -724,7 +724,7 @@ export default function OrderDetailScreen() {
                   <Text style={s.refundBtnText}>{T("requestRefund")}</Text>
                 </>
               )}
-            </Pressable>
+            </TouchableOpacity>
           </View>
         )}
 

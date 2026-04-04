@@ -10,7 +10,7 @@ import {
   Image,
   Linking,
   Platform,
-  Pressable,
+  TouchableOpacity,
   ScrollView,
   Text,
   TextInput,
@@ -439,7 +439,7 @@ export function RideTracker({
               </Text>
             </View>
           )}
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={handleRetryDispatch}
             disabled={retrying}
             style={{
@@ -466,8 +466,8 @@ export function RideTracker({
                 Retry Search
               </Text>
             )}
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             onPress={onReset}
             style={{
               backgroundColor: "rgba(245,158,11,0.18)",
@@ -494,8 +494,8 @@ export function RideTracker({
             >
               Increase Offer
             </Text>
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             onPress={onReset}
             style={{
               backgroundColor: "rgba(99,102,241,0.15)",
@@ -522,8 +522,8 @@ export function RideTracker({
             >
               Try a Different Service
             </Text>
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => openUnifiedCancelModal()}
             disabled={cancelling}
             style={{
@@ -551,8 +551,8 @@ export function RideTracker({
                 )}
               </>
             )}
-          </Pressable>
-          <Pressable
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.7}
             onPress={onReset}
             style={{
               borderWidth: 1.5,
@@ -573,7 +573,7 @@ export function RideTracker({
             >
               Go Back
             </Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         {cancelModalTarget && (
@@ -609,7 +609,7 @@ export function RideTracker({
             zIndex: 10,
           }}
         >
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.push("/(tabs)")}
             hitSlop={8}
             style={{
@@ -622,7 +622,7 @@ export function RideTracker({
             }}
           >
             <Ionicons name="chevron-back" size={20} color="#fff" />
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         <View
@@ -790,7 +790,7 @@ export function RideTracker({
             paddingBottom: Math.max(insets.bottom, 24) + 16,
           }}
         >
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => openUnifiedCancelModal()}
             disabled={cancelling}
             style={{
@@ -815,7 +815,7 @@ export function RideTracker({
                 Cancel Ride
               </Text>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         {cancelModalTarget && (
@@ -1051,7 +1051,7 @@ export function RideTracker({
             </Text>
           </View>
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => router.push("/(tabs)")}
               style={{
                 flex: 1,
@@ -1078,8 +1078,8 @@ export function RideTracker({
               >
                 Home
               </Text>
-            </Pressable>
-            <Pressable
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7}
               onPress={onReset}
               style={{
                 flex: 2,
@@ -1102,7 +1102,7 @@ export function RideTracker({
               >
                 Book New Ride
               </Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </View>
@@ -1205,13 +1205,13 @@ export function RideTracker({
                 {/* Stars */}
                 <View style={{ flexDirection: "row", gap: 14, marginTop: 18, marginBottom: 6 }}>
                   {[1, 2, 3, 4, 5].map((s) => (
-                    <Pressable key={s} onPress={() => setRating(s)} style={{ padding: 4 }}>
+                    <TouchableOpacity activeOpacity={0.7} key={s} onPress={() => setRating(s)} style={{ padding: 4 }}>
                       <Ionicons
                         name={s <= rating ? "star" : "star-outline"}
                         size={38}
                         color={s <= rating ? "#F59E0B" : "rgba(255,255,255,0.25)"}
                       />
-                    </Pressable>
+                    </TouchableOpacity>
                   ))}
                 </View>
                 {rating > 0 && (
@@ -1257,7 +1257,7 @@ export function RideTracker({
                   }}
                   placeholderTextColor={C.textMuted}
                 />
-                <Pressable
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={async () => {
                     if (rating === 0) return;
                     try {
@@ -1292,15 +1292,15 @@ export function RideTracker({
                       Submit Rating
                     </Text>
                   </LinearGradient>
-                </Pressable>
-                <Pressable
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7}
                   onPress={() => setRatingDone(true)}
                   style={{ alignItems: "center", paddingVertical: 6 }}
                 >
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>
                     Skip for now
                   </Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
             </View>
           ) : (
@@ -1476,7 +1476,7 @@ export function RideTracker({
               >
                 Route
               </Text>
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={openInMaps}
                 style={{
                   flexDirection: "row",
@@ -1502,7 +1502,7 @@ export function RideTracker({
                 >
                   Map
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
             <View style={{ flexDirection: "row", gap: 12 }}>
               <View style={{ alignItems: "center", gap: 4 }}>
@@ -1607,7 +1607,7 @@ export function RideTracker({
           </View>
 
           <View style={{ flexDirection: "row", gap: 12 }}>
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => router.push("/(tabs)")}
               style={{
                 flex: 1,
@@ -1634,8 +1634,8 @@ export function RideTracker({
               >
                 Home
               </Text>
-            </Pressable>
-            <Pressable
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.7}
               onPress={onReset}
               style={{
                 flex: 2,
@@ -1658,7 +1658,7 @@ export function RideTracker({
               >
                 Book New Ride
               </Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
           <View style={{ height: 24 }} />
         </ScrollView>
@@ -1704,7 +1704,7 @@ export function RideTracker({
         <View
           style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
         >
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.push("/(tabs)")}
             hitSlop={8}
             style={{
@@ -1717,7 +1717,7 @@ export function RideTracker({
             }}
           >
             <Ionicons name="chevron-back" size={20} color="#fff" />
-          </Pressable>
+          </TouchableOpacity>
           <View
             style={{
               width: 52,
@@ -1808,7 +1808,7 @@ export function RideTracker({
       </LinearGradient>
 
       {connectionType === "polling" && (
-        <Pressable
+        <TouchableOpacity activeOpacity={0.7}
           onPress={reconnect}
           style={{
             flexDirection: "row",
@@ -1826,7 +1826,7 @@ export function RideTracker({
             Live updates paused — tap to reconnect
           </Text>
           <Ionicons name="refresh-outline" size={15} color="#D97706" />
-        </Pressable>
+        </TouchableOpacity>
       )}
 
       <ScrollView
@@ -2049,7 +2049,7 @@ export function RideTracker({
               </View>
 
               {/* Copy button */}
-              <Pressable
+              <TouchableOpacity activeOpacity={0.7}
                 onPress={async () => {
                   await Clipboard.setStringAsync(tripOtp);
                   setOtpCopied(true);
@@ -2073,7 +2073,7 @@ export function RideTracker({
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#fff" }}>
                   {otpCopied ? "Copied!" : "Copy Code"}
                 </Text>
-              </Pressable>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -2327,7 +2327,7 @@ export function RideTracker({
                           </Text>
                         </View>
                         {/* Refresh icon button — bottom-right */}
-                        <Pressable
+                        <TouchableOpacity activeOpacity={0.7}
                           onPress={() => reconnect?.()}
                           style={{
                             position: "absolute",
@@ -2344,7 +2344,7 @@ export function RideTracker({
                           }}
                         >
                           <Ionicons name="refresh" size={16} color="#fff" />
-                        </Pressable>
+                        </TouchableOpacity>
                       </View>
 
                       {/* Distance badge */}
@@ -2398,9 +2398,8 @@ export function RideTracker({
               <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
                 {ride.riderPhone && (
                   <View style={{ alignItems: "center", gap: 6 }}>
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
-                      style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.88 : 1 }] })}
                     >
                       <LinearGradient
                         colors={["#0066FF", "#0047B3"]}
@@ -2419,15 +2418,14 @@ export function RideTracker({
                       >
                         <Ionicons name="call" size={24} color="#fff" />
                       </LinearGradient>
-                    </Pressable>
+                    </TouchableOpacity>
                     <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: C.textMuted }}>Call</Text>
                   </View>
                 )}
                 {canCancel && (
                   <View style={{ alignItems: "center", gap: 6 }}>
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       onPress={() => setCancelModalTarget({ id: rideId, type: "ride", status: status, fare: ride?.fare, paymentMethod: ride?.paymentMethod, riderAssigned: !!ride?.riderId })}
-                      style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.88 : 1 }] })}
                     >
                       <LinearGradient
                         colors={["#F43F5E", "#BE123C"]}
@@ -2446,13 +2444,13 @@ export function RideTracker({
                       >
                         <Ionicons name="close" size={26} color="#fff" />
                       </LinearGradient>
-                    </Pressable>
+                    </TouchableOpacity>
                     <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: "#F43F5E" }}>Cancel</Text>
                   </View>
                 )}
                 {sosEnabled && (
                   <View style={{ alignItems: "center", gap: 6 }}>
-                    <Pressable
+                    <TouchableOpacity activeOpacity={0.7}
                       onPress={async () => {
                         if (sosSent) return;
                         setSosLoading(true);
@@ -2473,7 +2471,7 @@ export function RideTracker({
                         setSosLoading(false);
                       }}
                       disabled={sosLoading || sosSent}
-                      style={({ pressed }) => ({ opacity: sosSent ? 0.65 : 1, transform: [{ scale: pressed ? 0.88 : 1 }] })}
+                      style={{ opacity: sosSent ? 0.65 : 1 }}
                     >
                       <View style={{ alignItems: "center", justifyContent: "center" }}>
                         {/* Pulsing ring around SOS */}
@@ -2512,7 +2510,7 @@ export function RideTracker({
                           )}
                         </LinearGradient>
                       </View>
-                    </Pressable>
+                    </TouchableOpacity>
                     <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: sosSent ? C.textMuted : "#EF4444" }}>
                       {sosSent ? "Sent" : "SOS"}
                     </Text>
@@ -2644,7 +2642,7 @@ export function RideTracker({
             </View>
           </View>
 
-          <Pressable
+          <TouchableOpacity activeOpacity={0.7}
             onPress={openInMaps}
             style={{
               flexDirection: "row",
@@ -2672,10 +2670,10 @@ export function RideTracker({
             >
               Open in Google Maps
             </Text>
-          </Pressable>
+          </TouchableOpacity>
 
           {canCancel && (
-            <Pressable
+            <TouchableOpacity activeOpacity={0.7}
               onPress={() => openUnifiedCancelModal()}
               disabled={cancelling}
               style={{
@@ -2713,7 +2711,7 @@ export function RideTracker({
                   )}
                 </>
               )}
-            </Pressable>
+            </TouchableOpacity>
           )}
         </Animated.View>
         <View style={{ height: 24 }} />

@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Colors, { spacing, typography } from "@/constants/colors";
 
@@ -20,10 +20,10 @@ export function SectionHeader({ title, subtitle, actionLabel, onAction }: Sectio
         {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
       </View>
       {actionLabel && onAction && (
-        <Pressable onPress={onAction} style={styles.action}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onAction} style={styles.action}>
           <Text style={styles.actionText}>{actionLabel}</Text>
           <Ionicons name="chevron-forward" size={14} color={C.primary} />
-        </Pressable>
+        </TouchableOpacity>
       )}
     </View>
   );
