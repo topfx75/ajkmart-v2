@@ -162,16 +162,16 @@ export function RideStatusSkeleton() {
             <SkeletonPulse dark={dark} style={{ width: 60, height: 20, borderRadius: 8 }} />
           </View>
           <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-            {[0, 1, 2, 3].map((i) => (
+            {[0, 1, 2, 3, 4].map((i) => (
               <React.Fragment key={i}>
                 <View style={{ alignItems: "center", flex: 1, gap: 7 }}>
                   <SkeletonPulse dark={dark} style={{ width: 34, height: 34, borderRadius: 17 }} />
-                  <SkeletonPulse dark={dark} style={{ width: 42, height: 10, borderRadius: 5 }} />
+                  <SkeletonPulse dark={dark} style={{ width: 38, height: 10, borderRadius: 5 }} />
                 </View>
-                {i < 3 && (
+                {i < 4 && (
                   <SkeletonPulse
                     dark={dark}
-                    style={{ height: 3, flex: 0.4, marginTop: 16, borderRadius: 2 }}
+                    style={{ height: 3, flex: 0.3, marginTop: 16, borderRadius: 2 }}
                   />
                 )}
               </React.Fragment>

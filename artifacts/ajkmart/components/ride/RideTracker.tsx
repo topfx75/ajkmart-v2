@@ -79,8 +79,10 @@ export function RideTracker({
   const livePulseOp = useRef(new Animated.Value(1)).current;
   const sosRing = useRef(new Animated.Value(1)).current;
   const sosRingOp = useRef(new Animated.Value(0.6)).current;
+  const stepProgress = useRef(new Animated.Value(1)).current;
 
   const { ride, setRide, connectionType, reconnect } = useRideStatus(rideId);
+  const RIDE_STEPS = ["pending", "accepted", "in_transit", "arrived", "completed"];
   const { config } = usePlatformConfig();
   const sosEnabled = config.features?.sos !== false;
   const [sosLoading, setSosLoading] = useState(false);
@@ -220,6 +222,18 @@ export function RideTracker({
   }, [ride?.status]);
 
   useEffect(() => {
+    const idx = RIDE_STEPS.indexOf(ride?.status ?? "");
+    if (idx > 0) {
+      stepProgress.setValue(0);
+      Animated.timing(stepProgress, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [ride?.status]);
+
+  useEffect(() => {
     const livePulseAnim = Animated.loop(
       Animated.sequence([
         Animated.parallel([
@@ -321,7 +335,7 @@ export function RideTracker({
 
   const status = ride?.status ?? "searching";
   const rideType = ride?.type ?? initialType;
-  const STEPS = ["pending", "accepted", "arrived", "in_transit", "completed"];
+  const STEPS = RIDE_STEPS;
   const LABELS = ["Pending", "Accepted", "En Route", "Arrived", "Completed"];
   const stepIdx = STEPS.indexOf(status) !== -1 ? STEPS.indexOf(status) : 1;
   const elapsedStr =
@@ -1946,11 +1960,25 @@ export function RideTracker({
                         style={{
                           height: 3,
                           flex: 0.4,
-                          backgroundColor: stepIdx > i ? completedColor : C.border,
+                          backgroundColor: C.border,
                           marginTop: 16,
                           borderRadius: 2,
+                          overflow: "hidden",
                         }}
-                      />
+                      >
+                        {stepIdx > i && (
+                          <Animated.View
+                            style={{
+                              height: "100%",
+                              borderRadius: 2,
+                              backgroundColor: completedColor,
+                              width: stepIdx === i + 1
+                                ? stepProgress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] })
+                                : "100%",
+                            }}
+                          />
+                        )}
+                      </View>
                     )}
                   </React.Fragment>
                 );
