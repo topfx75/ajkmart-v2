@@ -54,7 +54,7 @@ const MART_PRODUCTS = [
   { name: "Seb (Apple) 500g",        price: 140,  originalPrice: null, category: "fruits",    unit: "500g",       inStock: true,  description: "Fresh apples", image: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=400&fit=crop&auto=format" },
   { name: "Sugar 1kg",               price: 110,  originalPrice: null, category: "household", unit: "1kg",        inStock: true,  description: "Refined white sugar", image: "https://images.unsplash.com/photo-1558642891-54be180ea339?w=400&h=400&fit=crop&auto=format" },
   { name: "Palak (Spinach) 500g",    price: 40,   originalPrice: null, category: "fruits",    unit: "500g",       inStock: true,  description: "Fresh green spinach", image: "https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400&h=400&fit=crop&auto=format" },
-  { name: "Lemon 1kg",               price: 120,  originalPrice: null, category: "fruits",    unit: "1kg",        inStock: true,  description: "Fresh lemons", image: "https://images.unsplash.com/photo-1582087840878-ce1a7a3bcd81?w=400&h=400&fit=crop&auto=format" },
+  { name: "Lemon 1kg",               price: 120,  originalPrice: null, category: "fruits",    unit: "1kg",        inStock: true,  description: "Fresh lemons", image: "https://images.unsplash.com/photo-1590502593747-42a996133562?w=400&h=400&fit=crop&auto=format" },
   { name: "Shampoo Head&Shoulders",  price: 280,  originalPrice: 320,  category: "personal",  unit: "185ml",      inStock: true,  description: "Anti-dandruff shampoo", image: "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?w=400&h=400&fit=crop&auto=format" },
   { name: "Bread Bran 400g",         price: 95,   originalPrice: null, category: "bakery",    unit: "400g loaf",  inStock: true,  description: "Whole wheat bran bread", image: "https://images.unsplash.com/photo-1549931319-a545753467c8?w=400&h=400&fit=crop&auto=format" },
   { name: "Biscuits Parle-G 800g",   price: 180,  originalPrice: null, category: "snacks",    unit: "800g pack",  inStock: true,  description: "Classic glucose biscuits", image: "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=400&h=400&fit=crop&auto=format" },
@@ -107,6 +107,24 @@ const FOOD_PRODUCTS = [
   { name: "Biryani (Full)",          price: 480, originalPrice: null,  category: "desi",       unit: "full pot",   inStock: true,  description: "Full pot biryani for 3-4 persons + raita", rating: 4.9, deliveryTime: "30-45 min", vendorName: "Biryani House AJK", image: "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&h=400&fit=crop&auto=format" },
 ];
 
+const PHARMACY_PRODUCTS = [
+  { name: "Panadol Extra 500mg",     price: 45,  originalPrice: null, category: "pain-relief",    unit: "10 tablets",  inStock: true,  rxRequired: false, description: "Paracetamol + caffeine pain relief", image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop&auto=format" },
+  { name: "Disprin Aspirin 300mg",   price: 30,  originalPrice: null, category: "pain-relief",    unit: "10 tablets",  inStock: true,  rxRequired: false, description: "Aspirin for pain & fever relief", image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop&auto=format" },
+  { name: "ORS Sachet (5 pack)",     price: 60,  originalPrice: 70,   category: "rehydration",    unit: "5 sachets",   inStock: true,  rxRequired: false, description: "Oral rehydration salts for dehydration", image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop&auto=format" },
+  { name: "Vitamin C 500mg",         price: 120, originalPrice: 150,  category: "vitamins",       unit: "30 tablets",  inStock: true,  rxRequired: false, description: "Immune support vitamin C supplement", image: "https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=400&h=400&fit=crop&auto=format" },
+  { name: "Gaviscon Antacid",        price: 85,  originalPrice: null, category: "digestive",      unit: "250ml bottle",inStock: true,  rxRequired: false, description: "Fast heartburn & acid relief", image: "https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=400&h=400&fit=crop&auto=format" },
+  { name: "Cough Syrup 100ml",       price: 95,  originalPrice: null, category: "cough-cold",     unit: "100ml bottle",inStock: true,  rxRequired: false, description: "Soothing cough relief syrup", image: "https://images.unsplash.com/photo-1603398938378-e54eab446dde?w=400&h=400&fit=crop&auto=format" },
+  { name: "Eye Drops (Refresh)",     price: 110, originalPrice: 130,  category: "eye-care",       unit: "10ml bottle", inStock: true,  rxRequired: false, description: "Lubricating eye drops for dry eyes", image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop&auto=format" },
+  { name: "Amoxicillin 500mg",       price: 180, originalPrice: null, category: "antibiotics",    unit: "10 capsules", inStock: true,  rxRequired: true,  description: "Antibiotic for bacterial infections (Rx)", image: "https://images.unsplash.com/photo-1585435557343-3b092031a831?w=400&h=400&fit=crop&auto=format" },
+  { name: "Metformin 500mg",         price: 95,  originalPrice: null, category: "diabetes",       unit: "30 tablets",  inStock: true,  rxRequired: true,  description: "Blood sugar control (Rx)", image: "https://images.unsplash.com/photo-1585435557343-3b092031a831?w=400&h=400&fit=crop&auto=format" },
+  { name: "Amlodipine 5mg",          price: 75,  originalPrice: null, category: "cardiology",     unit: "30 tablets",  inStock: true,  rxRequired: true,  description: "Blood pressure control (Rx)", image: "https://images.unsplash.com/photo-1585435557343-3b092031a831?w=400&h=400&fit=crop&auto=format" },
+  { name: "Multivitamin Daily",      price: 200, originalPrice: 240,  category: "vitamins",       unit: "30 tablets",  inStock: true,  rxRequired: false, description: "Complete daily multivitamin supplement", image: "https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=400&h=400&fit=crop&auto=format" },
+  { name: "Nizoral Shampoo 60ml",    price: 160, originalPrice: 190,  category: "dermatology",    unit: "60ml bottle", inStock: true,  rxRequired: false, description: "Anti-dandruff medicated shampoo", image: "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?w=400&h=400&fit=crop&auto=format" },
+  { name: "Betnovate Cream 30g",     price: 90,  originalPrice: null, category: "dermatology",    unit: "30g tube",    inStock: true,  rxRequired: false, description: "Anti-itch and skin rash cream", image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop&auto=format" },
+  { name: "Brufen 400mg",            price: 50,  originalPrice: null, category: "pain-relief",    unit: "10 tablets",  inStock: true,  rxRequired: false, description: "Ibuprofen for pain and inflammation", image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop&auto=format" },
+  { name: "Antiseptic Dettol 100ml", price: 120, originalPrice: 140,  category: "first-aid",      unit: "100ml bottle",inStock: true,  rxRequired: false, description: "Antiseptic liquid for wounds & cuts", image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=400&fit=crop&auto=format" },
+];
+
 const DEMO_BANNERS = [
   { title: "Free Delivery", subtitle: "On orders above Rs. 500", colorFrom: "#0047B3", colorTo: "#0066FF", icon: "bicycle", placement: "home", sortOrder: 1, linkType: "service", linkValue: "mart", targetService: "mart" },
   { title: "Flash Sale Live!", subtitle: "Up to 40% off on groceries", colorFrom: "#E53E3E", colorTo: "#FC8181", icon: "flash", placement: "home", sortOrder: 2, linkType: "route", linkValue: "/mart", targetService: "mart" },
@@ -117,9 +135,11 @@ const DEMO_BANNERS = [
 router.post("/products", async (req, res) => {
   const existingMart = await db.select().from(productsTable).where(eq(productsTable.type, "mart")).limit(1);
   const existingFood = await db.select().from(productsTable).where(eq(productsTable.type, "food")).limit(1);
+  const existingPharmacy = await db.select().from(productsTable).where(eq(productsTable.type, "pharmacy")).limit(1);
 
   let seededMart = 0;
   let seededFood = 0;
+  let seededPharmacy = 0;
 
   if (existingMart.length === 0) {
     for (const p of MART_PRODUCTS) {
@@ -174,6 +194,36 @@ router.post("/products", async (req, res) => {
     }
   } else {
     for (const p of FOOD_PRODUCTS) {
+      await db.update(productsTable)
+        .set({ image: p.image, images: [p.image] })
+        .where(eq(productsTable.name, p.name));
+    }
+  }
+
+  if (existingPharmacy.length === 0) {
+    for (const p of PHARMACY_PRODUCTS) {
+      const desc = p.rxRequired ? `${p.description} — ⚠️ Prescription Required` : p.description;
+      await db.insert(productsTable).values({
+        id: generateId(),
+        name: p.name,
+        description: desc,
+        price: p.price.toString(),
+        originalPrice: p.originalPrice ? p.originalPrice.toString() : null,
+        category: p.category,
+        type: "pharmacy",
+        vendorId: "ajkmart_system",
+        vendorName: "AJKMart Pharmacy",
+        unit: p.unit,
+        inStock: p.inStock,
+        image: p.image,
+        images: [p.image],
+        rating: (3.9 + Math.random() * 1.0).toFixed(1),
+        reviewCount: Math.floor(Math.random() * 150) + 5,
+      });
+      seededPharmacy++;
+    }
+  } else {
+    for (const p of PHARMACY_PRODUCTS) {
       await db.update(productsTable)
         .set({ image: p.image, images: [p.image] })
         .where(eq(productsTable.name, p.name));

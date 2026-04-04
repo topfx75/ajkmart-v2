@@ -17,6 +17,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -349,6 +350,9 @@ function FullScreenImageViewer({
 function ProductDetailScreenInner() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const imgW = Math.min(windowWidth, 430);
+  const imgH = imgW * 0.85;
   const topPad = Platform.OS === "web" ? 20 : insets.top;
   const bottomPad = Math.max(insets.bottom, Platform.OS === "web" ? 20 : 16);
 
@@ -503,7 +507,7 @@ function ProductDetailScreenInner() {
   }, [product, productType, itemCount, cartType, doAdd, requireAuth, requireCustomerRole]);
 
   const headerOpacity = scrollY.interpolate({
-    inputRange: [0, IMAGE_H - 100],
+    inputRange: [0, imgH - 100],
     outputRange: [0, 1],
     extrapolate: "clamp",
   });
@@ -522,7 +526,7 @@ function ProductDetailScreenInner() {
           </TouchableOpacity>
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
-          <SkeletonBlock w={SCREEN_W} h={IMAGE_H} r={0} />
+          <SkeletonBlock w={imgW} h={imgH} r={0} />
           <View style={{ padding: 16, gap: 12 }}>
             <SkeletonBlock w="70%" h={22} />
             <SkeletonBlock w="40%" h={16} />
@@ -649,18 +653,18 @@ function ProductDetailScreenInner() {
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                const idx = Math.round(e.nativeEvent.contentOffset.x / imgW);
                 setActiveImageIndex(idx);
               }}
               renderItem={({ item, index }) => (
                 <TouchableOpacity activeOpacity={0.7} onPress={() => { setActiveImageIndex(index); setShowFullScreen(true); }}>
-                  <Image source={{ uri: item }} style={{ width: SCREEN_W, height: IMAGE_H }} resizeMode="cover" />
+                  <Image source={{ uri: item }} style={{ width: imgW, height: imgH }} resizeMode="cover" />
                 </TouchableOpacity>
               )}
               keyExtractor={(_, i) => String(i)}
             />
           ) : (
-            <LinearGradient colors={[C.background, C.border]} style={[styles.placeholderImage, { height: IMAGE_H }]}>
+            <LinearGradient colors={[C.background, C.border]} style={[styles.placeholderImage, { width: imgW, height: imgH }]}>
               <View style={styles.placeholderIconWrap}>
                 <Ionicons
                   name={productType === "food" ? "restaurant-outline" : productType === "pharmacy" ? "medical-outline" : "basket-outline"}
@@ -889,7 +893,7 @@ function ProductDetailScreenInner() {
                       <TouchableOpacity activeOpacity={0.7}
                         key={rp.id}
                         onPress={() => router.push({ pathname: "/product/[id]", params: { id: rp.id } })}
-                        style={styles.relatedCard}
+                        style={[styles.relatedCard, { width: (imgW - 32 - 10) / 2 }]}
                       >
                         <View style={styles.relatedImg}>
                           {rp.image ? (
@@ -1042,7 +1046,7 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.overlayLight50 },
   dotActive: { backgroundColor: C.surface, width: 20 },
   discountBadge: {
-    position: "absolute", top: 16, left: 16, backgroundColor: C.danger,
+    position: "absolute", bottom: 24, left: 16, backgroundColor: C.danger,
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
   },
   discountTxt: { ...Typ.buttonSmall, fontFamily: Font.bold, color: C.textInverse },

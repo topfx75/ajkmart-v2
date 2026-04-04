@@ -58,6 +58,7 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
+            <input type="text" name="username" autoComplete="username" value="admin" readOnly hidden />
             <div className="space-y-2">
               <label className="text-sm font-semibold text-foreground ml-1">Admin Secret</label>
               <div className="relative">

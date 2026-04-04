@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   setAuthTokenGetter,
   setOnUnauthorized,
@@ -116,6 +117,7 @@ function decodeJwtExp(tok: string): number | null {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<AppUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -240,6 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRefreshTokenGetter(null);
     setOnTokenRefreshed(null);
     setOnUnauthorized(null);
+    queryClient.clear();
   };
 
   /* FIX 4: Keep doLogoutRef always pointing to the latest doLogout */

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 
 export interface AuthUser {
@@ -35,6 +36,7 @@ const Ctx = createContext<AuthCtx>({} as AuthCtx);
 export const useAuth = () => useContext(Ctx);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser]   = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setToken(null);
     setUser(null);
+    queryClient.clear();
   };
 
   const refreshUser = async () => {

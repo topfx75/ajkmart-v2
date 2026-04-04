@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 
 export interface StoreHours { [day: string]: { open: string; close: string; closed?: boolean } }
@@ -34,6 +35,7 @@ const Ctx = createContext<AuthCtx>({} as AuthCtx);
 export const useAuth = () => useContext(Ctx);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser]   = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     else api.clearTokens();
     setToken(null);
     setUser(null);
+    queryClient.clear();
   };
 
   const refreshUser = async () => {

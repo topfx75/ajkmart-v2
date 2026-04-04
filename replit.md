@@ -752,3 +752,31 @@ Auth (OTP send/verify) → Profile (GET/PUT) → Products/Categories/Flash deals
 - **`artifacts/rider-app/src/pages/Home.tsx`**: Pool ride requests show "👥 Pool" badge.
 - **`artifacts/rider-app/src/pages/Active.tsx`**: Active pool rides show "POOL" indicator badge in ride header.
 - Pool fields (`isPoolRide`, `poolGroupId`) included in all ride API responses via `formatRide` spread.
+
+### Security, QA & Stability Audit — Session Fixes
+
+#### Ghost State on Logout (React Query Cache)
+- **`artifacts/ajkmart/context/AuthContext.tsx`**: Added `useQueryClient` import and `queryClient.clear()` call at end of `doLogout()` — ensures all React Query cached data (orders, profile, wishlist etc.) is wiped on logout, preventing stale data from flashing when another session starts.
+- **`artifacts/vendor-app/src/lib/auth.tsx`**: Same fix — `useQueryClient` + `queryClient.clear()` added to `logout()` function.
+- **`artifacts/rider-app/src/lib/auth.tsx`**: Same fix — `useQueryClient` + `queryClient.clear()` added to `logout()` function.
+
+#### Product Detail Discount Badge Position
+- **`artifacts/ajkmart/app/product/[id].tsx`**: Moved `discountBadge` style from `top: 16, left: 16` (overlapping the floating back button) to `bottom: 24, left: 16` (bottom-left of the image carousel, clear of all navigation buttons). Badge now shows correctly below the dot indicators row at a different horizontal position.
+
+#### Admin Panel Password Form Accessibility
+- **`artifacts/admin/src/pages/login.tsx`**: Added a hidden `<input type="text" name="username" autoComplete="username" value="admin" readOnly hidden />` field before the admin secret password input, silencing browser accessibility warnings about password forms without associated username fields.
+
+#### API Security Audit (Verified Correct)
+- All vendor routes protected by `requireRole("vendor", { vendorApprovalCheck: true })` at router level.
+- All rider routes protected by `riderAuth` at router level.
+- All wallet routes use `customerAuth` per-endpoint.
+- Seed routes protected by `adminAuth`.
+- Admin routes protected by `adminAuth` from `admin-shared.ts`.
+- JWT middleware: hard 401 on missing/invalid token, role check, ban check, token version check (session revocation).
+
+#### Screens Audited & Verified Clean
+- Customer app: Home (guest), Mart, Pharmacy, Search, Product Detail, Cart, Food, Ride, Parcel screens — all load correctly, no crashes.
+- Auth gates: Orders, Wallet, Profile properly redirect guests to login.
+- Admin panel: `/dashboard`, `/users`, and all 25+ protected routes redirect to login without token.
+- Vendor app: All routes behind global `!user → <Login />` guard; multi-step registration embedded in Login component.
+- Rider app: `/dashboard` and all routes redirect to login; `/register` and `/forgot-password` are public.
