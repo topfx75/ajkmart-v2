@@ -321,9 +321,9 @@ export function RideTracker({
 
   const status = ride?.status ?? "searching";
   const rideType = ride?.type ?? initialType;
-  const STEPS = ["accepted", "arrived", "in_transit", "completed"];
-  const LABELS = ["Accepted", "Arrived", "On Route", "Done"];
-  const stepIdx = STEPS.indexOf(status);
+  const STEPS = ["pending", "accepted", "arrived", "in_transit", "completed"];
+  const LABELS = ["Pending", "Accepted", "En Route", "Arrived", "Completed"];
+  const stepIdx = STEPS.indexOf(status) !== -1 ? STEPS.indexOf(status) : 1;
   const elapsedStr =
     elapsed < 60
       ? `${elapsed}s`
@@ -2298,6 +2298,25 @@ export function RideTracker({
                             {isLive ? "LIVE" : "LAST KNOWN"}
                           </Text>
                         </View>
+                        {/* Refresh icon button — bottom-right */}
+                        <Pressable
+                          onPress={() => reconnect?.()}
+                          style={{
+                            position: "absolute",
+                            bottom: 10,
+                            right: 10,
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            backgroundColor: "rgba(15,23,42,0.72)",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.15)",
+                          }}
+                        >
+                          <Ionicons name="refresh" size={16} color="#fff" />
+                        </Pressable>
                       </View>
 
                       {/* Distance badge */}
@@ -2375,34 +2394,28 @@ export function RideTracker({
                     <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: C.textMuted }}>Call</Text>
                   </View>
                 )}
-                {ride.riderPhone && (
+                {canCancel && (
                   <View style={{ alignItems: "center", gap: 6 }}>
-                    <Pressable
-                      onPress={() =>
-                        Linking.openURL(
-                          `https://wa.me/92${ride.riderPhone?.replace(/^(\+92|0)/, "") ?? ""}`,
-                        )
-                      }
-                    >
+                    <Pressable onPress={() => setCancelModalTarget({ id: rideId, type: "ride", status: status, fare: ride?.fare, paymentMethod: ride?.paymentMethod, riderAssigned: !!ride?.riderId })}>
                       <LinearGradient
-                        colors={["#25D366", "#1AAB56"]}
+                        colors={["#F43F5E", "#BE123C"]}
                         style={{
                           width: 60,
                           height: 60,
                           borderRadius: 30,
                           alignItems: "center",
                           justifyContent: "center",
-                          shadowColor: "#25D366",
+                          shadowColor: "#F43F5E",
                           shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: 0.35,
+                          shadowOpacity: 0.4,
                           shadowRadius: 8,
                           elevation: 5,
                         }}
                       >
-                        <Ionicons name="logo-whatsapp" size={26} color="#fff" />
+                        <Ionicons name="close" size={26} color="#fff" />
                       </LinearGradient>
                     </Pressable>
-                    <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: C.textMuted }}>WhatsApp</Text>
+                    <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: "#F43F5E" }}>Cancel</Text>
                   </View>
                 )}
                 {sosEnabled && (

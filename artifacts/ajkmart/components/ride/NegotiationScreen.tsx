@@ -306,10 +306,21 @@ export function NegotiationScreen({
     outputRange: [0, 0.5, 1],
   });
 
+  const isDark = colorScheme === "dark";
+  const headerGradient: [string, string] = isDark
+    ? ["#1E293B", "#0F172A"]
+    : ["#1E293B", "#0F172A"];
+  const cardBg = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)";
+  const cardBgBest = isDark ? "rgba(16,185,129,0.12)" : "rgba(16,185,129,0.08)";
+  const cardBorder = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)";
+  const textPrimary = "#fff";
+  const textSecondary = isDark ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.6)";
+  const textMuted = isDark ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.4)";
+
   return (
-    <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
+    <View style={{ flex: 1, backgroundColor: C.background }}>
       <LinearGradient
-        colors={["#1E293B", "#0F172A"]}
+        colors={headerGradient}
         style={{
           position: "absolute",
           left: 0,
@@ -357,7 +368,7 @@ export function NegotiationScreen({
                   style={{
                     fontFamily: "Inter_700Bold",
                     fontSize: 18,
-                    color: "#fff",
+                    color: textPrimary,
                   }}
                 >
                   Live Negotiation
@@ -372,7 +383,7 @@ export function NegotiationScreen({
                 style={{
                   fontFamily: "Inter_400Regular",
                   fontSize: 12,
-                  color: "rgba(255,255,255,0.5)",
+                  color: textSecondary,
                   marginTop: 2,
                 }}
               >
@@ -681,11 +692,11 @@ export function NegotiationScreen({
                     borderRadius: 20,
                     overflow: "hidden",
                     borderWidth: isBestOffer ? 1.5 : 1,
-                    borderColor: isBestOffer ? "rgba(16,185,129,0.45)" : "rgba(255,255,255,0.1)",
+                    borderColor: isBestOffer ? "rgba(16,185,129,0.45)" : cardBorder,
                   }}
                 >
                   <LinearGradient
-                    colors={isBestOffer ? ["rgba(16,185,129,0.12)", "rgba(255,255,255,0.04)"] : ["rgba(255,255,255,0.07)", "rgba(255,255,255,0.03)"]}
+                    colors={isBestOffer ? [cardBgBest, "rgba(255,255,255,0.04)"] : [cardBg, "rgba(255,255,255,0.03)"]}
                     style={{ padding: 18 }}
                   >
                     {isBestOffer && (
@@ -747,7 +758,7 @@ export function NegotiationScreen({
                           style={{
                             fontFamily: "Inter_700Bold",
                             fontSize: 16,
-                            color: "#fff",
+                            color: textPrimary,
                           }}
                         >
                           {bid.riderName}
@@ -760,21 +771,21 @@ export function NegotiationScreen({
                                 {bid.ratingAvg.toFixed(1)}
                               </Text>
                               {(bid.totalRides ?? 0) > 0 && (
-                                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+                                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: textMuted }}>
                                   · {bid.totalRides}
                                 </Text>
                               )}
                             </View>
                           )}
                           {bid.vehiclePlate && (
-                            <View style={{ backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3, borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" }}>
+                            <View style={{ backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3, borderWidth: 1, borderColor: cardBorder }}>
                               <Text style={{ fontFamily: "Inter_700Bold", fontSize: 10, color: "rgba(255,255,255,0.75)", letterSpacing: 1 }}>
                                 {bid.vehiclePlate}
                               </Text>
                             </View>
                           )}
                           {bid.vehicleType && (
-                            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
+                            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: textMuted }}>
                               {bid.vehicleType}
                             </Text>
                           )}
@@ -784,7 +795,7 @@ export function NegotiationScreen({
                             style={{
                               fontFamily: "Inter_400Regular",
                               fontSize: 12,
-                              color: "rgba(255,255,255,0.5)",
+                              color: textSecondary,
                               marginTop: 4,
                               fontStyle: "italic",
                             }}
@@ -793,7 +804,7 @@ export function NegotiationScreen({
                           </Text>
                         ) : null}
                         {bid.ratingAvg == null && bid.totalRides === 0 && (
-                          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>
+                          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: textMuted, marginTop: 2 }}>
                             New rider
                           </Text>
                         )}
@@ -911,11 +922,11 @@ export function NegotiationScreen({
             borderRadius: 18,
             overflow: "hidden",
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: cardBorder,
           }}
         >
           <LinearGradient
-            colors={["rgba(255,255,255,0.07)", "rgba(255,255,255,0.03)"]}
+            colors={[cardBg, "rgba(255,255,255,0.03)"]}
             style={{ overflow: "hidden" }}
           >
             <Pressable
@@ -955,7 +966,7 @@ export function NegotiationScreen({
                   style={{
                     fontFamily: "Inter_600SemiBold",
                     fontSize: 14,
-                    color: "rgba(255,255,255,0.9)",
+                    color: textPrimary,
                   }}
                 >
                   Update Your Offer
@@ -997,7 +1008,7 @@ export function NegotiationScreen({
                   style={{
                     fontFamily: "Inter_400Regular",
                     fontSize: 12,
-                    color: "rgba(255,255,255,0.4)",
+                    color: textMuted,
                   }}
                 >
                   A new offer cancels all pending bids · Min: Rs. {minCounterOffer}
@@ -1005,7 +1016,7 @@ export function NegotiationScreen({
 
                 {/* Range indicator */}
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: textMuted }}>
                     Rs. {minCounterOffer}
                   </Text>
                   <View style={{ flex: 1, height: 3, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 2 }}>
@@ -1016,7 +1027,7 @@ export function NegotiationScreen({
                       borderRadius: 2,
                     }} />
                   </View>
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: "rgba(255,255,255,0.35)" }}>
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: textMuted }}>
                     Rs. {Math.ceil(offeredFare * 1.5)}
                   </Text>
                 </View>
