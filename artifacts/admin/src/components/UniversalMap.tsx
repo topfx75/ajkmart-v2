@@ -265,6 +265,139 @@ function MapboxMap(props: UniversalMapProps) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   GOOGLE MAPS JS IMPLEMENTATION — loads Maps JS API via dynamic script tag
+   Uses @googlemaps/js-api-loader so the API script is fetched lazily only
+   when Google is configured as primary provider.
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Typed surfaces needed after the Google Maps JS API script loads.
+   We use local interfaces instead of depending on @types/google.maps so
+   the build doesn't require the types package at compile time. */
+interface GmLatLng { lat: number; lng: number }
+interface GmMapInstance {
+  panTo(pos: GmLatLng): void;
+  setZoom(z: number): void;
+}
+interface GmMarkerInstance {
+  setMap(m: GmMapInstance | null): void;
+  addListener(event: string, fn: () => void): void;
+}
+interface GmPolylineInstance {
+  setMap(m: GmMapInstance | null): void;
+}
+
+/* Module-level singleton — Google Maps JS script must only be loaded once per page */
+let gmLoaderPromise: Promise<void> | null = null;
+
+type LoaderWithLoad = { load(): Promise<void> };
+
+function ensureGoogleMapsLoaded(apiKey: string): Promise<void> {
+  if (gmLoaderPromise) return gmLoaderPromise;
+  gmLoaderPromise = import("@googlemaps/js-api-loader").then(({ Loader }) => {
+    const loader: LoaderWithLoad = new Loader({ apiKey, version: "weekly", libraries: ["maps", "marker"] }) as LoaderWithLoad;
+    return loader.load();
+  });
+  return gmLoaderPromise;
+}
+
+/* Returns the global google.maps namespace (populated after loader.load() resolves) */
+function getGmNS() {
+  /* window.google is set by the Google Maps JS API script */
+  return (window as unknown as { google?: { maps: {
+    Map: new (el: HTMLElement, opts: object) => GmMapInstance;
+    Marker: new (opts: object) => GmMarkerInstance;
+    Polyline: new (opts: object) => GmPolylineInstance;
+  } } }).google?.maps;
+}
+
+function GoogleMap({ token = "", center, zoom = 12, markers = [], polylines = [], style, className }: UniversalMapProps) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<GmMapInstance | null>(null);
+  const gmMarkersRef = useRef<GmMarkerInstance[]>([]);
+  const gmPolylinesRef = useRef<GmPolylineInstance[]>([]);
+  const [gmReady, setGmReady] = useState(false);
+
+  /* Load Google Maps JS API script and initialise map */
+  useEffect(() => {
+    if (!token || !mapRef.current) return;
+    let cancelled = false;
+
+    ensureGoogleMapsLoaded(token).then(() => {
+      if (cancelled || !mapRef.current) return;
+      const gm = getGmNS();
+      if (!gm) return;
+      if (!mapInstanceRef.current) {
+        mapInstanceRef.current = new gm.Map(mapRef.current, {
+          center: { lat: center[0], lng: center[1] },
+          zoom,
+          mapTypeId: "roadmap",
+          fullscreenControl: false,
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+      }
+      setGmReady(true);
+    }).catch(() => { /* loader failure — token invalid or network error */ });
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  /* Update center when props change */
+  useEffect(() => {
+    mapInstanceRef.current?.panTo({ lat: center[0], lng: center[1] });
+  }, [center]);
+
+  /* Sync markers whenever gmReady or markers list changes */
+  useEffect(() => {
+    if (!gmReady) return;
+    const gm = getGmNS();
+    const map = mapInstanceRef.current;
+    if (!gm || !map) return;
+    gmMarkersRef.current.forEach(m => m.setMap(null));
+    gmMarkersRef.current = markers.map(m => {
+      const marker = new gm.Marker({
+        position: { lat: m.lat, lng: m.lng },
+        map,
+        label: m.label ? { text: m.label.slice(0, 1), fontSize: "10px", fontWeight: "700", color: "#fff" } : undefined,
+        title: m.label,
+        opacity: m.dimmed ? 0.5 : 1,
+      });
+      if (m.onClick) marker.addListener("click", m.onClick);
+      return marker;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmReady, markers]);
+
+  /* Sync polylines */
+  useEffect(() => {
+    if (!gmReady) return;
+    const gm = getGmNS();
+    const map = mapInstanceRef.current;
+    if (!gm || !map) return;
+    gmPolylinesRef.current.forEach(p => p.setMap(null));
+    gmPolylinesRef.current = polylines.map(p => new gm.Polyline({
+      path: p.positions.map(([lat, lng]) => ({ lat, lng })),
+      map,
+      strokeColor: p.color ?? "#6366f1",
+      strokeWeight: p.weight ?? 2.5,
+      strokeOpacity: p.opacity ?? 0.7,
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmReady, polylines]);
+
+  if (!token) {
+    return (
+      <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fa", color: "#6b7280", fontSize: 13 }} className={className}>
+        Google Maps API key not configured
+      </div>
+    );
+  }
+
+  return <div ref={mapRef} style={style ?? { width: "100%", height: "100%" }} className={className} />;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    PUBLIC EXPORT — switches between implementations
 ══════════════════════════════════════════════════════════════════════════ */
 
@@ -272,6 +405,9 @@ export default function UniversalMap(props: UniversalMapProps) {
   if (props.provider === "mapbox" && props.token) {
     return <MapboxMap {...props} />;
   }
-  /* OSM and Google both use Leaflet (Google: different tile URL, same API) */
+  if (props.provider === "google") {
+    return <GoogleMap {...props} />;
+  }
+  /* OSM uses Leaflet */
   return <LeafletMap {...props} />;
 }

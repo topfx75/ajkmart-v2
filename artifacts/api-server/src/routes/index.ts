@@ -21,7 +21,7 @@ import vendorRouter from "./vendor.js";
 import paymentsRouter from "./payments.js";
 import reviewsRouter from "./reviews.js";
 import systemRouter from "./system.js";
-import mapsRouter from "./maps.js";
+import mapsRouter, { adminMapsRouter } from "./maps.js";
 import schoolRouter from "./school.js";
 import uploadsRouter from "./uploads.js";
 import sosRouter from "./sos.js";
@@ -58,6 +58,10 @@ router.use("/vendor", vendorRouter);
 router.use("/payments", paymentsRouter);
 router.use("/reviews", reviewsRouter);
 router.use("/maps", mapsRouter);
+/* /api/admin/maps/{test|usage|cache/clear} — dedicated admin maps router
+   so admin clients using the /api/admin prefix reach the right handlers.
+   These endpoints match the task's required contract exactly. */
+router.use("/admin/maps", adminMapsRouter);
 router.use("/school", schoolRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/sos", sosRouter);

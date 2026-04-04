@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useLiveRiders, usePlatformSettings, useRiderRoute, useCustomerLocations } from "@/hooks/use-admin";
+import { useLiveRiders, usePlatformSettings, useRiderRoute, useCustomerLocations, useRiderTrailsBatch } from "@/hooks/use-admin";
 import { MapPin, RefreshCw, Users, Navigation, Route, Clock, Eye, EyeOff, AlertTriangle, MessageSquare, BarChart2, Activity, TrendingUp, X, History } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Slider } from "@/components/ui/slider";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Circle } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import UniversalMap, { type MapMarkerData, type MapPolylineData } from "@/components/UniversalMap";
 import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { io, type Socket } from "socket.io-client";
 import { fetcher } from "@/lib/api";
@@ -225,12 +226,33 @@ interface MapConfig {
   token: string;
   secondaryProvider: string;
   secondaryToken: string;
+  failoverEnabled?: boolean;
   searchProvider: string;
   searchToken: string;
   routingProvider: string;
+  routingEngine?: string;
   enabled: boolean;
   defaultLat: number;
   defaultLng: number;
+  appOverrides?: {
+    admin?: { provider: string; token: string; override: string };
+    customer?: { provider: string; token: string; override: string };
+    rider?: { provider: string; token: string; override: string };
+    vendor?: { provider: string; token: string; override: string };
+  };
+  providers?: {
+    osm?:    { enabled: boolean; role: string; lastTested: string | null; testStatus: string };
+    mapbox?: { enabled: boolean; role: string; lastTested: string | null; testStatus: string };
+    google?: { enabled: boolean; role: string; lastTested: string | null; testStatus: string };
+  };
+}
+
+/* ── Resolve admin-specific provider from config (respects per-app override) ── */
+function resolveAdminProvider(config: MapConfig | undefined): { provider: string; token: string } {
+  if (!config) return { provider: "osm", token: "" };
+  const adminOverride = config.appOverrides?.admin;
+  if (adminOverride && adminOverride.provider) return { provider: adminOverride.provider, token: adminOverride.token };
+  return { provider: config.provider ?? "osm", token: config.token ?? "" };
 }
 
 /* ── DynamicTileLayer — renders primary tile provider and auto-falls-over to
@@ -241,12 +263,14 @@ function DynamicTileLayer({ config }: { config: MapConfig | undefined }) {
   const errorCount = useRef(0);
   const ERROR_THRESHOLD = 3; /* switch after 3 consecutive tile errors */
 
+  /* Use admin-specific override if configured; otherwise fall back to global primary */
+  const adminProv  = resolveAdminProvider(config);
   const provider = useFallback
     ? (config?.secondaryProvider ?? "osm")
-    : (config?.provider ?? "osm");
+    : adminProv.provider;
   const token = useFallback
     ? (config?.secondaryToken ?? "")
-    : (config?.token ?? "");
+    : adminProv.token;
 
   /* Reset fallback state when provider config changes */
   useEffect(() => {
@@ -269,13 +293,15 @@ function DynamicTileLayer({ config }: { config: MapConfig | undefined }) {
   }, [provider]);
 
   const handleTileError = useCallback(() => {
+    /* Only attempt failover if the admin has enabled it */
+    if (!config?.failoverEnabled) return;
     errorCount.current += 1;
     if (!useFallback && errorCount.current >= ERROR_THRESHOLD) {
       console.warn(`[Map] Primary provider "${provider}" failed ${ERROR_THRESHOLD}x — falling back to "${config?.secondaryProvider ?? "osm"}"`);
       setUseFallback(true);
       errorCount.current = 0;
     }
-  }, [useFallback, provider, config?.secondaryProvider]);
+  }, [useFallback, provider, config?.secondaryProvider, config?.failoverEnabled]);
 
   return (
     <TileLayer
@@ -412,6 +438,78 @@ function AnimatedMarker({
     >
       {children}
     </Marker>
+  );
+}
+
+/* ── LiveMapRenderer — dynamic provider rendering that switches map engine.
+   • mapbox  → UniversalMap (Mapbox GL JS / react-map-gl) — normalised markers/polylines
+   • google  → UniversalMap (Google Maps JS API / @googlemaps/js-api-loader) — normalised
+   • osm     → Leaflet MapContainer with DynamicTileLayer — full overlay feature set
+   For Mapbox/Google paths, overlays are passed as normalised MapMarkerData/MapPolylineData.
+   For OSM, the full Leaflet children (trails, SOS, customer pins, replay, popups) are used. ── */
+interface LiveMapRendererProps {
+  mapConfig: MapConfig | undefined;
+  adminProvider: string;
+  adminToken: string;
+  defaultLat: number;
+  defaultLng: number;
+  /** Normalised markers for Mapbox GL JS / Google Maps JS paths */
+  nativeMarkers?: MapMarkerData[];
+  /** Normalised polylines for Mapbox GL JS / Google Maps JS paths */
+  nativePolylines?: MapPolylineData[];
+  /** Leaflet children — used only on OSM path for full feature set */
+  leafletChildren: React.ReactNode;
+  style?: React.CSSProperties;
+}
+
+function LiveMapRenderer({
+  mapConfig,
+  adminProvider,
+  adminToken,
+  defaultLat,
+  defaultLng,
+  nativeMarkers = [],
+  nativePolylines = [],
+  leafletChildren,
+  style = { width: "100%", height: "100%" },
+}: LiveMapRendererProps) {
+  /* ── Mapbox GL JS path — uses react-map-gl for vector tiles ── */
+  if (adminProvider === "mapbox" && adminToken) {
+    return (
+      <UniversalMap
+        provider="mapbox"
+        token={adminToken}
+        center={[defaultLat, defaultLng]}
+        zoom={12}
+        markers={nativeMarkers}
+        polylines={nativePolylines}
+        style={style}
+      />
+    );
+  }
+
+  /* ── Google Maps JS API path — uses @googlemaps/js-api-loader ── */
+  if (adminProvider === "google" && adminToken) {
+    return (
+      <UniversalMap
+        provider="google"
+        token={adminToken}
+        center={[defaultLat, defaultLng]}
+        zoom={12}
+        markers={nativeMarkers}
+        polylines={nativePolylines}
+        style={style}
+      />
+    );
+  }
+
+  /* ── OSM path — Leaflet MapContainer with full overlay feature set ──
+     DynamicTileLayer handles tile URL switching and failover. ── */
+  return (
+    <MapContainer center={[defaultLat, defaultLng]} zoom={12} style={style}>
+      <DynamicTileLayer config={mapConfig} />
+      {leafletChildren}
+    </MapContainer>
   );
 }
 
@@ -650,7 +748,7 @@ export default function LiveRidersMap() {
     queryKey: ["map-config"],
     queryFn: async (): Promise<MapConfig | undefined> => {
       try {
-        const res = await fetch(`${window.location.origin}/api/maps/config`);
+        const res = await fetch(`${window.location.origin}/api/maps/config?app=admin`);
         if (!res.ok) return undefined;
         const json = await res.json();
         return (json.data ?? json) as MapConfig;
@@ -664,6 +762,15 @@ export default function LiveRidersMap() {
 
   const { data: routeData } = useRiderRoute(selectedId, routeDate);
   const { data: customerData } = useCustomerLocations();
+
+  /* Resolved admin-specific provider — used by LiveMapRenderer to pick the right engine */
+  const adminMapProv = useMemo(() => resolveAdminProvider(mapConfigData), [mapConfigData]);
+
+  /* Batch trail fetching for Mapbox/Google native paths — mirrors RiderTrailOverlay behavior */
+  const trailRiderIds = useMemo(() => Array.from(trailSet), [trailSet]);
+  const riderTrails = useRiderTrailsBatch(
+    adminMapProv.provider === "mapbox" || adminMapProv.provider === "google" ? trailRiderIds : []
+  );
 
   const routePoints: RoutePoint[] = routeData?.route ?? [];
   const sliderMax = Math.max(0, routePoints.length - 1);
@@ -1009,6 +1116,75 @@ export default function LiveRidersMap() {
   const loginPoint = routePoints[0] ?? null;
   const replayPoint = visibleRoute[visibleRoute.length - 1] ?? null;
 
+  /* nativeMarkers / nativePolylines — normalized overlay data for Mapbox GL JS / Google Maps JS paths.
+     Only computed when adminProvider requires it; OSM path uses Leaflet children directly. */
+  const nativeMarkers = useMemo<MapMarkerData[]>(() => {
+    if (adminMapProv.provider !== "mapbox" && adminMapProv.provider !== "google") return [];
+    const ms: MapMarkerData[] = [];
+
+    for (const rider of filteredRiders) {
+      const status = getRiderStatus(rider);
+      const color = status === "busy" ? "#ef4444" : status === "online" ? "#22c55e" : "#9ca3af";
+      const emoji = rider.vehicleType === "bicycle" ? "🚲" : rider.vehicleType === "motorcycle" ? "🏍️" : "🚗";
+      ms.push({
+        id: rider.userId, lat: rider.lat, lng: rider.lng, label: rider.name, dimmed: status === "offline",
+        iconHtml: `<div style="width:28px;height:28px;background:${color};border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-size:13px">${emoji}</div>`,
+        iconSize: 28,
+        onClick: () => setSelectedId(rider.userId),
+      });
+    }
+
+    if (showCustomers) {
+      for (const c of customers) {
+        ms.push({
+          id: `cust-${c.userId}`, lat: c.lat, lng: c.lng, label: c.name ?? "Customer",
+          iconHtml: `<div style="width:22px;height:22px;background:#3b82f6;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:11px">👤</div>`,
+          iconSize: 22,
+        });
+      }
+    }
+
+    for (const sos of sosAlerts) {
+      if (sos.latitude == null || sos.longitude == null) continue;
+      ms.push({
+        id: `sos-${sos.userId}`, lat: sos.latitude, lng: sos.longitude, label: `SOS: ${sos.name}`,
+        iconHtml: `<div style="width:28px;height:28px;background:#ef4444;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:13px">🆘</div>`,
+        iconSize: 28,
+      });
+    }
+
+    if (selectedId && loginPoint) {
+      ms.push({
+        id: "login-pin", lat: loginPoint.latitude, lng: loginPoint.longitude, label: "Login",
+        iconHtml: `<div style="width:22px;height:22px;background:#6366f1;border:2px solid white;border-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:11px">📍</div>`,
+        iconSize: 22,
+      });
+    }
+
+    if (selectedId && replayPoint && sliderVal < 100) {
+      ms.push({
+        id: "replay-pin", lat: replayPoint.latitude, lng: replayPoint.longitude,
+        iconHtml: `<div style="width:18px;height:18px;background:#6366f1;border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
+        iconSize: 18,
+      });
+    }
+
+    return ms;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminMapProv.provider, filteredRiders, customers, showCustomers, sosAlerts, selectedId, loginPoint, replayPoint, sliderVal]);
+
+  const nativePolylines = useMemo<MapPolylineData[]>(() => {
+    if (adminMapProv.provider !== "mapbox" && adminMapProv.provider !== "google") return [];
+    const pls: MapPolylineData[] = [];
+    if (selectedId && polylinePositions.length > 1) {
+      pls.push({ id: "route", positions: polylinePositions, color: "#6366f1", weight: 3, opacity: 0.75 });
+    }
+    for (const trail of riderTrails) {
+      pls.push({ id: `trail-${trail.riderId}`, positions: trail.points, color: "#6366f1", weight: 2.5, opacity: 0.7, dashArray: "6,4" });
+    }
+    return pls;
+  }, [adminMapProv.provider, selectedId, polylinePositions, riderTrails]);
+
   /* Send admin chat message */
   const sendChatMessage = (riderId: string) => {
     if (!chatInput.trim() || !socketRef.current) return;
@@ -1224,146 +1400,140 @@ export default function LiveRidersMap() {
                     </div>
                   </div>
                 ) : (
-                  <MapContainer
-                    center={[defaultLat, defaultLng]}
-                    zoom={12}
+                  <LiveMapRenderer
+                    mapConfig={mapConfigData}
+                    adminProvider={adminMapProv.provider}
+                    adminToken={adminMapProv.token}
+                    defaultLat={defaultLat}
+                    defaultLng={defaultLng}
+                    nativeMarkers={nativeMarkers}
+                    nativePolylines={nativePolylines}
                     style={{ width: "100%", height: "100%" }}
-                  >
-                    {/* Dynamic tile layer — reads primary/secondary provider from /api/maps/config.
-                        Auto-fails over to secondary after 3 tile errors (bad key, quota, etc.) */}
-                    <DynamicTileLayer config={mapConfigData} />
-                    <FitBoundsOnLoad
-                      riders={riders}
-                      customers={customers}
-                      defaultLat={defaultLat}
-                      defaultLng={defaultLng}
-                    />
+                    leafletChildren={
+                      <>
+                        <FitBoundsOnLoad
+                          riders={riders}
+                          customers={customers}
+                          defaultLat={defaultLat}
+                          defaultLng={defaultLng}
+                        />
 
-                    {/* Per-rider persisted trail polylines — shown when trail toggle is on */}
-                    {filteredRiders
-                      .filter(r => trailSet.has(r.userId))
-                      .map(r => (
-                        <RiderTrailOverlay key={`trail-${r.userId}`} userId={r.userId} />
-                      ))}
+                        {filteredRiders
+                          .filter(r => trailSet.has(r.userId))
+                          .map(r => (
+                            <RiderTrailOverlay key={`trail-${r.userId}`} userId={r.userId} />
+                          ))}
 
-                    {/* Rider markers — AnimatedMarker smoothly tweens position over 1.2s
-                        Uses filteredRiders so map and sidebar list are always in sync */}
-                    {filteredRiders.map(rider => {
-                      const status = getRiderStatus(rider);
-                      const stale = isGpsStale(rider, offlineAfterSec);
-                      return (
-                        <AnimatedMarker
-                          key={rider.userId}
-                          position={[rider.lat, rider.lng]}
-                          icon={riderIconMap.get(rider.userId)!}
-                          onClick={() => setSelectedId(rider.userId)}
-                        >
-                          <Popup maxWidth={230}>
-                            <div style={{ fontFamily: "sans-serif", minWidth: 180 }}>
-                              <p style={{ fontWeight: 700, margin: "0 0 4px" }}>{riderDisplayName(rider)}</p>
-                              <p style={{ color: "#6b7280", fontSize: 12, margin: 0 }}>
-                                {rider.phone || "No phone"}{rider.vehicleType ? ` · ${getVehicleEmoji(rider.vehicleType)} ${rider.vehicleType}` : ""}
-                              </p>
-                              {/* Role badge */}
-                              {rider.role && rider.role !== "rider" && (
-                                <p style={{ fontSize: 10, margin: "2px 0 0", color: "#7c3aed", fontWeight: 600, textTransform: "capitalize" }}>
-                                  ⚙ {rider.role.replace(/_/g, " ")}
-                                </p>
-                              )}
-                              <p style={{ fontSize: 11, margin: "4px 0 0", color: status === "online" ? "#22c55e" : status === "busy" ? "#ef4444" : "#9ca3af" }}>
-                                ● {status === "online" ? "Online" : status === "busy" ? "Busy / On Trip" : "Offline"} · {fd(rider.updatedAt)}
-                              </p>
-                              {/* Last Active timestamp — shown for offline riders so admin knows when they were last seen */}
-                              {status === "offline" && rider.lastActive && (
-                                <p style={{ fontSize: 10, margin: "2px 0 0", color: "#6b7280" }}>
-                                  🕐 Last Active: {fd(rider.lastActive)}
-                                </p>
-                              )}
-                              {rider.currentTripId && (
-                                <p style={{ fontSize: 10, margin: "2px 0 0", color: "#ef4444", fontWeight: 600 }}>
-                                  🚗 Trip: {rider.currentTripId.slice(0, 12)}…
-                                </p>
-                              )}
-                              {stale && status !== "offline" && (
-                                <p style={{ fontSize: 10, margin: "2px 0 0", color: "#f59e0b" }}>⚠ GPS stale — last ping {fd(rider.updatedAt)}</p>
-                              )}
-                              {/* City if available */}
-                              {rider.city && (
-                                <p style={{ fontSize: 10, margin: "3px 0 0", color: "#9ca3af" }}>📍 {rider.city}</p>
-                              )}
-                            </div>
-                          </Popup>
-                        </AnimatedMarker>
-                      );
-                    })}
-
-                    {/* Customer markers */}
-                    {showCustomers && customers.map(c => (
-                      <Marker
-                        key={c.userId}
-                        position={[c.lat, c.lng]}
-                        icon={customerIconMap.get(c.userId)!}
-                      >
-                        <Popup maxWidth={160}>
-                          <div style={{ fontFamily: "sans-serif" }}>
-                            <p style={{ fontWeight: 700, margin: "0 0 2px" }}>{c.name || "Customer"}</p>
-                            <p style={{ fontSize: 11, color: "#3b82f6", margin: 0 }}>👤 Active · {fd(c.updatedAt)}</p>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
-
-                    {/* SOS markers on map — only render when location is known */}
-                    {sosAlerts.filter(sos => sos.latitude != null && sos.longitude != null).map(sos => (
-                      <Marker
-                        key={`sos-${sos.userId}`}
-                        position={[sos.latitude!, sos.longitude!]}
-                        icon={makeSOSIcon()}
-                      >
-                        <Popup maxWidth={200}>
-                          <div style={{ fontFamily: "sans-serif" }}>
-                            <p style={{ fontWeight: 700, color: "#ef4444", margin: "0 0 4px" }}>🆘 SOS — {sos.name}</p>
-                            {sos.phone && <p style={{ fontSize: 12, margin: 0 }}>{sos.phone}</p>}
-                            <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0" }}>{fd(sos.sentAt)}</p>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
-
-                    {/* Selected rider route playback */}
-                    {selectedRider && polylinePositions.length > 1 && (
-                      <Polyline positions={polylinePositions} color="#6366f1" weight={3} opacity={0.75} />
-                    )}
-
-                    {/* Login location pin */}
-                    {selectedRider && loginPoint && (
-                      <Marker position={[loginPoint.latitude, loginPoint.longitude]} icon={makeLoginIcon()}>
-                        <Popup>
-                          <div style={{ fontFamily: "sans-serif" }}>
-                            <p style={{ fontWeight: 700, margin: "0 0 2px" }}>Login Location</p>
-                            <p style={{ fontSize: 11, color: "#6366f1", margin: 0 }}>{new Date(loginPoint.createdAt).toLocaleTimeString()}</p>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    )}
-
-                    {/* Replay scrub position */}
-                    {selectedRider && replayPoint && sliderVal < 100 && (
-                      <Marker
-                        position={[replayPoint.latitude, replayPoint.longitude]}
-                        icon={L.divIcon({
-                          html: `<div style="width:18px;height:18px;background:#6366f1;border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
-                          className: "",
-                          iconSize: [18, 18],
-                          iconAnchor: [9, 9],
+                        {filteredRiders.map(rider => {
+                          const status = getRiderStatus(rider);
+                          const stale = isGpsStale(rider, offlineAfterSec);
+                          return (
+                            <AnimatedMarker
+                              key={rider.userId}
+                              position={[rider.lat, rider.lng]}
+                              icon={riderIconMap.get(rider.userId)!}
+                              onClick={() => setSelectedId(rider.userId)}
+                            >
+                              <Popup maxWidth={230}>
+                                <div style={{ fontFamily: "sans-serif", minWidth: 180 }}>
+                                  <p style={{ fontWeight: 700, margin: "0 0 4px" }}>{riderDisplayName(rider)}</p>
+                                  <p style={{ color: "#6b7280", fontSize: 12, margin: 0 }}>
+                                    {rider.phone || "No phone"}{rider.vehicleType ? ` · ${getVehicleEmoji(rider.vehicleType)} ${rider.vehicleType}` : ""}
+                                  </p>
+                                  {rider.role && rider.role !== "rider" && (
+                                    <p style={{ fontSize: 10, margin: "2px 0 0", color: "#7c3aed", fontWeight: 600, textTransform: "capitalize" }}>
+                                      ⚙ {rider.role.replace(/_/g, " ")}
+                                    </p>
+                                  )}
+                                  <p style={{ fontSize: 11, margin: "4px 0 0", color: status === "online" ? "#22c55e" : status === "busy" ? "#ef4444" : "#9ca3af" }}>
+                                    ● {status === "online" ? "Online" : status === "busy" ? "Busy / On Trip" : "Offline"} · {fd(rider.updatedAt)}
+                                  </p>
+                                  {status === "offline" && rider.lastActive && (
+                                    <p style={{ fontSize: 10, margin: "2px 0 0", color: "#6b7280" }}>
+                                      🕐 Last Active: {fd(rider.lastActive)}
+                                    </p>
+                                  )}
+                                  {rider.currentTripId && (
+                                    <p style={{ fontSize: 10, margin: "2px 0 0", color: "#ef4444", fontWeight: 600 }}>
+                                      🚗 Trip: {rider.currentTripId.slice(0, 12)}…
+                                    </p>
+                                  )}
+                                  {stale && status !== "offline" && (
+                                    <p style={{ fontSize: 10, margin: "2px 0 0", color: "#f59e0b" }}>⚠ GPS stale — last ping {fd(rider.updatedAt)}</p>
+                                  )}
+                                  {rider.city && (
+                                    <p style={{ fontSize: 10, margin: "3px 0 0", color: "#9ca3af" }}>📍 {rider.city}</p>
+                                  )}
+                                </div>
+                              </Popup>
+                            </AnimatedMarker>
+                          );
                         })}
-                      >
-                        <Popup>
-                          <p style={{ fontFamily: "sans-serif", fontSize: 11 }}>{new Date(replayPoint.createdAt).toLocaleTimeString()}</p>
-                        </Popup>
-                      </Marker>
-                    )}
-                  </MapContainer>
+
+                        {showCustomers && customers.map(c => (
+                          <Marker
+                            key={c.userId}
+                            position={[c.lat, c.lng]}
+                            icon={customerIconMap.get(c.userId)!}
+                          >
+                            <Popup maxWidth={160}>
+                              <div style={{ fontFamily: "sans-serif" }}>
+                                <p style={{ fontWeight: 700, margin: "0 0 2px" }}>{c.name || "Customer"}</p>
+                                <p style={{ fontSize: 11, color: "#3b82f6", margin: 0 }}>👤 Active · {fd(c.updatedAt)}</p>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        ))}
+
+                        {sosAlerts.filter(sos => sos.latitude != null && sos.longitude != null).map(sos => (
+                          <Marker
+                            key={`sos-${sos.userId}`}
+                            position={[sos.latitude!, sos.longitude!]}
+                            icon={makeSOSIcon()}
+                          >
+                            <Popup maxWidth={200}>
+                              <div style={{ fontFamily: "sans-serif" }}>
+                                <p style={{ fontWeight: 700, color: "#ef4444", margin: "0 0 4px" }}>🆘 SOS — {sos.name}</p>
+                                {sos.phone && <p style={{ fontSize: 12, margin: 0 }}>{sos.phone}</p>}
+                                <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0" }}>{fd(sos.sentAt)}</p>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        ))}
+
+                        {selectedRider && polylinePositions.length > 1 && (
+                          <Polyline positions={polylinePositions} color="#6366f1" weight={3} opacity={0.75} />
+                        )}
+
+                        {selectedRider && loginPoint && (
+                          <Marker position={[loginPoint.latitude, loginPoint.longitude]} icon={makeLoginIcon()}>
+                            <Popup>
+                              <div style={{ fontFamily: "sans-serif" }}>
+                                <p style={{ fontWeight: 700, margin: "0 0 2px" }}>Login Location</p>
+                                <p style={{ fontSize: 11, color: "#6366f1", margin: 0 }}>{new Date(loginPoint.createdAt).toLocaleTimeString()}</p>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        )}
+
+                        {selectedRider && replayPoint && sliderVal < 100 && (
+                          <Marker
+                            position={[replayPoint.latitude, replayPoint.longitude]}
+                            icon={L.divIcon({
+                              html: `<div style="width:18px;height:18px;background:#6366f1;border:2px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
+                              className: "",
+                              iconSize: [18, 18],
+                              iconAnchor: [9, 9],
+                            })}
+                          >
+                            <Popup>
+                              <p style={{ fontFamily: "sans-serif", fontSize: 11 }}>{new Date(replayPoint.createdAt).toLocaleTimeString()}</p>
+                            </Popup>
+                          </Marker>
+                        )}
+                      </>
+                    }
+                  />
                 )}
 
                 {/* ── History Playback floating control — appears over the map when a rider is selected ── */}

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Toggle, Field, SecretInput, SLabel } from "@/components/AdminShared";
+import { MapsMgmtSection } from "@/components/MapsMgmtSection";
 
 /* ─── Integrations Section ───────────────────────────────────────────────── */
 type IntTab = "firebase" | "sms" | "email" | "whatsapp" | "analytics" | "sentry" | "maps";
@@ -517,158 +518,30 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
         </IntCard>
       )}
 
-      {/* ─── Map & API Settings ─── */}
+      {/* ─── Maps Management ─── */}
       {intTab === "maps" && (
-        <IntCard title="Map & API Settings" emoji="🗺️" description="Visual map provider, search API, and routing engine — all DB-managed, never hardcoded"
-          enableKey="integration_maps" localValues={localValues} dirtyKeys={dirtyKeys} handleToggle={handleToggle} configured={mapsConfigured}>
-          <div className="space-y-6">
-
-            {/* ── 1. Active Map Provider ── */}
-            <div>
-              <SLabel icon={MapPin}>Active Map Provider</SLabel>
-              <p className="text-xs text-muted-foreground mt-1 mb-3">Controls which tile/SDK renders the Admin Fleet Map and customer-facing maps. API keys are served securely from the backend — never embedded in build files.</p>
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  { v: "osm",    label: "OpenStreetMap", sub: "Free, no key needed", color: "border-green-400 bg-green-50 text-green-800" },
-                  { v: "mapbox", label: "Mapbox GL JS",  sub: "Vector tiles, requires token", color: "border-blue-400 bg-blue-50 text-blue-800" },
-                  { v: "google", label: "Google Maps",   sub: "Requires Maps JS API key", color: "border-red-400 bg-red-50 text-red-800" },
-                ].map(({ v, label, sub, color }) => {
-                  const active = (val("map_provider") || "osm") === v;
-                  return (
-                    <button key={v} onClick={() => handleChange("map_provider", v)}
-                      className={`flex-1 min-w-[140px] rounded-xl border-2 p-3 text-left transition-all ${active ? color + " shadow-sm" : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40"} ${dirty("map_provider") && active ? "ring-2 ring-amber-300" : ""}`}>
-                      <div className="font-bold text-xs">{label}</div>
-                      <div className="text-[10px] mt-0.5 opacity-70">{sub}</div>
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Provider-specific key inputs */}
-              <div className="mt-4 space-y-3">
-                {(val("map_provider") || "osm") === "mapbox" && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-3">
-                    <div className="text-xs text-blue-800 flex gap-2">
-                      <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <div><strong>Mapbox Setup:</strong> Create a token at <span className="font-mono bg-white/70 px-1 rounded">account.mapbox.com</span> → Access Tokens. Enable: <em>styles:read, tiles:read</em>. Restrict to your domain.</div>
-                    </div>
-                    <S label="Mapbox Access Token" k="mapbox_api_key" placeholder="pk.eyJ1Ijoib..." />
-                  </div>
-                )}
-                {(val("map_provider") || "osm") === "google" && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-3">
-                    <div className="text-xs text-red-800 flex gap-2">
-                      <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <div><strong>Google Maps Setup:</strong> Go to <span className="font-mono bg-white/70 px-1 rounded">console.cloud.google.com</span> → APIs & Services → Enable: <em>Maps JavaScript API</em>. Restrict key to your domain.</div>
-                    </div>
-                    <S label="Google Maps API Key" k="maps_api_key" placeholder="AIzaSy..." />
-                  </div>
-                )}
-                {(val("map_provider") || "osm") === "osm" && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 flex gap-2">
-                    <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <div>OpenStreetMap is active — no API key required. Tiles are served by Leaflet with the OSM public tile server.</div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── 2. Search API Provider ── */}
-            <div>
-              <SLabel icon={Globe}>Search / Autocomplete API</SLabel>
-              <p className="text-xs text-muted-foreground mt-1 mb-3">Used for address autocomplete and geocoding when customers search for locations.</p>
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  { v: "google",     label: "Google Places", sub: "Places API key required", color: "border-red-400 bg-red-50 text-red-800" },
-                  { v: "locationiq", label: "LocationIQ",    sub: "Cheaper, AJK-friendly", color: "border-purple-400 bg-purple-50 text-purple-800" },
-                ].map(({ v, label, sub, color }) => {
-                  const active = (val("search_api_provider") || "google") === v;
-                  return (
-                    <button key={v} onClick={() => handleChange("search_api_provider", v)}
-                      className={`flex-1 min-w-[140px] rounded-xl border-2 p-3 text-left transition-all ${active ? color + " shadow-sm" : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40"} ${dirty("search_api_provider") && active ? "ring-2 ring-amber-300" : ""}`}>
-                      <div className="font-bold text-xs">{label}</div>
-                      <div className="text-[10px] mt-0.5 opacity-70">{sub}</div>
-                    </button>
-                  );
-                })}
-              </div>
-              {(val("search_api_provider") || "google") === "google" && (
-                <div className="mt-3 bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-2">
-                  <p className="text-xs text-sky-800">Google Places uses the same API key as Google Maps. Enable <em>Places API &amp; Geocoding API</em> in the Google Cloud Console.</p>
-                  <S label="Google Maps / Places API Key" k="maps_api_key" placeholder="AIzaSy..." />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    <T label="Distance Matrix API" k="maps_distance_matrix" sub="Fare calculation & ETAs" def="on" />
-                    <T label="Places Autocomplete" k="maps_places_autocomplete" sub="Address search" def="on" />
-                    <T label="Geocoding API" k="maps_geocoding" sub="Coordinates ↔ address" def="on" />
-                  </div>
+        <div className="rounded-2xl border-2 border-sky-200 bg-white">
+          <div className="flex items-center justify-between p-4 border-b border-border/50">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🗺️</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-foreground text-sm">Maps Management</h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">● ACTIVE</span>
                 </div>
-              )}
-              {(val("search_api_provider") || "google") === "locationiq" && (
-                <div className="mt-3 bg-purple-50 border border-purple-200 rounded-xl p-3 space-y-2">
-                  <p className="text-xs text-purple-800">LocationIQ is a cost-effective alternative with OpenStreetMap-based geocoding. Get a free key at <span className="font-mono bg-white/70 px-1 rounded">locationiq.com</span>.</p>
-                  <S label="LocationIQ API Key" k="locationiq_api_key" placeholder="pk...." />
-                </div>
-              )}
-            </div>
-
-            {/* ── 3. Routing API Provider ── */}
-            <div>
-              <SLabel icon={Car}>Routing Engine</SLabel>
-              <p className="text-xs text-muted-foreground mt-1 mb-3">Used for fare calculation, ETA estimates, and turn-by-turn directions.</p>
-              <div className="flex gap-2 flex-wrap">
-                {[
-                  { v: "mapbox", label: "Mapbox Directions", sub: "Requires Mapbox token", color: "border-blue-400 bg-blue-50 text-blue-800" },
-                  { v: "google", label: "Google Directions", sub: "Requires Google API key", color: "border-red-400 bg-red-50 text-red-800" },
-                ].map(({ v, label, sub, color }) => {
-                  const active = (val("routing_api_provider") || "mapbox") === v;
-                  return (
-                    <button key={v} onClick={() => handleChange("routing_api_provider", v)}
-                      className={`flex-1 min-w-[140px] rounded-xl border-2 p-3 text-left transition-all ${active ? color + " shadow-sm" : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40"} ${dirty("routing_api_provider") && active ? "ring-2 ring-amber-300" : ""}`}>
-                      <div className="font-bold text-xs">{label}</div>
-                      <div className="text-[10px] mt-0.5 opacity-70">{sub}</div>
-                    </button>
-                  );
-                })}
+                <p className="text-xs text-muted-foreground mt-0.5">Multi-provider map configuration, routing engine, fare settings, usage analytics &amp; geocoding cache</p>
               </div>
             </div>
-
-            {/* ── 4. Maps Usage Toggles ── */}
-            <div>
-              <SLabel icon={ToggleRight}>Maps Usage</SLabel>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                {[
-                  { k: "maps_use_customer_app", label: "Customer App Map",    sub: "Show map on order/ride screens", def: "on" },
-                  { k: "maps_use_rider_app",    label: "Rider Navigation Map",sub: "Live route for riders",          def: "on" },
-                  { k: "maps_use_vendor_app",   label: "Vendor Area Map",     sub: "Delivery zone visualization",    def: "off" },
-                  { k: "maps_live_tracking",    label: "Live Order Tracking", sub: "Customer tracks rider in real time", def: "on" },
-                ].map(({ k, label, sub, def }) => (
-                  <Toggle key={k} label={label} sub={sub} checked={tog(k, def)}
-                    onChange={v => handleToggle(k, v)} isDirty={dirty(k)} />
-                ))}
-              </div>
-            </div>
-
-            {/* ── 5. Fare Calculation ── */}
-            <div>
-              <SLabel icon={BarChart3}>Fare Calculation</SLabel>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-                <Field label="Per KM Rate (Rs)"
-                  value={val("maps_per_km_rate")} onChange={v => handleChange("maps_per_km_rate", v)}
-                  isDirty={dirty("maps_per_km_rate")} type="number" suffix="Rs" placeholder="25"
-                  hint="Used in distance-based fare calculation" />
-                <Field label="Base Fare (Rs)"
-                  value={val("maps_base_fare")} onChange={v => handleChange("maps_base_fare", v)}
-                  isDirty={dirty("maps_base_fare")} type="number" suffix="Rs" placeholder="50" />
-                <Field label="Max Delivery Radius (KM)"
-                  value={val("maps_max_radius_km")} onChange={v => handleChange("maps_max_radius_km", v)}
-                  isDirty={dirty("maps_max_radius_km")} type="number" suffix="KM" placeholder="15" />
-                <Field label="Surge Multiplier (peak hours)"
-                  value={val("maps_surge_multiplier")} onChange={v => handleChange("maps_surge_multiplier", v)}
-                  isDirty={dirty("maps_surge_multiplier")} type="number" suffix="×" placeholder="1.5" />
-              </div>
-            </div>
-
           </div>
-        </IntCard>
+          <div className="p-4">
+            <MapsMgmtSection
+              localValues={localValues}
+              dirtyKeys={dirtyKeys}
+              handleChange={handleChange}
+              handleToggle={handleToggle}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

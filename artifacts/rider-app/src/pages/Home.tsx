@@ -153,13 +153,18 @@ function MiniMapFitter({ pickupLat, pickupLng, dropLat, dropLng, hasPick, hasDro
 
 /* ── useMiniMapTileConfig — fetches map provider from /api/maps/config so the
    MiniMap uses the same tile provider the admin has configured (Mapbox, Google, OSM).
+   Respects per-app override for the Rider App (appOverrides.rider).
    Defaults to OSM on any error — keeps the map functional even without a network call. ── */
-interface MapsConfigPublic { provider: string; token: string; secondaryProvider?: string; secondaryToken?: string; }
+interface MapsConfigPublic {
+  provider: string; token: string;
+  secondaryProvider?: string; secondaryToken?: string;
+  appOverrides?: { rider?: { provider: string; token: string }; [k: string]: any };
+}
 function useMiniMapTileConfig(): { tileUrl: string; attribution: string } {
   const { data } = useQuery<MapsConfigPublic>({
     queryKey: ["maps-config-public"],
     queryFn: async (): Promise<MapsConfigPublic> => {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/maps/config`);
+      const res = await fetch(`${import.meta.env.BASE_URL}api/maps/config?app=rider`);
       const json = await res.json() as { data?: MapsConfigPublic } & MapsConfigPublic;
       /* /api/maps/config returns the object directly (no { success, data } wrapper) */
       return (json.data ?? json) as MapsConfigPublic;
@@ -168,14 +173,19 @@ function useMiniMapTileConfig(): { tileUrl: string; attribution: string } {
     retry: 1,
   });
 
-  if (data?.provider === "mapbox" && data.token)
+  /* Respect per-app rider override if configured, otherwise use global primary */
+  const riderOverride = data?.appOverrides?.rider;
+  const provider = riderOverride?.provider ?? data?.provider ?? "osm";
+  const token    = riderOverride?.token    ?? data?.token    ?? "";
+
+  if (provider === "mapbox" && token)
     return {
-      tileUrl: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${data.token}`,
+      tileUrl: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${token}`,
       attribution: "© Mapbox © OSM",
     };
-  if (data?.provider === "google" && data.token)
+  if (provider === "google" && token)
     return {
-      tileUrl: `https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${data.token}`,
+      tileUrl: `https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${token}`,
       attribution: "© Google Maps",
     };
   return {

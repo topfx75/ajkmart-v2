@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -932,6 +932,24 @@ export const useRiderRoute = (userId: string | null, date?: string) => {
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+};
+
+export const useRiderTrailsBatch = (riderIds: string[]) => {
+  const results = useQueries({
+    queries: riderIds.map(id => ({
+      queryKey: ["admin-rider-route", id, "session"],
+      queryFn: () => fetcher(`/riders/${id}/route?sinceOnline=true`),
+      enabled: riderIds.length > 0,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    })),
+  });
+  return results.map((r, i) => ({
+    riderId: riderIds[i],
+    points: ((r.data as { route?: Array<{ latitude: number; longitude: number }> } | undefined)?.route ?? [])
+      .map((p): [number, number] => [p.latitude, p.longitude]),
+  })).filter(t => t.points.length >= 2);
 };
 
 /* ── Reviews ── */

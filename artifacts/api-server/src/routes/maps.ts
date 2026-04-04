@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { popularLocationsTable } from "@workspace/db/schema";
-import { eq, asc } from "drizzle-orm";
-import { getPlatformSettings } from "./admin.js";
+import { popularLocationsTable, mapApiUsageLogTable, platformSettingsTable } from "@workspace/db/schema";
+import { eq, asc, and, sql } from "drizzle-orm";
+import { getPlatformSettings, adminAuth } from "./admin.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
 
 const router: IRouter = Router();
@@ -11,26 +11,43 @@ const GOOGLE_BASE = "https://maps.googleapis.com/maps/api";
 
 /* ── Reverse-geocode LRU cache: keyed by "lat,lng" rounded to 4 decimal places
    (~11m precision), so minor coordinate drift reuses the cached result.
-   Max 200 entries; TTL 10 minutes. ── */
+   TTL and max size are read dynamically from platform_settings so the admin can tune
+   them live from the Maps Management UI without a server restart. ── */
 interface RevGeoCache { address: string; ts: number }
 const _revGeoCache = new Map<string, RevGeoCache>();
-const REV_GEO_TTL_MS = 10 * 60_000;
-const REV_GEO_MAX    = 200;
+
+/* Default limits (used when settings unavailable) */
+const REV_GEO_TTL_MS_DEFAULT = 10 * 60_000;
+const REV_GEO_MAX_DEFAULT    = 200;
+
+/* Dynamic read from platform_settings (safe bounds: 1–1440 min, 10–5000 entries) */
+async function getRevGeoCacheConfig(): Promise<{ ttlMs: number; maxSize: number }> {
+  try {
+    const s = await getPlatformSettings() as Record<string, string>;
+    const ttlMin  = Math.max(1,  Math.min(1440, parseInt(s["geocode_cache_ttl_min"]  ?? "10",  10)));
+    const maxSize = Math.max(10, Math.min(5000, parseInt(s["geocode_cache_max_size"] ?? "200", 10)));
+    return { ttlMs: ttlMin * 60_000, maxSize };
+  } catch {
+    return { ttlMs: REV_GEO_TTL_MS_DEFAULT, maxSize: REV_GEO_MAX_DEFAULT };
+  }
+}
 
 function revGeoCacheKey(lat: number, lng: number): string {
   return `${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
-function revGeoCacheGet(lat: number, lng: number): string | null {
+async function revGeoCacheGet(lat: number, lng: number): Promise<string | null> {
   const key   = revGeoCacheKey(lat, lng);
   const entry = _revGeoCache.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.ts > REV_GEO_TTL_MS) { _revGeoCache.delete(key); return null; }
+  const { ttlMs } = await getRevGeoCacheConfig();
+  if (Date.now() - entry.ts > ttlMs) { _revGeoCache.delete(key); return null; }
   return entry.address;
 }
 
-function revGeoCacheSet(lat: number, lng: number, address: string): void {
-  if (_revGeoCache.size >= REV_GEO_MAX) {
+async function revGeoCacheSet(lat: number, lng: number, address: string): Promise<void> {
+  const { maxSize } = await getRevGeoCacheConfig();
+  if (_revGeoCache.size >= maxSize) {
     /* Evict the oldest entry */
     const firstKey = _revGeoCache.keys().next().value;
     if (firstKey) _revGeoCache.delete(firstKey);
@@ -74,7 +91,8 @@ async function getKey(): Promise<{
 }> {
   const s = await getPlatformSettings();
   const enabled = (s["integration_maps"] ?? "off") === "on";
-  const key     = s["maps_api_key"] ?? "";
+  /* Read new multi-provider key first, fall back to legacy key for backward compatibility */
+  const key = s["google_maps_api_key"] ?? s["maps_api_key"] ?? "";
   return {
     key:            key.trim() || null,
     enabled,
@@ -184,6 +202,7 @@ router.get("/autocomplete", async (req, res) => {
       };
     });
 
+    void trackMapUsage("google", "autocomplete");
     res.json({ predictions, source: "google" });
   } catch (err) {
     const filtered = AJK_FALLBACK.filter(l => l.description.toLowerCase().includes(input.toLowerCase()));
@@ -274,6 +293,7 @@ router.get("/geocode", async (req, res) => {
     }
 
     const result = data.results[0];
+    void trackMapUsage("google", "geocode");
     res.json({
       lat:              result.geometry.location.lat,
       lng:              result.geometry.location.lng,
@@ -285,7 +305,7 @@ router.get("/geocode", async (req, res) => {
     if (address) {
       try {
         const nom = await nominatimForwardGeocode(address);
-        if (nom) { res.json({ ...nom, source: "nominatim" }); return; }
+        if (nom) { void trackMapUsage("osm", "geocode"); res.json({ ...nom, source: "nominatim" }); return; }
       } catch { /* Nominatim unavailable */ }
     }
     res.status(500).json({ error: "Maps geocode request failed" });
@@ -307,7 +327,7 @@ router.get("/reverse-geocode", async (req, res) => {
   }
 
   /* Cache hit — avoid redundant API call */
-  const cached = revGeoCacheGet(lat, lng);
+  const cached = await revGeoCacheGet(lat, lng);
   if (cached) {
     res.json({ address: cached, source: "cache" }); return;
   }
@@ -330,7 +350,8 @@ router.get("/reverse-geocode", async (req, res) => {
           else if (addr?.village) parts.push(addr.village);
           if (addr?.city || addr?.town || addr?.county) parts.push(addr.city ?? addr.town ?? addr.county);
           const address = parts.length ? parts.join(", ") : nomData.display_name;
-          revGeoCacheSet(lat, lng, address);
+          await revGeoCacheSet(lat, lng, address);
+          void trackMapUsage("osm", "reverse-geocode");
           res.json({ address, formattedAddress: nomData.display_name, source: "nominatim" }); return;
         }
       }
@@ -344,7 +365,7 @@ router.get("/reverse-geocode", async (req, res) => {
       if (d < closestDist) { closestDist = d; closest = loc; }
     }
     const address = closest.description;
-    revGeoCacheSet(lat, lng, address);
+    await revGeoCacheSet(lat, lng, address);
     res.json({ address, source: "fallback" }); return;
   }
 
@@ -373,19 +394,28 @@ router.get("/reverse-geocode", async (req, res) => {
       /* Google returned no results — try Nominatim before giving up */
       try {
         const nomAddr = await nominatimReverseGeocode(lat, lng);
-        if (nomAddr) { revGeoCacheSet(lat, lng, nomAddr); res.json({ address: nomAddr, source: "nominatim" }); return; }
+        if (nomAddr) {
+          await revGeoCacheSet(lat, lng, nomAddr);
+          void trackMapUsage("osm", "reverse-geocode");
+          res.json({ address: nomAddr, source: "nominatim" }); return;
+        }
       } catch { /* Nominatim unavailable */ }
       res.status(404).json({ error: "Address not found", googleStatus: data.status }); return;
     }
 
     const address = extractStreetAddress(data.results[0]);
-    revGeoCacheSet(lat, lng, address);
+    await revGeoCacheSet(lat, lng, address);
+    void trackMapUsage("google", "reverse-geocode");
     res.json({ address, formattedAddress: data.results[0].formatted_address, source: "google" });
   } catch {
     /* Google threw — try Nominatim before error response */
     try {
       const nomAddr = await nominatimReverseGeocode(lat, lng);
-      if (nomAddr) { revGeoCacheSet(lat, lng, nomAddr); res.json({ address: nomAddr, source: "nominatim" }); return; }
+      if (nomAddr) {
+        await revGeoCacheSet(lat, lng, nomAddr);
+        void trackMapUsage("osm", "reverse-geocode");
+        res.json({ address: nomAddr, source: "nominatim" }); return;
+      }
     } catch { /* Nominatim also unavailable */ }
     res.status(500).json({ error: "Reverse geocode request failed" });
   }
@@ -396,7 +426,11 @@ router.get("/reverse-geocode", async (req, res) => {
      ?origin_lat=&origin_lng=&dest_lat=&dest_lng=
      &mode=driving|bicycling  (default: driving)
    Returns distance, duration and encoded polyline.
-   Falls back to Haversine + fixed speed estimate.
+   Honors the admin-configured routing_engine setting:
+     • osrm    — Open Source Routing Machine (free, no key required)
+     • google  — Google Directions API (requires maps_api_key)
+     • mapbox  — Mapbox Directions API (requires mapbox_api_key)
+   Falls back to Haversine + speed estimate when no engine is available.
 ══════════════════════════════════════════════════════════ */
 router.get("/directions", async (req, res) => {
   const oLat = parseFloat(String(req.query.origin_lat ?? ""));
@@ -410,21 +444,81 @@ router.get("/directions", async (req, res) => {
     return;
   }
 
-  const { key, enabled, distanceMatrix } = await getKey();
+  /* Read routing engine from platform settings */
+  const settings = await getPlatformSettings() as Record<string, string>;
+  const routingEngine = settings["routing_engine"] ?? settings["routing_api_provider"] ?? "osrm";
 
-  if (!enabled || !key || !distanceMatrix) {
+  /* Haversine fallback payload helper */
+  function haversineFallback(source: string) {
     const km  = Math.round(haversineKm(oLat, oLng, dLat, dLng) * 10) / 10;
     const avg = mode === "bicycling" ? 25 : 45;
     const min = Math.round((km / avg) * 60);
-    res.json({
-      distanceKm:      km,
-      distanceText:    `${km} km`,
-      durationSeconds: min * 60,
-      durationText:    `${min} min`,
-      polyline:        null,
-      source:          "fallback",
-    });
+    return { distanceKm: km, distanceText: `${km} km`, durationSeconds: min * 60, durationText: `${min} min`, polyline: null, source };
+  }
+
+  /* ── OSRM (Open Source Routing Machine) — free, no key required ── */
+  if (routingEngine === "osrm") {
+    try {
+      const osrmMode = mode === "bicycling" ? "cycling" : "driving";
+      const url = `https://router.project-osrm.org/route/v1/${osrmMode}/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`;
+      const raw  = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const data = await raw.json() as any;
+      if (data?.code !== "Ok" || !data?.routes?.length) {
+        res.json(haversineFallback("fallback")); return;
+      }
+      const route  = data.routes[0];
+      const distKm = Math.round(route.distance / 100) / 10;
+      const minEst = Math.round(route.duration / 60);
+      void trackMapUsage("osm", "directions");
+      res.json({
+        distanceKm:      distKm,
+        distanceText:    `${distKm} km`,
+        durationSeconds: Math.round(route.duration),
+        durationText:    `${minEst} min`,
+        polyline:        null,
+        geojson:         route.geometry ?? null,
+        source:          "osrm",
+      });
+    } catch {
+      res.json(haversineFallback("fallback"));
+    }
     return;
+  }
+
+  /* ── Mapbox Directions API ── */
+  if (routingEngine === "mapbox") {
+    const mapboxToken = settings["mapbox_api_key"] ?? "";
+    if (!mapboxToken) { res.json(haversineFallback("fallback")); return; }
+    try {
+      const mbMode = mode === "bicycling" ? "cycling" : "driving";
+      const url = `https://api.mapbox.com/directions/v5/mapbox/${mbMode}/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson&access_token=${mapboxToken}`;
+      const raw  = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const data = await raw.json() as any;
+      if (!data?.routes?.length) { res.json(haversineFallback("fallback")); return; }
+      const route  = data.routes[0];
+      const distKm = Math.round(route.distance / 100) / 10;
+      const minEst = Math.round(route.duration / 60);
+      void trackMapUsage("mapbox", "directions");
+      res.json({
+        distanceKm:      distKm,
+        distanceText:    `${distKm} km`,
+        durationSeconds: Math.round(route.duration),
+        durationText:    `${minEst} min`,
+        polyline:        null,
+        geojson:         route.geometry ?? null,
+        source:          "mapbox",
+      });
+    } catch {
+      res.json(haversineFallback("fallback"));
+    }
+    return;
+  }
+
+  /* ── Google Directions API (default for routing_engine=google or legacy path) ── */
+  const { key, enabled, distanceMatrix } = await getKey();
+
+  if (!enabled || !key || !distanceMatrix) {
+    res.json(haversineFallback("fallback")); return;
   }
 
   try {
@@ -433,22 +527,11 @@ router.get("/directions", async (req, res) => {
     const data = await raw.json() as any;
 
     if (data.status !== "OK" || !data.routes?.length) {
-      const km  = Math.round(haversineKm(oLat, oLng, dLat, dLng) * 10) / 10;
-      const avg = mode === "bicycling" ? 25 : 45;
-      const min = Math.round((km / avg) * 60);
-      res.json({
-        distanceKm:      km,
-        distanceText:    `${km} km`,
-        durationSeconds: min * 60,
-        durationText:    `${min} min`,
-        polyline:        null,
-        source:          "fallback",
-        googleStatus:    data.status,
-      });
-      return;
+      res.json({ ...haversineFallback("fallback"), googleStatus: data.status }); return;
     }
 
     const leg = data.routes[0].legs[0];
+    void trackMapUsage("google", "directions");
     res.json({
       distanceKm:      Math.round(leg.distance.value / 100) / 10,
       distanceText:    leg.distance.text,
@@ -457,15 +540,8 @@ router.get("/directions", async (req, res) => {
       polyline:        data.routes[0].overview_polyline?.points ?? null,
       source:          "google",
     });
-  } catch (err) {
-    const km  = Math.round(haversineKm(oLat, oLng, dLat, dLng) * 10) / 10;
-    const avg = mode === "bicycling" ? 25 : 45;
-    const min = Math.round((km / avg) * 60);
-    res.json({
-      distanceKm: km, distanceText: `${km} km`,
-      durationSeconds: min * 60, durationText: `${min} min`,
-      polyline: null, source: "fallback",
-    });
+  } catch {
+    res.json(haversineFallback("fallback"));
   }
 });
 
@@ -488,48 +564,118 @@ router.get("/status", async (_req, res) => {
    time so they never appear in frontend build artifacts or source code.
    This endpoint is intentionally public (no auth) because map API keys are
    domain-restricted by the provider and must be available on page load.
-   Rate limiting is enforced by the global API rate limiter. ── */
-router.get("/config", async (_req, res) => {
+   Rate limiting is enforced by the global API rate limiter.
+
+   Optional query param ?app=customer|rider|vendor|admin scopes the returned
+   token to only the effective provider for that app (reduces over-exposure).
+   When ?app is absent the token for the global primary provider is returned.
+── */
+router.get("/config", async (req, res) => {
   const settings = await getPlatformSettings();
   const s = settings as Record<string, string>;
 
-  /* Primary provider: new key map_provider_primary (fallback to legacy map_provider) */
-  const mapProvider      = s["map_provider_primary"] ?? s["map_provider"] ?? "osm";  /* osm | mapbox | google */
-  /* Secondary provider used as failover when primary tile layer fails */
-  const secondaryProvider = s["map_provider_secondary"] ?? "osm";                    /* osm | mapbox | google */
+  /* Primary provider: new multi-provider schema (fallback to legacy map_provider) */
+  const mapProvider       = s["map_provider_primary"] ?? s["map_provider"] ?? "osm";
+  const secondaryProvider = s["map_provider_secondary"] ?? "osm";
+  const failoverEnabled   = (s["map_failover_enabled"] ?? "on") === "on";
 
-  const mapboxToken      = s["mapbox_api_key"]       ?? "";
-  /* New key google_maps_api_key takes priority over legacy maps_api_key */
-  const googleKey        = s["google_maps_api_key"]  ?? s["maps_api_key"] ?? "";
-  const searchProvider   = s["search_api_provider"]  ?? "google";                    /* google | locationiq */
-  const locationIqKey    = s["locationiq_api_key"]   ?? "";
-  const routingProvider  = s["routing_api_provider"] ?? "mapbox";                    /* mapbox | google */
+  const mapboxToken  = s["mapbox_api_key"]      ?? "";
+  const googleKey    = s["google_maps_api_key"] ?? s["maps_api_key"] ?? "";
+  const searchProvider   = s["search_api_provider"] ?? "google";
+  const locationIqKey    = s["locationiq_api_key"]  ?? "";
+  const routingEngine    = s["routing_engine"] ?? s["routing_api_provider"] ?? "osrm";
 
-  /* Return the appropriate token for the active map provider, never all keys at once */
-  const activeToken = mapProvider === "mapbox" ? mapboxToken
-                    : mapProvider === "google"  ? googleKey
-                    : "";
+  /* Helper: resolve token for a given provider — only returned for that provider */
+  const tokenFor = (prov: string) => prov === "mapbox" ? mapboxToken : prov === "google" ? googleKey : "";
 
-  /* Secondary token — needed if secondary provider is mapbox or google */
-  const secondaryToken = secondaryProvider === "mapbox" ? mapboxToken
-                       : secondaryProvider === "google"  ? googleKey
-                       : "";
+  /* Per-app provider overrides */
+  const appOverrideKeys: Record<string, string> = {
+    customer: s["map_app_override_customer"] ?? "primary",
+    rider:    s["map_app_override_rider"]    ?? "primary",
+    vendor:   s["map_app_override_vendor"]   ?? "primary",
+    admin:    s["map_app_override_admin"]    ?? "primary",
+  };
 
-  /* Search token is separate from map visual provider */
-  const searchToken = searchProvider === "locationiq" ? locationIqKey
-                    : googleKey; /* google search uses same key as google maps */
+  /* Resolve actual provider for a given override value */
+  const resolveAppProvider = (override: string): string => {
+    if (override === "primary")   return mapProvider;
+    if (override === "secondary") return secondaryProvider;
+    if (["osm", "mapbox", "google"].includes(override)) return override;
+    return mapProvider;
+  };
+
+  /* If ?app is specified, only return the token for that app's effective provider.
+     This prevents unnecessarily exposing all provider keys to every client. */
+  const reqApp = String(req.query.app ?? "").toLowerCase();
+  const validApps = ["customer", "rider", "vendor", "admin"];
+  const scopedApp = validApps.includes(reqApp) ? reqApp : null;
+
+  const primaryToken   = tokenFor(mapProvider);
+
+  /* searchToken: only the token for the configured search provider */
+  const searchToken = searchProvider === "locationiq" ? locationIqKey : (searchProvider === "google" ? googleKey : "");
+
+  /* Geocode cache config */
+  const rawTtl  = parseInt(s["geocode_cache_ttl_min"]  ?? "10",  10);
+  const rawSize = parseInt(s["geocode_cache_max_size"] ?? "200", 10);
+  const geocodeCacheTtlMin  = Number.isFinite(rawTtl)  ? Math.max(1, Math.min(1440, rawTtl))  : 10;
+  const geocodeCacheMaxSize = Number.isFinite(rawSize) ? Math.max(10, Math.min(5000, rawSize)) : 200;
+
+  /* Build per-app overrides — token only included for the scoped app or all if no scope */
+  const buildAppOverrides = () => {
+    const result: Record<string, { provider: string; token: string; override: string }> = {};
+    for (const app of validApps) {
+      const override = appOverrideKeys[app];
+      const provider = resolveAppProvider(override);
+      /* Return token only for the scoped app, or for all if no scope (admin-panel use) */
+      const token = (scopedApp === null || scopedApp === app) ? tokenFor(provider) : "";
+      result[app] = { provider, token, override };
+    }
+    return result;
+  };
 
   res.json({
-    provider:          mapProvider,        /* Which tile/SDK to use for the map visual */
-    token:             activeToken,        /* API key / access token for the active provider */
-    secondaryProvider,                     /* Failover provider if primary tile fails */
-    secondaryToken,                        /* API key for the failover provider */
-    searchProvider,                        /* Which API to use for address search/autocomplete */
-    searchToken,                           /* API key for the search provider */
-    routingProvider,                       /* Which API to use for route calculation */
+    /* Canonical schema keys (required contract) */
+    primary:          mapProvider,
+    primaryToken,
+    secondary:        secondaryProvider,
+    /* secondaryToken is returned because DynamicTileLayer needs it for client-side failover.
+       Both primary and secondary keys are domain-restricted by the provider. */
+    secondaryToken:   tokenFor(secondaryProvider),
+    failoverEnabled,
+
+    /* Backward-compatible aliases for existing consumers */
+    provider:          mapProvider,
+    token:             primaryToken,
+    secondaryProvider,
+
+    /* Per-app overrides — tokens scoped to requesting app when ?app= is provided */
+    appOverrides:      buildAppOverrides(),
+
+    /* Routing */
+    routingEngine,
+    routingProvider:   routingEngine,   /* backward-compat alias */
+
+    /* Search/autocomplete */
+    searchProvider,
+    searchToken,
+
+    /* Per-provider health/status — no tokens in this block */
+    providers: {
+      osm:    { enabled: (s["osm_enabled"]          ?? "on")  === "on", role: s["map_provider_role_osm"]    ?? "primary",  lastTested: s["map_last_tested_osm"]    ?? null, testStatus: s["map_test_status_osm"]    ?? "unknown" },
+      mapbox: { enabled: (s["mapbox_enabled"]        ?? "off") === "on", role: s["map_provider_role_mapbox"] ?? "disabled", lastTested: s["map_last_tested_mapbox"] ?? null, testStatus: s["map_test_status_mapbox"] ?? "unknown" },
+      google: { enabled: (s["google_maps_enabled"]   ?? "off") === "on", role: s["map_provider_role_google"] ?? "disabled", lastTested: s["map_last_tested_google"] ?? null, testStatus: s["map_test_status_google"] ?? "unknown" },
+    },
+
+    /* General */
     enabled:           s["integration_maps"] !== "off",
     defaultLat:        parseFloat(s["map_default_lat"] || "33.7294"),
     defaultLng:        parseFloat(s["map_default_lng"] || "73.3872"),
+
+    /* Geocoding cache (admin-tunable live via platform_settings) */
+    geocodeCacheTtlMin,
+    geocodeCacheMaxSize,
+    geocodeCacheCurrentSize: _revGeoCache.size,
   });
 });
 
@@ -762,5 +908,183 @@ router.get("/picker", (req, res) => {
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.send(html);
 });
+
+/* ══════════════════════════════════════════════════════════
+   USAGE TRACKING — increments the map_api_usage_log counter
+   Called by geocode, reverse-geocode, directions, autocomplete handlers.
+   Silently swallows errors so tracking failures never break API responses.
+══════════════════════════════════════════════════════════ */
+export async function trackMapUsage(provider: string, endpointType: string): Promise<void> {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    /* Upsert: increment count if row exists, insert with count=1 if not */
+    await db.execute(sql`
+      INSERT INTO map_api_usage_log (provider, endpoint_type, count, date)
+      VALUES (${provider}, ${endpointType}, 1, ${today})
+      ON CONFLICT (provider, endpoint_type, date)
+      DO UPDATE SET count = map_api_usage_log.count + 1, updated_at = NOW()
+    `);
+  } catch { /* silent — usage tracking must not break API */ }
+}
+
+/* ══════════════════════════════════════════════════════════
+   ADMIN MAPS SUB-ROUTER
+   Exposed at TWO paths for full contract coverage:
+     • /api/maps/admin/*  (primary, via mapsRouter)
+     • /api/admin/maps/*  (alias, mounted separately in routes/index.ts)
+   All handlers require admin auth.
+══════════════════════════════════════════════════════════ */
+
+export const adminMapsRouter: IRouter = Router();
+
+/* ── POST /test
+   Pings the real provider API and returns { ok, latencyMs, error? }
+   Body: { provider: "osm"|"mapbox"|"google", key?: string }
+   ── */
+async function handleMapsTest(req: import("express").Request, res: import("express").Response): Promise<void> {
+  const { provider, key: keyOverride } = req.body as { provider?: string; key?: string };
+  if (!provider || !["osm", "mapbox", "google"].includes(provider)) {
+    sendValidationError(res, "provider must be 'osm', 'mapbox', or 'google'"); return;
+  }
+
+  const settings = await getPlatformSettings();
+  const s = settings as Record<string, string>;
+
+  const mapboxToken = keyOverride ?? (provider === "mapbox" ? (s["mapbox_api_key"] ?? "") : "");
+  const googleKey   = keyOverride ?? (provider === "google"  ? (s["google_maps_api_key"] ?? s["maps_api_key"] ?? "") : "");
+
+  const start = Date.now();
+  let ok = false;
+  let error: string | undefined;
+
+  try {
+    if (provider === "osm") {
+      /* Ping Nominatim with a lightweight lookup */
+      const r = await fetch("https://nominatim.openstreetmap.org/search?q=Muzaffarabad&format=json&limit=1", {
+        headers: { "User-Agent": "AJKMart-Admin-Test/1.0" },
+        signal: AbortSignal.timeout(8000),
+      });
+      ok = r.ok;
+      if (!r.ok) error = `HTTP ${r.status}`;
+
+    } else if (provider === "mapbox") {
+      if (!mapboxToken) { sendError(res, "Mapbox token is not configured", 422); return; }
+      /* Ping the Mapbox styles endpoint — lightweight, returns 200 if token is valid */
+      const r = await fetch(
+        `https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${mapboxToken}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      ok = r.ok;
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as any;
+        error = body?.message ?? `HTTP ${r.status}`;
+      }
+
+    } else if (provider === "google") {
+      if (!googleKey) { sendError(res, "Google Maps API key is not configured", 422); return; }
+      /* Ping the Geocoding API with a minimal query */
+      const r = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=Muzaffarabad&key=${googleKey}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      const data = await r.json() as any;
+      ok = data?.status === "OK" || data?.status === "ZERO_RESULTS";
+      if (!ok) error = data?.error_message ?? data?.status ?? `HTTP ${r.status}`;
+    }
+  } catch (e: any) {
+    ok = false;
+    error = e?.message ?? "Request timed out";
+  }
+
+  const latencyMs = Date.now() - start;
+
+  /* Persist test result to platform_settings */
+  const now = new Date().toISOString();
+  try {
+    await db.update(platformSettingsTable).set({ value: now,                updatedAt: new Date() }).where(eq(platformSettingsTable.key, `map_last_tested_${provider}`));
+    await db.update(platformSettingsTable).set({ value: ok ? "ok" : "fail", updatedAt: new Date() }).where(eq(platformSettingsTable.key, `map_test_status_${provider}`));
+  } catch { /* ignore persistence errors */ }
+
+  sendSuccess(res, { ok, latencyMs, provider, error, testedAt: now });
+}
+
+/* ── GET /usage
+   Returns daily and monthly call counts per provider/endpoint.
+   ── */
+async function handleMapsUsage(_req: import("express").Request, res: import("express").Response): Promise<void> {
+  try {
+    const rows = await db.select().from(mapApiUsageLogTable).orderBy(mapApiUsageLogTable.date, mapApiUsageLogTable.provider);
+
+    /* Group into daily (last 30 days) and monthly summaries */
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const daily = rows.filter(r => r.date >= thirtyDaysAgo);
+
+    /* Build per-day aggregated data suitable for a Recharts bar chart */
+    const byDay: Record<string, Record<string, number>> = {};
+    for (const row of daily) {
+      const d = row.date;
+      if (!byDay[d]) byDay[d] = {};
+      byDay[d]![row.provider] = (byDay[d]![row.provider] ?? 0) + row.count;
+    }
+    const dailyChart = Object.entries(byDay)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, counts]) => ({ date, ...counts }));
+
+    /* Monthly totals */
+    const monthKey = now.toISOString().slice(0, 7);
+    const monthly  = rows.filter(r => r.date.startsWith(monthKey));
+    const monthlyByProvider: Record<string, Record<string, number>> = {};
+    for (const row of monthly) {
+      if (!monthlyByProvider[row.provider]) monthlyByProvider[row.provider] = {};
+      monthlyByProvider[row.provider]![row.endpointType] = (monthlyByProvider[row.provider]![row.endpointType] ?? 0) + row.count;
+    }
+
+    /* Cost estimates (approximate published pricing, USD per 1000 calls) */
+    const COST_PER_1K: Record<string, Record<string, number>> = {
+      google:  { geocode: 5, directions: 5, autocomplete: 2.83, "reverse-geocode": 5 },
+      mapbox:  { geocode: 0.75, directions: 1, autocomplete: 0.75, "reverse-geocode": 0.75 },
+      osm:     { geocode: 0, directions: 0, autocomplete: 0, "reverse-geocode": 0 },
+    };
+
+    const costEstimates: Record<string, number> = {};
+    for (const [prov, endpoints] of Object.entries(monthlyByProvider)) {
+      let cost = 0;
+      const provCosts = COST_PER_1K[prov] ?? {};
+      for (const [ep, cnt] of Object.entries(endpoints)) {
+        cost += ((provCosts[ep] ?? 0) * cnt) / 1000;
+      }
+      costEstimates[prov] = Math.round(cost * 100) / 100;
+    }
+
+    sendSuccess(res, {
+      dailyChart,
+      monthlyByProvider,
+      costEstimates,
+      totalRows: rows.length,
+    });
+  } catch (e: any) {
+    sendError(res, e?.message ?? "Failed to fetch usage data", 500);
+  }
+}
+
+/* ── POST /cache/clear
+   Flushes the in-process reverse-geocode LRU cache.
+   ── */
+async function handleMapsCacheClear(_req: import("express").Request, res: import("express").Response): Promise<void> {
+  const before = _revGeoCache.size;
+  _revGeoCache.clear();
+  sendSuccess(res, { cleared: before, cacheSize: 0 });
+}
+
+/* Register on the main maps router: /api/maps/admin/* */
+router.post("/admin/test",        adminAuth, handleMapsTest);
+router.get("/admin/usage",        adminAuth, handleMapsUsage);
+router.post("/admin/cache/clear", adminAuth, handleMapsCacheClear);
+
+/* Register on the dedicated admin sub-router: /api/admin/maps/* */
+adminMapsRouter.post("/test",        adminAuth, handleMapsTest);
+adminMapsRouter.get("/usage",        adminAuth, handleMapsUsage);
+adminMapsRouter.post("/cache/clear", adminAuth, handleMapsCacheClear);
 
 export default router;
