@@ -264,7 +264,14 @@ export default function AuthScreen() {
         return;
       }
       if (res.action === "send_phone_otp") {
-        const normalized = id.replace(/\D/g, "").replace(/^92/, "").replace(/^0/, "");
+        const digits = id.replace(/\D/g, "");
+        const normalized = digits.replace(/^92/, "").replace(/^0/, "");
+        if (!isValidPakistaniPhone(normalized)) {
+          setMethod("phone");
+          setLoading(false);
+          animateTransition(() => setStep("method"));
+          return;
+        }
         setPhone(normalized);
         setMethod("phone");
         setLoading(false);
