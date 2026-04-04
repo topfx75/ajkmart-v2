@@ -79,13 +79,12 @@ function ServiceGridView({ services, isGuest }: { services: ServiceDefinition[];
     <View style={sg.grid}>
       {services.map((svc) => {
         const label = shortLabel[svc.key] ?? svc.label;
+        const href = (isGuest ? "/auth" : String(svc.route)) as Href;
         return (
-          <Pressable
+          <TouchableOpacity
             key={svc.key}
-            onPress={() => {
-              if (isGuest) { router.push("/auth" as Href); return; }
-              safeNavigate(String(svc.route));
-            }}
+            activeOpacity={0.7}
+            onPress={() => router.push(href)}
             style={[sg.item, { width: itemW }]}
             accessibilityRole="button"
             accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
@@ -99,7 +98,7 @@ function ServiceGridView({ services, isGuest }: { services: ServiceDefinition[];
               )}
             </LinearGradient>
             <Text style={sg.label} numberOfLines={1}>{label}</Text>
-          </Pressable>
+          </TouchableOpacity>
         );
       })}
     </View>
@@ -111,13 +110,12 @@ function ServiceListView({ services, isGuest }: { services: ServiceDefinition[];
     <View style={sl.list}>
       {services.map((svc) => {
         const label = shortLabel[svc.key] ?? svc.label;
+        const href = (isGuest ? "/auth" : String(svc.route)) as Href;
         return (
-          <Pressable
+          <TouchableOpacity
             key={svc.key}
-            onPress={() => {
-              if (isGuest) { router.push("/auth" as Href); return; }
-              safeNavigate(String(svc.route));
-            }}
+            activeOpacity={0.7}
+            onPress={() => router.push(href)}
             style={sl.row}
             accessibilityRole="button"
             accessibilityLabel={`${label}${isGuest ? ", sign in required" : ""}`}
@@ -135,7 +133,7 @@ function ServiceListView({ services, isGuest }: { services: ServiceDefinition[];
               <Text style={sl.desc} numberOfLines={1}>{svc.description}</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
-          </Pressable>
+          </TouchableOpacity>
         );
       })}
     </View>
