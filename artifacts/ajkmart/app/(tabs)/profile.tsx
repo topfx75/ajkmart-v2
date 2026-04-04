@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { withErrorBoundary } from "@/utils/withErrorBoundary";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -1466,13 +1467,30 @@ function ProfileScreenInner() {
 
   if (!user?.id) {
     return (
-      <View style={{ flex: 1, backgroundColor: C.background }}>
-        <AuthGateSheet
-          visible
-          onClose={() => router.back()}
-          message="Sign in to manage your account, settings, addresses, and more."
-          returnTo="/(tabs)/profile"
-        />
+      <View style={{ flex: 1, backgroundColor: C.background, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingTop: topPad }}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: C.blueSoft, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+          <Ionicons name="person-outline" size={32} color={C.primary} />
+        </View>
+        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 20, color: C.text, textAlign: "center", marginBottom: 8 }}>Sign in to continue</Text>
+        <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: C.textSecondary, textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
+          Sign in to manage your account, settings, addresses, and more.
+        </Text>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={async () => {
+            await AsyncStorage.setItem("@ajkmart_auth_return_to", "/(tabs)/profile");
+            router.push("/auth");
+          }}
+          style={{ backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="Sign In or Register"
+        >
+          <Ionicons name="person-circle-outline" size={18} color="#fff" />
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#fff" }}>Sign In / Register</Text>
+        </TouchableOpacity>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={{ paddingVertical: 12 }} accessibilityRole="button">
+          <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.textMuted }}>Continue Browsing</Text>
+        </TouchableOpacity>
       </View>
     );
   }

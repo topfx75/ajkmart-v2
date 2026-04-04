@@ -897,7 +897,7 @@ const translations = {
     backToHome: "Back to Home",
     orderMore: "Order More",
     orderPlaced: "Order Placed!",
-    medicinesDeliveredTo: "medicines delivered to",
+    medicinesDeliveredTo: "medicines delivered to your door",
     searchMedicines: "Search medicines...",
     loadingMedicines: "Loading medicines...",
     cannotLoad: "Cannot load",
