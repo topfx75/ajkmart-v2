@@ -47,13 +47,20 @@ const queryClient = new QueryClient({
   },
 });
 
-/* Auto-logout on any 401 from the API */
+/* Auto-logout when an authenticated query returns 401.
+   Guard: only remove token + redirect if a token was actually present — this
+   prevents pre-login query failures (expected 401s) from wiping a token that
+   the user just saved after logging in. */
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const err = event.action.error as any;
-    if (err?.message?.toLowerCase().includes("unauthorized") || err?.status === 401) {
+    const is401 =
+      err?.message?.toLowerCase().includes("unauthorized") ||
+      err?.status === 401;
+    if (is401 && localStorage.getItem("ajkmart_admin_token")) {
       localStorage.removeItem("ajkmart_admin_token");
-      window.location.href = window.location.pathname.includes("/admin") ? "/admin/login" : "/login";
+      const base = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
+      window.location.href = `${base}/login`;
     }
   }
 });

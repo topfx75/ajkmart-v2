@@ -21,8 +21,15 @@ export const fetcher = async (endpoint: string, options: RequestInit = {}) => {
   const json = await res.json();
 
   if (!res.ok) {
-    if (res.status === 401) {
-      localStorage.removeItem("ajkmart_admin_token");
+    if (res.status === 401 && token) {
+      // Only remove the token if this request was sent WITH a token.
+      // This prevents an in-flight pre-login request (sent without a token)
+      // from deleting a token that was stored after the request was sent —
+      // which was causing a race-condition logout right after login.
+      const currentToken = getToken();
+      if (currentToken === token) {
+        localStorage.removeItem("ajkmart_admin_token");
+      }
     }
     throw new Error(json.error || "An error occurred");
   }

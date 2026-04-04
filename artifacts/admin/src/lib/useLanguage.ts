@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { Language } from "@workspace/i18n";
 import { DEFAULT_LANGUAGE, LANGUAGE_OPTIONS, isRTL } from "@workspace/i18n";
-import { fetcher } from "./api";
+import { fetcher, getToken } from "./api";
 
 const VALID_LANGS = new Set<string>(LANGUAGE_OPTIONS.map(o => o.value));
 const STORAGE_KEY = "ajkmart_admin_language";
@@ -31,6 +31,21 @@ export function useLanguage() {
 
   useEffect(() => {
     const bootstrap = async () => {
+      // If there is no auth token the user is on the login page — skip all
+      // API calls entirely.  Making unauthenticated calls here triggered a
+      // race condition: the in-flight 401 response arrived after the user
+      // logged in and api.ts would delete the freshly-stored token, causing
+      // an immediate logout.
+      if (!getToken()) {
+        const local = getSavedLanguage();
+        if (local) {
+          setLang(local);
+          applyRTL(local);
+        }
+        setInitialised(true);
+        return;
+      }
+
       try {
         const data = await fetcher("/me/language");
         const serverLang: string | null = data?.language ?? null;

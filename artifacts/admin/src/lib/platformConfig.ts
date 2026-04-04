@@ -16,6 +16,11 @@ export const setCurrencySymbol = (sym: string) => {
 export const getCurrencySymbol = () => _currencySymbol;
 
 export const loadPlatformConfig = async () => {
+  // Skip the API call if there is no admin token — this function is called
+  // at app startup (main.tsx), which runs before login. Making an
+  // unauthenticated request here causes a 401 that the api.ts handler could
+  // use to clear a freshly-saved login token (race condition).
+  if (!localStorage.getItem("ajkmart_admin_token")) return;
   try {
     const data = await fetcher("/platform-settings");
     const settings: { key: string; value: string }[] = data.settings || [];
