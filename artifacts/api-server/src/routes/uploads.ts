@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
+import { customerAuth } from "../middleware/security.js";
 
 const router: IRouter = Router();
 
@@ -16,7 +17,7 @@ async function ensureDir() {
   await mkdir(UPLOADS_DIR, { recursive: true });
 }
 
-router.post("/", async (req, res) => {
+router.post("/", customerAuth, async (req, res) => {
   try {
     const { file, filename, mimeType } = req.body;
 
@@ -58,7 +59,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.post("/prescription", async (req, res) => {
+router.post("/prescription", customerAuth, async (req, res) => {
   try {
     const { file, mimeType, refId } = req.body;
 

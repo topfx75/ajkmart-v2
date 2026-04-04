@@ -109,7 +109,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const ds = makeDynStyles(C);
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user, updateUser, token } = useAuth();
   const { showToast } = useToast();
   const { config } = usePlatformConfig();
@@ -196,6 +196,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const [pickupError, setPickupError] = useState("");
   const [pickupFocus, setPickupFocus] = useState(false);
   const [dropFocus, setDropFocus] = useState(false);
+  const [pickupInputY, setPickupInputY] = useState(0);
+  const [dropInputY, setDropInputY] = useState(0);
   const [popularSpots, setPopularSpots] = useState<PopularSpot[]>([]);
   const [schoolRoutes, setSchoolRoutes] = useState<any[]>([]);
   const [showSchoolModal, setShowSchoolModal] = useState(false);
@@ -921,7 +923,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: C.red, borderWidth: 2, borderColor: `${C.red}40`, marginBottom: 12 }} />
             </View>
 
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1 }}
+              onLayout={(e) => setPickupInputY(e.nativeEvent.layout.y)}
+            >
               <View style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: C.borderLight, paddingBottom: 1 }}>
                 <TextInput
                   value={pickup}
@@ -971,8 +975,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </View>
               ) : null}
 
-              {pickupFocus && (
-                <View style={ds.sugg}>
+              {pickupFocus && (pickupPreds.length > 0 || pickupLoading) && (
+                <View style={[
+                  ds.sugg,
+                  pickupInputY > screenHeight * 0.55
+                    ? { position: "absolute", bottom: "100%", top: undefined, marginTop: 0, marginBottom: 4 }
+                    : undefined
+                ]}>
                   {pickupLoading && (
                     <ActivityIndicator size="small" color={C.primary} style={{ padding: 6 }} />
                   )}
@@ -992,7 +1001,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </View>
               )}
 
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}
+                onLayout={(e) => setDropInputY(e.nativeEvent.layout.y)}
+              >
                 <TextInput
                   value={drop}
                   onChangeText={(v) => {
@@ -1032,8 +1043,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </TouchableOpacity>
               </View>
 
-              {dropFocus && (
-                <View style={ds.sugg}>
+              {dropFocus && (dropPreds.length > 0 || dropLoading) && (
+                <View style={[
+                  ds.sugg,
+                  dropInputY > screenHeight * 0.55
+                    ? { position: "absolute", bottom: "100%", top: undefined, marginTop: 0, marginBottom: 4 }
+                    : undefined
+                ]}>
                   {dropLoading && (
                     <ActivityIndicator size="small" color={C.red} style={{ padding: 6 }} />
                   )}
@@ -3018,7 +3034,10 @@ function makeDynStyles(C: typeof import("@/constants/colors").default.light) {
       borderWidth: 1,
       borderColor: C.border,
       maxHeight: 160,
-    } as const,
+      overflow: "hidden" as const,
+      zIndex: 100,
+      elevation: 4,
+    },
     suggRow: {
       flexDirection: "row" as const,
       alignItems: "center" as const,

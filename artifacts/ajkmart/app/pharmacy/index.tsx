@@ -5,7 +5,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system";
 import { router, useLocalSearchParams } from "expo-router";
 import { PermissionGuide } from "@/components/PermissionGuide";
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -63,22 +63,22 @@ interface Med {
 
 interface CartItem extends Med { qty: number }
 
-function MedCard({ med, qty, onAdd, onRemove }: {
+const MedCard = React.memo(function MedCard({ med, qty, onAdd, onRemove }: {
   med: Med; qty: number; onAdd: () => void; onRemove: () => void;
 }) {
   return (
     <View style={s.medCard}>
-      <View style={s.medEmoji}><Text style={{ fontSize: 26 }}>{med.emoji || "💊"}</Text></View>
+      <View style={s.medEmoji}><Text style={{ fontSize: 26 }}>{med?.emoji ?? "💊"}</Text></View>
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text style={s.medName} numberOfLines={1}>{med.name}</Text>
-          {med.requires_prescription && (
+          <Text style={s.medName} numberOfLines={1}>{med?.name ?? "—"}</Text>
+          {med?.requires_prescription && (
             <View style={s.rxBadge}><Text style={s.rxTxt}>Rx</Text></View>
           )}
         </View>
-        <Text style={s.medBrand}>{med.brand}</Text>
-        <Text style={s.medUnit}>{med.unit}</Text>
-        <Text style={s.medPrice}>Rs. {med.price}</Text>
+        <Text style={s.medBrand}>{med?.brand ?? ""}</Text>
+        <Text style={s.medUnit}>{med?.unit ?? ""}</Text>
+        <Text style={s.medPrice}>Rs. {med?.price ?? 0}</Text>
       </View>
       <View style={s.qtyCtrl}>
         {qty > 0 ? (
@@ -99,7 +99,7 @@ function MedCard({ med, qty, onAdd, onRemove }: {
       </View>
     </View>
   );
-}
+});
 
 function PharmacyScreenInner() {
   const insets = useSafeAreaInsets();
@@ -221,11 +221,11 @@ function PharmacyScreenInner() {
 
   useEffect(() => { loadMeds(); }, [pharmacyEnabled]);
 
-  const filtered = medicines.filter(m => {
+  const filtered = useMemo(() => medicines.filter(m => {
     const matchCat = activeTab === "All" || m.category === activeTab;
     const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
-  });
+  }), [medicines, activeTab, search]);
 
   const cartItems: CartItem[] = medicines
     .filter(m => pharmacyCartItems.some(ci => ci.productId === m.id))
@@ -254,15 +254,15 @@ function PharmacyScreenInner() {
   const { requireAuth, sheetProps: authSheetProps } = useAuthGate();
   const { requireCustomerRole, roleBlockProps } = useRoleGate();
 
-  const addToCart = (med: Med) => {
+  const addToCart = useCallback((med: Med) => {
     requireAuth(() => {
       requireCustomerRole(() => {
-        addToGlobalCart({ productId: med.id, name: med.name, price: med.price, quantity: 1, type: "pharmacy" });
+        addToGlobalCart({ productId: med.id, name: med?.name ?? "—", price: med?.price ?? 0, quantity: 1, type: "pharmacy" });
       });
     }, { message: "Sign in to add items to your cart", returnTo: "/pharmacy" });
-  };
+  }, [requireAuth, requireCustomerRole, addToGlobalCart]);
 
-  const removeFromCart = (med: Med) => {
+  const removeFromCart = useCallback((med: Med) => {
     const existing = pharmacyCartItems.find(ci => ci.productId === med.id);
     if (!existing) return;
     if (existing.quantity <= 1) {
@@ -270,7 +270,7 @@ function PharmacyScreenInner() {
     } else {
       updateQuantity(med.id, existing.quantity - 1);
     }
-  };
+  }, [pharmacyCartItems, removeFromGlobalCart, updateQuantity]);
 
   const uploadPrescription = async (photoUri: string, refId: string): Promise<void> => {
     const compressed = await ImageManipulator.manipulateAsync(

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   Animated,
   Dimensions,
@@ -67,7 +67,7 @@ function AddToCartButton({ onPress, added }: { onPress: () => void; added: boole
   );
 }
 
-function FlashCard({ product }: { product: any }) {
+const FlashCard = React.memo(function FlashCard({ product }: { product: any }) {
   const { addItem, cartType, itemCount, clearCart } = useCart();
   const [added, setAdded] = useState(false);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -127,21 +127,21 @@ function FlashCard({ product }: { product: any }) {
         <WishlistHeart productId={product.id} size={14} style={{ position: "absolute", top: 6, right: 6 }} />
       </View>
       <View style={styles.flashBody}>
-        <Text style={styles.flashName} numberOfLines={2}>{product.name}</Text>
-        {product.unit && <Text style={styles.flashUnit}>{product.unit}</Text>}
+        <Text style={styles.flashName} numberOfLines={2}>{product?.name ?? "—"}</Text>
+        {product?.unit && <Text style={styles.flashUnit}>{product.unit}</Text>}
         <View style={styles.flashFooter}>
           <View>
-            <Text style={styles.flashOrigPrice}>Rs. {product.originalPrice}</Text>
-            <Text style={styles.flashPrice}>Rs. {product.price}</Text>
+            <Text style={styles.flashOrigPrice}>Rs. {product?.originalPrice ?? 0}</Text>
+            <Text style={styles.flashPrice}>Rs. {product?.price ?? 0}</Text>
           </View>
           <AddToCartButton onPress={handleAdd} added={added} />
         </View>
       </View>
     </TouchableOpacity>
   );
-}
+});
 
-function ProductCard({ product }: { product: any }) {
+const ProductCard = React.memo(function ProductCard({ product }: { product: any }) {
   const { addItem, cartType, itemCount, clearCart, items, updateQuantity, removeItem } = useCart();
   const [added, setAdded] = useState(false);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,8 +155,11 @@ function ProductCard({ product }: { product: any }) {
 
   useEffect(() => () => { if (addedTimerRef.current) clearTimeout(addedTimerRef.current); }, []);
 
+  const { requireAuth, sheetProps } = useAuthGate();
+  const { requireCustomerRole, roleBlockProps } = useRoleGate();
+
   const doAdd = () => {
-    addItem({ productId: product.id, name: product.name, price: product.price, quantity: 1, image: product.image, type: "mart" });
+    addItem({ productId: product.id, name: product.name ?? "—", price: product.price ?? 0, quantity: 1, image: product.image, type: "mart" });
     setAdded(true);
     if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
     addedTimerRef.current = setTimeout(() => { setAdded(false); addedTimerRef.current = null; }, 1500);
@@ -165,15 +168,21 @@ function ProductCard({ product }: { product: any }) {
   const [showSwitchModal, setShowSwitchModal] = useState(false);
 
   const handleAdd = () => {
-    if (itemCount > 0 && cartType !== "mart" && cartType !== "none") {
-      setShowSwitchModal(true);
-      return;
-    }
-    doAdd();
+    requireAuth(() => {
+      requireCustomerRole(() => {
+        if (itemCount > 0 && cartType !== "mart" && cartType !== "none") {
+          setShowSwitchModal(true);
+          return;
+        }
+        doAdd();
+      });
+    }, { message: "Sign in to add items to your cart", returnTo: "/mart" });
   };
 
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={() => router.push({ pathname: "/product/[id]", params: { id: product.id } })} style={[styles.productCard, { width: PRODUCT_CARD_W }]}>
+      <AuthGateSheet {...sheetProps} />
+      <RoleBlockSheet {...roleBlockProps} />
       <CartSwitchModal
         visible={showSwitchModal}
         targetService="Mart"
@@ -199,11 +208,11 @@ function ProductCard({ product }: { product: any }) {
         <WishlistHeart productId={product.id} size={14} style={{ position: "absolute", top: 6, right: 6 }} />
       </View>
       <View style={styles.productBody}>
-        <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
-        {product.unit && <Text style={styles.productUnit}>{product.unit}</Text>}
+        <Text style={styles.productName} numberOfLines={2}>{product?.name ?? "—"}</Text>
+        {product?.unit && <Text style={styles.productUnit}>{product.unit}</Text>}
         <View style={styles.productFooter}>
           <View>
-            <Text style={styles.productPrice}>Rs. {product.price}</Text>
+            <Text style={styles.productPrice}>Rs. {product?.price ?? 0}</Text>
             {product.originalPrice && (
               <Text style={styles.productOrigPrice}>Rs. {product.originalPrice}</Text>
             )}
@@ -221,7 +230,7 @@ function ProductCard({ product }: { product: any }) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 function MartScreenInner() {
   const insets = useSafeAreaInsets();
@@ -253,10 +262,20 @@ function MartScreenInner() {
   const { data: catData } = useGetCategories({ type: "mart" });
   const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "mart", search: debouncedSearch || undefined, category: selectedCat });
 
-  const categories = catData?.categories || [];
-  const products   = data?.products   || [];
-  const flashDeals = products.filter(p => Number(p.originalPrice) > p.price);
+  const categories = useMemo(() => catData?.categories || [], [catData]);
+  const products   = useMemo(() => data?.products   || [], [data]);
+  const flashDeals = useMemo(
+    () => products.filter(p => Number(p.originalPrice) > p.price),
+    [products]
+  );
   const allProducts = products;
+
+  const handleSelectCat = useCallback((id: string) => {
+    setSelectedCat(prev => prev === id ? undefined : id);
+  }, []);
+
+  const handleClearSearch = useCallback(() => setSearch(""), []);
+  const handleRefetch = useCallback(() => refetch(), [refetch]);
 
   return (
     <View style={styles.container}>
@@ -295,7 +314,7 @@ function MartScreenInner() {
             maxLength={200}
           />
           {search.length > 0 && (
-            <TouchableOpacity activeOpacity={0.7} onPress={() => setSearch("")}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleClearSearch}>
               <Ionicons name="close-circle" size={18} color={C.textMuted} />
             </TouchableOpacity>
           )}
@@ -338,7 +357,7 @@ function MartScreenInner() {
           {categories.map(cat => (
             <TouchableOpacity activeOpacity={0.7}
               key={cat.id}
-              onPress={() => setSelectedCat(selectedCat === cat.id ? undefined : cat.id)}
+              onPress={() => handleSelectCat(cat.id)}
               style={[styles.catChip, selectedCat === cat.id && styles.catChipActive]}
             >
               <Ionicons name={cat.icon as keyof typeof Ionicons.glyphMap} size={14} color={selectedCat === cat.id ? C.textInverse : C.primary} />
@@ -374,7 +393,7 @@ function MartScreenInner() {
             </View>
             <Text style={styles.errorTitle}>Could not load</Text>
             <Text style={styles.errorSub}>Check your internet and retry</Text>
-            <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={styles.retryBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleRefetch} style={styles.retryBtn}>
               <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
               <Text style={styles.retryBtnTxt}>Retry</Text>
             </TouchableOpacity>

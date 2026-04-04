@@ -12,7 +12,7 @@ export function registerServiceWorker() {
     navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {
-        console.log("[SW] Registered:", registration.scope);
+        if (__DEV__) console.log("[SW] Registered:", registration.scope);
       })
       .catch((err) => {
         console.warn("[SW] Registration failed:", err);

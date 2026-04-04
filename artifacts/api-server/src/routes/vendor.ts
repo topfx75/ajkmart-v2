@@ -1,10 +1,12 @@
 import { Router, type IRouter, type Request } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable } from "@workspace/db/schema";
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { requireRole } from "../middleware/security.js";
+import { validateBody } from "../middleware/validate.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
@@ -14,6 +16,34 @@ const router: IRouter = Router();
 
 /* ── Auth: replaced duplicated vendorAuth with the shared requireRole factory ── */
 router.use(requireRole("vendor", { vendorApprovalCheck: true }));
+
+/* ── Vendor PATCH schemas ── */
+const patchProfileSchema = z.object({
+  name:             z.string().min(1).max(100).optional(),
+  email:            z.string().email().optional(),
+  cnic:             z.string().max(20).optional(),
+  address:          z.string().max(300).optional(),
+  city:             z.string().max(100).optional(),
+  bankName:         z.string().max(100).optional(),
+  bankAccount:      z.string().max(50).optional(),
+  bankAccountTitle: z.string().max(100).optional(),
+  businessType:     z.string().max(50).optional(),
+}).strict();
+
+const patchStoreSchema = z.object({
+  storeName:         z.string().min(1).max(100).optional(),
+  storeCategory:     z.string().max(50).optional(),
+  storeBanner:       z.string().url().optional().nullable(),
+  storeDescription:  z.string().max(1000).optional(),
+  storeAnnouncement: z.string().max(500).optional(),
+  storeDeliveryTime: z.string().max(50).optional(),
+  storeIsOpen:       z.boolean().optional(),
+  storeMinOrder:     z.number().min(0).optional(),
+  storeAddress:      z.string().max(300).optional(),
+  storeHours:        z.any().optional(),
+  storeLat:          z.union([z.string(), z.number()]).optional().nullable(),
+  storeLng:          z.union([z.string(), z.number()]).optional().nullable(),
+});
 
 function safeNum(v: any, def = 0) { return parseFloat(String(v ?? def)) || def; }
 function formatUser(user: any) {
@@ -66,7 +96,7 @@ router.get("/me", async (req, res) => {
 });
 
 /* ── PATCH /vendor/profile ── */
-router.patch("/profile", async (req, res) => {
+router.patch("/profile", validateBody(patchProfileSchema), async (req, res) => {
   const vendorId = req.vendorId!;
   const { name, email, cnic, address, city, bankName, bankAccount, bankAccountTitle, businessType } = req.body;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -90,7 +120,7 @@ router.get("/store", async (req, res) => {
 });
 
 /* ── PATCH /vendor/store ── */
-router.patch("/store", async (req, res) => {
+router.patch("/store", validateBody(patchStoreSchema), async (req, res) => {
   const vendorId = req.vendorId!;
   const body = req.body;
   const updates: Record<string, unknown> = { updatedAt: new Date() };

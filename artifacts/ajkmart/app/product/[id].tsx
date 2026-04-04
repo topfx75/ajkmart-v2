@@ -926,7 +926,7 @@ export default function ProductDetailScreen() {
         <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
           <TouchableOpacity activeOpacity={0.7}
             onPress={handleAdd}
-            disabled={!product.inStock}
+            disabled={!product.inStock || added}
             style={[styles.addToCartBtn, added && styles.addToCartBtnDone, !product.inStock && styles.addToCartBtnDisabled]}
           >
             <Ionicons name={added ? "checkmark-circle" : "bag-add-outline"} size={20} color={C.textInverse} />

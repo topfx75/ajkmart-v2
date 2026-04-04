@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -28,7 +28,7 @@ import { AuthGateSheet, useAuthGate, useRoleGate, RoleBlockSheet } from "@/compo
 
 const C = Colors.light;
 
-function FoodCard({ item }: { item: any }) {
+const FoodCard = React.memo(function FoodCard({ item }: { item: any }) {
   const { addItem, cartType, itemCount, clearCart, items, updateQuantity, removeItem } = useCart();
   const [added, setAdded] = useState(false);
   const scale = useRef(new Animated.Value(1)).current;
@@ -90,21 +90,21 @@ function FoodCard({ item }: { item: any }) {
         )}
       </View>
       <View style={styles.foodInfo}>
-        <Text style={styles.foodName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.foodVendor} numberOfLines={1}>{item.vendorName || "Restaurant"}</Text>
-        {item.rating != null && (
+        <Text style={styles.foodName} numberOfLines={1}>{item?.name ?? "—"}</Text>
+        <Text style={styles.foodVendor} numberOfLines={1}>{item?.vendorName ?? "Restaurant"}</Text>
+        {item?.rating != null && (
           <View style={styles.ratingRow}>
             <View style={styles.ratingPill}>
               <Ionicons name="star" size={11} color={C.gold} />
               <Text style={styles.ratingText}>{item.rating}</Text>
             </View>
-            {item.reviewCount != null && (
+            {item?.reviewCount != null && (
               <Text style={styles.reviewCount}>({item.reviewCount} reviews)</Text>
             )}
           </View>
         )}
         <View style={styles.foodFooter}>
-          <Text style={styles.foodPrice}>Rs. {item.price}</Text>
+          <Text style={styles.foodPrice}>Rs. {item?.price ?? 0}</Text>
           {qtyInCart > 0 ? (
             <View style={styles.stepperRow}>
               <TouchableOpacity activeOpacity={0.7} onPress={(e) => { e?.stopPropagation?.(); qtyInCart <= 1 ? removeItem(item.id) : updateQuantity(item.id, qtyInCart - 1); }} style={styles.stepperBtn}>
@@ -126,7 +126,7 @@ function FoodCard({ item }: { item: any }) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 function FoodScreenInner() {
   const insets = useSafeAreaInsets();
@@ -149,8 +149,15 @@ function FoodScreenInner() {
   const { data: catData } = useGetCategories({ type: "food" });
   const { data, isLoading, isError, refetch, isRefetching } = useGetProducts({ type: "food", search: debouncedSearch || undefined, category: selectedCat });
 
-  const categories = catData?.categories || [];
-  const items = data?.products || [];
+  const categories = useMemo(() => catData?.categories || [], [catData]);
+  const items = useMemo(() => data?.products || [], [data]);
+
+  const handleSelectCat = useCallback((id: string) => {
+    setSelectedCat(prev => prev === id ? undefined : id);
+  }, []);
+
+  const handleClearSearch = useCallback(() => setSearch(""), []);
+  const handleRefetch = useCallback(() => refetch(), [refetch]);
 
   return (
     <View style={styles.container}>
@@ -187,7 +194,7 @@ function FoodScreenInner() {
             maxLength={200}
           />
           {search.length > 0 && (
-            <TouchableOpacity activeOpacity={0.7} onPress={() => setSearch("")}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleClearSearch}>
               <Ionicons name="close-circle" size={18} color={C.textMuted} />
             </TouchableOpacity>
           )}
@@ -225,7 +232,7 @@ function FoodScreenInner() {
             <Text style={[styles.catChipText, !selectedCat && styles.catChipTextActive]}>All</Text>
           </TouchableOpacity>
           {categories.map(c => (
-            <TouchableOpacity activeOpacity={0.7} key={c.id} onPress={() => setSelectedCat(selectedCat === c.id ? undefined : c.id)} style={[styles.catChip, selectedCat === c.id && styles.catChipActive]}>
+            <TouchableOpacity activeOpacity={0.7} key={c.id} onPress={() => handleSelectCat(c.id)} style={[styles.catChip, selectedCat === c.id && styles.catChipActive]}>
               <Ionicons name={c.icon as keyof typeof Ionicons.glyphMap} size={14} color={selectedCat === c.id ? C.textInverse : C.food} />
               <Text style={[styles.catChipText, selectedCat === c.id && styles.catChipTextActive]}>{c.name}</Text>
             </TouchableOpacity>
@@ -259,7 +266,7 @@ function FoodScreenInner() {
             </View>
             <Text style={styles.errorTitle}>Could not load</Text>
             <Text style={styles.errorSub}>Check your internet and retry</Text>
-            <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={styles.retryBtn}>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleRefetch} style={styles.retryBtn}>
               <Ionicons name="refresh-outline" size={16} color={C.textInverse} />
               <Text style={styles.retryBtnTxt}>Retry</Text>
             </TouchableOpacity>

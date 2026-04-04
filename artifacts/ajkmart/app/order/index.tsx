@@ -678,7 +678,8 @@ export default function OrderDetailScreen() {
 
         {canCancel ? (
           <TouchableOpacity activeOpacity={0.7}
-            style={s.cancelOrderBtn}
+            style={[s.cancelOrderBtn, refundRequesting && { opacity: 0.5 }]}
+            disabled={refundRequesting}
             onPress={() => {
               const cancelMinsLeft = isParcelType
                 ? undefined

@@ -907,7 +907,8 @@ export default function AuthScreen() {
                         icon={sm.icon}
                         color={sm.color}
                         onPress={() => handleSocialLogin(sm.key as "google" | "facebook")}
-                        disabled={!isConfigured}
+                        disabled={!isConfigured || loading}
+                        loading={loading}
                       />
                     );
                   })}
@@ -929,6 +930,7 @@ export default function AuthScreen() {
                             icon="link"
                             color={C.info}
                             onPress={handleMagicLink}
+                            disabled={loading}
                           />
                         </View>
                       ) : (
@@ -1164,7 +1166,8 @@ export default function AuthScreen() {
                           icon={sm.icon}
                           color={sm.color}
                           onPress={() => handleSocialLogin(sm.key as "google" | "facebook")}
-                          disabled={!isConfigured}
+                          disabled={!isConfigured || loading}
+                          loading={loading}
                         />
                       );
                     })}
@@ -1186,6 +1189,7 @@ export default function AuthScreen() {
                               icon="link"
                               color={C.info}
                               onPress={handleMagicLink}
+                              disabled={loading}
                             />
                           </View>
                         ) : (

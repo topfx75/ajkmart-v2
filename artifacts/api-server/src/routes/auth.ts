@@ -41,6 +41,7 @@ import { getUserLanguage, getPlatformDefaultLanguage } from "../lib/getUserLangu
 import { t, type TranslationKey } from "@workspace/i18n";
 import { logger } from "../lib/logger.js";
 import { clearSpoofHits } from "./rider.js";
+import { validateBody as sharedValidateBody } from "../middleware/validate.js";
 
 /* OTP rate limiting is handled per-account + per-IP inside the route handler
    using the admin-configurable settings (security_otp_max_per_phone,
@@ -51,28 +52,6 @@ import { clearSpoofHits } from "./rider.js";
    Account-merge OTPs use a longer 10-minute window.
    ──────────────────────────────────────────────────────────── */
 const AUTH_OTP_TTL_MS = 5 * 60 * 1000;
-
-/* ── Zod validation helper ────────────────────────────────────
-   Returns the parsed body on success, or sends a 400 response
-   and returns null (caller must return immediately).
-   ──────────────────────────────────────────────────────────── */
-function validateBody<T extends z.ZodTypeAny>(
-  schema: T,
-  req: Request,
-  res: any
-): z.infer<T> | null {
-  const result = schema.safeParse(req.body ?? {});
-  if (!result.success) {
-    const first = result.error.issues[0];
-    res.status(400).json({
-      error: first?.message ?? "Invalid request body",
-      field: first?.path?.[0] ?? undefined,
-      issues: result.error.issues.map(i => ({ field: i.path.join("."), message: i.message })),
-    });
-    return null;
-  }
-  return result.data;
-}
 
 /* ── Auth Zod schemas ─────────────────────────────────────────
    One schema per key endpoint. Extra/unknown fields are stripped.
@@ -220,10 +199,8 @@ const checkIdentifierLimiter = rateLimit({
   keyGenerator: (req) => getClientIp(req),
 });
 
-router.post("/check-identifier", checkIdentifierLimiter, async (req, res) => {
-  const body = validateBody(checkIdentifierSchema, req, res);
-  if (!body) return;
-  const { identifier, role, deviceId } = body;
+router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(checkIdentifierSchema), async (req, res) => {
+  const { identifier, role, deviceId } = req.body;
 
   const ip          = getClientIp(req);
   const settings    = await getCachedSettings();
@@ -512,12 +489,10 @@ router.post("/merge-account", async (req, res) => {
    POST /auth/send-otp
    Atomically upsert user by phone — one account per number.
 ───────────────────────────────────────────────────────────── */
-router.post("/send-otp", verifyCaptcha, async (req, res) => {
-  const body = validateBody(sendOtpSchema, req, res);
-  if (!body) return;
-  const rawPhone = body.phone;
-  const deviceId = body.deviceId;
-  const preferredChannel = body.preferredChannel;
+router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async (req, res) => {
+  const rawPhone = req.body.phone;
+  const deviceId = req.body.deviceId;
+  const preferredChannel = req.body.preferredChannel;
   const phone = canonicalizePhone(rawPhone);
 
   if (!isValidCanonicalPhone(phone)) {
@@ -537,7 +512,7 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
     .where(eq(usersTable.phone, phone))
     .limit(1);
 
-  const effectiveRole = existingUser[0]?.role ?? ((body.role === "rider" || body.role === "vendor") ? body.role : "customer");
+  const effectiveRole = existingUser[0]?.role ?? ((req.body.role === "rider" || req.body.role === "vendor") ? req.body.role : "customer");
   const otpEnabledForRole = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveRole);
 
   if (existingUser.length === 0 && settings["feature_new_users"] === "off") {
@@ -741,17 +716,15 @@ router.post("/send-otp", verifyCaptcha, async (req, res) => {
    POST /auth/verify-otp
    Validates the OTP, checks security settings, returns token.
 ───────────────────────────────────────────────────────────── */
-router.post("/verify-otp", verifyCaptcha, async (req, res) => {
-  const body = validateBody(verifyOtpSchema, req, res);
-  if (!body) return;
-  const phone = canonicalizePhone(body.phone);
+router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), async (req, res) => {
+  const phone = canonicalizePhone(req.body.phone);
 
   if (!isValidCanonicalPhone(phone)) {
     res.status(400).json({ error: "Invalid phone number format.", field: "phone" });
     return;
   }
 
-  const { otp } = body;
+  const { otp } = req.body;
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
@@ -1220,9 +1193,7 @@ router.post("/validate-token", async (req, res) => {
    Refresh tokens are rotated on use (old one revoked, new one issued).
 ───────────────────────────────────────────────────────────── */
 async function handleRefreshToken(req: Request, res: any) {
-  const body = validateBody(refreshTokenSchema, req, res);
-  if (!body) return;
-  const { refreshToken } = body;
+  const { refreshToken } = req.body;
   const ip = getClientIp(req);
 
   const tokenHash = hashRefreshToken(refreshToken);
@@ -1316,8 +1287,8 @@ async function handleRefreshToken(req: Request, res: any) {
   });
 }
 
-router.post("/refresh", handleRefreshToken);
-router.post("/refresh-token", handleRefreshToken);
+router.post("/refresh", sharedValidateBody(refreshTokenSchema), handleRefreshToken);
+router.post("/refresh-token", sharedValidateBody(refreshTokenSchema), handleRefreshToken);
 
 /* ─────────────────────────────────────────────────────────────
    POST /auth/logout
@@ -2029,13 +2000,11 @@ function isAuthMethodEnabledStrict(settings: Record<string, string>, newKey: str
 const CNIC_REGEX = /^\d{5}-\d{7}-\d{1}$/;
 const PHONE_REGEX = /^0?3\d{9}$/;
 
-router.post("/register", verifyCaptcha, async (req, res) => {
-  const body = validateBody(registerSchema, req, res);
-  if (!body) return;
+router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), async (req, res) => {
   const { phone, password, name, role, cnic, nationalId, email, username,
           vehicleType, vehicleRegNo, drivingLicense,
           address, city, emergencyContact, vehiclePlate, vehiclePhoto, documents,
-          businessName, businessType, storeAddress, ntn, storeName } = body;
+          businessName, businessType, storeAddress, ntn, storeName } = req.body;
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
@@ -2178,10 +2147,8 @@ router.post("/register", verifyCaptcha, async (req, res) => {
   });
 });
 
-router.post("/forgot-password", verifyCaptcha, async (req, res) => {
-  const body = validateBody(forgotPasswordSchema, req, res);
-  if (!body) return;
-  let { phone, email, identifier } = body;
+router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPasswordSchema), async (req, res) => {
+  let { phone, email, identifier } = req.body;
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 

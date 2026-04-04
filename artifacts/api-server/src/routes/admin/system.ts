@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { sendAdminAlert } from "../../services/email.js";
 import { sendOtpSMS } from "../../services/sms.js";
 import { sendWhatsAppOTP } from "../../services/whatsapp.js";
@@ -26,6 +27,7 @@ import { emitSosNew, emitSosAcknowledged, emitSosResolved, type SosAlertPayload 
 import { hashPassword } from "../../services/password.js";
 import { sendSuccess, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
 import { auditLog, securityEvents, blockIP, unblockIP, isIPBlocked, getBlockedIPList, getActiveLockouts, unlockPhone } from "../../middleware/security.js";
+import { validateBody } from "../../middleware/validate.js";
 
 const router = Router();
 router.get("/stats", async (_req, res) => {
@@ -186,7 +188,9 @@ router.put("/platform-settings", async (req, res) => {
   sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })) });
 });
 
-router.patch("/platform-settings/:key", async (req, res) => {
+const patchSettingSchema = z.object({ value: z.string() });
+
+router.patch("/platform-settings/:key", validateBody(patchSettingSchema), async (req, res) => {
   const { value } = req.body;
   const settingKey = req.params["key"]!;
   const err = validateSettingValue(settingKey, String(value));
