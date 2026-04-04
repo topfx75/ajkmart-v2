@@ -89,9 +89,10 @@ function ProviderPanel({ name, label, color, enabledKey, roleKey, apiKeyKey, api
   };
 
   const colorClasses: Record<string, { border: string; bg: string; text: string }> = {
-    green: { border: "border-green-400", bg: "bg-green-50", text: "text-green-800" },
-    blue:  { border: "border-blue-400",  bg: "bg-blue-50",  text: "text-blue-800" },
-    red:   { border: "border-red-400",   bg: "bg-red-50",   text: "text-red-800" },
+    green:  { border: "border-green-400",  bg: "bg-green-50",  text: "text-green-800" },
+    blue:   { border: "border-blue-400",   bg: "bg-blue-50",   text: "text-blue-800" },
+    red:    { border: "border-red-400",    bg: "bg-red-50",    text: "text-red-800" },
+    orange: { border: "border-orange-400", bg: "bg-orange-50", text: "text-orange-800" },
   };
   const cc = colorClasses[color] ?? colorClasses.green!;
 
@@ -277,9 +278,10 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
 
   /* ── Health card ── */
   const PROVIDER_STATUS = [
-    { key: "osm",    label: "OpenStreetMap", testKey: "map_test_status_osm",    lastKey: "map_last_tested_osm",    color: "green" },
-    { key: "mapbox", label: "Mapbox GL JS",  testKey: "map_test_status_mapbox", lastKey: "map_last_tested_mapbox", color: "blue" },
-    { key: "google", label: "Google Maps",   testKey: "map_test_status_google", lastKey: "map_last_tested_google", color: "red" },
+    { key: "osm",       label: "OpenStreetMap", testKey: "map_test_status_osm",       lastKey: "map_last_tested_osm",       color: "green"  },
+    { key: "mapbox",    label: "Mapbox GL JS",  testKey: "map_test_status_mapbox",    lastKey: "map_last_tested_mapbox",    color: "blue"   },
+    { key: "google",    label: "Google Maps",   testKey: "map_test_status_google",    lastKey: "map_last_tested_google",    color: "red"    },
+    { key: "locationiq",label: "LocationIQ",    testKey: "map_test_status_locationiq",lastKey: "map_last_tested_locationiq",color: "orange" },
   ];
 
   const routingEngines = [
@@ -311,12 +313,13 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
       {/* ── 1. API Health Dashboard ── */}
       <div>
         <SLabel icon={Zap}>API Health Dashboard</SLabel>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-2">
           {PROVIDER_STATUS.map(({ key, label, testKey, lastKey, color }) => {
             const status = val(testKey) || "unknown";
             const last   = val(lastKey);
-            const cc = color === "green" ? "border-green-200 bg-green-50"
-              : color === "blue" ? "border-blue-200 bg-blue-50"
+            const cc = color === "green"  ? "border-green-200 bg-green-50"
+              : color === "blue"   ? "border-blue-200 bg-blue-50"
+              : color === "orange" ? "border-orange-200 bg-orange-50"
               : "border-red-200 bg-red-50";
             return (
               <Card key={key} className={`p-3 rounded-xl border ${cc} shadow-sm`}>
@@ -378,10 +381,46 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
             setupNote="Go to console.cloud.google.com → APIs & Services → Enable: Maps JavaScript API, Geocoding API. Restrict key to your domain."
             {...panelProps}
           />
+          <ProviderPanel
+            name="locationiq" label="LocationIQ" color="orange"
+            enabledKey="locationiq_enabled" roleKey="map_provider_role_locationiq"
+            apiKeyKey="locationiq_api_key" apiKeyPlaceholder="pk.xxxxxxxxxxxxxxxxxxxxxxxx"
+            setupUrl="https://locationiq.com/dashboard"
+            provider="locationiq"
+            setupNote="Register at locationiq.com → Dashboard → Access Tokens. Provides geocoding, autocomplete & map tiles. Free tier includes 5,000 requests/day."
+            {...panelProps}
+          />
         </div>
       </div>
 
-      {/* ── 3. Active Provider Selector ── */}
+      {/* ── 3. Search & Geocoding Provider ── */}
+      <div>
+        <SLabel icon={MapPin}>Search &amp; Geocoding Provider</SLabel>
+        <p className="text-xs text-muted-foreground mb-3">
+          This provider handles address search, autocomplete suggestions, and reverse geocoding across all apps.
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { v: "locationiq", label: "LocationIQ", sub: "Free tier, Pakistan-friendly", color: "border-orange-400 bg-orange-50 text-orange-800" },
+            { v: "google",     label: "Google Maps", sub: "Best accuracy, paid",         color: "border-red-400 bg-red-50 text-red-800" },
+            { v: "osm",        label: "Nominatim (OSM)", sub: "Free, no key needed",      color: "border-green-400 bg-green-50 text-green-800" },
+          ].map(({ v, label, sub, color }) => {
+            const active = (val("map_search_provider") || "locationiq") === v;
+            return (
+              <button
+                key={v}
+                onClick={() => handleChange("map_search_provider", v)}
+                className={`flex-1 min-w-[130px] rounded-xl border-2 p-3 text-left transition-all ${active ? color + " shadow-sm" : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40"} ${dirty("map_search_provider") && active ? "ring-2 ring-amber-300" : ""}`}
+              >
+                <div className="font-bold text-xs">{label}</div>
+                <div className="text-[10px] mt-0.5 opacity-70">{sub}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 4. Active Provider Selector ── */}
       <div>
         <SLabel icon={MapPin}>Active Provider Assignment</SLabel>
         <div className="grid grid-cols-2 gap-3 mt-2">
@@ -395,6 +434,7 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
               <option value="osm">OpenStreetMap</option>
               <option value="mapbox">Mapbox GL JS</option>
               <option value="google">Google Maps</option>
+              <option value="locationiq">LocationIQ</option>
             </select>
           </div>
           <div>
@@ -407,6 +447,7 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
               <option value="osm">OpenStreetMap</option>
               <option value="mapbox">Mapbox GL JS</option>
               <option value="google">Google Maps</option>
+              <option value="locationiq">LocationIQ</option>
             </select>
           </div>
         </div>
@@ -430,6 +471,7 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
                 <option value="osm">Force OpenStreetMap</option>
                 <option value="mapbox">Force Mapbox</option>
                 <option value="google">Force Google Maps</option>
+                <option value="locationiq">Force LocationIQ</option>
               </select>
             </div>
           ))}
@@ -505,10 +547,15 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
 
         {/* Cost summary cards */}
         {Object.keys(monthlyCost).length > 0 && (
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            {["osm", "mapbox", "google"].map(p => (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {[
+              { key: "osm",       label: "OpenStreetMap" },
+              { key: "mapbox",    label: "Mapbox" },
+              { key: "google",    label: "Google Maps" },
+              { key: "locationiq",label: "LocationIQ" },
+            ].map(({ key: p, label }) => (
               <Card key={p} className="p-3 rounded-xl border-border/50 shadow-sm">
-                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{p === "osm" ? "OpenStreetMap" : p === "mapbox" ? "Mapbox" : "Google"}</p>
+                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{label}</p>
                 <p className="text-xl font-black text-foreground">${(monthlyCost[p] ?? 0).toFixed(2)}</p>
                 <p className="text-[10px] text-muted-foreground">Est. this month</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -529,9 +576,10 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
                 <YAxis tick={{ fontSize: 9 }} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
-                <Bar dataKey="osm"    name="OSM"    fill="#22c55e" stackId="a" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="mapbox" name="Mapbox" fill="#3b82f6" stackId="a" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="google" name="Google" fill="#ef4444" stackId="a" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="osm"        name="OSM"        fill="#22c55e" stackId="a" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="mapbox"     name="Mapbox"     fill="#3b82f6" stackId="a" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="google"     name="Google"     fill="#ef4444" stackId="a" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="locationiq" name="LocationIQ" fill="#f97316" stackId="a" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Card>

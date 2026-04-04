@@ -175,7 +175,7 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
   /* ── Sentry ── */
   const sentryConfigured = !!val("sentry_dsn");
   /* ── Maps ── */
-  const mapsConfigured = !!(val("maps_api_key") || val("mapbox_api_key"));
+  const mapsConfigured = !!(val("maps_api_key") || val("mapbox_api_key") || val("google_maps_api_key") || val("locationiq_api_key"));
 
   return (
     <div className="space-y-4">
