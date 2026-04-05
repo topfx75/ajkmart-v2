@@ -4,8 +4,7 @@ import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useMapsAutocomplete, resolveLocation, reverseGeocodeCoords, staticMapUrl } from "@/hooks/useMaps";
 import type { MapPrediction } from "@/hooks/useMaps";
-import { MapPickerModal } from "@/components/ride/MapPickerModal";
-import type { MapPickerResult } from "@/components/ride/MapPickerModal";
+import { WebView } from "react-native-webview";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -22,8 +21,9 @@ import {
   useWindowDimensions,
   View,
   StyleSheet,
+  KeyboardAvoidingView,
 } from "react-native";
-import Reanimated, { FadeInDown } from "react-native-reanimated";
+import Reanimated, { FadeInDown, FadeIn, SlideInDown } from "react-native-reanimated";
 import { RT } from "@/constants/rideTokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
@@ -53,6 +53,8 @@ import type {
   EstimateFareRequest,
   SchoolSubscribeRequest,
 } from "@workspace/api-client-react";
+
+type MapPickerResult = { lat: number; lng: number; address: string };
 
 type SchoolSubscribeRequestWithNotes = SchoolSubscribeRequest & {
   notes?: string;
@@ -107,18 +109,46 @@ type RideBookingFormProps = {
   prefillType?: string;
 };
 
-/* ── Unified per-location state ─────────────────────────────────────────────
- * When the user has selected/resolved a location, lat/lng/address are set.
- * While the user is typing or after clearing, they are null and only `text`
- * (the raw input value) is present, making desync structurally impossible. */
 type LocState =
   | { text: string; lat: number; lng: number; address: string }
   | { text: string; lat: null;   lng: null;   address: null  };
 
+type BookingStep = "location" | "vehicle" | "confirm";
+
+const STEP_SHEET_HEIGHTS: Record<BookingStep, number> = {
+  location: 0.52,
+  vehicle: 0.56,
+  confirm: 0.60,
+};
+
+function SkeletonBox({ w, h, radius = 8 }: { w: number | `${number}%`; h: number; radius?: number }) {
+  const anim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    const p = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    p.start();
+    return () => p.stop();
+  }, []);
+  return (
+    <Animated.View
+      style={{
+        width: w,
+        height: h,
+        borderRadius: radius,
+        backgroundColor: "rgba(255,255,255,0.12)",
+        opacity: anim,
+      }}
+    />
+  );
+}
+
 export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillType }: RideBookingFormProps) {
   const colorScheme = useColorScheme();
   const C = colorScheme === "dark" ? Colors.dark : Colors.light;
-  const ds = makeDynStyles(C);
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -132,49 +162,23 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const rideCfg = config.rides;
 
   const DEFAULT_SERVICES: ServiceType[] = [
-    {
-      key: "bike",
-      name: "Bike",
-      icon: "🏍️",
-      baseFare: 50,
-      perKm: 15,
-      minFare: 50,
-      maxPassengers: 1,
-      allowBargaining: true,
-    },
-    {
-      key: "car",
-      name: "Car",
-      icon: "🚗",
-      baseFare: 150,
-      perKm: 25,
-      minFare: 150,
-      maxPassengers: 4,
-      allowBargaining: true,
-    },
-    {
-      key: "rickshaw",
-      name: "Rickshaw",
-      icon: "🛺",
-      baseFare: 80,
-      perKm: 18,
-      minFare: 80,
-      maxPassengers: 3,
-      allowBargaining: true,
-    },
+    { key: "bike", name: "Bike", icon: "🏍️", baseFare: 50, perKm: 15, minFare: 50, maxPassengers: 1, allowBargaining: true },
+    { key: "car", name: "Car", icon: "🚗", baseFare: 150, perKm: 25, minFare: 150, maxPassengers: 4, allowBargaining: true },
+    { key: "rickshaw", name: "Rickshaw", icon: "🛺", baseFare: 80, perKm: 18, minFare: 80, maxPassengers: 3, allowBargaining: true },
   ];
 
-  /* ── Unified location state — see LocState type above the component ────── */
+  const [step, setStep] = useState<BookingStep>("location");
+  const sheetAnim = useRef(new Animated.Value(0)).current;
+  const stepSlideAnim = useRef(new Animated.Value(0)).current;
+
   const [pickupLoc, setPickupLoc] = useState<LocState>({ text: "", lat: null, lng: null, address: null });
   const [dropLoc,   setDropLoc]   = useState<LocState>({ text: "", lat: null, lng: null, address: null });
 
-  /* Derived convenience aliases (read-only) */
   const pickup    = pickupLoc.text;
   const drop      = dropLoc.text;
   const pickupObj = pickupLoc.lat !== null ? { lat: pickupLoc.lat, lng: pickupLoc.lng, address: pickupLoc.address } : null;
   const dropObj   = dropLoc.lat   !== null ? { lat: dropLoc.lat,   lng: dropLoc.lng,   address: dropLoc.address   } : null;
 
-  /* Helpers — always keep text + coords in sync inside one object */
   function setPickup(text: string) { setPickupLoc(prev => ({ ...prev, text, lat: null, lng: null, address: null })); }
   function setDrop(text: string)   { setDropLoc(prev   => ({ ...prev, text, lat: null, lng: null, address: null })); }
   function setPickupObj(obj: { lat: number; lng: number; address: string } | null) {
@@ -185,26 +189,20 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     if (obj) setDropLoc({ text: obj.address, lat: obj.lat, lng: obj.lng, address: obj.address });
     else     setDropLoc(prev => ({ text: prev.text, lat: null, lng: null, address: null }));
   }
+
   const [rideType, setRideType] = useState("bike");
   const [receiverName, setReceiverName] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
   const [payMethod, setPayMethod] = useState("cash");
   const [services, setServices] = useState<ServiceType[]>(DEFAULT_SERVICES);
   const [servicesLoading, setServicesLoading] = useState(true);
-  const [payMethods, setPayMethods] = useState<
-    { id: string; label?: string; name?: string }[]
-  >([
+  const [payMethods, setPayMethods] = useState<{ id: string; label?: string; name?: string }[]>([
     { id: "cash", label: "Cash" },
     { id: "wallet", label: "Wallet" },
   ]);
   const [estimate, setEstimate] = useState<{
-    fare: number;
-    dist: number;
-    dur: string;
-    baseFare: number;
-    gstAmount: number;
-    bargainEnabled: boolean;
-    minOffer: number;
+    fare: number; dist: number; dur: string; baseFare: number;
+    gstAmount: number; bargainEnabled: boolean; minOffer: number;
   } | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [booking, setBooking] = useState(false);
@@ -219,9 +217,16 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const [pickupError, setPickupError] = useState("");
   const [pickupFocus, setPickupFocus] = useState(false);
   const [dropFocus, setDropFocus] = useState(false);
-  const [pickupInputY, setPickupInputY] = useState(0);
-  const [dropInputY, setDropInputY] = useState(0);
   const [popularSpots, setPopularSpots] = useState<PopularSpot[]>([]);
+  const [permGuideVisible, setPermGuideVisible] = useState(false);
+  const [estimateForType, setEstimateForType] = useState<string | null>(null);
+  const [estimateAt, setEstimateAt] = useState<number | null>(null);
+  const [estimateAgeMinutes, setEstimateAgeMinutes] = useState(0);
+  const [estimateNonce, setEstimateNonce] = useState(0);
+  const [mapPickerTarget, setMapPickerTarget] = useState<"pickup" | "drop">("pickup");
+  const [inlineMapPick, setInlineMapPick] = useState(false);
+  const [inlineMapResult, setInlineMapResult] = useState<MapPickerResult | null>(null);
+  const inlineMapAnim = useRef(new Animated.Value(0)).current;
   const [schoolRoutes, setSchoolRoutes] = useState<any[]>([]);
   const [showSchoolModal, setShowSchoolModal] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<any>(null);
@@ -230,34 +235,24 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const [schoolNotes, setSchoolNotes] = useState("");
   const [schoolShift, setSchoolShift] = useState<"morning" | "afternoon" | "both">("morning");
   const [schoolStartDate, setSchoolStartDate] = useState(() => {
-    const d = new Date();
+    const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   const [schoolRecurring, setSchoolRecurring] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
-  const [debtBalance, setDebtBalance] = useState(0);
-  const [debtDismissed, setDebtDismissed] = useState(false);
-  const [permGuideVisible, setPermGuideVisible] = useState(false);
-  const [estimateForType, setEstimateForType] = useState<string | null>(null);
-  const [estimateAt, setEstimateAt] = useState<number | null>(null);
-  const [estimateAgeMinutes, setEstimateAgeMinutes] = useState(0);
-  const [estimateNonce, setEstimateNonce] = useState(0);
-
-  const [showMapPicker, setShowMapPicker] = useState(false);
-  const [mapPickerTarget, setMapPickerTarget] = useState<"pickup" | "drop" | number>("pickup");
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   const [scheduledTime, setScheduledTime] = useState("08:00");
-  const [stops, setStops] = useState<Array<{ id: string; address: string; lat?: number; lng?: number }>>([]);
-  const [stopInputs, setStopInputs] = useState<Record<string, string>>({});
   const [isPoolRide, setIsPoolRide] = useState(false);
-
+  const [debtBalance, setDebtBalance] = useState(0);
+  const [debtDismissed, setDebtDismissed] = useState(false);
   const liveAnim = useRef(new Animated.Value(1)).current;
   const bookBtnScale = useRef(new Animated.Value(1)).current;
   const bargainPanelH = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -278,35 +273,58 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     }).start();
   }, [showBargain]);
 
-  const handleMapPickerConfirm = useCallback((result: MapPickerResult) => {
-    setShowMapPicker(false);
-    const { lat, lng, address } = result;
+  useEffect(() => {
+    Animated.spring(sheetAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 12,
+    }).start();
+  }, []);
+
+  const animateToStep = (newStep: BookingStep) => {
+    Animated.timing(stepSlideAnim, {
+      toValue: -30,
+      duration: 120,
+      useNativeDriver: true,
+    }).start(() => {
+      setStep(newStep);
+      stepSlideAnim.setValue(30);
+      Animated.spring(stepSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 180,
+        friction: 18,
+      }).start();
+    });
+  };
+
+  const openInlineMapPick = useCallback((target: "pickup" | "drop") => {
+    setMapPickerTarget(target);
+    setInlineMapResult(null);
+    setInlineMapPick(true);
+    Animated.spring(inlineMapAnim, { toValue: 1, useNativeDriver: true, tension: 100, friction: 12 }).start();
+  }, [inlineMapAnim]);
+
+  const closeInlineMapPick = useCallback(() => {
+    Animated.timing(inlineMapAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setInlineMapPick(false);
+      setInlineMapResult(null);
+    });
+  }, [inlineMapAnim]);
+
+  const confirmInlineMapPick = useCallback(() => {
+    if (!inlineMapResult) return;
+    const { lat, lng, address } = inlineMapResult;
     if (mapPickerTarget === "pickup") {
       setPickup(address);
       setPickupObj({ lat, lng, address });
-    } else if (mapPickerTarget === "drop") {
+    } else {
       setDrop(address);
       setDropObj({ lat, lng, address });
-    } else if (typeof mapPickerTarget === "number") {
-      setStops(prev => prev.map((s, i) => i === mapPickerTarget ? { ...s, address, lat, lng } : s));
-      setStopInputs(prev => ({ ...prev, [String(mapPickerTarget)]: address }));
     }
-  }, [mapPickerTarget]);
-
-  const addStop = useCallback(() => {
-    const id = `stop_${Date.now()}`;
-    setStops(prev => [...prev, { id, address: "", lat: undefined, lng: undefined }]);
-    setStopInputs(prev => ({ ...prev, [String(stops.length)]: "" }));
-  }, [stops.length]);
-
-  const removeStop = useCallback((idx: number) => {
-    setStops(prev => prev.filter((_, i) => i !== idx));
-    setStopInputs(prev => {
-      const next = { ...prev };
-      delete next[String(idx)];
-      return next;
-    });
-  }, []);
+    closeInlineMapPick();
+  }, [inlineMapResult, mapPickerTarget, closeInlineMapPick]);
 
   const { predictions: pickupPreds, loading: pickupLoading } =
     useMapsAutocomplete(pickupFocus ? pickup : "");
@@ -319,7 +337,6 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     if (prefillType) setRideType(prefillType);
   }, []);
 
-  /* Auto-fill pickup from current GPS on form mount */
   useEffect(() => {
     if (prefillPickup) return;
     let cancelled = false;
@@ -344,24 +361,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
 
   useEffect(() => {
     getRideStops()
-      .then((data) => {
-        if (data?.locations?.length) setPopularSpots(data.locations);
-      })
-      .catch((err) => {
-        if (__DEV__) console.warn("[RideBookingForm] Popular spots fetch failed:", err instanceof Error ? err.message : String(err));
-      });
+      .then((data) => { if (data?.locations?.length) setPopularSpots(data.locations); })
+      .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (rideType !== "school_shift") return;
-    getSchoolRoutes()
-      .then((data) => {
-        if (data?.routes?.length) setSchoolRoutes(data.routes);
-      })
-      .catch((err) => {
-        if (__DEV__) console.warn("[RideBookingForm] School routes fetch failed:", err instanceof Error ? err.message : String(err));
-      });
-  }, [rideType]);
 
   useEffect(() => {
     fetch(`${API_BASE}/rides/payment-methods`)
@@ -369,19 +371,13 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       .then(unwrapApiResponse)
       .then((rideData) => {
         if (rideData?.methods?.length) {
-          const mapped = rideData.methods.map((m: any) => ({
-            id: m.key ?? m.id,
-            label: m.label ?? m.name,
-          }));
+          const mapped = rideData.methods.map((m: any) => ({ id: m.key ?? m.id, label: m.label ?? m.name }));
           setPayMethods(mapped);
           setPayMethod(mapped[0]!.id);
         }
       })
       .catch(() => {
-        setPayMethods([
-          { id: "cash", label: "Cash" },
-          { id: "wallet", label: "Wallet" },
-        ]);
+        setPayMethods([{ id: "cash", label: "Cash" }, { id: "wallet", label: "Wallet" }]);
         setPayMethod("cash");
       });
   }, []);
@@ -392,18 +388,24 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       .then((data) => {
         if (!data?.services?.length) return;
         setServices(data.services);
-        setRideType((prev) =>
-          data.services.find((s: ServiceType) => s.key === prev)
-            ? prev
-            : data.services[0]!.key,
-        );
+        setRideType((prev) => data.services.find((s: ServiceType) => s.key === prev) ? prev : data.services[0]!.key);
       })
-      .catch((err) => {
-        if (__DEV__) console.warn("[RideBookingForm] Ride services fetch failed:", err instanceof Error ? err.message : String(err));
-        showToast("Could not load ride types. Please check your connection and try again.", "error");
+      .catch(() => {
+        showToast("Could not load ride types.", "error");
       })
       .finally(() => setServicesLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (rideType !== "school_shift") return;
+    getSchoolRoutes()
+      .then((data: any) => {
+        if (data?.routes?.length) setSchoolRoutes(data.routes);
+      })
+      .catch(() => {
+        if (__DEV__) console.warn("[RideBookingForm] School routes fetch failed");
+      });
+  }, [rideType]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -412,12 +414,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     })
       .then((r) => r.json())
       .then(unwrapApiResponse)
-      .then((d) => {
-        if (d?.debtBalance > 0) setDebtBalance(d.debtBalance);
-      })
-      .catch((err) => {
-        if (__DEV__) console.warn("[RideBookingForm] Debt fetch failed:", err instanceof Error ? err.message : String(err));
-      });
+      .then((d) => { if (d?.debtBalance > 0) setDebtBalance(d.debtBalance); })
+      .catch(() => {});
   }, [user?.id]);
 
   const handleMyLocation = async () => {
@@ -425,14 +423,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     setLocDenied(false);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setLocDenied(true);
-        setPermGuideVisible(true);
-        return;
-      }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      if (status !== "granted") { setLocDenied(true); setPermGuideVisible(true); return; }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude: lat, longitude: lng } = pos.coords;
       const data = await reverseGeocodeCoords(lat, lng);
       const address = data?.address ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
@@ -447,90 +439,57 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   };
 
   useEffect(() => {
-    if (!pickupObj || !dropObj) {
-      setEstimate(null);
-      return;
-    }
+    if (!pickupObj || !dropObj) { setEstimate(null); return; }
     let cancelled = false;
     const timer = setTimeout(() => {
       setEstimating(true);
       estimateFare({
-        pickupLat: pickupObj.lat,
-        pickupLng: pickupObj.lng,
-        dropLat: dropObj.lat,
-        dropLng: dropObj.lng,
+        pickupLat: pickupObj.lat, pickupLng: pickupObj.lng,
+        dropLat: dropObj.lat, dropLng: dropObj.lng,
         type: rideType,
       } as EstimateFareRequest)
-        .then(
-          (data) => {
-            if (cancelled || !data) return;
-            const ext = data as typeof data & { baseFare?: number; gstAmount?: number; bargainEnabled?: boolean; minOffer?: number };
-            setEstimateForType(data.type ?? rideType);
-            setEstimateAt(Date.now());
-            setEstimateAgeMinutes(0);
-            setEstimate({
-              fare: data.fare,
-              dist: data.distance,
-              dur: data.duration,
-              baseFare: ext.baseFare ?? data.fare,
-              gstAmount: ext.gstAmount ?? 0,
-              bargainEnabled: ext.bargainEnabled ?? false,
-              minOffer: ext.minOffer ?? data.fare,
-            });
-          },
-        )
-        .catch(() => {
-          if (!cancelled) {
-            setEstimate(null);
-            setEstimateForType(null);
-            showToast("Could not estimate fare. Please try again.", "error");
-          }
+        .then((data) => {
+          if (cancelled || !data) return;
+          const ext = data as typeof data & { baseFare?: number; gstAmount?: number; bargainEnabled?: boolean; minOffer?: number };
+          setEstimateForType(data.type ?? rideType);
+          setEstimateAt(Date.now());
+          setEstimateAgeMinutes(0);
+          setEstimate({
+            fare: data.fare, dist: data.distance, dur: data.duration,
+            baseFare: ext.baseFare ?? data.fare,
+            gstAmount: ext.gstAmount ?? 0,
+            bargainEnabled: ext.bargainEnabled ?? false,
+            minOffer: ext.minOffer ?? data.fare,
+          });
         })
-        .finally(() => {
-          if (!cancelled) setEstimating(false);
-        });
+        .catch(() => { if (!cancelled) { setEstimate(null); setEstimateForType(null); } })
+        .finally(() => { if (!cancelled) setEstimating(false); });
     }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [pickupObj?.lat, pickupObj?.lng, dropObj?.lat, dropObj?.lng, rideType, estimateNonce]);
 
   useEffect(() => {
     if (!estimateAt) return;
-    const interval = setInterval(() => {
-      setEstimateAgeMinutes(Math.floor((Date.now() - estimateAt) / 60000));
-    }, 30000);
+    const interval = setInterval(() => { setEstimateAgeMinutes(Math.floor((Date.now() - estimateAt) / 60000)); }, 30000);
     return () => clearInterval(interval);
   }, [estimateAt]);
 
   const selectPickup = useCallback(async (pred: MapPrediction) => {
-    /* Immediately clear any previously resolved coords so the UI can't book
-       with stale lat/lng if the user picks a new suggestion. */
     setPickupObj(null);
     setPickup(pred.mainText);
     setPickupFocus(false);
     const loc = await resolveLocation(pred, (msg) => showToast(msg, "error"));
-    if (!loc) {
-      setPickup("");
-      return;
-    }
-    /* Atomically update both text and coords so they are never out of sync. */
+    if (!loc) { setPickup(""); return; }
     setPickup(pred.description);
     setPickupObj({ ...loc, address: pred.description });
   }, [showToast]);
 
   const selectDrop = useCallback(async (pred: MapPrediction) => {
-    /* Immediately clear any previously resolved coords. */
     setDropObj(null);
     setDrop(pred.mainText);
     setDropFocus(false);
     const loc = await resolveLocation(pred, (msg) => showToast(msg, "error"));
-    if (!loc) {
-      setDrop("");
-      return;
-    }
-    /* Atomically update both text and coords. */
+    if (!loc) { setDrop(""); return; }
     setDrop(pred.description);
     setDropObj({ ...loc, address: pred.description });
   }, [showToast]);
@@ -546,38 +505,16 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   };
 
   const handleSchoolSubscribe = async () => {
-    if (!user) {
-      showToast("Please log in first", "error");
-      return;
-    }
-    if (!selectedRoute) {
-      showToast("Please select a route", "error");
-      return;
-    }
-    if (!schoolStudent.trim()) {
-      showToast("Please enter the student's name", "error");
-      return;
-    }
-    if (!schoolClass.trim()) {
-      showToast("Please enter the student's class", "error");
-      return;
-    }
+    if (!user) { showToast("Please log in first", "error"); return; }
+    if (!selectedRoute) { showToast("Please select a route", "error"); return; }
+    if (!schoolStudent.trim()) { showToast("Please enter the student's name", "error"); return; }
+    if (!schoolClass.trim()) { showToast("Please enter the student's class", "error"); return; }
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(schoolStartDate)) {
-      showToast("Please enter start date as YYYY-MM-DD", "error");
-      return;
-    }
+    if (!dateRegex.test(schoolStartDate)) { showToast("Please enter start date as YYYY-MM-DD", "error"); return; }
     const parsedDate = new Date(schoolStartDate);
-    if (isNaN(parsedDate.getTime())) {
-      showToast("Invalid start date", "error");
-      return;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (parsedDate < today) {
-      showToast("Start date cannot be in the past", "error");
-      return;
-    }
+    if (isNaN(parsedDate.getTime())) { showToast("Invalid start date", "error"); return; }
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (parsedDate < today) { showToast("Start date cannot be in the past", "error"); return; }
     setSubscribing(true);
     try {
       const subscribePayload: SchoolSubscribeRequestWithNotes = {
@@ -598,210 +535,94 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       setSchoolNotes("");
       setSchoolShift("morning");
       setSchoolRecurring(true);
-      showToast(
-        `${schoolStudent} has been subscribed to ${selectedRoute.schoolName}!`,
-        "success",
-      );
-    } catch (e: any) {
-      const msg = e?.response?.data?.error || e?.message || "Network error. Please try again.";
-      showToast(msg, "error");
+      showToast(`${schoolStudent} has been subscribed to ${selectedRoute.schoolName}!`, "success");
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } }; message?: string };
+      showToast(err?.response?.data?.error ?? err?.message ?? "Network error. Please try again.", "error");
     } finally {
       setSubscribing(false);
     }
   };
 
   const handleBook = async () => {
-    if (!pickup || !drop) {
-      showToast("Please select pickup and drop locations", "error");
-      return;
-    }
+    if (!pickup || !drop) { showToast("Please select pickup and drop locations", "error"); return; }
     if (!pickupObj) {
       setPickupError("Please select an exact pickup location from the suggestions");
-      showToast(
-        "Please select pickup location from the list (exact location required)",
-        "error",
-      );
+      showToast("Please select pickup location from the list (exact location required)", "error");
       return;
     }
     setPickupError("");
-    if (!dropObj) {
-      showToast(
-        "Please select drop location from the list (exact location required)",
-        "error",
-      );
-      return;
-    }
-    if (!user) {
-      requireAuth(() => {}, { message: "Sign in to book a ride", returnTo: "/ride" });
-      return;
-    }
-    if (user?.role !== "customer") {
-      requireCustomerRole(() => {});
-      return;
-    }
+    if (!dropObj) { showToast("Please select drop location from the list (exact location required)", "error"); return; }
+    if (!user) { requireAuth(() => {}, { message: "Sign in to book a ride", returnTo: "/ride" }); return; }
+    if (user?.role !== "customer") { requireCustomerRole(() => {}); return; }
     const selectedSvc = services.find((s) => s.key === rideType);
     if (isParcelService(rideType, selectedSvc)) {
-      if (!receiverName.trim()) {
-        showToast("Please enter the receiver's full name", "error");
-        return;
-      }
-      if (!receiverPhone.trim()) {
-        showToast("Please enter the receiver's phone number", "error");
-        return;
-      }
+      if (!receiverName.trim()) { showToast("Please enter the receiver's full name", "error"); return; }
+      if (!receiverPhone.trim()) { showToast("Please enter the receiver's phone number", "error"); return; }
     }
-    if (
-      pickupObj && dropObj &&
-      Math.abs(pickupObj.lat - dropObj.lat) < 0.0001 &&
-      Math.abs(pickupObj.lng - dropObj.lng) < 0.0001
-    ) {
-      showToast("Pickup and drop locations cannot be the same", "error");
-      return;
+    if (pickupObj && dropObj && Math.abs(pickupObj.lat - dropObj.lat) < 0.0001 && Math.abs(pickupObj.lng - dropObj.lng) < 0.0001) {
+      showToast("Pickup and drop locations cannot be the same", "error"); return;
     }
-    if (!estimate) {
-      showToast("Fare estimate is being calculated. Please wait.", "error");
-      return;
-    }
-    if (estimateForType && estimateForType !== rideType) {
-      showToast("Fare estimate is outdated. Please wait for it to refresh.", "error");
-      return;
-    }
+    if (!estimate) { showToast("Fare estimate is being calculated. Please wait.", "error"); return; }
+    if (estimateForType && estimateForType !== rideType) { showToast("Fare estimate is outdated. Please wait for it to refresh.", "error"); return; }
     if (estimateAt && Date.now() - estimateAt > 5 * 60 * 1000) {
-      showToast("Fare estimate has expired — refreshing now, please try again in a moment.", "error");
-      setEstimate(null);
-      setEstimateAt(null);
-      setEstimateNonce((n) => n + 1);
-      return;
+      showToast("Fare estimate has expired — refreshing now, please try again.", "error");
+      setEstimate(null); setEstimateAt(null); setEstimateNonce((n) => n + 1); return;
     }
-
     let parsedOffer: number | undefined;
     if (showBargain && offeredFare) {
       parsedOffer = parseFloat(offeredFare);
-      if (isNaN(parsedOffer) || parsedOffer <= 0) {
-        showToast("Please enter a valid amount for your offer", "error");
-        return;
-      }
-      if (parsedOffer < estimate.minOffer) {
-        showToast(
-          `Minimum offer is Rs. ${estimate.minOffer} (${Math.round((estimate.minOffer / estimate.fare) * 100)}% of platform fare)`,
-          "error",
-        );
-        return;
-      }
-      if (parsedOffer > estimate.fare) {
-        showToast(
-          `Offer cannot exceed the platform fare of Rs. ${estimate.fare}`,
-          "error",
-        );
-        return;
-      }
+      if (isNaN(parsedOffer) || parsedOffer <= 0) { showToast("Please enter a valid amount for your offer", "error"); return; }
+      if (parsedOffer < estimate.minOffer) { showToast(`Minimum offer is Rs. ${estimate.minOffer}`, "error"); return; }
+      if (parsedOffer > estimate.fare) { showToast(`Offer cannot exceed the platform fare of Rs. ${estimate.fare}`, "error"); return; }
     }
-
     const effectiveFare = parsedOffer ?? estimate.fare;
-    if (
-      payMethod === "wallet" &&
-      (user?.walletBalance ?? 0) < effectiveFare
-    ) {
-      showToast(
-        `Wallet balance Rs. ${user?.walletBalance ?? 0} — less than Rs. ${effectiveFare} required. Please top up.`,
-        "error",
-      );
-      return;
+    if (payMethod === "wallet" && (user?.walletBalance ?? 0) < effectiveFare) {
+      showToast(`Wallet balance Rs. ${user?.walletBalance ?? 0} — insufficient. Please top up.`, "error"); return;
     }
-
     setBooking(true);
     try {
       if (isScheduled) {
-        if (!scheduledDate || !scheduledTime) {
-          showToast("Please enter a valid scheduled date and time.", "error");
-          setBooking(false);
-          return;
-        }
         const scheduledDt = new Date(`${scheduledDate}T${scheduledTime}:00`);
         const fiveMinFromNow = new Date(Date.now() + 5 * 60_000);
         if (isNaN(scheduledDt.getTime()) || scheduledDt <= fiveMinFromNow) {
-          showToast("Scheduled time must be at least 5 minutes in the future.", "error");
-          setBooking(false);
-          return;
+          showToast("Scheduled time must be at least 5 minutes in the future.", "error"); setBooking(false); return;
         }
       }
-
-      const selectedSvcForBook = services.find((s) => s.key === rideType);
-      const parcelBooking = isParcelService(rideType, selectedSvcForBook);
-      /* Validate that any non-empty stop inputs have been resolved to coordinates */
-      const unresolvedStop = stops.some((s, i) => {
-        const typed = (stopInputs[String(i)] ?? s.address ?? "").trim();
-        return typed.length > 0 && (s.lat === undefined || s.lng === undefined);
-      });
-      if (unresolvedStop) {
-        showToast("Please select each stop from the suggestions list to confirm its location.", "error");
-        setBooking(false);
-        return;
-      }
-      const resolvedStops = stops.filter(s => s.lat !== undefined && s.lng !== undefined).map((s, i) => ({
-        address: s.address || stopInputs[String(i)] || "",
-        lat: s.lat!,
-        lng: s.lng!,
-        order: i + 1,
-      }));
       const rideData = await bookRide({
         type: rideType,
-        pickupAddress: pickup,
-        dropAddress: drop,
-        pickupLat: pickupObj.lat,
-        pickupLng: pickupObj.lng,
-        dropLat: dropObj.lat,
-        dropLng: dropObj.lng,
+        pickupAddress: pickup, dropAddress: drop,
+        pickupLat: pickupObj.lat, pickupLng: pickupObj.lng,
+        dropLat: dropObj.lat, dropLng: dropObj.lng,
         paymentMethod: payMethod,
         ...(parsedOffer !== undefined && { offeredFare: parsedOffer }),
         ...(bargainNote && { bargainNote }),
-        ...(parcelBooking && receiverName.trim() && { receiverName: receiverName.trim() }),
-        ...(parcelBooking && receiverPhone.trim() && { receiverPhone: receiverPhone.trim() }),
-        ...(parcelBooking && { isParcel: true }),
+        ...(isParcelService(rideType, services.find((s) => s.key === rideType)) && receiverName.trim() && { receiverName: receiverName.trim() }),
+        ...(isParcelService(rideType, services.find((s) => s.key === rideType)) && receiverPhone.trim() && { receiverPhone: receiverPhone.trim() }),
+        ...(isParcelService(rideType, services.find((s) => s.key === rideType)) && { isParcel: true }),
         ...(isScheduled && { isScheduled: true, scheduledAt: new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString() }),
-        ...(resolvedStops.length > 0 && { stops: resolvedStops }),
         ...(isPoolRide && { isPoolRide: true }),
       } as BookRideRequest);
       const bookedRide = rideData as BookedRide;
       if (payMethod === "wallet" && !bookedRide.isBargaining) {
-        updateUser({
-          walletBalance:
-            (user?.walletBalance ?? 0) -
-            (bookedRide.effectiveFare ?? bookedRide.fare ?? 0),
-        });
+        updateUser({ walletBalance: (user?.walletBalance ?? 0) - (bookedRide.effectiveFare ?? bookedRide.fare ?? 0) });
       }
       onBooked(bookedRide);
-
       (async () => {
         try {
           const perm = await Location.requestForegroundPermissionsAsync();
           if (perm.status !== "granted") return;
-          const pos = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          await updateLocation({
-            userId: user?.id ?? "",
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            role: "customer",
-          });
-        } catch (locErr) {
-          if (__DEV__) console.warn("[location] ride booking update failed:", locErr);
-          showToast("Ride booked, but location update failed", "info");
-        }
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          await updateLocation({ userId: user?.id ?? "", latitude: pos.coords.latitude, longitude: pos.coords.longitude, role: "customer" });
+        } catch {}
       })();
     } catch (err: any) {
       const errData = err?.response?.data || err?.data;
       if (errData?.activeRideId) {
-        onBooked({
-          id: errData.activeRideId,
-          type: rideType,
-          status: errData.activeRideStatus,
-        });
+        onBooked({ id: errData.activeRideId, type: rideType, status: errData.activeRideStatus });
         showToast("You have an active ride. Resuming tracking.", "info");
       } else {
-        const msg = errData?.error || "Network error. Please try again.";
-        showToast(msg, "error");
+        showToast(errData?.error || "Network error. Please try again.", "error");
       }
     } finally {
       setBooking(false);
@@ -814,215 +635,175 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     try {
       const data = await getRideHistory();
       setHistory(data?.rides || []);
-    } catch {
-      setHistory([]);
-    } finally {
-      setHistLoading(false);
-    }
+    } catch { setHistory([]); }
+    finally { setHistLoading(false); }
   };
 
   const selectedSvc = services.find((s) => s.key === rideType) ?? services[0];
+  const canProceedFromLocation = !!(dropObj);
+  const sheetHeight = screenHeight * STEP_SHEET_HEIGHTS[step];
+
+  const mapMarkers = [
+    ...(pickupObj ? [{ lat: pickupObj.lat, lng: pickupObj.lng, color: "green" }] : []),
+    ...(dropObj ? [{ lat: dropObj.lat, lng: dropObj.lng, color: "red" }] : []),
+  ];
+  const mapBg = (pickupObj || dropObj) && mapMarkers.length > 0
+    ? staticMapUrl(mapMarkers, { width: Math.round(screenWidth), height: Math.round(screenHeight) })
+    : null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.background }}>
+    <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
       <AuthGateSheet {...authSheetProps} />
       <RoleBlockSheet {...roleBlockProps} />
-      <LinearGradient
-        colors={["#001A5C", "#003399", "#0052CC"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <PermissionGuide visible={permGuideVisible} type="location" onClose={() => setPermGuideVisible(false)} />
+
+      {/* Map background */}
+      <View style={StyleSheet.absoluteFillObject}>
+        {mapBg ? (
+          <Image source={{ uri: mapBg }} style={{ flex: 1 }} resizeMode="cover" />
+        ) : (
+          <LinearGradient
+            colors={["#0F172A", "#1E293B", "#0F172A"]}
+            style={{ flex: 1 }}
+          />
+        )}
+        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)" }} />
+      </View>
+
+      {/* Top nav bar */}
+      <View
         style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10,
           paddingTop: topPad + 8,
           paddingHorizontal: 16,
-          paddingBottom: 14,
+          paddingBottom: 10,
         }}
       >
-        <View style={rs.hdrRow}>
-          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={rs.backBtnBlue}>
-            <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()}
+            style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}
+          >
+            <Ionicons name="arrow-back" size={18} color="#fff" />
           </TouchableOpacity>
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text
-              style={{
-                fontFamily: Font.bold,
-                fontSize: 17,
-                color: "#FFFFFF",
-              }}
-            >
-              Book a Ride
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: Font.bold, fontSize: 16, color: "#fff" }}>Book a Ride</Text>
+            <Text style={{ fontFamily: Font.regular, fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 1 }}>
+              {step === "location" ? "Set your destination" : step === "vehicle" ? "Choose your ride" : "Review & confirm"}
             </Text>
           </View>
-          <TouchableOpacity activeOpacity={0.7}
-            onPress={handleMyLocation}
-            disabled={locLoading}
-            style={{
-              height: 34,
-              borderRadius: 10,
-              backgroundColor: "rgba(255,255,255,0.18)",
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: 10,
-              gap: 5,
-              marginRight: 8,
-            }}
+          <TouchableOpacity activeOpacity={0.7} onPress={() => { setShowHistory(true); fetchHistory(); }}
+            style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}
           >
-            {locLoading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons
-                name="locate-outline"
-                size={14}
-                color={locDenied ? "#ff8888" : "#FFFFFF"}
-              />
-            )}
-            <Text
-              style={{
-                fontFamily: Font.medium,
-                fontSize: 11,
-                color: locDenied ? "#ff8888" : "rgba(255,255,255,0.9)",
-              }}
-            >
-              {locLoading ? "..." : locDenied ? "Denied" : "GPS"}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.7}
-            onPress={() => {
-              setShowHistory(true);
-              fetchHistory();
-            }}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              backgroundColor: "rgba(255,255,255,0.18)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ionicons name="time-outline" size={18} color="#FFFFFF" />
+            <Ionicons name="time-outline" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
+      </View>
 
-        <View
-          style={{
-            marginTop: 10,
-            backgroundColor: "#FFFFFF",
-            borderRadius: 16,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            ...Platform.select({
-              ios: { shadowColor: "#001A5C", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.14, shadowRadius: 12 },
-              android: { elevation: 4 },
-              web: { boxShadow: "0 4px 14px rgba(0,26,92,0.14)" },
-            }),
-          }}
-        >
-          {locDenied && (
+      {/* Step indicator dots */}
+      <View style={{ position: "absolute", top: topPad + 58, left: 0, right: 0, alignItems: "center", zIndex: 10 }}>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          {(["location", "vehicle", "confirm"] as BookingStep[]).map((s) => (
             <View
+              key={s}
               style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingHorizontal: 4,
-                paddingBottom: 4,
-                gap: 5,
+                width: step === s ? 20 : 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: step === s ? "#FCD34D" : "rgba(255,255,255,0.3)",
               }}
-            >
-              <Ionicons name="warning-outline" size={11} color={C.red} />
-              <Text
-                style={{
-                  fontFamily: Font.regular,
-                  fontSize: 10,
-                  color: C.red,
-                  flex: 1,
-                }}
-              >
-                Location denied — type address or tap GPS to retry
+            />
+          ))}
+        </View>
+      </View>
+
+      {/* Bottom Sheet */}
+      <Animated.View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: sheetHeight + insets.bottom,
+          backgroundColor: colorScheme === "dark" ? "#1E293B" : "#fff",
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          transform: [{ translateY: sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [sheetHeight, 0] }) }],
+          ...Platform.select({
+            ios: { shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.2, shadowRadius: 20 },
+            android: { elevation: 20 },
+            web: { boxShadow: "0 -4px 30px rgba(0,0,0,0.25)" },
+          }),
+        }}
+      >
+        {/* Drag handle */}
+        <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.15)" : "#E2E8F0" }} />
+        </View>
+
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={10}
+        >
+          <Animated.View style={{ flex: 1, transform: [{ translateX: stepSlideAnim }] }}>
+          {/* ── STEP 1: LOCATION ── */}
+          {step === "location" && (
+            <View style={{ flex: 1, paddingHorizontal: 20 }}>
+              <Text style={{ fontFamily: Font.bold, fontSize: 18, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginBottom: 16 }}>
+                Where to?
               </Text>
-            </View>
-          )}
 
-          <View style={{ flexDirection: "row", alignItems: "stretch", gap: 0 }}>
-            <View style={{ width: 20, alignItems: "center", paddingTop: 12 }}>
-              <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: C.emerald, borderWidth: 2, borderColor: `${C.emerald}40` }} />
-              <View style={{ flex: 1, width: 1.5, alignItems: "center", marginVertical: 2 }}>
-                {[0,1,2].map((i) => (
-                  <View key={i} style={{ width: 1.5, height: 3, backgroundColor: C.border, borderRadius: 1, marginBottom: 2, opacity: 0.7 }} />
-                ))}
-              </View>
-              <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: C.red, borderWidth: 2, borderColor: `${C.red}40`, marginBottom: 12 }} />
-            </View>
+              {debtBalance > 0 && !debtDismissed && (
+                <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: "#FCA5A5" }}>
+                  <Ionicons name="warning" size={16} color="#EF4444" />
+                  <Text style={{ flex: 1, fontFamily: Font.medium, fontSize: 12, color: "#991B1B" }}>Outstanding balance: Rs. {debtBalance}</Text>
+                  <TouchableOpacity onPress={() => setDebtDismissed(true)} hitSlop={8}>
+                    <Ionicons name="close" size={14} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              )}
 
-            <View style={{ flex: 1 }}
-              onLayout={(e) => setPickupInputY(e.nativeEvent.layout.y)}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: C.borderLight, paddingBottom: 1 }}>
+              {/* Pickup row */}
+              <View style={[
+                styles.inputRow,
+                { backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderColor: pickupFocus ? "#FCD34D" : colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0" }
+              ]}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981", marginRight: 10 }} />
                 <TextInput
                   value={pickup}
-                  onChangeText={(v) => {
-                    setPickup(v);
-                    setPickupObj(null);
-                    if (pickupError) setPickupError("");
-                  }}
+                  onChangeText={(v) => { setPickup(v); setPickupObj(null); if (pickupError) setPickupError(""); }}
                   onFocus={() => setPickupFocus(true)}
                   onBlur={() => setTimeout(() => setPickupFocus(false), 250)}
                   placeholder="Pickup location..."
-                  placeholderTextColor={C.textMuted}
-                  style={{
-                    flex: 1,
-                    fontFamily: Font.medium,
-                    fontSize: 13,
-                    color: C.text,
-                    paddingVertical: 8,
-                    paddingLeft: 6,
-                  }}
+                  placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+                  style={{ flex: 1, fontFamily: Font.medium, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", paddingVertical: 10 }}
                 />
-                {pickup.length > 0 && (
-                  <TouchableOpacity activeOpacity={0.7}
-                    onPress={() => {
-                      setPickup("");
-                      setPickupObj(null);
-                      setPickupError("");
-                    }}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="close-circle" size={14} color={C.textMuted} />
+                {locLoading ? (
+                  <ActivityIndicator size="small" color="#FCD34D" style={{ marginLeft: 4 }} />
+                ) : (
+                  <TouchableOpacity onPress={handleMyLocation} hitSlop={8} style={{ marginLeft: 4 }}>
+                    <Ionicons name="locate" size={17} color={locDenied ? "#EF4444" : "#FCD34D"} />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity activeOpacity={0.7}
-                  onPress={() => { setMapPickerTarget("pickup"); setShowMapPicker(true); }}
-                  hitSlop={8}
-                  style={{ marginLeft: 4, padding: 3 }}
-                >
-                  <Ionicons name="map-outline" size={16} color={C.primary} />
+                <TouchableOpacity onPress={() => openInlineMapPick("pickup")} hitSlop={8} style={{ marginLeft: 6 }}>
+                  <Ionicons name="map-outline" size={17} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
                 </TouchableOpacity>
               </View>
 
-              {pickup !== "" && !pickupObj && pickupError ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2, marginLeft: 6 }}>
-                  <Ionicons name="alert-circle-outline" size={11} color={C.red} />
-                  <Text style={{ ...Typ.small, fontSize: 10, color: C.red }}>{pickupError}</Text>
-                </View>
-              ) : null}
-
               {pickupFocus && (pickupPreds.length > 0 || pickupLoading) && (
-                <View style={[
-                  ds.sugg,
-                  pickupInputY > screenHeight * 0.55
-                    ? { position: "absolute", bottom: "100%", top: undefined, marginTop: 0, marginBottom: 4 }
-                    : undefined
-                ]}>
-                  {pickupLoading && (
-                    <ActivityIndicator size="small" color={C.primary} style={{ padding: 6 }} />
-                  )}
+                <View style={[styles.suggBox, { backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff", borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }]}>
+                  {pickupLoading && <ActivityIndicator size="small" color="#FCD34D" style={{ padding: 6 }} />}
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{ maxHeight: 150 }}>
                     {pickupPreds.slice(0, 5).map((pred) => (
-                      <TouchableOpacity activeOpacity={0.7} key={pred.placeId} onPress={() => selectPickup(pred)} style={ds.suggRow}>
-                        <Ionicons name="location-outline" size={13} color={C.emerald} />
+                      <TouchableOpacity key={pred.placeId} onPress={() => selectPickup(pred)} style={styles.suggRow} activeOpacity={0.7}>
+                        <Ionicons name="location-outline" size={13} color="#10B981" />
                         <View style={{ flex: 1 }}>
-                          <Text style={ds.suggTxt}>{pred.mainText}</Text>
-                          {pred.secondaryText ? (
-                            <Text style={ds.suggSub} numberOfLines={1}>{pred.secondaryText}</Text>
-                          ) : null}
+                          <Text style={[styles.suggTxt, { color: colorScheme === "dark" ? "#fff" : "#0F172A" }]}>{pred.mainText}</Text>
+                          {pred.secondaryText ? <Text style={[styles.suggSub, { color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }]} numberOfLines={1}>{pred.secondaryText}</Text> : null}
                         </View>
                       </TouchableOpacity>
                     ))}
@@ -1030,1569 +811,584 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                 </View>
               )}
 
-              <View style={{ flexDirection: "row", alignItems: "center" }}
-                onLayout={(e) => setDropInputY(e.nativeEvent.layout.y)}
-              >
+              {/* Drop row */}
+              <View style={[
+                styles.inputRow,
+                { marginTop: 10, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderColor: dropFocus ? "#EF4444" : colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0" }
+              ]}>
+                <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: "#EF4444", marginRight: 10 }} />
                 <TextInput
                   value={drop}
-                  onChangeText={(v) => {
-                    setDrop(v);
-                    setDropObj(null);
-                  }}
+                  onChangeText={(v) => { setDrop(v); setDropObj(null); }}
                   onFocus={() => setDropFocus(true)}
                   onBlur={() => setTimeout(() => setDropFocus(false), 250)}
                   placeholder="Drop-off location..."
-                  placeholderTextColor={C.textMuted}
-                  style={{
-                    flex: 1,
-                    fontFamily: Font.medium,
-                    fontSize: 13,
-                    color: C.text,
-                    paddingVertical: 8,
-                    paddingLeft: 6,
-                  }}
+                  placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+                  style={{ flex: 1, fontFamily: Font.medium, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", paddingVertical: 10 }}
+                  autoFocus={!!pickup && !drop}
                 />
                 {drop.length > 0 && (
-                  <TouchableOpacity activeOpacity={0.7}
-                    onPress={() => {
-                      setDrop("");
-                      setDropObj(null);
-                    }}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="close-circle" size={14} color={C.textMuted} />
+                  <TouchableOpacity onPress={() => { setDrop(""); setDropObj(null); }} hitSlop={8}>
+                    <Ionicons name="close-circle" size={15} color={colorScheme === "dark" ? "#64748B" : "#94A3B8"} />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity activeOpacity={0.7}
-                  onPress={() => { setMapPickerTarget("drop"); setShowMapPicker(true); }}
-                  hitSlop={8}
-                  style={{ marginLeft: 4, padding: 3 }}
-                >
-                  <Ionicons name="map-outline" size={16} color={C.red} />
+                <TouchableOpacity onPress={() => openInlineMapPick("drop")} hitSlop={8} style={{ marginLeft: 6 }}>
+                  <Ionicons name="map-outline" size={17} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
                 </TouchableOpacity>
               </View>
 
               {dropFocus && (dropPreds.length > 0 || dropLoading) && (
-                <View style={[
-                  ds.sugg,
-                  dropInputY > screenHeight * 0.55
-                    ? { position: "absolute", bottom: "100%", top: undefined, marginTop: 0, marginBottom: 4 }
-                    : undefined
-                ]}>
-                  {dropLoading && (
-                    <ActivityIndicator size="small" color={C.red} style={{ padding: 6 }} />
-                  )}
+                <View style={[styles.suggBox, { backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff", borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }]}>
+                  {dropLoading && <ActivityIndicator size="small" color="#EF4444" style={{ padding: 6 }} />}
                   <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{ maxHeight: 150 }}>
                     {dropPreds.slice(0, 5).map((pred) => (
-                      <TouchableOpacity activeOpacity={0.7} key={pred.placeId} onPress={() => selectDrop(pred)} style={ds.suggRow}>
-                        <Ionicons name="location-outline" size={13} color={C.red} />
+                      <TouchableOpacity key={pred.placeId} onPress={() => selectDrop(pred)} style={styles.suggRow} activeOpacity={0.7}>
+                        <Ionicons name="location-outline" size={13} color="#EF4444" />
                         <View style={{ flex: 1 }}>
-                          <Text style={ds.suggTxt}>{pred.mainText}</Text>
-                          {pred.secondaryText ? (
-                            <Text style={ds.suggSub} numberOfLines={1}>{pred.secondaryText}</Text>
-                          ) : null}
+                          <Text style={[styles.suggTxt, { color: colorScheme === "dark" ? "#fff" : "#0F172A" }]}>{pred.mainText}</Text>
+                          {pred.secondaryText ? <Text style={[styles.suggSub, { color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }]} numberOfLines={1}>{pred.secondaryText}</Text> : null}
                         </View>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
               )}
-            </View>
 
-            <TouchableOpacity activeOpacity={0.7}
-              onPress={() => {
-                /* Swap entire location objects atomically to prevent desync */
-                const savedPickup = pickupLoc;
-                setPickupLoc(dropLoc);
-                setDropLoc(savedPickup);
-              }}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                backgroundColor: C.surface,
-                borderWidth: 1,
-                borderColor: C.border,
-                alignItems: "center" as const,
-                justifyContent: "center" as const,
-                alignSelf: "center" as const,
-              }}
-            >
-              <Ionicons name="swap-vertical" size={14} color={C.primary} />
-            </TouchableOpacity>
-          </View>
-
-          {stops.map((stop, idx) => (
-            <View key={stop.id} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.amberBrown }} />
-              <TextInput
-                value={stopInputs[String(idx)] ?? stop.address}
-                onChangeText={v => setStopInputs(prev => ({ ...prev, [String(idx)]: v }))}
-                placeholder={`Stop ${idx + 1} location...`}
-                placeholderTextColor={C.textMuted}
-                style={{ flex: 1, fontFamily: Font.regular, fontSize: 14, color: C.text, paddingVertical: 8 }}
-              />
-              <TouchableOpacity activeOpacity={0.7} onPress={() => { setMapPickerTarget(idx); setShowMapPicker(true); }} hitSlop={8} style={{ padding: 4 }}>
-                <Ionicons name="map-outline" size={16} color={C.amberBrown} />
-              </TouchableOpacity>
-              <TouchableOpacity activeOpacity={0.7} onPress={() => removeStop(idx)} hitSlop={8} style={{ padding: 4 }}>
-                <Ionicons name="close-circle" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-            </View>
-          ))}
-
-          {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && (
-            <TouchableOpacity activeOpacity={0.7}
-              onPress={addStop}
-              style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6, paddingVertical: 4, paddingHorizontal: 4 }}
-            >
-              <Ionicons name="add-circle-outline" size={14} color={C.primary} />
-              <Text style={{ fontFamily: Font.medium, fontSize: 11, color: C.primary }}>Add Stop</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </LinearGradient>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 16 }}
-      >
-        {debtBalance > 0 && !debtDismissed && (
-          <View
-            style={{
-              marginBottom: 14,
-              backgroundColor: C.redBg,
-              borderWidth: 1,
-              borderColor: C.redBorder,
-              borderRadius: 16,
-              padding: 16,
-              gap: 10,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  flex: 1,
-                }}
+              {/* Swap */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => { const s = pickupLoc; setPickupLoc(dropLoc); setDropLoc(s); }}
+                style={{ position: "absolute", right: 28, top: 56, width: 28, height: 28, borderRadius: 8, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F1F5F9", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.12)" : "#E2E8F0", alignItems: "center", justifyContent: "center", zIndex: 5 }}
               >
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    backgroundColor: C.redBorder,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
+                <Ionicons name="swap-vertical" size={14} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+              </TouchableOpacity>
+
+              {/* Popular spots */}
+              {popularSpots.length > 0 && !pickupFocus && !dropFocus && (
+                <ScrollView
+                  horizontal showsHorizontalScrollIndicator={false}
+                  style={{ marginTop: 14, marginHorizontal: -20 }}
+                  contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
                 >
-                  <Ionicons name="warning" size={18} color={C.red} />
+                  {popularSpots.map((spot) => (
+                    <TouchableOpacity
+                      key={spot.id} onPress={() => handleChip(spot)} activeOpacity={0.7}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 50, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0" }}
+                    >
+                      <Text style={{ fontSize: 12 }}>{spot.icon || "📍"}</Text>
+                      <Text style={{ fontFamily: Font.semiBold, fontSize: 12, color: colorScheme === "dark" ? "#E2E8F0" : "#0F172A" }}>{spot.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* CTA */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => { if (canProceedFromLocation) animateToStep("vehicle"); else showToast("Please set your drop-off location first", "error"); }}
+                style={{ marginTop: "auto", marginBottom: insets.bottom + 8, borderRadius: 18, overflow: "hidden" }}
+              >
+                <LinearGradient
+                  colors={canProceedFromLocation ? ["#FCD34D", "#F59E0B"] : ["#334155", "#334155"]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 }}
+                >
+                  <Text style={{ fontFamily: Font.bold, fontSize: 15, color: canProceedFromLocation ? "#0A0F1E" : "#64748B" }}>
+                    {canProceedFromLocation ? "Choose Vehicle" : "Set Drop Location"}
+                  </Text>
+                  {canProceedFromLocation && <Ionicons name="arrow-forward" size={18} color="#0A0F1E" />}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* ── STEP 2: VEHICLE ── */}
+          {step === "vehicle" && (
+            <View style={{ flex: 1, paddingHorizontal: 20 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
+                <TouchableOpacity onPress={() => animateToStep("location")} style={{ marginRight: 10 }} hitSlop={8}>
+                  <Ionicons name="chevron-back" size={20} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+                </TouchableOpacity>
+                <Text style={{ fontFamily: Font.bold, fontSize: 18, color: colorScheme === "dark" ? "#fff" : "#0F172A", flex: 1 }}>
+                  Choose your ride
+                </Text>
+              </View>
+
+              {/* Route summary */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
+                <View style={{ alignItems: "center", gap: 3 }}>
+                  <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#10B981" }} />
+                  <View style={{ width: 1.5, height: 12, backgroundColor: colorScheme === "dark" ? "#334155" : "#CBD5E1" }} />
+                  <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: "#EF4444" }} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 14,
-                      color: C.redDeepest,
-                    }}
-                  >
-                    Outstanding Balance: Rs. {debtBalance}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: Font.regular,
-                      fontSize: 12,
-                      color: C.redDark,
-                      marginTop: 2,
-                    }}
-                  >
-                    You have an unpaid cancellation fee
-                  </Text>
+                  <Text style={{ fontFamily: Font.medium, fontSize: 11, color: colorScheme === "dark" ? "#94A3B8" : "#64748B" }} numberOfLines={1}>{pickup}</Text>
+                  <Text style={{ fontFamily: Font.medium, fontSize: 11, color: colorScheme === "dark" ? "#94A3B8" : "#64748B", marginTop: 4 }} numberOfLines={1}>{drop}</Text>
                 </View>
-              </View>
-              <TouchableOpacity activeOpacity={0.7}
-                onPress={() => setDebtDismissed(true)}
-                hitSlop={8}
-              >
-                <Ionicons name="close" size={16} color={C.redDeepest} />
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity activeOpacity={0.7}
-              onPress={() => router.push("/(tabs)/wallet")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                backgroundColor: C.red,
-                borderRadius: 12,
-                paddingVertical: 12,
-              }}
-            >
-              <Ionicons name="wallet-outline" size={16} color={C.textInverse} />
-              <Text
-                style={{
-                  fontFamily: Font.bold,
-                  fontSize: 13,
-                  color: C.textInverse,
-                }}
-              >
-                Pay Now
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {popularSpots.length > 0 && (
-          <>
-            <Text
-              style={{
-                fontFamily: Font.bold,
-                fontSize: 15,
-                color: C.text,
-                marginBottom: 10,
-              }}
-            >
-              Popular Locations
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 14, marginHorizontal: -16 }}
-              contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
-            >
-              {popularSpots.map((spot) => (
-                <TouchableOpacity activeOpacity={0.7}
-                  key={spot.id}
-                  onPress={() => handleChip(spot)}
-                  style={{
-                    flexDirection: "row" as const,
-                    alignItems: "center" as const,
-                    gap: 6,
-                    backgroundColor: C.surface,
-                    paddingHorizontal: 14,
-                    paddingVertical: 8,
-                    borderRadius: 50,
-                    borderWidth: 1,
-                    borderColor: C.border,
-                    ...Platform.select({
-                      ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 },
-                      android: { elevation: 1 },
-                      web: { boxShadow: "0 1px 4px rgba(0,0,0,0.06)" },
-                    }),
-                  }}
-                >
-                  <Text style={{ fontSize: 13 }}>{spot.icon || "📍"}</Text>
-                  <Text
-                    style={{
-                      fontFamily: Font.semiBold,
-                      fontSize: 12,
-                      color: C.text,
-                    }}
-                  >
-                    {spot.name}
-                  </Text>
+                <TouchableOpacity onPress={() => animateToStep("location")} hitSlop={8}>
+                  <Text style={{ fontFamily: Font.semiBold, fontSize: 11, color: "#FCD34D" }}>Edit</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </>
-        )}
+              </View>
 
-        {rideType === "school_shift" && (
-          <TouchableOpacity activeOpacity={0.7}
-            onPress={() => setShowSchoolModal(true)}
-            style={{
-              marginBottom: 14,
-              backgroundColor: C.blueSoft,
-              borderWidth: 1,
-              borderColor: C.blueBorder,
-              borderRadius: 16,
-              padding: 16,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
-                backgroundColor: C.blueBorder,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text style={{ fontSize: 22 }}>🚌</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontFamily: Font.bold,
-                  color: C.navyDeep,
-                }}
-              >
-                School Shift Subscribe
-              </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontFamily: Font.regular,
-                  color: C.royalBlue,
-                  marginTop: 2,
-                }}
-              >
-                Monthly school transport
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={C.royalBlue} />
-          </TouchableOpacity>
-        )}
-
-        {rideCfg.surgeEnabled && (
-          <View
-            style={{
-              marginBottom: 14,
-              backgroundColor: C.orangeBg,
-              borderWidth: 1,
-              borderColor: C.orangeBorder,
-              borderRadius: 14,
-              padding: 14,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <View
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: C.orangeSoft,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="flash" size={18} color={C.orangeBrand} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontFamily: Font.bold,
-                  color: C.orangeDark,
-                }}
-              >
-                Surge Active x{rideCfg.surgeMultiplier}
-              </Text>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontFamily: Font.regular,
-                  color: C.orangeDark,
-                }}
-              >
-                Fares are {Math.round((rideCfg.surgeMultiplier - 1) * 100)}%
-                higher
-              </Text>
-            </View>
-          </View>
-        )}
-
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <Text
-            style={{
-              fontFamily: Font.bold,
-              fontSize: 15,
-              color: C.text,
-            }}
-          >
-            Choose Service
-          </Text>
-          {services.length > 1 && (
-            <View style={{ flexDirection: "row", gap: 4 }}>
-              {services.map((svc) => (
-                <View
-                  key={svc.key}
-                  style={{
-                    width: svc.key === rideType ? 18 : 6,
-                    height: 6,
-                    borderRadius: 3,
-                    backgroundColor: svc.key === rideType
-                      ? (svc.color ?? C.primary)
-                      : (colorScheme === "dark" ? "rgba(255,255,255,0.15)" : C.borderLight),
-                  }}
-                />
-              ))}
-            </View>
-          )}
-        </View>
-        {servicesLoading ? (
-          <ServiceListSkeleton />
-        ) : (
-          <React.Fragment>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginHorizontal: -16, marginBottom: 6 }}
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              gap: 10,
-              flexDirection: "row",
-            }}
-          >
-            {services.map((svc) => {
-              const active = rideType === svc.key;
-              const accentColor = svc.color ?? C.primary;
-              const feats: string[] = [];
-              if (svc.perKm > 0) feats.push(`Rs. ${svc.perKm}/km`);
-              if (svc.maxPassengers > 1) feats.push(`${svc.maxPassengers} seats`);
-              if (svc.allowBargaining) feats.push("Negotiate");
-              if (svc.isParcel) feats.push("Parcel");
-              const cardContent = (
-                <View
-                  style={{
-                    borderRadius: 18,
-                    padding: 14,
-                    backgroundColor: active
-                      ? (colorScheme === "dark" ? `${accentColor}18` : `${accentColor}0C`)
-                      : (colorScheme === "dark" ? "rgba(255,255,255,0.05)" : C.textInverse),
-                    borderWidth: active ? 0 : 1.5,
-                    borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.10)" : C.border,
-                    overflow: "hidden",
-                    minHeight: 136,
-                    minWidth: 116,
-                  }}
-                >
-                  {active && (
-                    <View style={{
-                      position: "absolute",
-                      top: 10,
-                      right: 10,
-                      width: 18,
-                      height: 18,
-                      borderRadius: 9,
-                      backgroundColor: accentColor,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      zIndex: 2,
-                    }}>
-                      <Ionicons name="checkmark" size={11} color="#fff" />
-                    </View>
-                  )}
-                  <View
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 16,
-                      backgroundColor: active
-                        ? `${accentColor}22`
-                        : (colorScheme === "dark" ? "rgba(255,255,255,0.08)" : C.surfaceSecondary),
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginBottom: 10,
-                      borderWidth: active ? 1 : 0,
-                      borderColor: `${accentColor}50`,
-                    }}
-                  >
-                    <Text style={{ fontSize: 26 }}>{svc.icon}</Text>
-                  </View>
-                  <Text style={{
-                    fontFamily: Font.bold,
-                    fontSize: 14,
-                    color: active ? accentColor : (colorScheme === "dark" ? "rgba(255,255,255,0.92)" : C.text),
-                    marginBottom: 4,
-                  }}>
-                    {svc.name}
-                  </Text>
-                  {svc.nameUrdu ? (
-                    <Text style={{ fontSize: 10, color: colorScheme === "dark" ? "rgba(255,255,255,0.40)" : C.textMuted, fontFamily: Font.regular, marginBottom: 4 }}>
-                      {svc.nameUrdu}
-                    </Text>
-                  ) : null}
-                  <View style={{
-                    backgroundColor: active ? `${accentColor}22` : (colorScheme === "dark" ? "rgba(255,255,255,0.08)" : C.surfaceSecondary),
-                    borderRadius: 8,
-                    paddingHorizontal: 7,
-                    paddingVertical: 3,
-                    alignSelf: "flex-start",
-                    marginBottom: 6,
-                    borderWidth: 1,
-                    borderColor: active ? `${accentColor}45` : "transparent",
-                  }}>
-                    <Text style={{ fontFamily: Font.bold, fontSize: 12, color: active ? accentColor : (colorScheme === "dark" ? "rgba(255,255,255,0.65)" : C.textSecondary) }}>
-                      Rs. {svc.minFare}+
-                    </Text>
-                  </View>
-                  <View style={{ gap: 3 }}>
-                    {feats.slice(0, 2).map((f) => (
-                      <View key={f} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={10}
-                          color={active ? accentColor : (colorScheme === "dark" ? "rgba(255,255,255,0.35)" : C.textMuted)}
-                        />
-                        <Text
+              {/* Vehicle cards */}
+              {servicesLoading ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}>
+                  {[0, 1, 2].map((i) => <SkeletonBox key={i} w={130} h={140} radius={20} />)}
+                </ScrollView>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}>
+                  {services.map((svc, idx) => {
+                    const active = rideType === svc.key;
+                    const accentColor = svc.color ?? "#FCD34D";
+                    return (
+                      <Reanimated.View key={svc.key} entering={FadeInDown.delay(idx * 60).springify().damping(16)}>
+                        <TouchableOpacity
+                          activeOpacity={0.75}
+                          onPress={() => setRideType(svc.key)}
                           style={{
-                            fontFamily: Font.regular,
-                            fontSize: 10,
-                            color: colorScheme === "dark" ? "rgba(255,255,255,0.50)" : C.textSecondary,
+                            width: 130,
+                            borderRadius: 20,
+                            padding: 14,
+                            backgroundColor: active
+                              ? (colorScheme === "dark" ? `${accentColor}18` : `${accentColor}10`)
+                              : (colorScheme === "dark" ? "#0F172A" : "#F8FAFC"),
+                            borderWidth: active ? 2 : 1,
+                            borderColor: active ? accentColor : (colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0"),
+                            minHeight: 140,
                           }}
-                          numberOfLines={1}
                         >
-                          {f}
+                          {active && (
+                            <View style={{ position: "absolute", top: 10, right: 10, width: 18, height: 18, borderRadius: 9, backgroundColor: accentColor, alignItems: "center", justifyContent: "center" }}>
+                              <Ionicons name="checkmark" size={11} color="#fff" />
+                            </View>
+                          )}
+                          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: active ? `${accentColor}22` : (colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9"), alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+                            <Text style={{ fontSize: 28 }}>{svc.icon}</Text>
+                          </View>
+                          <Text style={{ fontFamily: Font.bold, fontSize: 14, color: active ? accentColor : (colorScheme === "dark" ? "#fff" : "#0F172A"), marginBottom: 4 }}>
+                            {svc.name}
+                          </Text>
+                          <View style={{ backgroundColor: active ? `${accentColor}22` : (colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9"), borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, alignSelf: "flex-start", marginBottom: 4 }}>
+                            <Text style={{ fontFamily: Font.bold, fontSize: 12, color: active ? accentColor : (colorScheme === "dark" ? "#94A3B8" : "#64748B") }}>
+                              {active && estimate && estimateForType === svc.key ? `Rs. ${estimate.fare}` : `Rs. ${svc.minFare}+`}
+                            </Text>
+                          </View>
+                          {active && estimate && estimateForType === svc.key && (
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginBottom: 4 }}>
+                              <Ionicons name="time-outline" size={10} color={accentColor} />
+                              <Text style={{ fontFamily: Font.regular, fontSize: 10, color: colorScheme === "dark" ? "#94A3B8" : "#64748B" }}>{estimate.dur}</Text>
+                            </View>
+                          )}
+                          {svc.maxPassengers > 1 && (
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                              <Ionicons name="people-outline" size={10} color={colorScheme === "dark" ? "#64748B" : "#94A3B8"} />
+                              <Text style={{ fontFamily: Font.regular, fontSize: 10, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>{svc.maxPassengers} seats</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      </Reanimated.View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              {/* Fare estimate */}
+              <View style={{ marginTop: 14 }}>
+                {estimating && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <SkeletonBox w="45%" h={48} radius={12} />
+                    <SkeletonBox w="45%" h={48} radius={12} />
+                  </View>
+                )}
+                {!estimating && estimate && (
+                  <Reanimated.View entering={FadeIn.duration(300)} style={{ backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderRadius: 16, padding: 14, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <View style={{ alignItems: "center", flex: 1 }}>
+                        <Text style={{ fontFamily: Font.regular, fontSize: 11, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>Distance</Text>
+                        <Text style={{ fontFamily: Font.bold, fontSize: 15, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginTop: 2 }}>{estimate.dist} km</Text>
+                      </View>
+                      <View style={{ width: 1, height: 32, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }} />
+                      <View style={{ alignItems: "center", flex: 1 }}>
+                        <Text style={{ fontFamily: Font.regular, fontSize: 11, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>ETA</Text>
+                        <Text style={{ fontFamily: Font.bold, fontSize: 15, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginTop: 2 }}>{estimate.dur}</Text>
+                      </View>
+                      <View style={{ width: 1, height: 32, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }} />
+                      <View style={{ alignItems: "center", flex: 1 }}>
+                        <Text style={{ fontFamily: Font.regular, fontSize: 11, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>Fare</Text>
+                        <Text style={{ fontFamily: Font.bold, fontSize: 18, color: "#10B981", marginTop: 2 }}>Rs. {estimate.fare}</Text>
+                      </View>
+                    </View>
+                  </Reanimated.View>
+                )}
+              </View>
+
+              {/* Bargain row */}
+              {!estimating && estimate?.bargainEnabled && (
+                <View style={{ marginTop: 10 }}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => { setShowBargain((v) => !v); setOfferedFare(""); setBargainNote(""); }}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: showBargain ? "rgba(252,211,77,0.08)" : "transparent", borderWidth: 1, borderColor: showBargain ? "#FCD34D" : colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0", borderRadius: 14, padding: 12 }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={showBargain ? "#FCD34D" : colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+                      <View>
+                        <Text style={{ fontFamily: Font.bold, fontSize: 13, color: showBargain ? "#FCD34D" : colorScheme === "dark" ? "#fff" : "#0F172A" }}>
+                          {showBargain ? "Bargaining ON" : "Bargain"}
+                        </Text>
+                        <Text style={{ fontFamily: Font.regular, fontSize: 11, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>
+                          Min: Rs. {estimate.minOffer}
                         </Text>
                       </View>
-                    ))}
-                  </View>
-                </View>
-              );
-              return (
-                <Reanimated.View key={svc.key} entering={FadeInDown.delay(services.indexOf(svc) * 60).springify().damping(16)}>
-                  <TouchableOpacity activeOpacity={0.75}
-                    onPress={() => setRideType(svc.key)}
-                    style={{ borderRadius: 20 }}
-                  >
-                    {active ? (
-                      <LinearGradient
-                        colors={[`${accentColor}90`, `${accentColor}55`, `${accentColor}25`]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{ borderRadius: 20, padding: 2 }}
-                      >
-                        {cardContent}
-                      </LinearGradient>
-                    ) : cardContent}
+                    </View>
+                    <Ionicons name={showBargain ? "chevron-up" : "chevron-down"} size={16} color={showBargain ? "#FCD34D" : colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
                   </TouchableOpacity>
-                </Reanimated.View>
-              );
-            })}
-          </ScrollView>
-          </React.Fragment>
-        )}
 
-        {estimating && <FareEstimateSkeleton />}
-        {!estimating && estimate && (
-          <View
-            style={{
-              borderRadius: 20,
-              overflow: "hidden",
-              marginBottom: 14,
-              borderWidth: 1,
-              borderColor: C.border,
-              backgroundColor: C.surface,
-              ...Platform.select({
-                ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8 },
-                android: { elevation: 2 },
-                web: { boxShadow: "0 2px 8px rgba(0,0,0,0.07)" },
-              }),
-            }}
-          >
-            {pickupObj && dropObj && (
-              <TouchableOpacity activeOpacity={0.7}
-                onPress={() => {
-                  const url = `https://www.google.com/maps/dir/?api=1&origin=${pickupObj.lat},${pickupObj.lng}&destination=${dropObj.lat},${dropObj.lng}&travelmode=driving`;
-                  Linking.openURL(url);
-                }}
-                style={{ width: "100%", height: 120, backgroundColor: C.surfaceSecondary }}
-              >
-                <Image
-                  source={{ uri: staticMapUrl([{ lat: pickupObj.lat, lng: pickupObj.lng, color: "green" }, { lat: dropObj.lat, lng: dropObj.lng, color: "red" }], { width: Math.round(screenWidth - 40), height: 120 }) }}
-                  style={{ width: "100%", height: 120 }}
-                  resizeMode="cover"
-                />
-                <View style={{ position: "absolute", bottom: 6, right: 8, backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Ionicons name="navigate-outline" size={11} color={C.textInverse} />
-                  <Text style={{ ...Typ.smallMedium, fontSize: 10, color: C.textInverse }}>Open in Maps</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-            <View style={{ padding: 18 }}>
-              {estimateAgeMinutes >= 5 && (
-                <View style={{ backgroundColor: C.yellowLightBg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 10, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="time-outline" size={13} color={C.amberBrown} />
-                  <Text style={{ fontFamily: Font.medium, fontSize: 12, color: C.amberBrown, flex: 1 }}>
-                    Estimate is {estimateAgeMinutes} min old — prices may have changed
-                  </Text>
+                  <Animated.View style={{ overflow: "hidden", maxHeight: bargainPanelH.interpolate({ inputRange: [0, 1], outputRange: [0, 110] }), opacity: bargainPanelH }}>
+                    <View style={{ backgroundColor: "rgba(252,211,77,0.06)", borderWidth: 1, borderColor: "rgba(252,211,77,0.2)", borderTopWidth: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, padding: 12, gap: 8 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff", borderWidth: 1.5, borderColor: "#FCD34D", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
+                        <Text style={{ fontFamily: Font.bold, fontSize: 14, color: colorScheme === "dark" ? "#94A3B8" : "#64748B", marginRight: 4 }}>Rs.</Text>
+                        <TextInput
+                          value={offeredFare} onChangeText={setOfferedFare} keyboardType="numeric"
+                          placeholder={String(estimate.minOffer)} placeholderTextColor={colorScheme === "dark" ? "#334155" : "#CBD5E1"}
+                          style={{ flex: 1, fontFamily: Font.bold, fontSize: 18, color: colorScheme === "dark" ? "#fff" : "#0F172A", paddingVertical: 8 }}
+                        />
+                        {offeredFare !== "" && (
+                          <TouchableOpacity onPress={() => setOfferedFare("")} hitSlop={8}>
+                            <Ionicons name="close-circle" size={16} color={colorScheme === "dark" ? "#334155" : "#CBD5E1"} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <Text style={{ fontSize: 11, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", fontFamily: Font.regular }}>
+                        Platform fare: Rs. {estimate.fare} · The rider can accept, counter, or reject.
+                      </Text>
+                    </View>
+                  </Animated.View>
                 </View>
               )}
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 14,
-                }}
+
+              {/* CTA */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => animateToStep("confirm")}
+                style={{ marginTop: "auto", marginBottom: insets.bottom + 8, borderRadius: 18, overflow: "hidden" }}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 15,
-                      color: C.text,
-                    }}
+                <LinearGradient
+                  colors={["#FCD34D", "#F59E0B"]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 }}
+                >
+                  <Text style={{ fontFamily: Font.bold, fontSize: 15, color: "#0A0F1E" }}>Review & Confirm</Text>
+                  {estimate && <Text style={{ fontFamily: Font.bold, fontSize: 13, color: "rgba(10,15,30,0.6)" }}>Rs. {showBargain && offeredFare ? offeredFare : estimate.fare}</Text>}
+                  <Ionicons name="arrow-forward" size={18} color="#0A0F1E" />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* ── STEP 3: CONFIRM ── */}
+          {step === "confirm" && (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 16 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
+                <TouchableOpacity onPress={() => animateToStep("vehicle")} style={{ marginRight: 10 }} hitSlop={8}>
+                  <Ionicons name="chevron-back" size={20} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+                </TouchableOpacity>
+                <Text style={{ fontFamily: Font.bold, fontSize: 18, color: colorScheme === "dark" ? "#fff" : "#0F172A", flex: 1 }}>
+                  Confirm Booking
+                </Text>
+              </View>
+
+              {/* Booking summary */}
+              <View style={{ backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderRadius: 16, padding: 14, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", marginBottom: 14, gap: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 24 }}>{selectedSvc?.icon ?? "🚗"}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: Font.bold, fontSize: 15, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>{selectedSvc?.name ?? rideType}</Text>
+                    <Text style={{ fontFamily: Font.regular, fontSize: 12, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>
+                      {estimate ? `${estimate.dist} km · ${estimate.dur}` : "Estimating..."}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontFamily: Font.bold, fontSize: 20, color: "#10B981" }}>
+                      Rs. {showBargain && offeredFare ? offeredFare : (estimate?.fare ?? "—")}
+                    </Text>
+                    {showBargain && offeredFare && (
+                      <Text style={{ fontFamily: Font.regular, fontSize: 10, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>Your offer</Text>
+                    )}
+                  </View>
+                </View>
+                <View style={{ height: 1, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9" }} />
+                <View style={{ gap: 8 }}>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: "#10B981", marginTop: 4 }} />
+                    <Text style={{ flex: 1, fontFamily: Font.medium, fontSize: 12, color: colorScheme === "dark" ? "#94A3B8" : "#64748B" }} numberOfLines={2}>{pickup}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: "#EF4444", marginTop: 4 }} />
+                    <Text style={{ flex: 1, fontFamily: Font.medium, fontSize: 12, color: colorScheme === "dark" ? "#94A3B8" : "#64748B" }} numberOfLines={2}>{drop}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Parcel fields */}
+              {isParcelService(rideType, selectedSvc) && (
+                <View style={{ marginBottom: 14, gap: 8 }}>
+                  <Text style={{ fontFamily: Font.bold, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginBottom: 4 }}>Receiver Details</Text>
+                  <TextInput value={receiverName} onChangeText={setReceiverName} placeholder="Receiver full name" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+                    style={{ fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}
+                  />
+                  <TextInput value={receiverPhone} onChangeText={setReceiverPhone} placeholder="Receiver phone (03XXXXXXXXX)" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"} keyboardType="phone-pad"
+                    style={{ fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}
+                  />
+                </View>
+              )}
+
+              {/* School Shift Subscribe button */}
+              {rideType === "school_shift" && (
+                <TouchableOpacity activeOpacity={0.7}
+                  onPress={() => setShowSchoolModal(true)}
+                  style={{ marginBottom: 14, backgroundColor: colorScheme === "dark" ? "rgba(29,78,216,0.15)" : "#EFF6FF", borderWidth: 1, borderColor: colorScheme === "dark" ? "#1D4ED8" : "#BFDBFE", borderRadius: 16, padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}
+                >
+                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colorScheme === "dark" ? "#1D4ED8" : "#DBEAFE", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 22 }}>🚌</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontFamily: Font.bold, color: colorScheme === "dark" ? "#93C5FD" : "#1E40AF" }}>School Shift Subscribe</Text>
+                    <Text style={{ fontSize: 12, fontFamily: Font.regular, color: colorScheme === "dark" ? "#60A5FA" : "#3B82F6", marginTop: 2 }}>Monthly school transport</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colorScheme === "dark" ? "#60A5FA" : "#3B82F6"} />
+                </TouchableOpacity>
+              )}
+
+              {/* Schedule */}
+              {!isParcelService(rideType, selectedSvc) && (
+                <View style={{ marginBottom: 14 }}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => setIsScheduled(v => !v)}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: isScheduled ? "rgba(59,130,246,0.08)" : "transparent", borderWidth: 1, borderColor: isScheduled ? "#3B82F6" : colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0", borderRadius: 14, padding: 12 }}
                   >
-                    Fare Estimate
-                  </Text>
-                  {estimateAgeMinutes < 5 && (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.successSoft, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.greenLightBg }}>
-                      <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: C.emerald, opacity: liveAnim }} />
-                      <Text style={{ fontFamily: Font.bold, fontSize: 10, color: C.emerald, letterSpacing: 0.5 }}>LIVE</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Ionicons name="calendar-outline" size={18} color={isScheduled ? "#3B82F6" : colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+                      <Text style={{ fontFamily: Font.bold, fontSize: 13, color: isScheduled ? "#3B82F6" : colorScheme === "dark" ? "#fff" : "#0F172A" }}>
+                        {isScheduled ? `${scheduledDate} at ${scheduledTime}` : "Schedule for Later"}
+                      </Text>
+                    </View>
+                    <Ionicons name={isScheduled ? "chevron-up" : "chevron-down"} size={16} color={isScheduled ? "#3B82F6" : colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+                  </TouchableOpacity>
+                  {isScheduled && (
+                    <View style={{ backgroundColor: "rgba(59,130,246,0.06)", borderWidth: 1, borderColor: "rgba(59,130,246,0.2)", borderTopWidth: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, padding: 12, gap: 8 }}>
+                      <TextInput value={scheduledDate} onChangeText={setScheduledDate} placeholder="YYYY-MM-DD" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+                        style={{ backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}
+                      />
+                      <TextInput value={scheduledTime} onChangeText={setScheduledTime} placeholder="HH:MM (24h)" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+                        style={{ backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}
+                      />
                     </View>
                   )}
                 </View>
-                <TouchableOpacity activeOpacity={0.7}
-                  onPress={() => {
-                    if (pickupObj && dropObj) {
-                      const url = `https://www.google.com/maps/dir/?api=1&origin=${pickupObj.lat},${pickupObj.lng}&destination=${dropObj.lat},${dropObj.lng}&travelmode=${rideType === "bike" || rideType === "rickshaw" ? "bicycling" : "driving"}`;
-                      Linking.openURL(url);
-                    }
-                  }}
-                  style={{
-                    flexDirection: "row" as const,
-                    alignItems: "center" as const,
-                    gap: 4,
-                    backgroundColor: C.blueSoft,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 10,
-                  }}
+              )}
+
+              {/* Pool toggle */}
+              {!isParcelService(rideType, selectedSvc) && !isScheduled && (
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setIsPoolRide(v => !v)}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: isPoolRide ? "rgba(16,185,129,0.08)" : "transparent", borderWidth: 1, borderColor: isPoolRide ? "#10B981" : colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0", borderRadius: 14, padding: 12, marginBottom: 14 }}
                 >
-                  <Ionicons name="navigate-outline" size={12} color={C.royalBlue} />
-                  <Text style={{ fontSize: 11, color: C.royalBlue, fontFamily: Font.semiBold }}>Route</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="people-outline" size={18} color={isPoolRide ? "#10B981" : colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+                    <Text style={{ fontFamily: Font.bold, fontSize: 13, color: isPoolRide ? "#10B981" : colorScheme === "dark" ? "#fff" : "#0F172A" }}>
+                      {isPoolRide ? "Pool Ride ON — cheaper fare" : "Share Ride (Pool)"}
+                    </Text>
+                  </View>
+                  <View style={{ width: 42, height: 24, borderRadius: 12, backgroundColor: isPoolRide ? "#10B981" : colorScheme === "dark" ? "#334155" : "#E2E8F0", padding: 2, justifyContent: "center", alignItems: isPoolRide ? "flex-end" : "flex-start" }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" }} />
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {/* Payment */}
+              <Text style={{ fontFamily: Font.bold, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginBottom: 8 }}>Payment</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 8 }}>
+                {payMethods.map((pm) => {
+                  const active = payMethod === pm.id;
+                  const isCash = pm.id === "cash";
+                  const isWallet = pm.id === "wallet";
+                  const pmColor = isCash ? "#10B981" : isWallet ? "#3B82F6" : "#FCD34D";
+                  const balanceLabel = isWallet ? ` · Rs. ${(user?.walletBalance ?? 0).toLocaleString()}` : "";
+                  const insufficient = isWallet && estimate && (user?.walletBalance ?? 0) < (offeredFare ? parseFloat(offeredFare) : estimate.fare);
+                  return (
+                    <TouchableOpacity key={pm.id} onPress={() => setPayMethod(pm.id)} activeOpacity={0.7}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 24, borderWidth: 1.5, borderColor: active ? pmColor : colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0", backgroundColor: active ? `${pmColor}10` : "transparent" }}
+                    >
+                      <Ionicons name={isCash ? "cash-outline" : isWallet ? "wallet-outline" : "card-outline"} size={16} color={active ? pmColor : colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+                      <Text style={{ fontFamily: active ? Font.bold : Font.semiBold, fontSize: 13, color: active ? (colorScheme === "dark" ? "#fff" : "#0F172A") : colorScheme === "dark" ? "#94A3B8" : "#64748B" }}>
+                        {pm.label || pm.name || pm.id}{balanceLabel}
+                      </Text>
+                      {active && <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: pmColor, alignItems: "center", justifyContent: "center" }}><Ionicons name="checkmark" size={9} color="#fff" /></View>}
+                      {insufficient && <Ionicons name="alert-circle" size={14} color="#EF4444" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Trust row */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(16,185,129,0.08)", padding: 10, borderRadius: 12, borderWidth: 1, borderColor: "rgba(16,185,129,0.2)", marginBottom: 16 }}>
+                <Ionicons name="shield-checkmark-outline" size={14} color="#10B981" />
+                <Text style={{ fontFamily: Font.regular, fontSize: 11, color: "#065F46" }}>All rides insured · Verified drivers · GPS tracked</Text>
+              </View>
+
+              {/* Book CTA */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleBook}
+                disabled={booking || !estimate}
+                onPressIn={() => Animated.spring(bookBtnScale, { toValue: 0.97, useNativeDriver: false, tension: 300, friction: 10 }).start()}
+                onPressOut={() => Animated.spring(bookBtnScale, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start()}
+                style={{ opacity: booking || !estimate ? 0.6 : 1 }}
+              >
+                <Animated.View style={{ transform: [{ scale: bookBtnScale }], borderRadius: 18, overflow: "hidden" }}>
+                  <LinearGradient
+                    colors={showBargain && offeredFare ? ["#F59E0B", "#FCD34D"] : ["#FCD34D", "#F59E0B"]}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 18, paddingVertical: 18 }}
+                  >
+                    {booking ? (
+                      <ActivityIndicator color="#0A0F1E" />
+                    ) : (
+                      <>
+                        {showBargain && offeredFare ? (
+                          <Ionicons name="chatbubble-ellipses" size={20} color="#0A0F1E" />
+                        ) : (
+                          <Text style={{ fontSize: 20 }}>{selectedSvc?.icon ?? "🚗"}</Text>
+                        )}
+                        <Text style={{ fontFamily: Font.bold, fontSize: 16, color: "#0A0F1E" }}>
+                          {showBargain && offeredFare
+                            ? `Send Offer · Rs. ${offeredFare}`
+                            : `Book Now · Rs. ${estimate?.fare ?? "—"}`}
+                        </Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </Animated.View>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </Animated.View>
+
+      {/* Inline Map Pin-Drop Overlay (no separate modal/screen) */}
+      {inlineMapPick && (
+        <Animated.View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            zIndex: 50,
+            opacity: inlineMapAnim,
+            transform: [{ translateY: inlineMapAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
+          }}
+        >
+          {/* WebView map taking up most of the screen */}
+          <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
+            <WebView
+              source={{
+                uri: `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/maps/picker?lat=${
+                  mapPickerTarget === "pickup" ? (pickupObj?.lat ?? 33.7294) : (dropObj?.lat ?? 33.7294)
+                }&lng=${
+                  mapPickerTarget === "pickup" ? (pickupObj?.lng ?? 73.3872) : (dropObj?.lng ?? 73.3872)
+                }&zoom=14&label=${encodeURIComponent(mapPickerTarget === "pickup" ? "Pickup" : "Drop")}`
+              }}
+              style={{ flex: 1 }}
+              onMessage={(event) => {
+                try {
+                  const data = JSON.parse(event.nativeEvent.data);
+                  if (data?.lat && data?.lng) {
+                    setInlineMapResult({ lat: data.lat, lng: data.lng, address: data.address ?? `${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}` });
+                  }
+                } catch {}
+              }}
+            />
+
+            {/* Bottom toolbar — stays inside the map area */}
+            <View
+              style={{
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff",
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                padding: 20,
+                paddingBottom: Math.max(insets.bottom + 12, 24),
+                gap: 12,
+                ...Platform.select({
+                  ios: { shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 16 },
+                  android: { elevation: 16 },
+                  web: { boxShadow: "0 -4px 24px rgba(0,0,0,0.2)" },
+                }),
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: mapPickerTarget === "pickup" ? "#10B981" : "#EF4444" }} />
+                <Text style={{ fontFamily: Font.bold, fontSize: 15, color: colorScheme === "dark" ? "#fff" : "#0F172A", flex: 1 }}>
+                  {inlineMapResult ? `📍 ${inlineMapResult.address}` : `Tap the map to set ${mapPickerTarget === "pickup" ? "pickup" : "drop-off"}`}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={closeInlineMapPick}
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 16, borderWidth: 1.5, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.12)" : "#E2E8F0", alignItems: "center" }}
+                >
+                  <Text style={{ fontFamily: Font.bold, fontSize: 14, color: colorScheme === "dark" ? "#94A3B8" : "#64748B" }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.85} onPress={confirmInlineMapPick} disabled={!inlineMapResult}
+                  style={{ flex: 2, borderRadius: 16, overflow: "hidden", opacity: inlineMapResult ? 1 : 0.4 }}
+                >
+                  <LinearGradient colors={["#FCD34D", "#F59E0B"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={{ paddingVertical: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
+                  >
+                    <Ionicons name="checkmark-circle" size={18} color="#0A0F1E" />
+                    <Text style={{ fontFamily: Font.bold, fontSize: 14, color: "#0A0F1E" }}>Confirm Location</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
-              {estimateAgeMinutes < 5 && (
-                <View style={{ marginBottom: 10 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                    <Text style={{ fontFamily: Font.regular, fontSize: 10, color: C.textMuted }}>
-                      {estimateAgeMinutes === 0 ? "Updated just now" : `Updated ${estimateAgeMinutes} min ago`}
-                    </Text>
-                    <Text style={{ fontFamily: Font.regular, fontSize: 10, color: C.textMuted }}>
-                      {Math.max(0, 5 - estimateAgeMinutes)} min left
-                    </Text>
-                  </View>
-                  <View style={{ height: 3, backgroundColor: C.borderLight, borderRadius: 2, overflow: "hidden" }}>
-                    <View
-                      style={{
-                        height: "100%",
-                        width: `${(1 - Math.min(estimateAgeMinutes / 5, 1)) * 100}%`,
-                        backgroundColor: estimateAgeMinutes >= 4 ? C.danger : estimateAgeMinutes >= 2 ? C.amberBrown : C.emerald,
-                        borderRadius: 2,
-                      }}
-                    />
-                  </View>
-                </View>
-              )}
-              <View
-                style={{ flexDirection: "row", alignItems: "center" }}
-              >
-                <View style={{ flex: 1, alignItems: "center" }}>
-                  <Text
-                    style={{
-                      fontFamily: Font.regular,
-                      fontSize: 11,
-                      color: C.textMuted,
-                    }}
-                  >
-                    Distance
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 16,
-                      color: C.text,
-                      marginTop: 3,
-                    }}
-                  >
-                    {estimate.dist} km
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    width: 1,
-                    height: 36,
-                    backgroundColor: C.border,
-                  }}
-                />
-                <View style={{ flex: 1, alignItems: "center" }}>
-                  <Text
-                    style={{
-                      fontFamily: Font.regular,
-                      fontSize: 11,
-                      color: C.textMuted,
-                    }}
-                  >
-                    Duration
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 16,
-                      color: C.text,
-                      marginTop: 3,
-                    }}
-                  >
-                    {estimate.dur}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    width: 1,
-                    height: 36,
-                    backgroundColor: C.border,
-                  }}
-                />
-                <View style={{ flex: 1, alignItems: "center" }}>
-                  <Text
-                    style={{
-                      fontFamily: Font.regular,
-                      fontSize: 11,
-                      color: C.textMuted,
-                    }}
-                  >
-                    Total
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 20,
-                      color: C.success,
-                      marginTop: 3,
-                    }}
-                  >
-                    Rs. {estimate.fare}
-                  </Text>
-                </View>
-              </View>
-              {estimate.gstAmount > 0 && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginTop: 12,
-                    paddingTop: 10,
-                    borderTopWidth: 1,
-                    borderTopColor: C.border,
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 11, color: C.textMuted }}
-                  >
-                    Base fare: Rs. {estimate.baseFare}
-                  </Text>
-                  <Text
-                    style={{ fontSize: 11, color: C.textMuted }}
-                  >
-                    GST: Rs. {estimate.gstAmount}
-                  </Text>
-                </View>
-              )}
             </View>
           </View>
-        )}
+        </Animated.View>
+      )}
 
-        {!estimating && estimate?.bargainEnabled && (
-          <View style={{ marginBottom: 14 }}>
-            <TouchableOpacity activeOpacity={0.7}
-              onPress={() => {
-                setShowBargain((v) => !v);
-                setOfferedFare("");
-                setBargainNote("");
-              }}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                backgroundColor: showBargain ? C.orangeBg : C.textInverse,
-                borderWidth: 1.5,
-                borderColor: showBargain ? C.goldWarm : C.border,
-                borderRadius: 16,
-                padding: 16,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    backgroundColor: showBargain
-                      ? C.orangeSoft
-                      : C.surfaceSecondary,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name="chatbubble-ellipses-outline"
-                    size={20}
-                    color={showBargain ? C.orangeBrand : C.textSecondary}
-                  />
-                </View>
-                <View>
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 14,
-                      color: showBargain ? C.orangeDark : C.text,
-                    }}
-                  >
-                    {showBargain ? "Bargaining ON" : "Make an Offer"}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: Font.regular,
-                      fontSize: 11,
-                      color: showBargain ? C.orangeBrand : C.textMuted,
-                    }}
-                  >
-                    {showBargain
-                      ? `Min: Rs. ${estimate.minOffer}`
-                      : `Suggest your price (min Rs. ${estimate.minOffer})`}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons
-                name={showBargain ? "chevron-up" : "chevron-down"}
-                size={18}
-                color={showBargain ? C.orangeBrand : C.textMuted}
-              />
-            </TouchableOpacity>
-
-            <Animated.View
-              style={{
-                overflow: "hidden",
-                maxHeight: bargainPanelH.interpolate({ inputRange: [0, 1], outputRange: [0, 280] }),
-                opacity: bargainPanelH,
-              }}
-            >
-              <View
-                style={{
-                  backgroundColor: C.orangeBg,
-                  borderWidth: 1,
-                  borderColor: C.orangeBorder,
-                  borderTopWidth: 0,
-                  borderBottomLeftRadius: 16,
-                  borderBottomRightRadius: 16,
-                  padding: 16,
-                  gap: 12,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: Font.medium,
-                    fontSize: 12,
-                    color: C.amberBrown,
-                  }}
-                >
-                  Platform fare: Rs. {estimate.fare} · Min: Rs.{" "}
-                  {estimate.minOffer}
-                </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor: C.surface,
-                    borderWidth: 1.5,
-                    borderColor: C.goldWarm,
-                    borderRadius: 14,
-                    paddingHorizontal: 14,
-                    paddingVertical: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 16,
-                      color: C.textSecondary,
-                      marginRight: 4,
-                    }}
-                  >
-                    Rs.
-                  </Text>
-                  <TextInput
-                    value={offeredFare}
-                    onChangeText={setOfferedFare}
-                    keyboardType="numeric"
-                    placeholder={String(estimate.minOffer)}
-                    placeholderTextColor={C.silverBg}
-                    style={{
-                      flex: 1,
-                      fontFamily: Font.bold,
-                      fontSize: 20,
-                      color: C.text,
-                      paddingVertical: 10,
-                    }}
-                  />
-                  {offeredFare !== "" && (
-                    <TouchableOpacity activeOpacity={0.7} onPress={() => setOfferedFare("")}>
-                      <Ionicons
-                        name="close-circle"
-                        size={18}
-                        color={C.silverBg}
-                      />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TextInput
-                  value={bargainNote}
-                  onChangeText={setBargainNote}
-                  placeholder="Note (optional)"
-                  placeholderTextColor={C.silverBg}
-                  maxLength={500}
-                  style={{
-                    backgroundColor: C.surface,
-                    borderWidth: 1,
-                    borderColor: C.orangeBorder,
-                    borderRadius: 12,
-                    padding: 12,
-                    fontFamily: Font.regular,
-                    fontSize: 13,
-                    color: C.text,
-                  }}
-                />
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: C.orangeDark,
-                    lineHeight: 16,
-                    fontFamily: Font.regular,
-                  }}
-                >
-                  The rider can accept, counter, or reject your offer.
-                </Text>
-              </View>
-            </Animated.View>
-          </View>
-        )}
-
-        {isParcelService(rideType, services.find((s) => s.key === rideType)) && (
-          <View style={{ marginBottom: 14 }}>
-            <Text style={{ fontFamily: Font.bold, fontSize: 15, color: C.text, marginBottom: 10 }}>
-              Receiver Details
-            </Text>
-            <TextInput
-              value={receiverName}
-              onChangeText={setReceiverName}
-              placeholder="Receiver full name"
-              placeholderTextColor={C.textMuted}
-              style={{
-                fontFamily: Font.regular,
-                fontSize: 14,
-                color: C.text,
-                backgroundColor: C.surface,
-                borderWidth: 1,
-                borderColor: C.border,
-                borderRadius: 10,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                marginBottom: 10,
-              }}
-            />
-            <TextInput
-              value={receiverPhone}
-              onChangeText={setReceiverPhone}
-              placeholder="Receiver phone (03XXXXXXXXX)"
-              placeholderTextColor={C.textMuted}
-              keyboardType="phone-pad"
-              style={{
-                fontFamily: Font.regular,
-                fontSize: 14,
-                color: C.text,
-                backgroundColor: C.surface,
-                borderWidth: 1,
-                borderColor: C.border,
-                borderRadius: 10,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-              }}
-            />
-          </View>
-        )}
-
-        {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && (
-          <View style={{ marginBottom: 14 }}>
-            <TouchableOpacity activeOpacity={0.7}
-              onPress={() => setIsScheduled(v => !v)}
-              style={{
-                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-                backgroundColor: isScheduled ? C.blueSoft : C.textInverse,
-                borderWidth: 1.5, borderColor: isScheduled ? C.primary : C.border,
-                borderRadius: 16, padding: 16,
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isScheduled ? C.blueBorder : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="calendar-outline" size={20} color={isScheduled ? C.primary : C.textSecondary} />
-                </View>
-                <View>
-                  <Text style={{ fontFamily: Font.bold, fontSize: 14, color: isScheduled ? C.primary : C.text }}>
-                    {isScheduled ? "Scheduled Ride" : "Schedule for Later"}
-                  </Text>
-                  <Text style={{ fontFamily: Font.regular, fontSize: 11, color: isScheduled ? C.primary : C.textMuted }}>
-                    {isScheduled ? `${scheduledDate} at ${scheduledTime}` : "Book a ride for a specific date & time"}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons name={isScheduled ? "chevron-up" : "chevron-down"} size={18} color={isScheduled ? C.primary : C.textMuted} />
-            </TouchableOpacity>
-            {isScheduled && (
-              <View style={{ backgroundColor: C.blueSoft, borderWidth: 1, borderColor: C.blueBorder, borderTopWidth: 0, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, padding: 16, gap: 12 }}>
-                <View>
-                  <Text style={{ fontFamily: Font.medium, fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Date</Text>
-                  <TextInput
-                    value={scheduledDate}
-                    onChangeText={setScheduledDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={C.textMuted}
-                    style={{ backgroundColor: C.textInverse, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontFamily: Font.regular, fontSize: 14, color: C.text }}
-                  />
-                </View>
-                <View>
-                  <Text style={{ fontFamily: Font.medium, fontSize: 12, color: C.textMuted, marginBottom: 6 }}>Time</Text>
-                  <TextInput
-                    value={scheduledTime}
-                    onChangeText={setScheduledTime}
-                    placeholder="HH:MM (24h)"
-                    placeholderTextColor={C.textMuted}
-                    style={{ backgroundColor: C.textInverse, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontFamily: Font.regular, fontSize: 14, color: C.text }}
-                  />
-                </View>
-                <Text style={{ fontSize: 11, color: C.primary, fontFamily: Font.regular }}>
-                  Your ride will be sent to nearby riders 15 minutes before the scheduled time.
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {!isParcelService(rideType, services.find(s => s.key === rideType)) && rideType !== "school_shift" && !isScheduled && (
-          <TouchableOpacity activeOpacity={0.7}
-            onPress={() => setIsPoolRide(v => !v)}
-            style={{
-              flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-              backgroundColor: isPoolRide ? C.greenBg : C.textInverse,
-              borderWidth: 1.5, borderColor: isPoolRide ? C.success : C.border,
-              borderRadius: 16, padding: 16, marginBottom: 14,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isPoolRide ? C.greenLightBg : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="people-outline" size={20} color={isPoolRide ? C.success : C.textSecondary} />
-              </View>
-              <View>
-                <Text style={{ fontFamily: Font.bold, fontSize: 14, color: isPoolRide ? C.success : C.text }}>
-                  {isPoolRide ? "Pool Ride ON" : "Share Ride (Pool)"}
-                </Text>
-                <Text style={{ fontFamily: Font.regular, fontSize: 11, color: isPoolRide ? C.success : C.textMuted }}>
-                  {isPoolRide ? "You may share this ride — cheaper fare" : "Share with others going the same way"}
-                </Text>
-              </View>
-            </View>
-            <View style={{ width: 44, height: 26, borderRadius: 13, backgroundColor: isPoolRide ? C.success : C.border, padding: 3, justifyContent: "center", alignItems: isPoolRide ? "flex-end" : "flex-start" }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" }} />
-            </View>
-          </TouchableOpacity>
-        )}
-
-        <Text
-          style={{
-            fontFamily: Font.bold,
-            fontSize: 15,
-            color: C.text,
-            marginBottom: 10,
-          }}
-        >
-          Payment
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginBottom: 14 }}
-          contentContainerStyle={{ gap: 8, paddingRight: 20 }}
-        >
-          {payMethods.map((pm) => {
-            const pmId = pm.id;
-            const active = payMethod === pmId;
-            const isCash = pmId === "cash";
-            const isWallet = pmId === "wallet";
-            const isJazzcash = pmId === "jazzcash";
-            const isEasypaisa = pmId === "easypaisa";
-            const insufficient =
-              isWallet &&
-              estimate &&
-              (user?.walletBalance ?? 0) < (offeredFare ? parseFloat(offeredFare) : estimate.fare);
-            const pmLabel = pm.label || pm.name || pmId;
-            const pmIcon: string = isCash ? "cash-outline" : isWallet ? "wallet-outline" : isJazzcash ? "phone-portrait-outline" : isEasypaisa ? "phone-portrait-outline" : "card-outline";
-            const pmColor = isCash ? C.success : isWallet ? C.primary : isJazzcash ? C.red : isEasypaisa ? C.emerald : C.primary;
-            const pmBg = isCash ? C.greenLightBg : isWallet ? C.blueBorder : isJazzcash ? C.redBorder : isEasypaisa ? C.greenLightBg : C.blueBorder;
-            const balanceLabel = isWallet ? ` · Rs. ${(user?.walletBalance ?? 0).toLocaleString()}` : "";
-            return (
-              <TouchableOpacity activeOpacity={0.7}
-                key={pmId}
-                onPress={() => setPayMethod(pmId)}
-                style={{
-                  flexDirection: "row" as const,
-                  alignItems: "center" as const,
-                  gap: 7,
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
-                  borderRadius: 24,
-                  borderWidth: 1.5,
-                  borderColor: active ? pmColor : C.border,
-                  backgroundColor: active ? `${pmColor}10` : C.textInverse,
-                }}
-              >
-                <View
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 10,
-                    backgroundColor: active ? pmBg : C.surfaceSecondary,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons
-                    name={pmIcon as any}
-                    size={16}
-                    color={active ? pmColor : C.textSecondary}
-                  />
-                </View>
-                <Text
-                  style={{
-                    fontFamily: active ? Font.bold : Font.semiBold,
-                    fontSize: 13,
-                    color: active ? C.text : C.textSecondary,
-                  }}
-                >
-                  {pmLabel}{balanceLabel}
-                </Text>
-                {active && (
-                  <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: pmColor, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="checkmark" size={10} color="#fff" />
-                  </View>
-                )}
-                {insufficient && (
-                  <Ionicons name="alert-circle" size={14} color={C.danger} />
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        <View
-          style={{
-            marginBottom: 14,
-            backgroundColor: C.surfaceSecondary,
-            borderWidth: 1,
-            borderColor: C.border,
-            borderRadius: 12,
-            padding: 12,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <Ionicons
-            name="information-circle-outline"
-            size={15}
-            color={C.textMuted}
-          />
-          <Text
-            style={{
-              fontSize: 11,
-              color: C.textSecondary,
-              flex: 1,
-              fontFamily: Font.regular,
-            }}
-          >
-            Rs. {rideCfg.cancellationFee} fee applies if you cancel after
-            driver accepts.
-          </Text>
-        </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 18,
-            backgroundColor: C.greenBg,
-            padding: 12,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: C.greenLightBg,
-          }}
-        >
-          <Ionicons
-            name="shield-checkmark-outline"
-            size={15}
-            color={C.emerald}
-          />
-          <Text
-            style={{
-              fontFamily: Font.regular,
-              fontSize: 12,
-              color: C.greenDeep,
-            }}
-          >
-            All rides insured · Verified drivers · GPS tracked
-          </Text>
-        </View>
-
-        {/* Dual CTA: Book Now + Offer Your Fare (when bargaining available and no offer set yet) */}
-        {selectedSvc?.allowBargaining && !isParcelService(rideType, selectedSvc) && !showBargain && estimate && (
-          <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
-            {/* Book Now — solid primary */}
-            <TouchableOpacity activeOpacity={0.8}
-              onPress={handleBook}
-              disabled={booking || !estimate}
-              onPressIn={() => Animated.spring(bookBtnScale, { toValue: 0.96, useNativeDriver: false, tension: 300, friction: 10 }).start()}
-              onPressOut={() => Animated.spring(bookBtnScale, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start()}
-              style={{ flex: 3, opacity: booking || !estimate ? 0.6 : 1 }}
-            >
-              <Animated.View style={{ transform: [{ scale: bookBtnScale }], borderRadius: 18, overflow: "hidden" }}>
-                <LinearGradient
-                  colors={["#E5A800", "#FCD34D", "#E5A800"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    borderRadius: 18,
-                    paddingVertical: 18,
-                    paddingHorizontal: 16,
-                  }}
-                >
-                  {booking ? (
-                    <ActivityIndicator color="#0A0F1E" />
-                  ) : (
-                    <>
-                      <Text style={{ fontFamily: Font.bold, fontSize: 15, color: "#0A0F1E" }}>
-                        Book Now
-                      </Text>
-                      {estimate && (
-                        <View style={{ backgroundColor: "rgba(10,15,30,0.15)", borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 }}>
-                          <Text style={{ fontFamily: Font.bold, fontSize: 13, color: "#0A0F1E" }}>
-                            Rs. {estimate.fare}
-                          </Text>
-                        </View>
-                      )}
-                    </>
-                  )}
-                </LinearGradient>
-              </Animated.View>
-            </TouchableOpacity>
-            {/* Offer Your Fare — outlined */}
-            <TouchableOpacity activeOpacity={0.8}
-              onPress={() => setShowBargain(true)}
-              style={{
-                flex: 2,
-                borderRadius: 18,
-                paddingVertical: 18,
-                paddingHorizontal: 12,
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "row",
-                gap: 6,
-                borderWidth: 1.5,
-                borderColor: RT.accentBorder,
-                backgroundColor: RT.accentBg,
-              }}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={16} color={RT.accent} />
-              <Text style={{ fontFamily: Font.semiBold, fontSize: 14, color: RT.accent }}>
-                Offer Your Fare
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Standard single CTA when bargain has a set fare, or service doesn't allow bargaining */}
-        {(!(selectedSvc?.allowBargaining && !isParcelService(rideType, selectedSvc) && !showBargain && estimate) || (showBargain && offeredFare)) && (
-        <TouchableOpacity activeOpacity={0.8}
-          onPress={handleBook}
-          disabled={booking || !estimate}
-          onPressIn={() => Animated.spring(bookBtnScale, { toValue: 0.96, useNativeDriver: false, tension: 300, friction: 10 }).start()}
-          onPressOut={() => Animated.spring(bookBtnScale, { toValue: 1, useNativeDriver: false, tension: 300, friction: 10 }).start()}
-          style={{ opacity: booking || !estimate ? 0.6 : 1, borderRadius: 18 }}
-        >
-          <Animated.View style={{ transform: [{ scale: bookBtnScale }], borderRadius: 18, overflow: "hidden" }}>
-            <LinearGradient
-              colors={showBargain && offeredFare ? [RT.accent, "#E5A800"] : ["#E5A800", RT.accent, "#E5A800"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                borderRadius: 18,
-                paddingVertical: 18,
-                paddingHorizontal: 24,
-              }}
-            >
-              {booking ? (
-                <ActivityIndicator color={RT.dark} />
-              ) : (
-                <>
-                  {showBargain && offeredFare ? (
-                    <Ionicons name="chatbubble-ellipses" size={20} color={RT.dark} />
-                  ) : (
-                    <Text style={{ fontSize: 22 }}>{selectedSvc?.icon ?? "🚗"}</Text>
-                  )}
-                  <Text style={{ fontFamily: Font.bold, fontSize: 16, color: RT.dark, letterSpacing: 0.3 }}>
-                    {showBargain && offeredFare
-                      ? `Send Offer · Rs. ${offeredFare}`
-                      : `Book ${selectedSvc?.name ?? rideType}${estimate ? ` · Rs. ${estimate.fare}` : ""}`}
-                  </Text>
-                  {!booking && estimate && !(showBargain && offeredFare) && (
-                    <Ionicons name="arrow-forward" size={18} color="rgba(10,15,30,0.6)" />
-                  )}
-                </>
-              )}
-            </LinearGradient>
-          </Animated.View>
-        </TouchableOpacity>
-        )}
-
-        <View style={{ height: 40 }} />
-      </ScrollView>
-
-      <Modal
-        visible={showHistory}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowHistory(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: C.background }}>
+      {/* History modal */}
+      <Modal visible={showHistory} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowHistory(false)}>
+        <View style={{ flex: 1, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff" }}>
           <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: C.border }} />
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.15)" : "#E2E8F0" }} />
           </View>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              paddingHorizontal: 20,
-              paddingVertical: 14,
-              borderBottomWidth: 1,
-              borderBottomColor: C.border,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: Font.bold,
-                fontSize: 18,
-                color: C.text,
-              }}
-            >
-              Ride History
-            </Text>
-            <TouchableOpacity activeOpacity={0.7}
-              onPress={() => setShowHistory(false)}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: C.surfaceSecondary,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="close" size={18} color={C.text} />
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#F1F5F9" }}>
+            <Text style={{ fontFamily: Font.bold, fontSize: 18, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>Ride History</Text>
+            <TouchableOpacity onPress={() => setShowHistory(false)} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", alignItems: "center", justifyContent: "center" }} activeOpacity={0.7}>
+              <Ionicons name="close" size={18} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
             </TouchableOpacity>
           </View>
           {histLoading ? (
-            <View style={{ padding: 20 }}>
-              {[0, 1, 2, 3, 4].map((i) => (
-                <HistoryRowSkeleton key={i} dark={colorScheme === "dark"} />
-              ))}
+            <View style={{ padding: 20, gap: 12 }}>
+              {[0,1,2,3].map((i) => <HistoryRowSkeleton key={i} dark={colorScheme === "dark"} />)}
             </View>
           ) : history.length === 0 ? (
-            <View
-              style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-              }}
-            >
-              <View
-                style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 32,
-                  backgroundColor: C.surfaceSecondary,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons
-                  name="car-outline"
-                  size={30}
-                  color={C.textMuted}
-                />
-              </View>
-              <Text
-                style={{
-                  fontFamily: Font.semiBold,
-                  fontSize: 15,
-                  color: C.text,
-                }}
-              >
-                No rides yet
-              </Text>
-              <Text
-                style={{
-                  fontFamily: Font.regular,
-                  fontSize: 13,
-                  color: C.textMuted,
-                }}
-              >
-                Your ride history will appear here
-              </Text>
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Ionicons name="car-outline" size={36} color={colorScheme === "dark" ? "#334155" : "#CBD5E1"} />
+              <Text style={{ fontFamily: Font.semiBold, fontSize: 15, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>No rides yet</Text>
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={{ padding: 20, gap: 10 }}
-            >
+            <ScrollView contentContainerStyle={{ padding: 20, gap: 10 }}>
               {history.map((ride, i) => (
-                <View
-                  key={ride.id || i}
-                  style={{
-                    backgroundColor: C.surface,
-                    borderRadius: 16,
-                    padding: 16,
-                    borderWidth: 1,
-                    borderColor: C.border,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 14,
-                      backgroundColor: C.surfaceSecondary,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ fontSize: 20 }}>
-                      {services.find((s) => s.key === ride.type)
-                        ?.icon ??
-                        (ride.type === "bike"
-                          ? "🏍️"
-                          : ride.type === "car"
-                            ? "🚗"
-                            : ride.type === "rickshaw"
-                              ? "🛺"
-                              : ride.type === "daba"
-                                ? "🚐"
-                                : "🚗")}
-                    </Text>
+                <View key={ride.id || i} style={{ backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9", flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F1F5F9", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 18 }}>{services.find((s) => s.key === ride.type)?.icon ?? (ride.type === "bike" ? "🏍️" : ride.type === "car" ? "🚗" : "🛺")}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontFamily: Font.medium,
-                        fontSize: 13,
-                        color: C.text,
-                      }}
-                      numberOfLines={1}
-                    >
-                      {ride.pickupAddress} → {ride.dropAddress}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: Font.regular,
-                        fontSize: 11,
-                        color: C.textMuted,
-                        marginTop: 3,
-                      }}
-                    >
-                      {ride.distance} km ·{" "}
-                      {new Date(ride.createdAt).toLocaleDateString(
-                        "en-PK",
-                        { day: "numeric", month: "short" },
-                      )}
-                    </Text>
+                    <Text style={{ fontFamily: Font.medium, fontSize: 12, color: colorScheme === "dark" ? "#CBD5E1" : "#0F172A" }} numberOfLines={1}>{ride.pickupAddress} → {ride.dropAddress}</Text>
+                    <Text style={{ fontFamily: Font.regular, fontSize: 11, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", marginTop: 2 }}>{ride.distance} km · {new Date(ride.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short" })}</Text>
                   </View>
-                  <View
-                    style={{ alignItems: "flex-end", gap: 4 }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: Font.bold,
-                        fontSize: 14,
-                        color: C.text,
-                      }}
-                    >
-                      Rs. {ride.fare}
-                    </Text>
-                    <View
-                      style={{
-                        backgroundColor:
-                          ride.status === "completed"
-                            ? C.greenLightBg
-                            : ride.status === "cancelled"
-                              ? C.redBorder
-                              : C.yellowLightBg,
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        borderRadius: 8,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontFamily: Font.medium,
-                          fontSize: 10,
-                          color:
-                            ride.status === "completed"
-                              ? C.emerald
-                              : ride.status === "cancelled"
-                                ? C.red
-                                : C.amberBrown,
-                        }}
-                      >
-                        {(
-                          {
-                            searching: "Finding",
-                            bargaining: "Negotiating",
-                            accepted: "Accepted",
-                            arrived: "Arrived",
-                            in_transit: "In Transit",
-                            completed: "Done",
-                            cancelled: "Cancelled",
-                            ongoing: "In Transit",
-                            no_riders: "No Riders",
-                          } as Record<string, string>
-                        )[ride.status as string] ?? ride.status}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={{ fontFamily: Font.bold, fontSize: 14, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>Rs. {ride.fare}</Text>
                 </View>
               ))}
               <View style={{ height: 30 }} />
@@ -2601,590 +1397,120 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
         </View>
       </Modal>
 
-      <Modal
-        visible={showSchoolModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowSchoolModal(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: C.background }}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              padding: 20,
-              backgroundColor: C.surface,
-              borderBottomWidth: 1,
-              borderBottomColor: C.border,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 18,
-                fontFamily: Font.bold,
-                flex: 1,
-                color: C.text,
-              }}
-            >
-              School Shift Subscribe
-            </Text>
-            <TouchableOpacity activeOpacity={0.7}
-              onPress={() => setShowSchoolModal(false)}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                backgroundColor: C.surfaceSecondary,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="close" size={18} color={C.text} />
+      {/* School Shift Modal */}
+      <Modal visible={showSchoolModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSchoolModal(false)}>
+        <View style={{ flex: 1, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", padding: 20, backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderBottomWidth: 1, borderBottomColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
+            <Text style={{ fontSize: 18, fontFamily: Font.bold, flex: 1, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>School Shift Subscribe</Text>
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowSchoolModal(false)} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#E2E8F0", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="close" size={18} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
             </TouchableOpacity>
           </View>
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 20, gap: 14 }}
-          >
-            <Text
-              style={{
-                fontFamily: Font.semiBold,
-                fontSize: 14,
-                color: C.text,
-                marginBottom: 4,
-              }}
-            >
-              Select a Route
-            </Text>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, gap: 14 }}>
+            <Text style={{ fontFamily: Font.semiBold, fontSize: 14, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginBottom: 4 }}>Select a Route</Text>
             {schoolRoutes.length === 0 ? (
-              <View
-                style={{
-                  backgroundColor: C.surface,
-                  borderRadius: 16,
-                  padding: 24,
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: C.border,
-                }}
-              >
-                <View
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 16,
-                    backgroundColor: C.surfaceSecondary,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: 10,
-                  }}
-                >
-                  <Text style={{ fontSize: 24 }}>🚌</Text>
-                </View>
-                <Text
-                  style={{
-                    fontFamily: Font.semiBold,
-                    color: C.textSecondary,
-                  }}
-                >
-                  No routes available
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: C.textMuted,
-                    marginTop: 4,
-                    textAlign: "center",
-                  }}
-                >
-                  Contact admin to add school shift routes
-                </Text>
+              <View style={{ backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderRadius: 16, padding: 24, alignItems: "center", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
+                <Text style={{ fontSize: 24, marginBottom: 10 }}>🚌</Text>
+                <Text style={{ fontFamily: Font.semiBold, color: colorScheme === "dark" ? "#94A3B8" : "#64748B" }}>No routes available</Text>
+                <Text style={{ fontSize: 12, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", marginTop: 4, textAlign: "center" }}>Contact admin to add school shift routes</Text>
               </View>
             ) : (
               schoolRoutes.map((r: any) => (
-                <TouchableOpacity activeOpacity={0.7}
-                  key={r.id}
-                  onPress={() => setSelectedRoute(r)}
-                  style={{
-                    borderWidth: 1.5,
-                    borderColor:
-                      selectedRoute?.id === r.id
-                        ? C.primary
-                        : C.border,
-                    borderRadius: 16,
-                    padding: 16,
-                    backgroundColor:
-                      selectedRoute?.id === r.id
-                        ? `${C.primary}06`
-                        : C.textInverse,
-                  }}
+                <TouchableOpacity activeOpacity={0.7} key={r.id} onPress={() => setSelectedRoute(r)}
+                  style={{ borderWidth: 1.5, borderColor: selectedRoute?.id === r.id ? "#3B82F6" : colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 16, padding: 16, backgroundColor: selectedRoute?.id === r.id ? (colorScheme === "dark" ? "rgba(59,130,246,0.08)" : "#EFF6FF") : "transparent" }}
                 >
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "flex-start",
-                      gap: 12,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 14,
-                        backgroundColor: C.blueBorder,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Text style={{ fontSize: 22 }}>🚌</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontFamily: Font.bold,
-                          fontSize: 14,
-                          color: C.text,
-                        }}
-                      >
-                        {r.routeName}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          color: C.textSecondary,
-                          marginTop: 2,
-                        }}
-                      >
-                        {r.schoolName}
-                      </Text>
-                      {r.schoolNameUrdu ? (
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: C.textMuted,
-                            marginTop: 1,
-                          }}
-                          allowFontScaling={false}
-                        >
-                          {r.schoolNameUrdu}
-                        </Text>
-                      ) : null}
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          flexWrap: "wrap",
-                          gap: 6,
-                          marginTop: 8,
-                        }}
-                      >
-                        <View
-                          style={{
-                            backgroundColor: C.greenLightBg,
-                            borderRadius: 8,
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              fontFamily: Font.bold,
-                              color: C.greenBright,
-                            }}
-                          >
-                            Rs. {r.monthlyPrice?.toLocaleString()}/mo
-                          </Text>
-                        </View>
-                        <View
-                          style={{
-                            backgroundColor: C.surfaceSecondary,
-                            borderRadius: 8,
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: C.textSecondary,
-                            }}
-                          >
-                            AM {r.morningTime}
-                          </Text>
-                        </View>
-                        {r.afternoonTime ? (
-                          <View
-                            style={{
-                              backgroundColor: C.surfaceSecondary,
-                              borderRadius: 8,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                color: C.textSecondary,
-                              }}
-                            >
-                              PM {r.afternoonTime}
-                            </Text>
-                          </View>
-                        ) : null}
-                        <View
-                          style={{
-                            backgroundColor: C.surfaceSecondary,
-                            borderRadius: 8,
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: C.textSecondary,
-                            }}
-                          >
-                            {r.enrolledCount}/{r.capacity} seats
-                          </Text>
-                        </View>
-                      </View>
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: C.textMuted,
-                          marginTop: 6,
-                        }}
-                      >
-                        {r.fromArea} → {r.toAddress}
-                      </Text>
-                    </View>
-                    {selectedRoute?.id === r.id && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={22}
-                        color={C.primary}
-                      />
-                    )}
-                  </View>
+                  <Text style={{ fontFamily: Font.bold, fontSize: 14, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>{r.routeName}</Text>
+                  {r.schoolName && <Text style={{ fontFamily: Font.regular, fontSize: 12, color: colorScheme === "dark" ? "#94A3B8" : "#64748B", marginTop: 2 }}>{r.schoolName}</Text>}
                 </TouchableOpacity>
               ))
             )}
 
-            {selectedRoute && (
-              <>
-                <View
-                  style={{ height: 1, backgroundColor: C.border }}
-                />
-                <Text
-                  style={{
-                    fontFamily: Font.semiBold,
-                    fontSize: 14,
-                    color: C.text,
-                  }}
+            <Text style={{ fontFamily: Font.semiBold, fontSize: 14, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginTop: 6 }}>Student Details</Text>
+            <TextInput value={schoolStudent} onChangeText={setSchoolStudent} placeholder="Student full name" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+              style={{ fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}
+            />
+            <TextInput value={schoolClass} onChangeText={setSchoolClass} placeholder="Class (e.g. Grade 5)" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+              style={{ fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}
+            />
+            <TextInput value={schoolStartDate} onChangeText={setSchoolStartDate} placeholder="Start date (YYYY-MM-DD)" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+              style={{ fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}
+            />
+            <TextInput value={schoolNotes} onChangeText={setSchoolNotes} placeholder="Notes (optional)" placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"} multiline
+              style={{ fontFamily: Font.regular, fontSize: 13, color: colorScheme === "dark" ? "#fff" : "#0F172A", backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, minHeight: 70 }}
+            />
+
+            <Text style={{ fontFamily: Font.semiBold, fontSize: 14, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>Shift</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {(["morning", "afternoon", "both"] as const).map((s) => (
+                <TouchableOpacity key={s} activeOpacity={0.7} onPress={() => setSchoolShift(s)}
+                  style={{ flex: 1, paddingVertical: 9, borderRadius: 12, borderWidth: 1.5, borderColor: schoolShift === s ? "#3B82F6" : colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", backgroundColor: schoolShift === s ? (colorScheme === "dark" ? "rgba(59,130,246,0.12)" : "#EFF6FF") : "transparent", alignItems: "center" }}
                 >
-                  Student Details
-                </Text>
-                <View style={{ gap: 12 }}>
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: C.textSecondary,
-                        marginBottom: 6,
-                        fontFamily: Font.medium,
-                      }}
-                    >
-                      Student Name *
-                    </Text>
-                    <View
-                      style={{
-                        borderWidth: 1.5,
-                        borderColor: C.border,
-                        borderRadius: 14,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        backgroundColor: C.surface,
-                      }}
-                    >
-                      <TextInput
-                        value={schoolStudent}
-                        onChangeText={setSchoolStudent}
-                        placeholder="e.g. Ali Khan"
-                        style={{
-                          fontFamily: Font.regular,
-                          fontSize: 14,
-                          color: C.text,
-                        }}
-                        placeholderTextColor={C.textMuted}
-                      />
-                    </View>
-                  </View>
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: C.textSecondary,
-                        marginBottom: 6,
-                        fontFamily: Font.medium,
-                      }}
-                    >
-                      Class / Grade *
-                    </Text>
-                    <View
-                      style={{
-                        borderWidth: 1.5,
-                        borderColor: C.border,
-                        borderRadius: 14,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        backgroundColor: C.surface,
-                      }}
-                    >
-                      <TextInput
-                        value={schoolClass}
-                        onChangeText={setSchoolClass}
-                        placeholder="e.g. 7th Grade"
-                        style={{
-                          fontFamily: Font.regular,
-                          fontSize: 14,
-                          color: C.text,
-                        }}
-                        placeholderTextColor={C.textMuted}
-                      />
-                    </View>
-                  </View>
-                  <View>
-                    <Text style={{ fontSize: 12, color: C.textSecondary, marginBottom: 6, fontFamily: Font.medium }}>
-                      Shift
-                    </Text>
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      {(["morning", "afternoon", "both"] as const).map(s => (
-                        <TouchableOpacity activeOpacity={0.7}
-                          key={s}
-                          onPress={() => setSchoolShift(s)}
-                          style={{
-                            flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center",
-                            backgroundColor: schoolShift === s ? C.primary : C.textInverse,
-                            borderWidth: 1.5, borderColor: schoolShift === s ? C.primary : C.border,
-                          }}
-                        >
-                          <Text style={{ fontSize: 12, fontFamily: Font.semiBold, color: schoolShift === s ? C.textInverse : C.textSecondary, textTransform: "capitalize" }}>{s}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    {selectedRoute?.morningTime && schoolShift !== "afternoon" ? (
-                      <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 4, fontFamily: Font.regular }}>
-                        AM pickup: {selectedRoute.morningTime}
-                      </Text>
-                    ) : null}
-                    {selectedRoute?.afternoonTime && schoolShift !== "morning" ? (
-                      <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 2, fontFamily: Font.regular }}>
-                        PM pickup: {selectedRoute.afternoonTime}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View>
-                    <Text style={{ fontSize: 12, color: C.textSecondary, marginBottom: 6, fontFamily: Font.medium }}>
-                      Start Date
-                    </Text>
-                    <View style={{ borderWidth: 1.5, borderColor: C.border, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: C.surface }}>
-                      <TextInput
-                        value={schoolStartDate}
-                        onChangeText={v => setSchoolStartDate(v)}
-                        placeholder="YYYY-MM-DD"
-                        style={{ fontFamily: Font.regular, fontSize: 14, color: C.text }}
-                        placeholderTextColor={C.textMuted}
-                        keyboardType="numbers-and-punctuation"
-                        maxLength={10}
-                      />
-                    </View>
-                    <Text style={{ fontSize: 11, color: C.textMuted, marginTop: 3, fontFamily: Font.regular }}>
-                      Subscription starts on this date (today or later)
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontFamily: Font.medium, color: C.text }}>Auto-Renew Monthly</Text>
-                      <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: Font.regular }}>Renew subscription every 30 days</Text>
-                    </View>
-                    <TouchableOpacity activeOpacity={0.7}
-                      onPress={() => setSchoolRecurring(r => !r)}
-                      style={{
-                        width: 48, height: 26, borderRadius: 13,
-                        backgroundColor: schoolRecurring ? C.primary : C.border,
-                        justifyContent: "center", paddingHorizontal: 3,
-                      }}
-                    >
-                      <View style={{
-                        width: 20, height: 20, borderRadius: 10, backgroundColor: C.surface,
-                        alignSelf: schoolRecurring ? "flex-end" : "flex-start",
-                      }} />
-                    </TouchableOpacity>
-                  </View>
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: C.textSecondary,
-                        marginBottom: 6,
-                        fontFamily: Font.medium,
-                      }}
-                    >
-                      Notes (Optional)
-                    </Text>
-                    <View
-                      style={{
-                        borderWidth: 1.5,
-                        borderColor: C.border,
-                        borderRadius: 14,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        backgroundColor: C.surface,
-                        minHeight: 72,
-                      }}
-                    >
-                      <TextInput
-                        value={schoolNotes}
-                        onChangeText={setSchoolNotes}
-                        placeholder="e.g. Drop off at gate B, allergies, etc."
-                        style={{
-                          fontFamily: Font.regular,
-                          fontSize: 14,
-                          color: C.text,
-                        }}
-                        placeholderTextColor={C.textMuted}
-                        multiline
-                        numberOfLines={2}
-                      />
-                    </View>
-                  </View>
-                </View>
-                <View
-                  style={{
-                    backgroundColor: C.yellowLightBg,
-                    borderRadius: 14,
-                    padding: 14,
-                    borderWidth: 1,
-                    borderColor: C.amberBorder,
-                    marginTop: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      color: C.amberBrown,
-                      fontFamily: Font.medium,
-                    }}
-                  >
-                    First month: Rs.{" "}
-                    {selectedRoute.monthlyPrice?.toLocaleString()} —{" "}
-                    {payMethod === "wallet"
-                      ? "From wallet"
-                      : payMethod === "cash"
-                        ? "Cash on pickup"
-                        : `Via ${payMethod}`}
-                  </Text>
-                </View>
-                <TouchableOpacity activeOpacity={0.7}
-                  onPress={handleSchoolSubscribe}
-                  disabled={subscribing}
-                  style={{
-                    backgroundColor: subscribing
-                      ? C.blueMist
-                      : C.primary,
-                    borderRadius: 16,
-                    padding: 16,
-                    alignItems: "center",
-                    marginTop: 8,
-                    opacity: subscribing ? 0.7 : 1,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: Font.bold,
-                      fontSize: 15,
-                      color: C.textInverse,
-                    }}
-                  >
-                    {subscribing
-                      ? "Subscribing..."
-                      : `Subscribe · Rs. ${selectedRoute.monthlyPrice?.toLocaleString()}/mo`}
-                  </Text>
+                  <Text style={{ fontFamily: schoolShift === s ? Font.bold : Font.medium, fontSize: 12, color: schoolShift === s ? "#3B82F6" : colorScheme === "dark" ? "#94A3B8" : "#64748B", textTransform: "capitalize" }}>{s}</Text>
                 </TouchableOpacity>
-              </>
-            )}
+              ))}
+            </View>
+
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setSchoolRecurring(v => !v)}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: schoolRecurring ? "rgba(59,130,246,0.08)" : "transparent", borderWidth: 1, borderColor: schoolRecurring ? "#3B82F6" : colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0", borderRadius: 14, padding: 12 }}
+            >
+              <View style={{ width: 42, height: 24, borderRadius: 12, backgroundColor: schoolRecurring ? "#3B82F6" : colorScheme === "dark" ? "#334155" : "#E2E8F0", padding: 2, justifyContent: "center", alignItems: schoolRecurring ? "flex-end" : "flex-start" }}>
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff" }} />
+              </View>
+              <Text style={{ fontFamily: Font.medium, fontSize: 13, color: schoolRecurring ? "#3B82F6" : colorScheme === "dark" ? "#94A3B8" : "#64748B" }}>Recurring monthly</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity activeOpacity={0.85} onPress={handleSchoolSubscribe} disabled={subscribing}
+              style={{ borderRadius: 16, overflow: "hidden", marginTop: 6, opacity: subscribing ? 0.7 : 1 }}
+            >
+              <LinearGradient colors={["#3B82F6", "#1D4ED8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={{ paddingVertical: 16, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
+              >
+                {subscribing ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Text style={{ fontSize: 18 }}>🚌</Text>
+                    <Text style={{ fontFamily: Font.bold, fontSize: 16, color: "#fff" }}>Subscribe Now</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+            <View style={{ height: 30 }} />
           </ScrollView>
         </View>
       </Modal>
-      <PermissionGuide
-        visible={permGuideVisible}
-        type="location"
-        onClose={() => setPermGuideVisible(false)}
-      />
-      <MapPickerModal
-        visible={showMapPicker}
-        label={mapPickerTarget === "pickup" ? tl("pickup") : mapPickerTarget === "drop" ? tl("dropOff") : `Stop ${(mapPickerTarget as number) + 1}`}
-        initialLat={
-          mapPickerTarget === "pickup" ? (pickupObj?.lat ?? 33.7294)
-          : mapPickerTarget === "drop" ? (dropObj?.lat ?? 33.7294)
-          : 33.7294
-        }
-        initialLng={
-          mapPickerTarget === "pickup" ? (pickupObj?.lng ?? 73.3872)
-          : mapPickerTarget === "drop" ? (dropObj?.lng ?? 73.3872)
-          : 73.3872
-        }
-        onConfirm={handleMapPickerConfirm}
-        onClose={() => setShowMapPicker(false)}
-      />
     </View>
   );
 }
 
-const rs = StyleSheet.create({
-  hdrRow: { flexDirection: "row", alignItems: "center" },
-  backBtnBlue: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.18)",
+const styles = StyleSheet.create({
+  inputRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+  },
+  suggBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginTop: 4,
+    zIndex: 100,
+  },
+  suggRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  suggTxt: {
+    fontFamily: Font.medium,
+    fontSize: 13,
+  },
+  suggSub: {
+    fontFamily: Font.regular,
+    fontSize: 11,
+    marginTop: 1,
   },
 });
 
-function makeDynStyles(C: typeof import("@/constants/colors").default.light) {
-  return {
-    sugg: {
-      backgroundColor: C.surface,
-      borderRadius: 10,
-      marginTop: 4,
-      borderWidth: 1,
-      borderColor: C.border,
-      maxHeight: 160,
-      overflow: "hidden" as const,
-      zIndex: 100,
-      elevation: 4,
-    },
-    suggRow: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderBottomWidth: 1,
-      borderBottomColor: C.borderLight,
-    } as const,
-    suggTxt: {
-      fontFamily: Font.regular,
-      fontSize: 12,
-      color: C.text,
-    } as const,
-    suggSub: {
-      fontFamily: Font.regular,
-      fontSize: 10,
-      color: C.textMuted,
-      marginTop: 1,
-    } as const,
-  };
-}
