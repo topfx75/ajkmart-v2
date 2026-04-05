@@ -1,0 +1,19 @@
+I want you to act as a Live Systems Engineer to perform an isolated, deep-dive evaluation and fix of the 'admin panel' Module within the AJKMart admin panel  .
+Your Single-Task Mission:
+Focus exclusively on the 'Orders' section (Order History, Order Tracking, Order Details). Ignore all unrelated functions until this module is 100% workable, secure, and professional.
+1. Human-Centric & Device Testing:
+Navigate the 'Orders' section like a real customer.
+Multi-Device Responsiveness: Test on Mobile, Tablet, and Desktop views. The layout must be Liquid & Adaptive. If on Chrome (Desktop), it must show a wide professional view; if on Mobile, it must be a touch-friendly app view. No stretching, no broken pixels.
+Interaction: Click every 'Track Order' button, 'View Details' link, and filter dropdown. Observe visual feedback and backend response.
+2. Full-Stack & SEO Analysis:
+SEO Compatibility: Ensure the 'Orders' page structure is SEO-friendly (Proper H1-H3 tags, Meta descriptions for order tracking pages, and clean slug URLs).
+UI/UX Excellence: Identify alignment issues or slow-loading order lists. Fix the CSS/Frontend immediately for a premium feel.
+Admin Sync: The 'Orders' module must be a mirror of the Admin Panel. If the Admin marks an order as 'Shipped' or 'Cancelled', the customer app must reflect this instantly with the correct status and color coding.
+Validation & Database: Ensure no 'Ghost Orders' or 'Broken Data' can exist. Verify that the routing from 'Checkout' to the 'Orders' page is seamless.
+3. The 'Live Agent' Thinking Loop:
+Step-by-Step Fix: If an error occurs (e.g., an order status not updating or a button not clicking), use your internal logic to find the root cause. Do not move to the next item until the current bug is dead.
+Clean & Structured Code: Rewrite the logic in a modular, easy-to-read format. Ensure the code is optimized for speed and easy for AI to fix in the future.
+Strict Boundary: Fix only 'Orders' related logic. Do not touch other app functions.
+4. Final Verification:
+Perform a 'Deep Scan' re-check of the 'Orders' module across all devices. If there is even a 1-pixel alignment error or a 0.5-second lag in API response, reset, re-read these guidelines, and fix it again. Do not stop until the module is flawless.
+Current Target: AJKMart admin panel 
