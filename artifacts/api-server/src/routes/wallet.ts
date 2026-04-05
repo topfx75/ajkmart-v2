@@ -10,7 +10,7 @@ import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO } from "../lib/socketio.js";
 import { z } from "zod";
-import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
+import { sendSuccess, sendCreated, sendAccepted, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 
 /* ── IS_PRODUCTION guard — independent of NODE_ENV for simulate-topup hardening ── */
 const IS_PRODUCTION = process.env["IS_PRODUCTION"] === "true" || process.env["NODE_ENV"] === "production";
@@ -53,27 +53,39 @@ const amountField = z.union([z.number().positive(), z.string().min(1)])
   .refine(v => !isNaN(v) && isFinite(v) && v > 0, "Invalid amount")
   .refine(hasValidDecimalPrecision, "Amount must have at most 2 decimal places");
 
+const paymentMethodField = z.string().min(1, "paymentMethod is required")
+  .regex(/^[a-z_]+$/, "paymentMethod must be a lowercase identifier");
+
 const depositSchema = z.object({
   amount: amountField,
-  paymentMethod: z.string().min(1, "paymentMethod required"),
+  paymentMethod: paymentMethodField,
   transactionId: z.string().min(1, "transactionId required"),
   idempotencyKey: z.string().uuid("idempotencyKey must be a UUID"),
   accountNumber: z.string().optional(),
-  note: z.string().max(500).optional(),
+  note: z.string().max(200).optional(),
 });
 
 const sendSchema = z.object({
   receiverPhone: z.string().min(1, "receiverPhone is required"),
   amount: amountField,
-  note: z.string().max(500).optional(),
+  note: z.string().max(200).optional(),
 });
 
 const withdrawSchema = z.object({
   amount: amountField,
-  paymentMethod: z.enum(["jazzcash", "easypaisa", "bank"], { errorMap: () => ({ message: "paymentMethod must be jazzcash, easypaisa, or bank" }) }),
+  paymentMethod: paymentMethodField,
   accountNumber: z.string().min(1, "accountNumber required"),
-  note: z.string().max(500).optional(),
+  note: z.string().max(200).optional(),
 });
+
+async function getEnabledPaymentMethods(): Promise<string[]> {
+  const s = await getPlatformSettings();
+  const methods: string[] = [];
+  if ((s["jazzcash_enabled"] ?? "off") === "on") methods.push("jazzcash");
+  if ((s["easypaisa_enabled"] ?? "off") === "on") methods.push("easypaisa");
+  if ((s["bank_enabled"] ?? "off") === "on") methods.push("bank");
+  return methods;
+}
 
 function broadcastWalletUpdate(userId: string, newBalance: number) {
   const io = getIO();
@@ -235,6 +247,11 @@ router.post("/deposit", customerAuth, async (req, res) => {
 
   const { amount: amt, paymentMethod, transactionId, idempotencyKey, accountNumber, note } = parsed.data;
 
+  const enabledMethods = await getEnabledPaymentMethods();
+  if (!enabledMethods.includes(paymentMethod)) {
+    sendValidationError(res, `Payment method '${paymentMethod}' is not currently enabled`); return;
+  }
+
   const cacheKey = `deposit:${userId}:${idempotencyKey}`;
   const existing = idempotencyCache.get(cacheKey);
   if (existing) {
@@ -379,8 +396,8 @@ router.post("/deposit", customerAuth, async (req, res) => {
     }).catch(e => logger.error("customer deposit notif insert failed:", e));
 
     const pendingBody = { txId, status: "pending", amount: amt };
-    setIdempotencyResult(200, pendingBody);
-    sendSuccess(res, pendingBody);
+    setIdempotencyResult(202, pendingBody);
+    sendAccepted(res, pendingBody);
   }
 });
 
@@ -409,17 +426,38 @@ router.get("/deposits", customerAuth, async (req, res) => {
 });
 
 /* ── POST /wallet/resolve-phone ─────────────────────────────────────────── */
+const resolvePhoneSchema = z.object({
+  phone: z.string()
+    .min(1, "phone is required")
+    .transform(v => {
+      const trimmed = v.trim();
+      if (/^03\d{9}$/.test(trimmed)) return trimmed.slice(1);
+      return trimmed;
+    })
+    .pipe(z.string().regex(/^3\d{9}$/, "Invalid Pakistani phone number (must be 10 digits starting with 3, or 11 digits starting with 03)")),
+});
+
 router.post("/resolve-phone", customerAuth, async (req, res) => {
-  const { phone } = req.body;
-  if (!phone) { sendValidationError(res, "phone is required"); return; }
+  const parsed = resolvePhoneSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    sendValidationError(res, firstError); return;
+  }
+
+  const userId = req.customerId!;
+  const resolveLimit = await checkAvailableRateLimit(`resolve-phone:${userId}`, 10, 1);
+  if (resolveLimit.limited) {
+    sendError(res, `Too many lookup requests. Try again in ${resolveLimit.minutesLeft} minute(s).`, 429); return;
+  }
+
+  const phone = parsed.data.phone;
   try {
     const [user] = await db.select({ name: usersTable.name, phone: usersTable.phone })
-      .from(usersTable).where(eq(usersTable.phone, phone.trim())).limit(1);
+      .from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
     if (!user) { sendSuccess(res, { found: false, name: null }); return; }
     sendSuccess(res, { found: true, name: user.name || null });
   } catch (e: unknown) {
     logger.error("[wallet /resolve-phone] DB error:", e);
-    /* Return a network-style error so the client can distinguish from "not found" */
     sendError(res, "Something went wrong, please try again.", 500);
   }
 });
@@ -427,6 +465,11 @@ router.post("/resolve-phone", customerAuth, async (req, res) => {
 /* ── POST /wallet/send ───────────────────────────────────────────────────── */
 router.post("/send", customerAuth, async (req, res) => {
   const senderUserId = req.customerId!;
+
+  const sendRateLimit = await checkAvailableRateLimit(`send:${senderUserId}`, 5, 1);
+  if (sendRateLimit.limited) {
+    sendError(res, `Too many transfer requests. Try again in ${sendRateLimit.minutesLeft} minute(s).`, 429); return;
+  }
 
   const parsed = sendSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -608,9 +651,113 @@ router.post("/send", customerAuth, async (req, res) => {
   }
 });
 
+/* ── GET /wallet/deposit-methods — Dynamic deposit methods from admin settings ── */
+router.get("/deposit-methods", customerAuth, async (_req, res) => {
+  try {
+    const s = await getPlatformSettings();
+    const methods: Array<Record<string, unknown>> = [];
+
+    if ((s["jazzcash_enabled"] ?? "off") === "on") {
+      const jcType = s["jazzcash_type"] ?? "manual";
+      const entry: Record<string, unknown> = {
+        id: "jazzcash",
+        label: "JazzCash",
+        logo: "jazzcash",
+        available: true,
+        mode: jcType === "api" ? (s["jazzcash_mode"] ?? "sandbox") : "manual",
+        type: jcType,
+        description: "JazzCash mobile wallet",
+        proofRequired: (s["jazzcash_proof_required"] ?? "off") === "on",
+        minAmount: parseFloat(s["jazzcash_min_amount"] ?? "10"),
+        maxAmount: parseFloat(s["jazzcash_max_amount"] ?? "100000"),
+      };
+      if (jcType === "manual") {
+        entry["manualName"] = s["jazzcash_manual_name"] ?? "";
+        entry["manualNumber"] = s["jazzcash_manual_number"] ?? "";
+        entry["manualInstructions"] = s["jazzcash_manual_instructions"] ?? "Number par payment bhejein aur transaction ID hum se share karein.";
+      }
+      methods.push(entry);
+    }
+
+    if ((s["easypaisa_enabled"] ?? "off") === "on") {
+      const epType = s["easypaisa_type"] ?? "manual";
+      const entry: Record<string, unknown> = {
+        id: "easypaisa",
+        label: "EasyPaisa",
+        logo: "easypaisa",
+        available: true,
+        mode: epType === "api" ? (s["easypaisa_mode"] ?? "sandbox") : "manual",
+        type: epType,
+        description: "EasyPaisa mobile wallet",
+        proofRequired: (s["easypaisa_proof_required"] ?? "off") === "on",
+        minAmount: parseFloat(s["easypaisa_min_amount"] ?? "10"),
+        maxAmount: parseFloat(s["easypaisa_max_amount"] ?? "100000"),
+      };
+      if (epType === "manual") {
+        entry["manualName"] = s["easypaisa_manual_name"] ?? "";
+        entry["manualNumber"] = s["easypaisa_manual_number"] ?? "";
+        entry["manualInstructions"] = s["easypaisa_manual_instructions"] ?? "Number par payment bhejein aur transaction ID share karein.";
+      }
+      methods.push(entry);
+    }
+
+    if ((s["bank_enabled"] ?? "off") === "on") {
+      methods.push({
+        id: "bank",
+        label: "Bank Transfer",
+        logo: "bank",
+        available: true,
+        mode: "manual",
+        type: "manual",
+        description: "Direct bank account transfer",
+        bankName: s["bank_name"] ?? "",
+        accountTitle: s["bank_account_title"] ?? "",
+        accountNumber: s["bank_account_number"] ?? "",
+        iban: s["bank_iban"] ?? "",
+        branchCode: s["bank_branch_code"] ?? "",
+        swiftCode: s["bank_swift_code"] ?? "",
+        instructions: s["bank_instructions"] ?? "Bank account mein transfer karein aur receipt hum se share karein.",
+        proofRequired: (s["bank_proof_required"] ?? "on") === "on",
+        minAmount: parseFloat(s["bank_min_amount"] ?? "0"),
+        processingHours: parseInt(s["bank_processing_hours"] ?? "24"),
+      });
+    }
+
+    sendSuccess(res, { methods });
+  } catch (e: unknown) {
+    logger.error("[wallet /deposit-methods] error:", e);
+    sendError(res, "Something went wrong, please try again.", 500);
+  }
+});
+
+router.get("/withdrawal-methods", customerAuth, async (_req, res) => {
+  try {
+    const s = await getPlatformSettings();
+    const methods: Array<{ id: string; label: string; placeholder: string }> = [];
+    if ((s["jazzcash_enabled"] ?? "off") === "on") {
+      methods.push({ id: "jazzcash", label: "JazzCash", placeholder: "03XX-XXXXXXX" });
+    }
+    if ((s["easypaisa_enabled"] ?? "off") === "on") {
+      methods.push({ id: "easypaisa", label: "EasyPaisa", placeholder: "03XX-XXXXXXX" });
+    }
+    if ((s["bank_enabled"] ?? "off") === "on") {
+      methods.push({ id: "bank", label: "Bank Transfer", placeholder: "PKXX XXXX XXXX XXXX XXXX (IBAN)" });
+    }
+    sendSuccess(res, { methods });
+  } catch (e: unknown) {
+    logger.error("[wallet /withdrawal-methods] error:", e);
+    sendError(res, "Something went wrong, please try again.", 500);
+  }
+});
+
 /* ── POST /wallet/withdraw — Customer requests a withdrawal ─────────────── */
 router.post("/withdraw", customerAuth, async (req, res) => {
   const userId = req.customerId!;
+
+  const withdrawRateLimit = await checkAvailableRateLimit(`withdraw:${userId}`, 3, 10);
+  if (withdrawRateLimit.limited) {
+    sendError(res, `Too many withdrawal requests. Try again in ${withdrawRateLimit.minutesLeft} minute(s).`, 429); return;
+  }
 
   const parsed = withdrawSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -619,6 +766,11 @@ router.post("/withdraw", customerAuth, async (req, res) => {
   }
 
   const { amount: amt, paymentMethod, accountNumber, note } = parsed.data;
+
+  const enabledWithdrawMethods = await getEnabledPaymentMethods();
+  if (!enabledWithdrawMethods.includes(paymentMethod)) {
+    sendValidationError(res, `Withdrawal method '${paymentMethod}' is not currently enabled`); return;
+  }
 
   /* Idempotency for /withdraw — accept key from Idempotency-Key header (preferred) or body field */
   const idempotencyKey =

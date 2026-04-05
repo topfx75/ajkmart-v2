@@ -30,7 +30,7 @@ import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual } from "@workspace/i18n";
 import { SmartRefresh } from "@/components/ui/SmartRefresh";
-import { useGetWallet } from "@workspace/api-client-react";
+import { useGetWallet, getGetWalletQueryKey } from "@workspace/api-client-react";
 import { API_BASE as API, unwrapApiResponse } from "@/utils/api";
 import { AuthGateSheet } from "@/components/AuthGateSheet";
 
@@ -156,19 +156,32 @@ function MethodIcon({ id, size = 24 }: { id: string; size?: number }) {
   return <Ionicons name="business" size={size} color={C.blueDeep} />;
 }
 
-type WithdrawMethod = "jazzcash" | "easypaisa" | "bank";
+type WithdrawMethod = { id: string; label: string; placeholder: string };
 type WithdrawStep = "method" | "details" | "confirm" | "done";
+
+const NOTE_MAX_LENGTH = 200;
 
 function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdrawal }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null; balance: number; minWithdrawal: number }) {
   const [step, setStep]               = useState<WithdrawStep>("method");
+  const [withdrawMethods, setWithdrawMethods] = useState<WithdrawMethod[]>([]);
+  const [loadingMethods, setLoadingMethods] = useState(true);
+  const [methodsError, setMethodsError] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<WithdrawMethod | null>(null);
   const [amount, setAmount]           = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [note, setNote]               = useState("");
   const [submitting, setSubmitting]   = useState(false);
   const [err, setErr]                 = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState<string>("");
   const { showToast } = useToast();
   const doneAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    (async () => {
+      const { randomUUID } = await import("expo-crypto");
+      setIdempotencyKey(randomUUID());
+    })();
+  }, []);
 
   useEffect(() => {
     if (step === "done") {
@@ -177,11 +190,19 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
     }
   }, [step]);
 
-  const WITHDRAW_METHODS: { id: WithdrawMethod; label: string; placeholder: string }[] = [
-    { id: "jazzcash",  label: "JazzCash",  placeholder: "03XX-XXXXXXX" },
-    { id: "easypaisa", label: "EasyPaisa", placeholder: "03XX-XXXXXXX" },
-    { id: "bank",      label: "Bank Transfer", placeholder: "PKXX XXXX XXXX XXXX XXXX (IBAN)" },
-  ];
+  useEffect(() => {
+    fetch(`${API}/wallet/withdrawal-methods`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then(unwrapApiResponse)
+      .then((data: { methods?: WithdrawMethod[] }) => {
+        if (!data.methods || data.methods.length === 0) setMethodsError(true);
+        else setWithdrawMethods(data.methods);
+      })
+      .catch(() => setMethodsError(true))
+      .finally(() => setLoadingMethods(false));
+  }, []);
 
   const goToConfirm = () => {
     const amt = parseFloat(amount);
@@ -199,20 +220,22 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
     setErr("");
     try {
       const amt = parseFloat(amount);
-      const { randomUUID } = await import("expo-crypto");
-      const withdrawIdempotencyKey = randomUUID();
       const res = await fetch(`${API}/wallet/withdraw`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": withdrawIdempotencyKey,
+          "Idempotency-Key": idempotencyKey,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ amount: amt, paymentMethod: selectedMethod, accountNumber: accountNumber.trim(), note: note.trim() || undefined }),
+        body: JSON.stringify({ amount: amt, paymentMethod: selectedMethod?.id, accountNumber: accountNumber.trim(), note: note.trim() || undefined }),
       });
       const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
-        if (data.error === "wallet_frozen") { onFrozen?.(); onClose(); return; }
+        if (data.error === "wallet_frozen") {
+          setErr("Your wallet has been temporarily frozen. Please contact support.");
+          setSubmitting(false);
+          return;
+        }
         setErr(data.error || data.message || "Request failed");
         setSubmitting(false); return;
       }
@@ -227,11 +250,10 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
         <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { maxHeight: "90%" }]} onPress={e => e.stopPropagation()}>
           <View style={ws.handle} />
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
 
               {step === "done" && (
                 <Animated.View style={{ alignItems: "center", paddingVertical: 20, opacity: doneAnim, transform: [{ translateY: doneAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
@@ -243,7 +265,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                   <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 16, width: "100%", marginTop: 20, gap: 10, borderWidth: 1, borderColor: C.border }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Method</Text>
-                      <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label}</Text>
+                      <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{selectedMethod?.label}</Text>
                     </View>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Account</Text>
@@ -265,9 +287,18 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 <View>
                   <Text style={ws.sheetTitle}>Withdraw Money</Text>
                   <Text style={{ ...Typ.body, color: C.textMuted, marginBottom: 18 }}>Choose your withdrawal method</Text>
+                  {loadingMethods ? (
+                    <ActivityIndicator color={C.primary} style={{ marginTop: 24 }} />
+                  ) : methodsError || withdrawMethods.length === 0 ? (
+                    <View style={{ backgroundColor: C.redBg, borderRadius: 16, padding: 24, alignItems: "center", gap: 10, borderWidth: 1, borderColor: C.redSoft }}>
+                      <Ionicons name="alert-circle-outline" size={28} color={C.danger} />
+                      <Text style={{ ...Typ.button, fontFamily: Font.bold, color: C.text }}>Withdrawal Not Available</Text>
+                      <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, textAlign: "center" }}>No withdrawal methods are currently enabled. Please contact support.</Text>
+                    </View>
+                  ) : (
                   <View style={{ gap: 10 }}>
-                    {WITHDRAW_METHODS.map(m => (
-                      <TouchableOpacity activeOpacity={0.7} key={m.id} onPress={() => { setSelectedMethod(m.id); setErr(""); setStep("details"); }} style={{ flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, padding: 16, backgroundColor: C.surface }} accessibilityRole="button" accessibilityLabel={`Withdraw via ${m.label}`}>
+                    {withdrawMethods.map(m => (
+                      <TouchableOpacity activeOpacity={0.7} key={m.id} onPress={() => { setSelectedMethod(m); setErr(""); setStep("details"); }} style={{ flexDirection: "row", alignItems: "center", gap: 14, borderWidth: 1.5, borderColor: C.border, borderRadius: 16, padding: 16, backgroundColor: C.surface }} accessibilityRole="button" accessibilityLabel={`Withdraw via ${m.label}`}>
                         <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
                           <MethodIcon id={m.id} size={26} />
                         </View>
@@ -279,6 +310,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                       </TouchableOpacity>
                     ))}
                   </View>
+                  )}
                 </View>
               )}
 
@@ -288,7 +320,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                     <TouchableOpacity activeOpacity={0.7} onPress={() => setStep("method")} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back to method selection">
                       <Ionicons name="arrow-back" size={20} color={C.text} />
                     </TouchableOpacity>
-                    <Text style={[ws.sheetTitle, { marginBottom: 0 }]}>{WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label} Withdrawal</Text>
+                    <Text style={[ws.sheetTitle, { marginBottom: 0 }]}>{selectedMethod.label} Withdrawal</Text>
                   </View>
 
                   <Text style={ws.sheetLbl}>Amount (PKR) *</Text>
@@ -315,12 +347,12 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                     <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>Available: Rs. {balance.toLocaleString()}</Text>
                   </View>
 
-                  <Text style={ws.sheetLbl}>Your {WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label} Account *</Text>
+                  <Text style={ws.sheetLbl}>Your {selectedMethod.label} Account *</Text>
                   <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
                     <TextInput
                       value={accountNumber}
                       onChangeText={v => { setAccountNumber(v); setErr(""); }}
-                      placeholder={WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.placeholder}
+                      placeholder={selectedMethod.placeholder}
                       placeholderTextColor={C.textMuted}
                       style={[ws.sendInput, { paddingVertical: 0 }]}
                       autoCapitalize="characters"
@@ -335,9 +367,10 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                       placeholder="Any additional info..."
                       placeholderTextColor={C.textMuted}
                       style={[ws.sendInput, { paddingVertical: 0 }]}
-                      maxLength={500}
+                      maxLength={NOTE_MAX_LENGTH}
                     />
                   </View>
+                  <Text style={{ ...Typ.small, color: C.textMuted, textAlign: "right", marginTop: 2, marginBottom: 8 }}>{note.length}/{NOTE_MAX_LENGTH}</Text>
 
                   {err ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: C.redBg, padding: 10, borderRadius: 10 }}>
@@ -367,10 +400,10 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                   <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 16, gap: 10, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Method</Text>
-                      <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label}</Text>
+                      <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{selectedMethod.label}</Text>
                     </View>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>{selectedMethod === "bank" ? "IBAN / Account" : "Account Number"}</Text>
+                      <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>{selectedMethod.id === "bank" ? "IBAN / Account" : "Account Number"}</Text>
                       <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text, maxWidth: "60%" }} numberOfLines={2}>{accountNumber}</Text>
                     </View>
                     {note ? (
@@ -398,7 +431,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                     </View>
                   ) : null}
 
-                  <TouchableOpacity activeOpacity={0.7} onPress={handleSubmit} disabled={submitting} style={[ws.actionBtn, { backgroundColor: C.danger }, submitting && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel="Confirm and submit withdrawal request" accessibilityState={{ disabled: submitting }}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={handleSubmit} disabled={submitting || !idempotencyKey} style={[ws.actionBtn, { backgroundColor: C.danger }, (submitting || !idempotencyKey) && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel="Confirm and submit withdrawal request" accessibilityState={{ disabled: submitting || !idempotencyKey }}>
                     {submitting ? <ActivityIndicator color={C.textInverse} /> : (
                       <>
                         <Ionicons name="arrow-up-outline" size={18} color={C.textInverse} />
@@ -409,7 +442,6 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                 </View>
               )}
             </ScrollView>
-          </KeyboardAvoidingView>
         </TouchableOpacity>
         </KeyboardAvoidingView>
       </TouchableOpacity>
@@ -457,18 +489,24 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
   }, []);
 
   useEffect(() => {
-    fetch(`${API}/payments/methods`)
+    (async () => {
+      const { randomUUID } = await import("expo-crypto");
+      setIdempotencyKey(randomUUID());
+    })();
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API}/wallet/deposit-methods`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(unwrapApiResponse)
       .then((data: { methods?: PayMethod[] }) => {
-        const depositable: PayMethod[] = (data.methods || [])
-          .filter((m: PayMethod) => ["jazzcash", "easypaisa", "bank"].includes(m.id));
-        if (depositable.length === 0) setMethodsError(true);
-        else setMethods(depositable);
+        const methods: PayMethod[] = data.methods || [];
+        if (methods.length === 0) setMethodsError(true);
+        else setMethods(methods);
       })
       .catch(() => setMethodsError(true))
       .finally(() => setLoadingMethods(false));
-  }, []);
+  }, [token]);
 
   const STEPS: DepositStep[] = ["method", "details", "amount", "confirm"];
   const stepIdx = STEPS.indexOf(step);
@@ -484,18 +522,16 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
     setStep("amount");
   };
 
-  /* Regenerate idempotency key whenever user changes details and returns to amount step */
-  const goToConfirm = async () => {
+  const safeMinTopup = minTopup || 100;
+  const safeMaxTopup = maxTopup || 100000;
+
+  const goToConfirm = () => {
     const amt = parseFloat(amount);
     if (!amount || !isFinite(amt) || isNaN(amt) || amt <= 0) { setErr("Please enter a valid amount"); return; }
-    if (amt < (minTopup ?? 0))  { setErr(`Minimum deposit amount is Rs. ${(minTopup ?? 0).toLocaleString()}`); return; }
-    if (amt > (maxTopup ?? Infinity)) { setErr(`Maximum deposit amount is Rs. ${(maxTopup ?? 0).toLocaleString()}`); return; }
+    if (amt < safeMinTopup)  { setErr(`Minimum deposit amount is Rs. ${safeMinTopup.toLocaleString()}`); return; }
+    if (amt > safeMaxTopup) { setErr(`Maximum deposit amount is Rs. ${safeMaxTopup.toLocaleString()}`); return; }
     if (!txId.trim()) { setErr("Transaction ID is required"); return; }
     setErr("");
-    /* Always generate a fresh key when the user presses Review — covers the case where
-       they go back, change a field, and resubmit. */
-    const { randomUUID } = await import("expo-crypto");
-    setIdempotencyKey(randomUUID());
     setStep("confirm");
   };
 
@@ -531,9 +567,12 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
         }),
       });
       const data = unwrapApiResponse(await res.json());
-      if (!res.ok) {
-        if (data.error === "wallet_frozen") { onFrozen?.(); }
-        setErr(data.error === "wallet_frozen" ? data.message : (data.error || data.message || "Request failed"));
+      if (!res.ok && res.status !== 202) {
+        if (data.error === "wallet_frozen") {
+          setErr("Your wallet has been temporarily frozen. Please contact support.");
+          setSubmitting(false); return;
+        }
+        setErr(data.error || data.message || "Request failed");
         setSubmitting(false); return;
       }
       /* Persist the TxID to prevent future duplicate submissions */
@@ -571,7 +610,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
         <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { maxHeight: "90%" }]} onPress={e => e.stopPropagation()}>
           <View style={ws.handle} />
 
@@ -586,8 +625,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
             </View>
           )}
 
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
 
               {step === "done" && (
                 <View style={{ alignItems: "center", paddingVertical: 20 }}>
@@ -631,13 +669,13 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                       <TouchableOpacity activeOpacity={0.7} onPress={() => {
                         setMethodsError(false);
                         setLoadingMethods(true);
-                        fetch(`${API}/payments/methods`)
+                        fetch(`${API}/wallet/deposit-methods`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
                           .then(r => r.json())
                           .then(unwrapApiResponse)
                           .then((data: { methods?: PayMethod[] }) => {
-                            const depositable: PayMethod[] = (data.methods || []).filter((m: PayMethod) => ["jazzcash", "easypaisa", "bank"].includes(m.id));
-                            if (depositable.length === 0) setMethodsError(true);
-                            else setMethods(depositable);
+                            const methods: PayMethod[] = data.methods || [];
+                            if (methods.length === 0) setMethodsError(true);
+                            else setMethods(methods);
                           })
                           .catch(() => setMethodsError(true))
                           .finally(() => setLoadingMethods(false));
@@ -743,6 +781,11 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                       placeholderTextColor={C.textMuted}
                     />
                   </View>
+                  <Text style={{ ...Typ.caption, color: C.textMuted, marginTop: 4, marginBottom: 4 }}>
+                    {minTopup && maxTopup
+                      ? `Limits: Rs. ${safeMinTopup.toLocaleString()} – Rs. ${safeMaxTopup.toLocaleString()}`
+                      : "Loading limits…"}
+                  </Text>
                   <View style={ws.quickRow}>
                     {QUICK_AMOUNTS.map(a => (
                       <TouchableOpacity activeOpacity={0.7} key={a} onPress={() => setAmount(a.toString())} style={[ws.quickBtn, amount === a.toString() && ws.quickBtnActive]} accessibilityRole="button" accessibilityLabel={`Rs. ${a.toLocaleString()}`} accessibilityState={{ selected: amount === a.toString() }}>
@@ -783,9 +826,10 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
                       placeholder="Any additional info..."
                       placeholderTextColor={C.textMuted}
                       style={[ws.sendInput, { paddingVertical: 0 }]}
-                      maxLength={500}
+                      maxLength={NOTE_MAX_LENGTH}
                     />
                   </View>
+                  <Text style={{ ...Typ.small, color: C.textMuted, textAlign: "right", marginTop: 2, marginBottom: 8 }}>{note.length}/{NOTE_MAX_LENGTH}</Text>
 
                   {err ? (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: C.redBg, padding: 10, borderRadius: 10 }}>
@@ -869,7 +913,6 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
               )}
 
             </ScrollView>
-          </KeyboardAvoidingView>
         </TouchableOpacity>
         </KeyboardAvoidingView>
       </TouchableOpacity>
@@ -916,19 +959,23 @@ function WalletScreenInner() {
   const [socketBalance, setSocketBalance] = useState<number | null>(null);
   const prevUserBalanceRef = useRef<number | undefined>(user?.walletBalance);
 
-  const { data, isLoading, isError: walletError, error: walletErrorObj, refetch } = useGetWallet(
+  const { data, isLoading, isFetching, isError: walletError, error: walletErrorObj, refetch } = useGetWallet(
     { userId: user?.id || "" },
     { query: { enabled: !!user?.id, retry: 2, retryDelay: (attempt: number) => Math.floor(1500 * Math.pow(1.5, attempt - 1)) } }
   );
 
-  /* Fix: fresh API data always wins over stale socket value */
+  const walletQueryKey = getGetWalletQueryKey({ userId: user?.id || "" });
+  const queryState = qc.getQueryState(walletQueryKey);
+  const dataUpdatedAt = queryState?.dataUpdatedAt;
+  const prevDataUpdatedAtRef = useRef<number | undefined>(undefined);
+
   useEffect(() => {
-    if (data?.balance !== undefined) {
+    if (dataUpdatedAt && dataUpdatedAt !== prevDataUpdatedAtRef.current) {
+      prevDataUpdatedAtRef.current = dataUpdatedAt;
       setSocketBalance(null);
     }
-  }, [data?.balance]);
+  }, [dataUpdatedAt]);
 
-  /* Sync wallet balance from socket events */
   useEffect(() => {
     const current = user?.walletBalance;
     if (current !== undefined && current !== prevUserBalanceRef.current) {
@@ -997,8 +1044,6 @@ function WalletScreenInner() {
   }, [socket]);
 
   const onRefresh = useCallback(async () => {
-    /* Clear stale socket balance immediately on refresh so API data wins */
-    setSocketBalance(null);
     if (token) {
       try {
         const r = await fetch(`${API}/wallet`, { headers: { Authorization: `Bearer ${token}` } });
@@ -1028,7 +1073,7 @@ function WalletScreenInner() {
   }, [token]);
 
   const handleDepositSuccess = () => {
-    qc.invalidateQueries({ queryKey: ["getWallet"] });
+    qc.invalidateQueries({ queryKey: walletQueryKey });
     showToast("Deposit request submitted! It will be approved within 1-2 hours.", "success");
   };
 
@@ -1063,8 +1108,12 @@ function WalletScreenInner() {
     setSendNetworkError(false);
     if (!validateSendPhone(sendPhone)) return;
     const num = parseFloat(sendAmount);
-    if (!num || !isFinite(num) || isNaN(num) || num < (minTransfer ?? 0)) { showToast(`Minimum transfer amount is Rs. ${(minTransfer ?? 0).toLocaleString()}`, "error"); return; }
-    if (num > balance) { showToast("Insufficient wallet balance", "error"); return; }
+    const safeMinTransfer = minTransfer || 200;
+    if (!num || !isFinite(num) || isNaN(num) || num < safeMinTransfer) { showToast(`Minimum transfer amount is Rs. ${safeMinTransfer.toLocaleString()}`, "error"); return; }
+    const feeAmount = Math.round(num * p2pFee) / 100;
+    const totalRequired = num + feeAmount;
+    if (totalRequired > balance) { showToast(`Insufficient balance. Need Rs. ${totalRequired.toLocaleString()} (includes Rs. ${feeAmount.toLocaleString()} fee)`, "error"); return; }
+    setSendReceiverName("");
     setSendNetworkError(false);
     setSendLoading(true);
     try {
@@ -1074,7 +1123,6 @@ function WalletScreenInner() {
         body: JSON.stringify({ phone: sendPhone.trim() }),
       });
       if (!res.ok) {
-        /* Server/network error (4xx/5xx from server) — distinguish from "user not found" and show retry */
         if (__DEV__) console.warn("[Wallet] Receiver lookup returned HTTP error:", res.status);
         setSendNetworkError(true);
         setSendLoading(false);
@@ -1082,7 +1130,6 @@ function WalletScreenInner() {
       }
       const data = unwrapApiResponse(await res.json());
       if (!data.found) {
-        /* Phone is not registered — clear, informative message; NOT a network error */
         showToast("No AJKMart account found with this phone number.", "error");
         setSendLoading(false);
         return;
@@ -1090,7 +1137,6 @@ function WalletScreenInner() {
       setSendReceiverName(data.name || "");
     } catch (err) {
       if (__DEV__) console.warn("[Wallet] Receiver lookup failed (network):", err instanceof Error ? err.message : String(err));
-      /* True network error (fetch threw) — show inline Retry button */
       setSendNetworkError(true);
       setSendLoading(false);
       return;
@@ -1099,13 +1145,25 @@ function WalletScreenInner() {
     setSendStep("confirm");
   };
 
+  const [sendIdempotencyKey, setSendIdempotencyKey] = useState("");
+  const [sendFrozenError, setSendFrozenError] = useState("");
+
+  useEffect(() => {
+    if (showSend) {
+      (async () => {
+        const { randomUUID } = await import("expo-crypto");
+        setSendIdempotencyKey(randomUUID());
+        setSendFrozenError("");
+      })();
+    }
+  }, [showSend]);
+
   const handleSendConfirm = async () => {
     if (sendLoading) return;
     const num = parseFloat(sendAmount);
     setSendLoading(true);
+    setSendFrozenError("");
     try {
-      const { randomUUID } = await import("expo-crypto");
-      const sendIdempotencyKey = randomUUID();
       const res = await fetch(`${API}/wallet/send`, {
         method: "POST",
         headers: {
@@ -1117,12 +1175,16 @@ function WalletScreenInner() {
       });
       const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
-        if (data.error === "wallet_frozen") { setWalletFrozen(true); setShowSend(false); setSendLoading(false); return; }
+        if (data.error === "wallet_frozen") {
+          setSendFrozenError("Your wallet has been temporarily frozen. Please contact support.");
+          setSendLoading(false);
+          return;
+        }
         showToast(data.error || "Transfer failed", "error");
         setSendLoading(false); return;
       }
       updateUser({ walletBalance: data.newBalance });
-      qc.invalidateQueries({ queryKey: ["getWallet"] });
+      qc.invalidateQueries({ queryKey: walletQueryKey });
       closeSendModal();
       showToast(`Rs. ${num.toLocaleString()} sent to ${data.receiverName || sendPhone}!`, "success");
     } catch {
@@ -1131,8 +1193,8 @@ function WalletScreenInner() {
     }
   };
 
-  /* Fix: API data takes strict priority over socket value */
-  const balance      = data?.balance ?? socketBalance ?? user?.walletBalance ?? 0;
+  /* Fix: socket-first priority — real-time socket balance wins if available */
+  const balance      = socketBalance ?? data?.balance ?? user?.walletBalance ?? 0;
   const transactions = data?.transactions ?? [];
   const filtered     = txFilter === "all"
     ? transactions
@@ -1303,7 +1365,12 @@ function WalletScreenInner() {
 
         <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <Text style={{ ...Typ.price, color: C.text }}>{T("transactionHistory")}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ ...Typ.price, color: C.text }}>{T("transactionHistory")}</Text>
+              {isFetching && data && (
+                <ActivityIndicator size="small" color={C.primary} />
+              )}
+            </View>
             {transactions.length > 0 && (
               <View style={{ flexDirection: "row", gap: 6 }}>
                 {(["all", "credit", "debit"] as TxFilter[]).map(f => (
@@ -1376,7 +1443,7 @@ function WalletScreenInner() {
           minWithdrawal={platformConfig.customer.minWithdrawal}
           onClose={() => setShowWithdraw(false)}
           onSuccess={() => {
-            qc.invalidateQueries({ queryKey: ["getWallet"] });
+            qc.invalidateQueries({ queryKey: walletQueryKey });
             showToast("Withdrawal request submitted! It will be processed within 1-2 business days.", "success");
           }}
           onFrozen={() => setWalletFrozen(true)}
@@ -1385,11 +1452,10 @@ function WalletScreenInner() {
 
       <Modal visible={showSend} transparent animationType="slide" onRequestClose={closeSendModal}>
         <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={closeSendModal}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
           <TouchableOpacity activeOpacity={0.7} style={ws.sheet} onPress={e => e.stopPropagation()}>
             <View style={ws.handle} />
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}>
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
 
                 {sendStep === "input" ? (
                   <>
@@ -1430,12 +1496,13 @@ function WalletScreenInner() {
 
                     <Text style={ws.sheetLbl}>Note (Optional)</Text>
                     <View style={[ws.inputWrap, { paddingHorizontal: 14, paddingVertical: 10 }]}>
-                      <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} maxLength={500} />
+                      <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} maxLength={NOTE_MAX_LENGTH} />
                     </View>
+                    <Text style={{ ...Typ.small, color: C.textMuted, textAlign: "right", marginTop: 2, marginBottom: 8 }}>{sendNote.length}/{NOTE_MAX_LENGTH}</Text>
 
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, marginTop: 4 }}>
                       <Ionicons name="wallet-outline" size={14} color={C.primary} />
-                      <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {(minTransfer ?? 0).toLocaleString()}</Text>
+                      <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {(minTransfer || 200).toLocaleString()}</Text>
                     </View>
                     {p2pFee > 0 && (
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
@@ -1456,7 +1523,7 @@ function WalletScreenInner() {
                 ) : (
                   <>
                     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
-                      <TouchableOpacity activeOpacity={0.7} onPress={() => setSendStep("input")} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back">
+                      <TouchableOpacity activeOpacity={0.7} onPress={() => { setSendStep("input"); setSendFrozenError(""); }} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back">
                         <Ionicons name="arrow-back" size={20} color={C.text} />
                       </TouchableOpacity>
                       <Text style={[ws.sheetTitle, { marginBottom: 0 }]}>Confirm Transfer</Text>
@@ -1488,11 +1555,18 @@ function WalletScreenInner() {
                       ) : null}
                     </View>
 
-                    <TouchableOpacity activeOpacity={0.7} onPress={() => setSendStep("input")} style={{ alignSelf: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Edit transfer details">
+                    {sendFrozenError ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, backgroundColor: C.redBg, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: C.redSoft }}>
+                        <Ionicons name="lock-closed" size={16} color={C.danger} />
+                        <Text style={{ ...Typ.caption, color: C.danger, flex: 1 }}>{sendFrozenError}</Text>
+                      </View>
+                    ) : null}
+
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => { setSendStep("input"); setSendFrozenError(""); }} style={{ alignSelf: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Edit transfer details">
                       <Text style={{ ...Typ.buttonSmall, color: C.primary }}>Edit Details</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity activeOpacity={0.7} onPress={handleSendConfirm} disabled={sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, sendLoading && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={`Send Rs. ${parseFloat(sendAmount || "0").toLocaleString()}`} accessibilityState={{ disabled: sendLoading }}>
+                    <TouchableOpacity activeOpacity={0.7} onPress={handleSendConfirm} disabled={sendLoading || !sendIdempotencyKey} style={[ws.actionBtn, { backgroundColor: C.purple }, (sendLoading || !sendIdempotencyKey) && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel={`Send Rs. ${parseFloat(sendAmount || "0").toLocaleString()}`} accessibilityState={{ disabled: sendLoading || !sendIdempotencyKey }}>
                       {sendLoading ? <ActivityIndicator color={C.textInverse} /> : (
                         <>
                           <Ionicons name="send" size={17} color={C.textInverse} />
@@ -1503,7 +1577,6 @@ function WalletScreenInner() {
                   </>
                 )}
               </ScrollView>
-            </KeyboardAvoidingView>
           </TouchableOpacity>
           </KeyboardAvoidingView>
         </TouchableOpacity>
