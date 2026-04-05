@@ -1,0 +1,80 @@
+ want you to act as a Live Systems Engineer to perform an isolated, deep-dive evaluation and fix of the "Home" module inside the Rider App of AJKMart.
+
+Your Single-Task Mission:
+Focus exclusively on the Rider App Home section and all of its directly connected rider-home functions, such as active ride cards, incoming ride requests, status actions, quick stats, location/map state, refresh behavior, and navigation entry points. Ignore all unrelated screens until this module is 100% workable, secure, responsive, and professional. Structured bug-fixing prompts work best when they define one module, expected behaviors, and a strict root-cause-first workflow.
+
+Current Target: "Rider App > Home"
+
+1. Human-Centric & Device Testing
+Navigate the Rider App Home module like a real rider. Test it on mobile, tablet, and desktop/emulator layouts so the UI remains liquid, adaptive, touch-friendly, and visually clean with no overflow, stretching, broken cards, or pixel misalignment. Good rider-home experiences typically rely on fast status refresh, clear action buttons, and visible ride-state grouping.
+
+Click and test every rider-home interaction:
+
+Accept Ride
+
+Reject Ride
+
+Start Ride
+
+Arrived
+
+Complete Ride
+
+Call Customer
+
+Open Map / Navigate
+
+Pull-to-refresh / manual refresh
+
+Status tabs, filters, and quick-action buttons
+
+Observe visual feedback, disabled/loading states, API responses, and whether the screen updates instantly after every action. QA guidance for bug investigation emphasizes verifying reproduction steps, interaction outcomes, and root-cause patterns instead of only checking symptoms.
+
+2. Full-Stack & UX Analysis
+Ensure the Rider Home module feels premium and fast. Fix slow-loading cards, broken summaries, flickering lists, stale ride states, non-updating badges, map loading issues, or delayed refresh behavior immediately. Rider apps commonly depend on real-time updates, categorized task visibility, location handling, and simple action flows from the home screen.
+
+Verify full sync across systems:
+
+If admin assigns or cancels a ride, Rider App Home must update instantly.
+
+If customer cancels or updates the booking state, Rider Home must reflect it correctly.
+
+If rider accepts, starts, arrives, or completes a ride, the new state must appear immediately everywhere it should.
+
+Also ensure validation prevents ghost rides, duplicate cards, stale pending requests, invalid ride totals, or broken location data. Root-cause-oriented QA prompts are especially useful when the same failure affects multiple states or screens.
+
+3. Live Agent Thinking Loop
+If any error appears — such as buttons not responding, home cards not refreshing, ride counts mismatching, location/map not loading, or status actions failing — find the root cause first and fully eliminate it before moving to the next issue. Effective debug prompts explicitly tell the agent not to stop at the first visible symptom and to continue until the actual cause is fixed.
+
+Rewrite only the Rider Home logic in a modular, readable, maintainable structure:
+
+Clean component separation
+
+Reusable action/state handlers
+
+Proper loading/error/empty states
+
+Fast list rendering
+
+Reliable sync/update logic
+
+Clear status color coding and button state rules
+
+Keep a strict boundary: fix only Rider App > Home and its directly connected ride-home behaviors. Do not touch profile, wallet, auth, settings, or unrelated screens. Single-module prompts are more reliable when they keep scope tightly constrained.
+
+4. Final Verification
+Perform a full deep-scan recheck of Rider App > Home across mobile, tablet, and desktop/emulator views. Re-test layout, action buttons, card alignment, refresh timing, state transitions, map opens, and sync behavior until the module is flawless. Thorough QA validation should confirm both UX correctness and system consistency, not just whether the screen loads.
+
+Do not stop until:
+
+No broken alignment remains
+
+No dead button remains
+
+No stale ride state remains
+
+No delayed sync remains
+
+No duplicate or ghost home card remains
+
+No obvious UX inconsistency remains
