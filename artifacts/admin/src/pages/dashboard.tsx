@@ -86,7 +86,7 @@ export default function Dashboard() {
     ]);
   }, [qc]);
 
-  const trend: { date: string; revenue: number; orderCount?: number; rideCount?: number }[] =
+  const trend: { date: string; revenue: number; orderCount?: number; rideCount?: number; sosCount?: number }[] =
     Array.isArray(trendData?.trend) ? trendData.trend : [];
 
   const revenueSparkData = trend.length >= 2
@@ -98,7 +98,9 @@ export default function Dashboard() {
   const ordersSparkData = trend.length >= 2
     ? trend.slice(-7).map(t => t.orderCount ?? 0)
     : Array(7).fill(0);
-  const sosSparkData = Array(7).fill(0);
+  const sosSparkData = trend.length >= 2
+    ? trend.slice(-7).map(t => t.sosCount ?? 0)
+    : Array(7).fill(0);
 
   if (isLoading) {
     return (

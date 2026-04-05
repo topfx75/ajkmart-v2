@@ -586,11 +586,16 @@ router.get("/revenue-trend", async (_req, res) => {
       db.select({ cnt: count() })
         .from(ridesTable)
         .where(and(eq(ridesTable.status, "completed"), gte(ridesTable.createdAt, from), lte(ridesTable.createdAt, to))),
-    ]).then(([[orderRev], [rideRev], [orderCnt], [rideCnt]]) => ({
+      /* SOS alerts created on this day (regardless of resolution status) */
+      db.select({ cnt: count() })
+        .from(notificationsTable)
+        .where(and(eq(notificationsTable.type, "sos"), gte(notificationsTable.createdAt, from), lte(notificationsTable.createdAt, to))),
+    ]).then(([[orderRev], [rideRev], [orderCnt], [rideCnt], [sosCnt]]) => ({
       date: dateStr,
       revenue: parseFloat(orderRev?.total ?? "0") + parseFloat(rideRev?.total ?? "0"),
       orderCount: orderCnt?.cnt ?? 0,
       rideCount:  rideCnt?.cnt  ?? 0,
+      sosCount:   sosCnt?.cnt   ?? 0,
     }));
   });
   const days = await Promise.all(dayPromises);
