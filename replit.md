@@ -272,6 +272,29 @@ AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pak
 #### P4-T005 — Admin Fleet Map active-trip focus mode
 - **`artifacts/admin/src/pages/live-riders-map.tsx`**: `makeRiderIcon` now accepts `hasActiveTrip` parameter. When a rider has a `currentTripId`, two concentric pulsing red rings animate around their marker. Icon cache key updated to include trip state.
 
+#### Rider Dashboard Deep Audit & Refactor
+- **`artifacts/rider-app/src/pages/Home.tsx`**: Refactored from 1673 lines to ~875 lines. All interactive elements audited button-by-button. State management kept in parent, sub-components receive handlers via props.
+- **`artifacts/rider-app/src/components/dashboard/`**: 16 sub-component files extracted:
+  - `helpers.ts` — formatCurrency (handles NaN/negative/Infinity), timeAgo, buildMapsDeepLink, ACCEPT_TIMEOUT_SEC, SVC_NAMES
+  - `LiveClock.tsx`, `AcceptCountdown.tsx`, `RequestAge.tsx` — time display widgets
+  - `Icons.tsx` — OrderTypeIcon, RideTypeIcon
+  - `MiniMap.tsx` — Leaflet mini-map with platform map config (Mapbox/Google/OSM with rider-app override)
+  - `SkeletonHome.tsx` — loading skeleton
+  - `StatsGrid.tsx` — 4-column stats grid (deliveries, earnings, week, lifetime)
+  - `OnlineToggleCard.tsx` — online/offline toggle with debounce, silence button
+  - `SilenceControls.tsx` — timed mute (15/30/60m) with countdown display
+  - `FixedBanners.tsx` (in SystemWarnings) — connection-lost, zone warning, wake-lock warning (fixed-position)
+  - `InlineWarnings.tsx` (in SystemWarnings) — GPS, restriction, rider notice, cancel/ignore stats, low wallet
+  - `OrderRequestCard.tsx` — delivery request card with accept/reject/dismiss/mini-map
+  - `RideRequestCard.tsx` — ride request card with bargaining, counter offer validation (per-vehicle-type min fare + max multiplier)
+  - `OfflineConfirmDialog.tsx` — confirm going offline with pending requests
+  - `ActiveTaskBanner.tsx` — active task tracker banner (green/amber variants, top/bottom position)
+  - `RequestListHeader.tsx` — request list header with live badge
+  - `index.ts` — barrel exports
+- Accessibility: aria-labels on all icon-only buttons, role="switch" on toggle, role="timer" on countdown, role="alert" on warnings, role="dialog" on confirm modal, role="list" on stats grid
+- SEO: h1 for greeting, `<header>` and `<main>` semantic elements, meta description added to index.html
+- Bug fixes: formatCurrency guards NaN/negative/Infinity, silence timer display shows correct minutes, duplicate drain handler registration removed (App.tsx handles globally)
+
 #### P4-T006 — Rider App OTP entry step + parcel badge
 - **`artifacts/rider-app/src/pages/Active.tsx`**: At `arrived` status with `!otpVerified` → shows blue "Verify OTP to Start" button. OTP modal with 4-digit input calls `POST /rider/rides/:id/verify-otp`. After verification, shows normal "Start Ride" button. `verifyOtpMut` mutation added.
 - **`artifacts/rider-app/src/pages/Home.tsx`**: Parcel rides show `📦 Parcel` amber badge on request cards.
