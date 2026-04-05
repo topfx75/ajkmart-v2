@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getIO } from "../../lib/socketio.js";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -225,11 +226,23 @@ router.patch("/users/:id/security", async (req, res) => {
     }
   }
 
+  const prevBlockedServices = body.blockedServices !== undefined
+    ? (await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, id!)).limit(1).then(r => r[0]?.blockedServices ?? ""))
+    : null;
   if (body.blockedServices !== undefined) updates.blockedServices = body.blockedServices;
   if (body.securityNote !== undefined) updates.securityNote = body.securityNote || null;
   if (body.devOtpEnabled !== undefined) updates.devOtpEnabled = body.devOtpEnabled === true;
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id!)).returning();
   if (!user) { sendNotFound(res, "User not found"); return; }
+
+  if (body.blockedServices !== undefined && prevBlockedServices !== null) {
+    const wasFrozen = (prevBlockedServices || "").split(",").map((s: string) => s.trim()).includes("wallet");
+    const isFrozen = (String(body.blockedServices || "")).split(",").map((s: string) => s.trim()).includes("wallet");
+    if (isFrozen !== wasFrozen) {
+      const io = getIO();
+      if (io) io.to(`user:${id}`).emit(isFrozen ? "wallet:frozen" : "wallet:unfrozen", {});
+    }
+  }
 
   /* Revoke all sessions if ban, deactivation, or role change occurred */
   if (body.isBanned || body.isActive === false || body.roles !== undefined || body.role !== undefined) {

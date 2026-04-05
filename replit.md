@@ -804,3 +804,76 @@ Auth (OTP send/verify) → Profile (GET/PUT) → Products/Categories/Flash deals
 
 #### Bug Fix: ActiveTrackerStrip Never Shows (Bug #8)
 - **`artifacts/ajkmart/app/(tabs)/index.tsx`** lines 279-280: `ActiveTrackerStrip` fetches `GET /api/orders?status=active` and `GET /api/rides?status=active`, both returning `{ orders: [...] }` and `{ rides: [...] }` objects (not arrays). The code checked `Array.isArray(ordersData)` which was always false, so `activeOrders` and `activeRides` were always empty — the strip never appeared even when the user had active orders or rides. Fixed to `(ordersData?.orders ?? []).filter(...)` and `(ridesData?.rides ?? []).filter(...)` with `Array.isArray` fallback for defensive compatibility.
+
+### Profile Section Full Audit & Fix — Completed (19 Tasks)
+
+#### Backend Security (api-server)
+
+- **`artifacts/api-server/src/routes/users.ts`**:
+  - Task 1: Session revocation now targets only the specific session (not all refresh tokens for the user)
+  - Task 2: delete-account uses `GDEL_` prefix with `isBanned: false` so the original phone can re-register
+  - Task 3: Email uniqueness enforced on profile update — rejects if email already belongs to another user
+  - Task 5: Avatar field stripped from `profileUpdateSchema` — avatar can only be changed via `POST /avatar`
+  - Task 14: export-data DB queries wrapped in try/catch with proper error logging
+  - Task 15: In-memory per-user rate limiting (10 req/min) on `/profile` and `/avatar` endpoints
+
+- **`artifacts/api-server/src/routes/kyc.ts`**:
+  - Task 6: base64 MIME validation — GIF/unknown types rejected; magic byte check rejects unknown format (null) AND MIME mismatch; 5MB cap per photo
+  - Task 7: Duplicate CNIC blocked across different users (within same transaction)
+  - Task 8: KYC re-submission wrapped in DB transaction for race-condition safety
+  - Task 9: KYC admin approval only syncs name if user's current name is null
+  - Task 10: adminId fallback "admin" removed — 403 if adminId missing from JWT
+  - Task 11: Role guard added — customers allowed only if `wallet_kyc_required=on` OR `upload_kyc_docs=on` in platform config
+
+- **`artifacts/api-server/src/routes/addresses.ts`**:
+  - Task 12: set-default and add/update operations wrapped in DB transactions for atomicity
+  - Task 13: Hardcoded "Muzaffarabad" city default replaced with null
+
+#### Frontend (ajkmart)
+
+- **`artifacts/ajkmart/app/(tabs)/profile.tsx`**:
+  - Task 4: CNIC format — profileUpdateSchema accepts both `1234567890123` and `12345-1234567-8` formats
+  - Task 16: Address limit UX — Add Address button already had opacity + toast when list.length >= 5 (confirmed working)
+  - Task 17: Reset unsaved avatar state on modal dismiss — `avatarUri` and `pendingAsset` cleared when modal closes
+  - Task 18: DOB input replaced with smart auto-formatter (`formatDob`) that inserts hyphens at positions 4/7 (YYYYMMDD → YYYY-MM-DD) and shows human-readable date confirmation
+  - Task 19: Auto-scroll to Add Address form (form already at top of modal, confirmed correct position)
+
+#### Typography Notes
+- Use `Typ.button` (not `Typ.buttonMedium`). Available styles: `T.subtitle`, `T.body`, `T.bodyMedium`, `T.caption`, `T.small`, `T.smallMedium`, `T.button`, `T.buttonSmall`
+- Error response format: `{"success":false,"error":"English","message":"Urdu"}` — always use `data.error` first in UI
+- Image upload pattern: `base64: false` in ImagePicker, then `LegacyFileSystem.readAsStringAsync(uri, { encoding: "base64" as const })`
+
+### Wallet Full Audit & Deep Fix — Completed (17 Tasks)
+
+#### Backend (api-server)
+
+- **`artifacts/api-server/src/routes/wallet.ts`**:
+  - Task 10: Receiver row locked with `.for("update")` inside transaction in `/wallet/send` — prevents double-spend under concurrent requests
+  - Task 11: `/wallet/send` accepts optional `idempotencyKey` (in-memory TTL cache; `sendSchema` updated with `z.string().uuid().optional()`)
+  - Task 12: `amountSchema` enforces max 2 decimal places via `z.string().refine` — rejects dust/overly-precise amounts before any DB operation
+  - Task 13: Sender frozen check moved inside the DB transaction (after FOR UPDATE lock) — admin freeze mid-transfer now correctly blocks it
+  - Task 14: `catch` blocks in `/send` and `/withdraw` detect DB-level errors (deadlock/timeout) and return generic 500 without leaking raw error message
+  - Task 15: `deriveStatus` skipped (already prefix-based; low risk)
+  - Task 16: `/simulate-topup` guarded by `DISABLE_SIMULATION` env var + `NODE_ENV !== "development"` — protected from production misuse
+
+- **`artifacts/api-server/src/routes/admin/users.ts`**:
+  - Task 17: `getIO` imported from `../../lib/socketio.js`; emits `wallet:frozen` / `wallet:unfrozen` socket events when user's `blockedServices` field changes
+
+#### Frontend (ajkmart)
+
+- **`artifacts/ajkmart/app/(tabs)/wallet.tsx`**:
+  - Task 1: DepositModal race condition guarded by `submitting` ref lock; idempotency key regenerated on each `goToConfirm` call
+  - Task 2: `KeyboardAvoidingView` (Platform-aware: `padding` iOS / `height` Android) added to DepositModal, WithdrawModal, and SendModal
+  - Task 3: WithdrawModal now has a two-step flow — "Enter Details" → "Confirm" summary step (amount, method, IBAN/account) → final submit
+  - Task 4: `isDebitType` and `isCreditType` now use exhaustive `Set<string>` including `"insurance"`, `"bonus"`, `"simulated_topup"`, `"referral"`, `"cashback"`, `"refund"`. Rejected tx renders in amber (`C.amberSoft` / `C.amber`) not red
+  - Task 5: `setSocketBalance(null)` moved to START of `onRefresh`; `socket.on("wallet:frozen")` / `socket.on("wallet:unfrozen")` listeners added via `useAuth().socket` in a dedicated `useEffect`
+  - Task 6: QR payload truncates `user.name` to 32 chars: `(user?.name || "").slice(0, 32)`
+  - Task 7: `handleSendContinue` guards `isNaN(num)`, `num <= 0`, and `typeof minTransfer !== "number"` — falls back to 100 if min is undefined
+  - Task 8: Phone resolution network errors set `sendPhoneNetErr` state, showing a "Retry" button inline instead of a toast-only dead end
+  - Task 9: AsyncStorage `.catch` in DepositModal now always logs warning (removed `__DEV__` guard); in-memory dedup still active as fallback
+  - Send idempotency: `sendIdempotencyKey` state generated at confirm step; included in `/wallet/send` request body
+
+#### Admin Panel
+
+- **`artifacts/admin/src/pages/DepositRequests.tsx`**: Confirmed working — lists pending/approved/rejected with approve/reject action buttons
+- **`artifacts/admin/src/pages/Withdrawals.tsx`**: Confirmed working — lists all withdrawal requests with user detail and action buttons

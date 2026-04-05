@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { kycVerificationsTable, usersTable } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { customerAuth } from "../middleware/security.js";
 import { adminAuth } from "./admin.js";
+import { getPlatformSettings } from "./admin-shared.js";
 import multer from "multer";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
@@ -13,11 +14,27 @@ import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendV
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads/kyc");
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
-const MAX_SIZE = 8 * 1024 * 1024; // 8MB
+const MAX_KYC_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB per image
+
+/* Magic byte signatures for MIME validation */
+const MIME_MAGIC: Record<string, number[][]> = {
+  "image/jpeg": [[0xFF, 0xD8, 0xFF]],
+  "image/png":  [[0x89, 0x50, 0x4E, 0x47]],
+  "image/webp": [[0x52, 0x49, 0x46, 0x46]],  // RIFF....WEBP
+};
+
+function detectMime(buf: Buffer): string | null {
+  for (const [mime, signatures] of Object.entries(MIME_MAGIC)) {
+    for (const sig of signatures) {
+      if (sig.every((byte, i) => buf[i] === byte)) return mime;
+    }
+  }
+  return null;
+}
 
 const kycUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_SIZE },
+  limits: { fileSize: MAX_KYC_IMAGE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new Error("Only JPEG, PNG, WebP images allowed"));
@@ -30,6 +47,30 @@ async function saveKycPhoto(userId: string, type: string, buffer: Buffer, mime: 
   await mkdir(UPLOADS_DIR, { recursive: true });
   await writeFile(path.join(UPLOADS_DIR, filename), buffer);
   return `/api/uploads/kyc/${filename}`;
+}
+
+/** Task 11: Check if this user is allowed to submit KYC.
+ *  Riders and vendors always allowed. Customers only allowed if
+ *  platform config has wallet_kyc_required=on. */
+async function canSubmitKyc(userId: string): Promise<{ allowed: boolean; reason?: string }> {
+  const [user] = await db
+    .select({ role: usersTable.role })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (!user) return { allowed: false, reason: "User not found" };
+
+  const role = user.role ?? "customer";
+  if (role === "rider" || role === "vendor") return { allowed: true };
+
+  /* Customer: check platform config */
+  const settings = await getPlatformSettings();
+  if (settings["wallet_kyc_required"] === "on" || settings["upload_kyc_docs"] === "on") {
+    return { allowed: true };
+  }
+
+  return { allowed: false, reason: "KYC verification is not required for your account type." };
 }
 
 const router: IRouter = Router();
@@ -92,18 +133,20 @@ router.post(
   async (req, res) => {
     const userId = req.customerId!;
 
-    /* Block re-submission if already approved */
-    const [existing] = await db
-      .select({ status: kycVerificationsTable.status })
-      .from(kycVerificationsTable)
-      .where(eq(kycVerificationsTable.userId, userId))
-      .orderBy(desc(kycVerificationsTable.createdAt))
-      .limit(1);
-
-    if (existing?.status === "approved") {
-      res.status(400).json({ error: "KYC already verified" });
+    /* Task 11: Role guard */
+    const { allowed, reason } = await canSubmitKyc(userId);
+    if (!allowed) {
+      sendForbidden(res, reason ?? "KYC not required for your account type.");
       return;
     }
+
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const frontFile = files?.["frontIdPhoto"]?.[0] ?? files?.["idFront"]?.[0] ?? files?.["idPhoto"]?.[0];
+    const backFile  = files?.["backIdPhoto"]?.[0]  ?? files?.["idBack"]?.[0];
+    const selfieFile = files?.["selfiePhoto"]?.[0] ?? files?.["selfie"]?.[0];
+    if (!frontFile)  { res.status(400).json({ success: false, error: "Front side of CNIC is required" }); return; }
+    if (!backFile)   { res.status(400).json({ success: false, error: "Back side of CNIC is required" }); return; }
+    if (!selfieFile) { res.status(400).json({ success: false, error: "Selfie photo is required" }); return; }
 
     const { fullName, cnic, dateOfBirth, gender, address, city } = req.body;
 
@@ -115,32 +158,52 @@ router.post(
     if (!dateOfBirth)       { res.status(400).json({ error: "Date of birth is required" }); return; }
     if (!gender)            { res.status(400).json({ error: "Gender is required" }); return; }
 
-    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
-    const frontFile = files?.["frontIdPhoto"]?.[0] ?? files?.["idFront"]?.[0] ?? files?.["idPhoto"]?.[0];
-    const backFile  = files?.["backIdPhoto"]?.[0]  ?? files?.["idBack"]?.[0];
-    const selfieFile = files?.["selfiePhoto"]?.[0] ?? files?.["selfie"]?.[0];
-    if (!frontFile)  { res.status(400).json({ success: false, error: "Front side of CNIC is required" }); return; }
-    if (!backFile)   { res.status(400).json({ success: false, error: "Back side of CNIC is required" }); return; }
-    if (!selfieFile) { res.status(400).json({ success: false, error: "Selfie photo is required" }); return; }
+    const cnicClean = cnic.replace(/[-\s]/g, "");
 
     try {
-      const [frontUrl, backUrl, selfieUrl] = await Promise.all([
-        saveKycPhoto(userId, "front", frontFile.buffer, frontFile.mimetype),
-        saveKycPhoto(userId, "back",  backFile.buffer,  backFile.mimetype),
-        saveKycPhoto(userId, "selfie", selfieFile.buffer, selfieFile.mimetype),
-      ]);
+      await db.transaction(async (tx) => {
+        /* Task 8: Use a transaction to prevent race conditions */
 
-      const id = randomUUID();
-      const now = new Date();
+        /* Block re-submission if already approved */
+        const [existing] = await tx
+          .select({ id: kycVerificationsTable.id, status: kycVerificationsTable.status })
+          .from(kycVerificationsTable)
+          .where(eq(kycVerificationsTable.userId, userId))
+          .orderBy(desc(kycVerificationsTable.createdAt))
+          .limit(1);
 
-      /* If rejected before, update existing; otherwise insert */
-      if (existing?.status === "rejected" || existing?.status === "resubmit") {
-        await db
-          .update(kycVerificationsTable)
-          .set({
+        if (existing?.status === "approved") {
+          throw Object.assign(new Error("KYC already verified"), { statusCode: 400 });
+        }
+
+        /* Task 7: Block duplicate CNIC across different users */
+        const [cnicDuplicate] = await tx
+          .select({ userId: kycVerificationsTable.userId })
+          .from(kycVerificationsTable)
+          .where(and(
+            eq(kycVerificationsTable.cnic, cnicClean),
+            ne(kycVerificationsTable.userId, userId),
+          ))
+          .limit(1);
+
+        if (cnicDuplicate) {
+          throw Object.assign(new Error("This CNIC is already registered to another account."), { statusCode: 409 });
+        }
+
+        const [frontUrl, backUrl, selfieUrl] = await Promise.all([
+          saveKycPhoto(userId, "front",  frontFile.buffer, frontFile.mimetype),
+          saveKycPhoto(userId, "back",   backFile.buffer,  backFile.mimetype),
+          saveKycPhoto(userId, "selfie", selfieFile.buffer, selfieFile.mimetype),
+        ]);
+
+        const id = randomUUID();
+        const now = new Date();
+
+        if (existing?.status === "rejected" || existing?.status === "resubmit") {
+          await tx.update(kycVerificationsTable).set({
             status: "pending",
             fullName: fullName.trim(),
-            cnic: cnic.replace(/[-\s]/g, ""),
+            cnic: cnicClean,
             dateOfBirth,
             gender,
             address: address?.trim() ?? null,
@@ -153,18 +216,166 @@ router.post(
             reviewedAt: null,
             submittedAt: now,
             updatedAt: now,
-          })
-          .where(and(
-            eq(kycVerificationsTable.userId, userId),
-            eq(kycVerificationsTable.status, existing.status),
-          ));
+          }).where(eq(kycVerificationsTable.userId, userId));
+        } else {
+          await tx.insert(kycVerificationsTable).values({
+            id,
+            userId,
+            status: "pending",
+            fullName: fullName.trim(),
+            cnic: cnicClean,
+            dateOfBirth,
+            gender,
+            address: address?.trim() ?? null,
+            city: city?.trim() ?? null,
+            frontIdPhoto: frontUrl,
+            backIdPhoto: backUrl,
+            selfiePhoto: selfieUrl,
+            submittedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        await tx.update(usersTable)
+          .set({ kycStatus: "pending", updatedAt: now })
+          .where(eq(usersTable.id, userId));
+      });
+
+      res.json({ success: true, message: "KYC submitted successfully. Our team will review within 24 hours." });
+    } catch (err: any) {
+      if (err?.statusCode === 400) { res.status(400).json({ error: err.message }); return; }
+      if (err?.statusCode === 409) { res.status(409).json({ error: err.message }); return; }
+      logger.error({ err }, "KYC submit error");
+      res.status(500).json({ error: "Failed to submit KYC. Please try again." });
+    }
+  }
+);
+
+/* ─── Customer: POST /api/kyc/submit-base64 — JSON base64 photo upload ─── */
+router.post("/submit-base64", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+
+  /* Task 11: Role guard */
+  const { allowed, reason } = await canSubmitKyc(userId);
+  if (!allowed) {
+    sendForbidden(res, reason ?? "KYC not required for your account type.");
+    return;
+  }
+
+  const { fullName, cnic, dateOfBirth, gender, address, city, frontIdPhoto, backIdPhoto, selfiePhoto } = req.body;
+
+  if (!fullName?.trim())  { res.status(400).json({ error: "Full name is required" }); return; }
+  if (!cnic?.trim())      { res.status(400).json({ error: "CNIC number is required" }); return; }
+  if (!/^\d{13}$/.test(cnic.replace(/[-\s]/g, ""))) {
+    res.status(400).json({ error: "CNIC must be 13 digits (e.g. 3740512345678)" }); return;
+  }
+  if (!dateOfBirth)       { res.status(400).json({ error: "Date of birth is required" }); return; }
+  if (!gender)            { res.status(400).json({ error: "Gender is required" }); return; }
+  if (!frontIdPhoto)      { res.status(400).json({ success: false, error: "Front side of CNIC is required" }); return; }
+  if (!backIdPhoto)       { res.status(400).json({ success: false, error: "Back side of CNIC is required" }); return; }
+  if (!selfiePhoto)       { res.status(400).json({ success: false, error: "Selfie photo is required" }); return; }
+
+  const cnicClean = cnic.replace(/[-\s]/g, "");
+
+  /* Task 6: Parse and validate base64 images (MIME + size) */
+  function base64ToBuffer(dataUrl: string, fieldName: string): { buffer: Buffer; mime: string } {
+    const match = dataUrl.match(/^data:(image\/[\w]+);base64,(.+)$/);
+    if (!match) throw Object.assign(new Error(`Invalid image data for ${fieldName}`), { statusCode: 400 });
+
+    const claimedMime = match[1]!;
+    if (!ALLOWED_TYPES.includes(claimedMime)) {
+      throw Object.assign(new Error(`${fieldName}: Only JPEG, PNG, or WebP images are allowed`), { statusCode: 400 });
+    }
+
+    const buffer = Buffer.from(match[2]!, "base64");
+
+    /* Size cap: 5MB per image */
+    if (buffer.length > MAX_KYC_IMAGE_SIZE) {
+      throw Object.assign(new Error(`${fieldName}: Image too large. Maximum 5MB allowed`), { statusCode: 400 });
+    }
+
+    /* Magic byte MIME verification — reject if bytes match no known format OR mismatch */
+    const actualMime = detectMime(buffer);
+    const mimeOk = actualMime === claimedMime
+      || (actualMime === "image/webp" && claimedMime === "image/jpeg"); // RIFF+WEBP edge-case
+    if (!actualMime) {
+      throw Object.assign(new Error(`${fieldName}: File appears corrupted or is not a valid image`), { statusCode: 400 });
+    }
+    if (!mimeOk) {
+      throw Object.assign(new Error(`${fieldName}: Image content does not match its declared type`), { statusCode: 400 });
+    }
+
+    return { buffer, mime: claimedMime };
+  }
+
+  try {
+    const front  = base64ToBuffer(frontIdPhoto, "Front CNIC photo");
+    const back   = base64ToBuffer(backIdPhoto, "Back CNIC photo");
+    const selfie = base64ToBuffer(selfiePhoto, "Selfie photo");
+
+    await db.transaction(async (tx) => {
+      /* Task 8: Transaction for race-condition safety */
+
+      const [existing] = await tx
+        .select({ id: kycVerificationsTable.id, status: kycVerificationsTable.status })
+        .from(kycVerificationsTable)
+        .where(eq(kycVerificationsTable.userId, userId))
+        .orderBy(desc(kycVerificationsTable.createdAt))
+        .limit(1);
+
+      if (existing?.status === "approved") {
+        throw Object.assign(new Error("KYC already verified"), { statusCode: 400 });
+      }
+
+      /* Task 7: Block duplicate CNIC across different users */
+      const [cnicDuplicate] = await tx
+        .select({ userId: kycVerificationsTable.userId })
+        .from(kycVerificationsTable)
+        .where(and(
+          eq(kycVerificationsTable.cnic, cnicClean),
+          ne(kycVerificationsTable.userId, userId),
+        ))
+        .limit(1);
+
+      if (cnicDuplicate) {
+        throw Object.assign(new Error("This CNIC is already registered to another account."), { statusCode: 409 });
+      }
+
+      const [frontUrl, backUrl, selfieUrl] = await Promise.all([
+        saveKycPhoto(userId, "front",  front.buffer,  front.mime),
+        saveKycPhoto(userId, "back",   back.buffer,   back.mime),
+        saveKycPhoto(userId, "selfie", selfie.buffer, selfie.mime),
+      ]);
+
+      const id  = randomUUID();
+      const now = new Date();
+
+      if (existing?.status === "rejected" || existing?.status === "resubmit") {
+        await tx.update(kycVerificationsTable).set({
+          status: "pending",
+          fullName: fullName.trim(),
+          cnic: cnicClean,
+          dateOfBirth,
+          gender,
+          address: address?.trim() ?? null,
+          city: city?.trim() ?? null,
+          frontIdPhoto: frontUrl,
+          backIdPhoto: backUrl,
+          selfiePhoto: selfieUrl,
+          rejectionReason: null,
+          reviewedBy: null,
+          reviewedAt: null,
+          submittedAt: now,
+          updatedAt: now,
+        }).where(eq(kycVerificationsTable.userId, userId));
       } else {
-        await db.insert(kycVerificationsTable).values({
+        await tx.insert(kycVerificationsTable).values({
           id,
           userId,
           status: "pending",
           fullName: fullName.trim(),
-          cnic: cnic.replace(/[-\s]/g, ""),
+          cnic: cnicClean,
           dateOfBirth,
           gender,
           address: address?.trim() ?? null,
@@ -178,19 +389,19 @@ router.post(
         });
       }
 
-      /* Update user kyc_status to pending */
-      await db
-        .update(usersTable)
+      await tx.update(usersTable)
         .set({ kycStatus: "pending", updatedAt: now })
         .where(eq(usersTable.id, userId));
+    });
 
-      res.json({ success: true, message: "KYC submitted successfully. Our team will review within 24 hours." });
-    } catch (err) {
-      logger.error({ err }, "KYC submit error");
-      res.status(500).json({ error: "Failed to submit KYC. Please try again." });
-    }
+    res.json({ success: true, message: "KYC submitted successfully. Our team will review within 24 hours." });
+  } catch (err: any) {
+    if (err?.statusCode === 400) { res.status(400).json({ error: err.message }); return; }
+    if (err?.statusCode === 409) { res.status(409).json({ error: err.message }); return; }
+    logger.error({ err }, "KYC submit-base64 error");
+    res.status(500).json({ error: "Failed to submit KYC. Please try again." });
   }
-);
+});
 
 /* ─── Admin: GET /api/kyc/admin/list ─── */
 router.get("/admin/list", adminAuth, async (req, res) => {
@@ -258,8 +469,16 @@ router.get("/admin/:id", adminAuth, async (req, res) => {
 });
 
 /* ─── Admin: POST /api/kyc/admin/:id/approve ─── */
+/* Task 9: Don't overwrite user name if they've already set it
+   Task 10: Remove adminId || "admin" fallback */
 router.post("/admin/:id/approve", adminAuth, async (req, res) => {
-  const adminId = req.adminId ?? "admin";
+  /* Task 10: adminId must come from the verified admin token — no fallback */
+  if (!req.adminId) {
+    res.status(403).json({ error: "Admin identity could not be verified." });
+    return;
+  }
+  const adminId = req.adminId;
+
   const [record] = await db
     .select()
     .from(kycVerificationsTable)
@@ -269,13 +488,21 @@ router.post("/admin/:id/approve", adminAuth, async (req, res) => {
   if (!record) { res.status(404).json({ error: "KYC record not found" }); return; }
   if (record.status === "approved") { res.status(400).json({ error: "Already approved" }); return; }
 
+  const [currentUser] = await db
+    .select({ name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, record.userId))
+    .limit(1);
+
   const now = new Date();
   await db
     .update(kycVerificationsTable)
     .set({ status: "approved", reviewedBy: adminId, reviewedAt: now, updatedAt: now })
     .where(eq(kycVerificationsTable.id, record.id));
 
-  /* Update user kycStatus + CNIC on users table AND activate the account */
+  /* Task 9: Only sync name from KYC if user's name is currently null/empty */
+  const syncName = (!currentUser?.name || currentUser.name.trim() === "") ? (record.fullName ?? undefined) : undefined;
+
   await db
     .update(usersTable)
     .set({
@@ -283,7 +510,7 @@ router.post("/admin/:id/approve", adminAuth, async (req, res) => {
       approvalStatus: "approved",
       isActive: true,
       cnic: record.cnic ?? undefined,
-      name: record.fullName ?? undefined,
+      ...(syncName !== undefined ? { name: syncName } : {}),
       city: record.city ?? undefined,
       address: record.address ?? undefined,
       updatedAt: now,
@@ -294,8 +521,15 @@ router.post("/admin/:id/approve", adminAuth, async (req, res) => {
 });
 
 /* ─── Admin: POST /api/kyc/admin/:id/reject ─── */
+/* Task 10: Remove adminId || "admin" fallback */
 router.post("/admin/:id/reject", adminAuth, async (req, res) => {
-  const adminId = req.adminId ?? "admin";
+  /* Task 10: adminId must come from the verified admin token */
+  if (!req.adminId) {
+    res.status(403).json({ error: "Admin identity could not be verified." });
+    return;
+  }
+  const adminId = req.adminId;
+
   const { reason } = req.body;
   if (!reason?.trim()) { res.status(400).json({ error: "Rejection reason is required" }); return; }
 

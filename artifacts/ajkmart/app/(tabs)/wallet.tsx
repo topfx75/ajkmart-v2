@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   TouchableOpacity,
@@ -88,11 +89,11 @@ function TxItem({ tx }: { tx: any }) {
     iconName = isCredit ? "arrow-down" : "arrow-up";
   }
 
-  const amtColor = isPending ? C.textMuted : isRejected ? C.danger : isCredit ? C.success : C.danger;
+  const amtColor = isPending ? C.textMuted : isRejected ? C.amber : isCredit ? C.success : C.danger;
   const prefix   = isPending ? "" : isCredit ? "+" : "−";
   const suffix   = isPending ? " (Pending)" : isRejected ? " (Rejected)" : "";
-  const bgColor  = isPending ? C.amberSoft : isRejected ? C.redSoft : isCredit ? C.emeraldSoft : C.redSoft;
-  const iconColor = isPending ? C.amber : isRejected ? C.danger : isCredit ? C.success : C.danger;
+  const bgColor  = isPending ? C.amberSoft : isRejected ? C.amberSoft : isCredit ? C.emeraldSoft : C.redSoft;
+  const iconColor = isPending ? C.amber : isRejected ? C.amber : isCredit ? C.success : C.danger;
 
   return (
     <View style={ws.txRow} accessibilityLabel={`${tx.description}, ${prefix}Rs. ${Number(tx.amount).toLocaleString()}${suffix}, ${date}`}>
@@ -124,7 +125,7 @@ function MethodIcon({ id, size = 24 }: { id: string; size?: number }) {
 }
 
 type WithdrawMethod = "jazzcash" | "easypaisa" | "bank";
-type WithdrawStep = "method" | "details" | "done";
+type WithdrawStep = "method" | "details" | "confirm" | "done";
 
 function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdrawal }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null; balance: number; minWithdrawal: number }) {
   const [step, setStep]               = useState<WithdrawStep>("method");
@@ -150,13 +151,19 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
     { id: "bank",      label: "Bank Transfer", placeholder: "PKXX XXXX XXXX XXXX XXXX (IBAN)" },
   ];
 
-  const handleSubmit = async () => {
-    if (submitting) return;
+  const handleContinue = () => {
     const amt = parseFloat(amount);
     if (!amount || isNaN(amt) || amt <= 0) { setErr("Please enter a valid amount"); return; }
     if (amt < minWithdrawal)               { setErr(`Minimum withdrawal amount is Rs. ${minWithdrawal.toLocaleString()}`); return; }
     if (amt > balance)                      { setErr(`Insufficient balance. Available: Rs. ${balance.toLocaleString()}`); return; }
     if (!accountNumber.trim())              { setErr("Account number is required"); return; }
+    setErr("");
+    setStep("confirm");
+  };
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    const amt = parseFloat(amount);
     setSubmitting(true); setErr("");
     try {
       const res = await fetch(`${API}/wallet/withdraw`, {
@@ -167,7 +174,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
       const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
         if (data.error === "wallet_frozen") { onFrozen?.(); onClose(); return; }
-        setErr(data.message || data.error || "Request failed");
+        setErr(data.error || data.message || "Request failed");
         setSubmitting(false); return;
       }
       setStep("done");
@@ -181,7 +188,8 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={onClose}>
-        <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { maxHeight: "85%" }]} onPress={e => e.stopPropagation()}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+        <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { maxHeight: "90%" }]} onPress={e => e.stopPropagation()}>
           <View style={ws.handle} />
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
@@ -298,11 +306,61 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                   </View>
                 ) : null}
 
-                <TouchableOpacity activeOpacity={0.7} onPress={handleSubmit} disabled={submitting} style={[ws.actionBtn, { backgroundColor: C.danger }, submitting && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel="Submit withdrawal request" accessibilityState={{ disabled: submitting }}>
+                <TouchableOpacity activeOpacity={0.7} onPress={handleContinue} style={[ws.actionBtn, { backgroundColor: C.danger }]} accessibilityRole="button" accessibilityLabel="Review withdrawal details">
+                  <Ionicons name="arrow-forward" size={18} color={C.textInverse} />
+                  <Text style={ws.actionBtnTxt}>Review</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {step === "confirm" && selectedMethod && (
+              <View>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 18 }}>
+                  <TouchableOpacity activeOpacity={0.7} onPress={() => { setStep("details"); setErr(""); }} style={{ marginRight: 10, padding: 4 }} accessibilityRole="button" accessibilityLabel="Go back to edit details">
+                    <Ionicons name="arrow-back" size={20} color={C.text} />
+                  </TouchableOpacity>
+                  <Text style={[ws.sheetTitle, { marginBottom: 0 }]}>Confirm Withdrawal</Text>
+                </View>
+
+                <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 16, gap: 10, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Method</Text>
+                    <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{WITHDRAW_METHODS.find(m => m.id === selectedMethod)?.label}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Account</Text>
+                    <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{accountNumber.trim()}</Text>
+                  </View>
+                  {note.trim() ? (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Note</Text>
+                      <Text style={{ ...Typ.bodyMedium, fontSize: 13, color: C.text }}>{note.trim()}</Text>
+                    </View>
+                  ) : null}
+                  <View style={{ height: 1, backgroundColor: C.border, marginVertical: 4 }} />
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ ...Typ.buttonSmall, color: C.textMuted }}>Amount</Text>
+                    <Text style={{ ...Typ.h2, fontSize: 24, color: C.danger }}>Rs. {parseFloat(amount).toLocaleString()}</Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.amberBorder }}>
+                  <Ionicons name="alert-circle-outline" size={16} color={C.amber} />
+                  <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>This amount will be deducted from your wallet immediately and processed within 1-2 business days.</Text>
+                </View>
+
+                {err ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8, backgroundColor: C.redBg, padding: 10, borderRadius: 10 }}>
+                    <Ionicons name="alert-circle-outline" size={14} color={C.danger} />
+                    <Text style={{ ...Typ.caption, color: C.danger, flex: 1 }}>{err}</Text>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity activeOpacity={0.7} onPress={handleSubmit} disabled={submitting} style={[ws.actionBtn, { backgroundColor: C.danger }, submitting && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel="Confirm and submit withdrawal" accessibilityState={{ disabled: submitting }}>
                   {submitting ? <ActivityIndicator color={C.textInverse} /> : (
                     <>
-                      <Ionicons name="arrow-up-outline" size={18} color={C.textInverse} />
-                      <Text style={ws.actionBtnTxt}>Submit Withdrawal Request</Text>
+                      <Ionicons name="checkmark-circle-outline" size={18} color={C.textInverse} />
+                      <Text style={ws.actionBtnTxt}>Confirm & Submit</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -310,6 +368,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
             )}
           </ScrollView>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </TouchableOpacity>
     </Modal>
   );
@@ -419,7 +478,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
       const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
         if (data.error === "wallet_frozen") { onFrozen?.(); }
-        setErr(data.error === "wallet_frozen" ? data.message : (data.message || data.error || "Request failed"));
+        setErr(data.error === "wallet_frozen" ? data.message : (data.error || data.message || "Request failed"));
         setSubmitting(false); return;
       }
       const newSet = new Set(submittedTxIds).add(normalizedTxId);
@@ -431,7 +490,9 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
           const merged = Array.from(new Set([...existing, normalizedTxId])).slice(-100);
           return AsyncStorage.setItem(SUBMITTED_TX_KEY, JSON.stringify(merged));
         })
-        .catch((err) => { if (__DEV__) console.warn("[Wallet] Failed to persist submitted tx id:", err instanceof Error ? err.message : String(err)); });
+        .catch((err) => {
+          console.warn("[Wallet] Failed to persist submitted tx id (in-memory dedup still active):", err instanceof Error ? err.message : String(err));
+        });
       setStep("done");
       onSuccess();
     } catch {
@@ -448,6 +509,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={onClose}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
         <TouchableOpacity activeOpacity={0.7} style={[ws.sheet, { maxHeight: "90%" }]} onPress={e => e.stopPropagation()}>
           <View style={ws.handle} />
 
@@ -745,6 +807,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
 
           </ScrollView>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </TouchableOpacity>
     </Modal>
   );
@@ -752,7 +815,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
 
 function WalletScreenInner() {
   const insets = useSafeAreaInsets();
-  const { user, updateUser, token } = useAuth();
+  const { user, updateUser, token, socket } = useAuth();
   const { showToast } = useToast();
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
@@ -774,6 +837,8 @@ function WalletScreenInner() {
   const [sendStep,    setSendStep]    = useState<"input" | "confirm">("input");
   const [sendPhoneError, setSendPhoneError] = useState("");
   const [sendReceiverName, setSendReceiverName] = useState("");
+  const [sendPhoneNetErr, setSendPhoneNetErr] = useState(false);
+  const [sendIdempotencyKey, setSendIdempotencyKey] = useState("");
 
   const [pendingTopups,  setPendingTopups]  = useState<{ count: number; total: number }>({ count: 0, total: 0 });
 
@@ -830,7 +895,20 @@ function WalletScreenInner() {
     }
   }, [token]);
 
+  useEffect(() => {
+    if (!socket) return;
+    const handleFrozen   = () => setWalletFrozen(true);
+    const handleUnfrozen = () => setWalletFrozen(false);
+    socket.on("wallet:frozen", handleFrozen);
+    socket.on("wallet:unfrozen", handleUnfrozen);
+    return () => {
+      socket.off("wallet:frozen", handleFrozen);
+      socket.off("wallet:unfrozen", handleUnfrozen);
+    };
+  }, [socket]);
+
   const onRefresh = useCallback(async () => {
+    setSocketBalance(null);
     if (token) {
       try {
         const r = await fetch(`${API}/wallet`, { headers: { Authorization: `Bearer ${token}` } });
@@ -845,10 +923,9 @@ function WalletScreenInner() {
     const res = await refetch();
     if (res.data?.balance !== undefined) {
       updateUser({ walletBalance: res.data.balance });
-      setSocketBalance(null);
     }
     setLastRefreshed(new Date());
-  }, [refetch, updateUser, token]);
+  }, [refetch, updateUser, token, socket]);
 
   useEffect(() => {
     if (token) {
@@ -873,7 +950,7 @@ function WalletScreenInner() {
 
   const resetSendState = () => {
     setSendPhone(""); setSendAmount(""); setSendNote("");
-    setSendStep("input"); setSendPhoneError(""); setSendReceiverName(""); setSendLoading(false);
+    setSendStep("input"); setSendPhoneError(""); setSendReceiverName(""); setSendLoading(false); setSendPhoneNetErr(false); setSendIdempotencyKey("");
   };
 
   const closeSendModal = () => {
@@ -892,9 +969,12 @@ function WalletScreenInner() {
   };
 
   const handleSendContinue = async () => {
+    setSendPhoneNetErr(false);
     if (!validateSendPhone(sendPhone)) return;
     const num = parseFloat(sendAmount);
-    if (!num || num < minTransfer) { showToast(`Minimum transfer amount is Rs. ${minTransfer.toLocaleString()}`, "error"); return; }
+    if (!sendAmount || isNaN(num) || num <= 0) { showToast("Please enter a valid amount", "error"); return; }
+    const minXfer = typeof minTransfer === "number" && isFinite(minTransfer) ? minTransfer : 100;
+    if (num < minXfer) { showToast(`Minimum transfer amount is Rs. ${minXfer.toLocaleString()}`, "error"); return; }
     if (num > balance) { showToast("Insufficient wallet balance", "error"); return; }
     setSendLoading(true);
     try {
@@ -912,11 +992,12 @@ function WalletScreenInner() {
       setSendReceiverName(data.name || "");
     } catch (err) {
       if (__DEV__) console.warn("[Wallet] Receiver lookup failed:", err instanceof Error ? err.message : String(err));
-      showToast("Could not verify receiver. Please check the number and try again.", "error");
+      setSendPhoneNetErr(true);
       setSendLoading(false);
       return;
     }
     setSendLoading(false);
+    setSendIdempotencyKey(`${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
     setSendStep("confirm");
   };
 
@@ -928,7 +1009,7 @@ function WalletScreenInner() {
       const res = await fetch(`${API}/wallet/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ receiverPhone: sendPhone.trim(), amount: num, note: sendNote || null }),
+        body: JSON.stringify({ receiverPhone: sendPhone.trim(), amount: num, note: sendNote || null, idempotencyKey: sendIdempotencyKey || undefined }),
       });
       const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
@@ -948,9 +1029,15 @@ function WalletScreenInner() {
 
   const balance      = socketBalance ?? data?.balance ?? user?.walletBalance ?? 0;
   const transactions = data?.transactions ?? [];
-  const isDebitType  = (t: any) => t.type === "debit" || t.type === "withdrawal" || t.type === "transfer" || t.type === "ride" || t.type === "order" || t.type === "mart" || t.type === "food" || t.type === "pharmacy" || t.type === "parcel";
-  const filtered     = txFilter === "all" ? transactions : txFilter === "debit" ? transactions.filter(isDebitType) : transactions.filter(t => t.type === txFilter);
-  const totalIn      = transactions.filter(t => t.type === "credit" || (t.type as string) === "refund" || (t.type as string) === "cashback" || (t.type as string) === "referral" || (t.type as string) === "bonus").reduce((s, t) => s + Number(t.amount), 0);
+  const DEBIT_TYPES  = new Set(["debit", "withdrawal", "transfer", "ride", "order", "mart", "food", "pharmacy", "parcel", "insurance"]);
+  const CREDIT_TYPES = new Set(["credit", "refund", "cashback", "referral", "bonus", "simulated_topup"]);
+  const isDebitType  = (t: any) => DEBIT_TYPES.has(t.type);
+  const isCreditType = (t: any) => {
+    if (t.type === "deposit") return t.status === "approved";
+    return CREDIT_TYPES.has(t.type);
+  };
+  const filtered     = txFilter === "all" ? transactions : txFilter === "debit" ? transactions.filter(isDebitType) : transactions.filter(isCreditType);
+  const totalIn      = transactions.filter(isCreditType).reduce((s, t) => s + Number(t.amount), 0);
   const totalOut     = transactions.filter(isDebitType).reduce((s, t) => s + Number(t.amount), 0);
 
   if (!user?.id) {
@@ -1193,6 +1280,7 @@ function WalletScreenInner() {
 
       <Modal visible={showSend} transparent animationType="slide" onRequestClose={closeSendModal}>
         <TouchableOpacity activeOpacity={0.7} style={ws.overlay} onPress={closeSendModal}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
           <TouchableOpacity activeOpacity={0.7} style={ws.sheet} onPress={e => e.stopPropagation()}>
             <View style={ws.handle} />
 
@@ -1228,10 +1316,20 @@ function WalletScreenInner() {
                   <TextInput value={sendNote} onChangeText={setSendNote} placeholder="e.g. Lunch bill" placeholderTextColor={C.textMuted} style={[ws.sendInput, { paddingVertical: 0 }]} maxLength={500} />
                 </View>
 
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 16, marginTop: 4 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: sendPhoneNetErr ? 10 : 16, marginTop: 4 }}>
                   <Ionicons name="wallet-outline" size={14} color={C.primary} />
-                  <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {minTransfer.toLocaleString()}</Text>
+                  <Text style={{ ...Typ.caption, color: C.textMuted, flex: 1 }}>Available: Rs. {balance.toLocaleString()} · Min: Rs. {(typeof minTransfer === "number" && isFinite(minTransfer) ? minTransfer : 100).toLocaleString()}</Text>
                 </View>
+
+                {sendPhoneNetErr && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: C.amberBorder }}>
+                    <Ionicons name="cloud-offline-outline" size={16} color={C.amber} />
+                    <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>Network error verifying receiver.</Text>
+                    <TouchableOpacity activeOpacity={0.7} onPress={handleSendContinue} accessibilityRole="button" accessibilityLabel="Retry phone verification">
+                      <Text style={{ ...Typ.captionMedium, color: C.primary, fontFamily: Font.bold }}>Retry</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 <TouchableOpacity activeOpacity={0.7} onPress={handleSendContinue} disabled={!sendPhone || !sendAmount || sendLoading} style={[ws.actionBtn, { backgroundColor: C.purple }, (!sendPhone || !sendAmount || sendLoading) && { opacity: 0.5 }]} accessibilityRole="button" accessibilityLabel="Continue to confirm send" accessibilityState={{ disabled: !sendPhone || !sendAmount || sendLoading }}>
                   {sendLoading ? <ActivityIndicator color={C.textInverse} /> : (
@@ -1286,6 +1384,7 @@ function WalletScreenInner() {
               </>
             )}
           </TouchableOpacity>
+          </KeyboardAvoidingView>
         </TouchableOpacity>
       </Modal>
 
@@ -1300,7 +1399,7 @@ function WalletScreenInner() {
             <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 20, padding: 24, alignItems: "center", marginBottom: 16, gap: 12, borderWidth: 1, borderColor: C.border }}>
               <View style={{ width: 140, height: 140, borderRadius: 16, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: C.border }}>
                 <QRCode
-                  value={JSON.stringify({ type: "ajkmart_pay", phone: user?.phone, id: user?.id, name: user?.name })}
+                  value={JSON.stringify({ type: "ajkmart_pay", phone: user?.phone, id: user?.id, name: (user?.name || "").slice(0, 32) })}
                   size={120}
                   color={C.primary}
                   backgroundColor={C.surface}

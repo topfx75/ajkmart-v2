@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { usersTable, ordersTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable } from "@workspace/db/schema";
-import { eq, desc, and, count, sql, isNull } from "drizzle-orm";
-import { customerAuth, getClientIp, writeAuthAuditLog } from "../middleware/security.js";
+import { eq, desc, and, count, sql, isNull, ne } from "drizzle-orm";
+import { customerAuth, getClientIp, writeAuthAuditLog, checkLockout, recordFailedAttempt, resetAttempts } from "../middleware/security.js";
 import { randomUUID, createHash } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
@@ -13,13 +13,13 @@ import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendV
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
+/* Avatar field is intentionally excluded — set only via POST /avatar */
 const profileUpdateSchema = z.object({
   name: z.string().min(1, "Name cannot be empty").max(100).transform(stripHtml).optional(),
   email: z.string().email("Invalid email format").max(255).optional().or(z.literal("")),
-  avatar: z.string().max(500).optional(),
   cnic: z.preprocess(
     (v) => typeof v === "string" ? v.replace(/[-\s]/g, "") : v,
-    z.string().regex(/^\d{13}$/, "CNIC must be 13 digits (e.g. 3740512345678)").optional().or(z.literal(""))
+    z.string().regex(/^\d{13}$/, "CNIC must be 13 digits (e.g. 3740512345678 or 37405-1234567-8)").optional().or(z.literal(""))
   ),
   city: z.string().max(100).transform(stripHtml).optional(),
   address: z.string().max(500).transform(stripHtml).optional(),
@@ -41,6 +41,20 @@ const avatarUpload = multer({
     else cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
   },
 });
+
+/* Simple per-user in-memory rate limiter for profile/avatar writes (10 req/min) */
+const profileRateMap = new Map<string, { count: number; resetAt: number }>();
+function profileRateLimit(userId: string, maxPerMin = 10): boolean {
+  const now = Date.now();
+  const entry = profileRateMap.get(userId);
+  if (!entry || now > entry.resetAt) {
+    profileRateMap.set(userId, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  entry.count++;
+  if (entry.count > maxPerMin) return false;
+  return true;
+}
 
 const router: IRouter = Router();
 
@@ -90,6 +104,7 @@ router.get("/:id/debt", async (req, res) => {
   sendSuccess(res, { debtBalance: parseFloat(user.cancellationDebt ?? "0") });
 });
 
+/* Task 14: export-data error handling — wrap DB queries in try/catch */
 router.post("/export-data", async (req, res) => {
   const userId = req.customerId!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -98,12 +113,18 @@ router.post("/export-data", async (req, res) => {
     return;
   }
 
-  const [orders, rides, walletHistory, addresses] = await Promise.all([
-    db.select().from(ordersTable).where(eq(ordersTable.userId, userId)).orderBy(desc(ordersTable.createdAt)),
-    db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(desc(ridesTable.createdAt)),
-    db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId)).orderBy(desc(walletTransactionsTable.createdAt)),
-    db.select().from(savedAddressesTable).where(eq(savedAddressesTable.userId, userId)),
-  ]);
+  let orders: any[], rides: any[], walletHistory: any[], addresses: any[];
+  try {
+    [orders, rides, walletHistory, addresses] = await Promise.all([
+      db.select().from(ordersTable).where(eq(ordersTable.userId, userId)).orderBy(desc(ordersTable.createdAt)),
+      db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(desc(ridesTable.createdAt)),
+      db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId)).orderBy(desc(walletTransactionsTable.createdAt)),
+      db.select().from(savedAddressesTable).where(eq(savedAddressesTable.userId, userId)),
+    ]);
+  } catch (err) {
+    sendError(res, "Failed to retrieve your data. Please try again later.");
+    return;
+  }
 
   const exportData = {
     exportedAt: new Date().toISOString(),
@@ -118,7 +139,7 @@ router.post("/export-data", async (req, res) => {
       walletBalance: parseFloat(user.walletBalance ?? "0"),
       createdAt: user.createdAt.toISOString(),
     },
-    orders: orders.map(o => ({
+    orders: orders.map((o: any) => ({
       id: o.id,
       type: o.type,
       status: o.status,
@@ -128,7 +149,7 @@ router.post("/export-data", async (req, res) => {
       items: o.items,
       createdAt: o.createdAt.toISOString(),
     })),
-    rides: rides.map(r => ({
+    rides: rides.map((r: any) => ({
       id: r.id,
       type: r.type,
       status: r.status,
@@ -138,14 +159,14 @@ router.post("/export-data", async (req, res) => {
       paymentMethod: r.paymentMethod,
       createdAt: r.createdAt.toISOString(),
     })),
-    walletHistory: walletHistory.map(t => ({
+    walletHistory: walletHistory.map((t: any) => ({
       id: t.id,
       type: t.type,
       amount: parseFloat(t.amount),
       description: t.description,
       createdAt: t.createdAt.toISOString(),
     })),
-    addresses: addresses.map(a => ({
+    addresses: addresses.map((a: any) => ({
       id: a.id,
       label: a.label,
       address: a.address,
@@ -172,8 +193,16 @@ async function saveAvatarBuffer(userId: string, buffer: Buffer, mime: string) {
   return avatarUrl;
 }
 
+/* Task 15: rate-limited avatar upload */
 router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
   const userId = req.customerId!;
+
+  /* Rate limit: max 10 avatar uploads per minute per user */
+  if (!profileRateLimit(userId, 10)) {
+    sendError(res, "Too many requests. Please wait a moment before uploading again.");
+    return;
+  }
+
   try {
     let buffer: Buffer;
     let mime: string;
@@ -207,8 +236,15 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
   }
 });
 
+/* Task 3 (email uniqueness), Task 5 (no avatar via profile update), Task 15 (rate limit) */
 router.put("/profile", async (req, res) => {
   const userId = req.customerId!;
+
+  /* Rate limit: max 10 profile updates per minute per user */
+  if (!profileRateLimit(userId, 10)) {
+    sendError(res, "Too many requests. Please wait before updating your profile again.");
+    return;
+  }
 
   const parsed = profileUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -217,21 +253,33 @@ router.put("/profile", async (req, res) => {
     return;
   }
 
-  const { name, email, avatar, cnic, city, address } = parsed.data;
-
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (name    !== undefined) updates.name    = name.trim();
-  if (email   !== undefined) updates.email   = email.trim();
-  if (avatar  !== undefined) updates.avatar  = avatar;
-  if (cnic    !== undefined) updates.cnic    = cnic.replace(/[-\s]/g, "").trim();
-  if (city    !== undefined) updates.city    = city.trim();
-  if (address !== undefined) updates.address = address.trim();
+  const { name, email, cnic, city, address } = parsed.data;
 
   const [current] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!current) {
     sendNotFound(res, "User not found");
     return;
   }
+
+  /* Task 3: Email uniqueness check */
+  if (email && email.trim() && email.trim() !== current.email) {
+    const [emailTaken] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.email, email.trim()), ne(usersTable.id, userId)))
+      .limit(1);
+    if (emailTaken) {
+      sendValidationError(res, "This email address is already registered to another account.");
+      return;
+    }
+  }
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (name    !== undefined) updates.name    = name.trim();
+  if (email   !== undefined) updates.email   = email.trim();
+  if (cnic    !== undefined) updates.cnic    = cnic.replace(/[-\s]/g, "").trim();
+  if (city    !== undefined) updates.city    = city.trim();
+  if (address !== undefined) updates.address = address.trim();
 
   const hasName = updates.name ?? current.name;
   const hasEmail = updates.email ?? current.email;
@@ -270,6 +318,8 @@ router.put("/profile", async (req, res) => {
   }, "پروفائل کامیابی سے اپ ڈیٹ ہو گیا۔");
 });
 
+/* Task 2: fix delete-account — tokenVersion increment already invalidates access tokens;
+   set isBanned: false on the scrambled-phone account so the original phone can re-register */
 router.delete("/delete-account", async (req, res) => {
   const userId = req.customerId!;
 
@@ -307,11 +357,13 @@ router.delete("/delete-account", async (req, res) => {
     }
 
     const now = new Date();
-    const scrambledPhone = `DELETED_${userId.slice(0, 8)}_${Date.now()}`;
+    /* Scramble phone in a format that is NOT classified as banned — prefix with GDEL_
+       so the original phone number is free for re-registration */
+    const scrambledPhone = `GDEL_${userId.slice(-8)}_${Date.now()}`;
     await db.update(usersTable)
       .set({
         isActive: false,
-        isBanned: true,
+        isBanned: false,          /* don't ban — the original phone is free to re-register */
         name: "Deleted User",
         phone: scrambledPhone,
         email: null,
@@ -328,7 +380,7 @@ router.delete("/delete-account", async (req, res) => {
         backupCodes: null,
         trustedDevices: null,
         passwordHash: null,
-        tokenVersion: sql`${usersTable.tokenVersion} + 1`,
+        tokenVersion: sql`${usersTable.tokenVersion} + 1`,  /* invalidate all access tokens immediately */
         updatedAt: now,
       })
       .where(eq(usersTable.id, userId));
@@ -402,6 +454,8 @@ router.delete("/sessions/all", async (req, res) => {
   sendSuccess(res, null, "تمام دیگر سیشنز سے سائن آؤٹ ہو گیا۔");
 });
 
+/* Task 1: Fix session revocation — only mark the target session as revoked;
+   do NOT revoke all refresh tokens (no sessionId link in refresh_tokens table) */
 router.delete("/sessions/:sessionId", async (req, res) => {
   const userId = req.customerId!;
   const sessionId = req.params["sessionId"]!;
@@ -420,18 +474,10 @@ router.delete("/sessions/:sessionId", async (req, res) => {
     return;
   }
 
+  /* Revoke only this specific session — NOT all refresh tokens */
   await db.update(userSessionsTable)
     .set({ revokedAt: new Date() })
     .where(eq(userSessionsTable.id, sessionId));
-
-  if (session.tokenHash) {
-    await db.update(refreshTokensTable)
-      .set({ revokedAt: new Date() })
-      .where(and(
-        eq(refreshTokensTable.userId, userId),
-        isNull(refreshTokensTable.revokedAt),
-      ));
-  }
 
   const ip = getClientIp(req);
   writeAuthAuditLog("session_revoked", { userId, ip, userAgent: req.headers["user-agent"] as string, metadata: { sessionId } });

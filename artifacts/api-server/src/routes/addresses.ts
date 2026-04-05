@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { savedAddressesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { generateId } from "../lib/id.js";
 import { sendSuccess, sendCreated, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
@@ -47,16 +47,25 @@ router.post("/", validateBody(createAddressSchema), async (req, res) => {
     sendValidationError(res, "Maximum 5 addresses allowed", "زیادہ سے زیادہ 5 پتے مجاز ہیں۔");
     return;
   }
-  if (isDefault) {
-    await db.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
-  }
+
   const id = generateId();
-  await db.insert(savedAddressesTable).values({
-    id, userId, label, address,
-    city: city || "Muzaffarabad",
-    icon: icon || "location-outline",
-    isDefault: isDefault ?? false,
+
+  /* Task 12: Atomic: wrap isDefault promotion in a transaction */
+  await db.transaction(async (tx) => {
+    if (isDefault) {
+      await tx.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
+    }
+    await tx.insert(savedAddressesTable).values({
+      id,
+      userId,
+      label,
+      address,
+      city: city || null,          /* Task 13: no hardcoded city default */
+      icon: icon || "location-outline",
+      isDefault: isDefault ?? false,
+    });
   });
+
   const [addr] = await db.select().from(savedAddressesTable).where(eq(savedAddressesTable.id, id)).limit(1);
   sendCreated(res, { ...addr, createdAt: addr!.createdAt.toISOString() });
 });
@@ -70,13 +79,18 @@ router.put("/:id", validateBody(updateAddressSchema), async (req, res) => {
   if (!existing) { sendNotFound(res, "Address not found", "پتہ نہیں ملا۔"); return; }
   if (existing.userId !== userId) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
 
-  if (isDefault) {
-    await db.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
-  }
-  await db.update(savedAddressesTable).set({ label, address, city, icon, isDefault }).where(eq(savedAddressesTable.id, id!));
+  /* Task 12: Atomic update */
+  await db.transaction(async (tx) => {
+    if (isDefault) {
+      await tx.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
+    }
+    await tx.update(savedAddressesTable).set({ label, address, city, icon, isDefault }).where(eq(savedAddressesTable.id, id!));
+  });
+
   sendSuccess(res, null);
 });
 
+/* Task 12: Atomic set-default using a single transaction */
 router.patch("/:id/set-default", async (req, res) => {
   const userId = req.customerId!;
   const { id } = req.params;
@@ -85,8 +99,15 @@ router.patch("/:id/set-default", async (req, res) => {
   if (!existing) { sendNotFound(res, "Address not found", "پتہ نہیں ملا۔"); return; }
   if (existing.userId !== userId) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
 
-  await db.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
-  await db.update(savedAddressesTable).set({ isDefault: true }).where(eq(savedAddressesTable.id, id!));
+  await db.transaction(async (tx) => {
+    /* Clear all defaults, then set the target — both in the same transaction */
+    await tx.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
+    await tx.update(savedAddressesTable).set({ isDefault: true }).where(and(
+      eq(savedAddressesTable.id, id!),
+      eq(savedAddressesTable.userId, userId),
+    ));
+  });
+
   sendSuccess(res, null);
 });
 

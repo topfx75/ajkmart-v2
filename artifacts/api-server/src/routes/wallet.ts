@@ -23,16 +23,25 @@ type IdempotencyEntry =
    - "failed": key is removed so the client can retry with the same key
    TTL = 10 min; swept every 5 min. */
 const depositIdempotencyCache = new Map<string, IdempotencyEntry>();
+const sendIdempotencyCache = new Map<string, IdempotencyEntry>();
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of depositIdempotencyCache) {
     if (now - entry.ts > IDEMPOTENCY_TTL_MS) depositIdempotencyCache.delete(key);
   }
+  for (const [key, entry] of sendIdempotencyCache) {
+    if (now - entry.ts > IDEMPOTENCY_TTL_MS) sendIdempotencyCache.delete(key);
+  }
 }, 5 * 60 * 1000);
 
+const amountSchema = z.union([z.number().positive(), z.string().min(1)])
+  .transform(v => parseFloat(String(v)))
+  .refine(v => !isNaN(v) && v > 0, "Invalid amount")
+  .refine(v => Math.round(v * 100) === v * 100, "Amount cannot have more than 2 decimal places");
+
 const depositSchema = z.object({
-  amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
+  amount: amountSchema,
   paymentMethod: z.string().min(1, "paymentMethod required"),
   transactionId: z.string().min(1, "transactionId required"),
   idempotencyKey: z.string().uuid("idempotencyKey must be a UUID"),
@@ -42,12 +51,13 @@ const depositSchema = z.object({
 
 const sendSchema = z.object({
   receiverPhone: z.string().min(1, "receiverPhone is required"),
-  amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
+  amount: amountSchema,
   note: z.string().max(500).optional(),
+  idempotencyKey: z.string().uuid().optional(),
 });
 
 const withdrawSchema = z.object({
-  amount: z.union([z.number().positive(), z.string().min(1)]).transform(v => parseFloat(String(v))).refine(v => !isNaN(v) && v > 0, "Invalid amount"),
+  amount: amountSchema,
   paymentMethod: z.enum(["jazzcash", "easypaisa", "bank"], { errorMap: () => ({ message: "paymentMethod must be jazzcash, easypaisa, or bank" }) }),
   accountNumber: z.string().min(1, "accountNumber required"),
   note: z.string().max(500).optional(),
@@ -371,7 +381,21 @@ router.post("/send", customerAuth, async (req, res) => {
     sendValidationError(res, firstError); return;
   }
 
-  const { receiverPhone, amount: sendAmt, note } = parsed.data;
+  const { receiverPhone, amount: sendAmt, note, idempotencyKey } = parsed.data;
+
+  if (idempotencyKey) {
+    const cacheKey = `send:${senderUserId}:${idempotencyKey}`;
+    const existing = sendIdempotencyCache.get(cacheKey);
+    if (existing) {
+      if (existing.state === "in_flight") {
+        sendError(res, "Duplicate request — this transfer is already being processed.", 409); return;
+      }
+      if (existing.state === "success") {
+        res.status((existing as any).statusCode ?? 200).json((existing as any).body); return;
+      }
+    }
+    sendIdempotencyCache.set(cacheKey, { state: "in_flight", ts: Date.now() });
+  }
 
   const s = await getPlatformSettings();
   const walletEnabled  = (s["feature_wallet"]      ?? "on") === "on";
@@ -407,6 +431,7 @@ router.post("/send", customerAuth, async (req, res) => {
     const result = await db.transaction(async (tx) => {
       const [sender] = await tx.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1).for("update");
       if (!sender) throw new Error("Sender not found");
+      if (isWalletFrozen(sender)) throw Object.assign(new Error("Your wallet has been temporarily frozen. Contact support."), { walletFrozen: true });
 
       const feeAmt = p2pFeePct > 0 ? Math.round(sendAmt * p2pFeePct) / 100 : 0;
       const totalDebit = sendAmt + feeAmt;
@@ -431,7 +456,7 @@ router.post("/send", customerAuth, async (req, res) => {
         throw new Error(`Daily wallet limit is Rs. ${dailyLimit}. Aaj aap ne Rs. ${todayTotal.toFixed(0)} kharch kiye hain.`);
       }
 
-      const [receiver] = await tx.select().from(usersTable).where(eq(usersTable.id, receiverPre.id)).limit(1);
+      const [receiver] = await tx.select().from(usersTable).where(eq(usersTable.id, receiverPre.id)).limit(1).for("update");
       if (!receiver) throw new Error("Receiver not found");
       if (isWalletFrozen(receiver)) throw Object.assign(new Error("Receiver's wallet is currently frozen. Transfer cannot be completed."), { walletFrozen: true });
 
@@ -484,12 +509,29 @@ router.post("/send", customerAuth, async (req, res) => {
     }).catch(e => logger.error("receiver send notif insert failed:", e));
 
     const { receiverId: _rid, senderName: _sn, ...responseData } = result;
+
+    if (idempotencyKey) {
+      const cacheKey = `send:${senderUserId}:${idempotencyKey}`;
+      const body = { success: true, data: responseData };
+      sendIdempotencyCache.set(cacheKey, { state: "success", ts: Date.now(), statusCode: 200, body });
+    }
+
     sendSuccess(res, responseData);
   } catch (e: unknown) {
+    if (idempotencyKey) {
+      sendIdempotencyCache.delete(`send:${senderUserId}:${idempotencyKey}`);
+    }
     if ((e as any).walletFrozen) {
       sendForbidden(res, "wallet_frozen", (e as Error).message); return;
     }
-    sendValidationError(res, (e as Error).message);
+    const msg = (e instanceof Error) ? e.message : "Unknown error";
+    const isDbError = /deadlock|duplicate key|FATAL|ERROR:|ECONNRESET|ETIMEDOUT|connection|timeout/i.test(msg) && !/balance|limit|frozen|found|disabled|transfer|wallet/i.test(msg);
+    if (isDbError) {
+      logger.error("/wallet/send unexpected DB error:", e);
+      sendError(res, "Transaction failed due to a temporary error. Please try again.", 500);
+    } else {
+      sendValidationError(res, msg);
+    }
   }
 });
 
@@ -547,7 +589,15 @@ router.post("/withdraw", customerAuth, async (req, res) => {
       });
     });
   } catch (e: unknown) {
-    sendValidationError(res, (e as Error).message); return;
+    const msg = (e instanceof Error) ? e.message : "Unknown error";
+    const isDbError = /deadlock|duplicate key|FATAL|ERROR:|ECONNRESET|ETIMEDOUT|connection|timeout/i.test(msg) && !/balance|limit|frozen|found|disabled|withdrawal/i.test(msg);
+    if (isDbError) {
+      logger.error("/wallet/withdraw unexpected DB error:", e);
+      sendError(res, "Withdrawal failed due to a temporary error. Please try again.", 500);
+    } else {
+      sendValidationError(res, msg);
+    }
+    return;
   }
 
   const withdrawLang = await getUserLanguage(userId);
@@ -569,7 +619,7 @@ const SIMULATE_ALLOWED = [500, 1000, 2000, 5000];
 const SIMULATE_DAILY_LIMIT = 10000;
 
 router.post("/simulate-topup", customerAuth, async (req, res) => {
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.DISABLE_SIMULATION === "true" || process.env.NODE_ENV === "production") {
     sendForbidden(res, "Not available in production"); return;
   }
   const userId = req.customerId!;
