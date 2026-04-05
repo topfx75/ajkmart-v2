@@ -271,6 +271,7 @@ export type CreateParcelBookingRequestPaymentMethod =
 export const CreateParcelBookingRequestPaymentMethod = {
   cash: "cash",
   wallet: "wallet",
+  cod: "cod",
 } as const;
 
 export interface CreateParcelBookingRequest {
@@ -284,6 +285,10 @@ export interface CreateParcelBookingRequest {
   weight?: number;
   description?: string;
   paymentMethod: CreateParcelBookingRequestPaymentMethod;
+  pickupLat?: number;
+  pickupLng?: number;
+  dropLat?: number;
+  dropLng?: number;
 }
 
 export interface PaymentMethod {

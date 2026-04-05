@@ -28,17 +28,11 @@ import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { PermissionGuide } from "@/components/PermissionGuide";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { getPaymentMethods, estimateParcel, createParcelBooking } from "@workspace/api-client-react";
+import { estimateParcel, createParcelBooking } from "@workspace/api-client-react";
 import type { CreateParcelBookingRequest } from "@workspace/api-client-react";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
 import { AuthGateSheet, useAuthGate } from "@/components/AuthGateSheet";
 
-interface ParcelBookingPayload extends CreateParcelBookingRequest {
-  pickupLat?: number;
-  pickupLng?: number;
-  dropLat?: number;
-  dropLng?: number;
-}
 
 const C = Colors.light;
 
@@ -241,11 +235,16 @@ function ParcelScreenInner() {
   }, [senderName, senderPhone, pickupAddress, receiverName, receiverPhone, dropAddress, parcelType, weight, description, step, confirmed]);
 
   useEffect(() => {
-    getPaymentMethods()
-      .then(data => {
-        if (data?.methods?.length) {
-          setPayMethods(data.methods.map(m => ({ ...m, logo: m.logo ?? "", description: m.description ?? "" })));
-          setPayMethod(data.methods[0]?.id ?? "");
+    /* Fetch payment methods filtered to parcel service */
+    const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+    fetch(`${API_BASE}/payments/methods?serviceType=parcel`)
+      .then(r => r.json())
+      .then((json: any) => {
+        const methods: Array<{ id: string; label: string; logo?: string; description?: string }> =
+          json?.data?.methods ?? json?.methods ?? [];
+        if (methods.length) {
+          setPayMethods(methods.map(m => ({ id: m.id, label: m.label, logo: m.logo ?? "", description: m.description ?? "" })));
+          setPayMethod(methods[0]?.id ?? "cash");
         }
       })
       .catch((err) => { if (__DEV__) console.warn("[Parcel] Payment methods fetch failed:", err instanceof Error ? err.message : String(err)); });
@@ -301,11 +300,13 @@ function ParcelScreenInner() {
       let finalDropLng   = dropLng;
 
       const GEOCODE_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+      /* Try to resolve coordinates — best-effort, NOT a hard block.
+         Coordinates are optional on the backend (only used for geofencing). */
       if (finalPickupLat === undefined || finalPickupLng === undefined) {
         try {
           const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(pickupAddress)}`);
           const geo = await geoRes.json();
-          if (geo?.lat && geo?.lng) { finalPickupLat = geo.lat; finalPickupLng = geo.lng; }
+          if (geo?.lat && geo?.lng) { finalPickupLat = geo.lat; finalPickupLng = geo.lng; setGeoError(null); }
         } catch (err) { if (__DEV__) console.warn("[Parcel] Pickup geocode failed:", err instanceof Error ? err.message : String(err)); }
       }
       if (finalDropLat === undefined || finalDropLng === undefined) {
@@ -315,24 +316,13 @@ function ParcelScreenInner() {
           if (geo?.lat && geo?.lng) { finalDropLat = geo.lat; finalDropLng = geo.lng; }
         } catch (err) { if (__DEV__) console.warn("[Parcel] Drop geocode failed:", err instanceof Error ? err.message : String(err)); }
       }
-
-      // Block booking if either address could not be geocoded
-      if (finalPickupLat === undefined || finalPickupLng === undefined) {
-        setGeoError("pickup");
-        showToast("Could not locate pickup address. Please select from suggestions or enter a more specific address.", "error");
-        setLoading(false);
-        return;
-      }
-      if (finalDropLat === undefined || finalDropLng === undefined) {
-        setGeoError("drop");
-        showToast("Could not locate drop-off address. Please select from suggestions or enter a more specific address.", "error");
-        setLoading(false);
-        return;
-      }
+      /* Clear stale geo error now that we're proceeding */
       setGeoError(null);
 
-      // Block booking if pickup and drop are the same location
+      // Block booking if pickup and drop resolve to the same coordinates
       if (
+        finalPickupLat !== undefined && finalPickupLng !== undefined &&
+        finalDropLat   !== undefined && finalDropLng   !== undefined &&
         Math.abs(finalPickupLat - finalDropLat) < 0.0001 &&
         Math.abs(finalPickupLng - finalDropLng) < 0.0001
       ) {
@@ -347,16 +337,16 @@ function ParcelScreenInner() {
         setLoading(false);
         return;
       }
-      const payload: ParcelBookingPayload = {
+      const payload: CreateParcelBookingRequest = {
         senderName, senderPhone: normalizePhone(senderPhone), pickupAddress,
         receiverName, receiverPhone: normalizePhone(receiverPhone), dropAddress,
         parcelType: parcelType ?? "", weight: w,
         description: description || undefined,
-        paymentMethod: payMethod as "cash" | "wallet" | "cod",
+        paymentMethod: payMethod as CreateParcelBookingRequest["paymentMethod"],
         ...(finalPickupLat !== undefined && finalPickupLng !== undefined ? { pickupLat: finalPickupLat, pickupLng: finalPickupLng } : {}),
         ...(finalDropLat !== undefined && finalDropLng !== undefined ? { dropLat: finalDropLat, dropLng: finalDropLng } : {}),
       };
-      const data = await createParcelBooking(payload as CreateParcelBookingRequest);
+      const data = await createParcelBooking(payload);
       if (payMethod === "wallet" && user) {
         updateUser({ walletBalance: (user.walletBalance ?? 0) - data.fare });
       }

@@ -27,6 +27,8 @@ const createParcelSchema = z.object({
   description: z.string().max(500, "description too long").transform(s => stripHtml(s)).optional(),
   pickupLat: z.number().min(-90).max(90).optional(),
   pickupLng: z.number().min(-180).max(180).optional(),
+  dropLat:   z.number().min(-90).max(90).optional(),
+  dropLng:   z.number().min(-180).max(180).optional(),
 });
 
 const router: IRouter = Router();
