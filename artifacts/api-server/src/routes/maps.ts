@@ -88,16 +88,22 @@ async function getKey(): Promise<{
   autocomplete: boolean;
   geocoding: boolean;
   distanceMatrix: boolean;
+  provider: string;
+  locationiqKey: string | null;
 }> {
   const s = await getPlatformSettings();
   const enabled = (s["integration_maps"] ?? "off") === "on";
+  const provider = s["map_provider_primary"] ?? s["map_provider"] ?? "osm";
   /* Read new multi-provider key first, fall back to legacy key for backward compatibility */
   const key = s["google_maps_api_key"] ?? s["maps_api_key"] ?? "";
+  const liqKey = s["locationiq_api_key"] ?? "";
   return {
     key:            key.trim() || null,
     enabled,
     autocomplete:   (s["maps_places_autocomplete"] ?? "on") === "on",
     geocoding:      (s["maps_geocoding"]           ?? "on") === "on",
+    provider,
+    locationiqKey:  liqKey.trim() || null,
     distanceMatrix: (s["maps_distance_matrix"]     ?? "on") === "on",
   };
 }
@@ -172,11 +178,42 @@ router.get("/autocomplete", async (req, res) => {
     return;
   }
 
-  const { key, enabled, autocomplete } = await getKey();
+  const { key, enabled, autocomplete, provider: configuredProvider, locationiqKey } = await getKey();
 
-  if (!enabled || !key || !autocomplete) {
+  const useLocationIQ = enabled && configuredProvider === "locationiq" && locationiqKey && autocomplete;
+  const useGoogle     = enabled && configuredProvider !== "locationiq" && key && autocomplete;
+
+  if (!useLocationIQ && !useGoogle) {
     const filtered = await getFallbackPredictions(input);
     res.json({ predictions: filtered, source: "fallback" });
+    return;
+  }
+
+  if (useLocationIQ) {
+    try {
+      const parsedLat = parseFloat(String(req.query.lat ?? ""));
+      const parsedLng = parseFloat(String(req.query.lng ?? ""));
+      const latParam = !isNaN(parsedLat) && !isNaN(parsedLng) ? `&viewbox=${parsedLng - 0.5},${parsedLat - 0.5},${parsedLng + 0.5},${parsedLat + 0.5}&bounded=1` : "";
+      const liqUrl = `https://us1.locationiq.com/v1/autocomplete?key=${locationiqKey}&q=${encodeURIComponent(input)}&countrycodes=pk&limit=5${latParam}`;
+      const liqRaw = await fetch(liqUrl, { signal: AbortSignal.timeout(8000) });
+      if (!liqRaw.ok) {
+        const filtered = await getFallbackPredictions(input);
+        res.json({ predictions: filtered, source: "fallback" });
+        return;
+      }
+      const results = await liqRaw.json() as any[];
+      const predictions = (Array.isArray(results) ? results : []).map((r: any) => ({
+        placeId:       r.place_id ?? r.osm_id ?? "",
+        description:   r.display_name ?? "",
+        mainText:      r.display_name?.split(",")[0] ?? "",
+        secondaryText: r.display_name?.split(",").slice(1).join(",").trim() ?? "",
+      }));
+      void trackMapUsage("locationiq", "autocomplete");
+      res.json({ predictions, source: "locationiq" });
+    } catch {
+      const filtered = await getFallbackPredictions(input);
+      res.json({ predictions: filtered, source: "fallback" });
+    }
     return;
   }
 
@@ -241,7 +278,7 @@ router.get("/geocode", async (req, res) => {
     } catch { /* fall through */ }
   }
 
-  const { key, enabled, geocoding } = await getKey();
+  const { key, enabled, geocoding, provider: configuredProvider, locationiqKey } = await getKey();
 
   /* Helper: try Nominatim forward geocode for a text address query */
   async function nominatimForwardGeocode(query: string) {
@@ -254,15 +291,27 @@ router.get("/geocode", async (req, res) => {
     return { lat: parseFloat(r.lat), lng: parseFloat(r.lon), formattedAddress: r.display_name as string };
   }
 
-  if (!enabled || !key || !geocoding) {
-    /* Best-effort text match from hardcoded AJK list first */
+  /* Helper: try LocationIQ forward geocode */
+  async function locationiqForwardGeocode(query: string, liqKey: string) {
+    const liqUrl = `https://us1.locationiq.com/v1/search?key=${liqKey}&q=${encodeURIComponent(query)}&format=json&limit=1`;
+    const liqRaw = await fetch(liqUrl, { signal: AbortSignal.timeout(8000) });
+    if (!liqRaw.ok) return null;
+    const results = await liqRaw.json() as any[];
+    if (!Array.isArray(results) || !results.length) return null;
+    const r = results[0];
+    return { lat: parseFloat(r.lat), lng: parseFloat(r.lon), formattedAddress: r.display_name as string };
+  }
+
+  const useLocationIQ = enabled && configuredProvider === "locationiq" && locationiqKey && geocoding;
+  const useGoogle     = enabled && configuredProvider !== "locationiq" && key && geocoding;
+
+  if (!useLocationIQ && !useGoogle) {
     const query = (placeId || address).toLowerCase();
     const loc = AJK_FALLBACK.find(l =>
       l.placeId === query || l.description.toLowerCase().includes(query) || l.mainText.toLowerCase().includes(query)
     );
     if (loc) { res.json({ lat: loc.lat, lng: loc.lng, formattedAddress: loc.description, source: "fallback" }); return; }
 
-    /* Try Nominatim forward geocode when address text is available */
     if (address) {
       try {
         const nom = await nominatimForwardGeocode(address);
@@ -274,6 +323,34 @@ router.get("/geocode", async (req, res) => {
     return;
   }
 
+  if (useLocationIQ) {
+    try {
+      const query = address || placeId;
+      const result = await locationiqForwardGeocode(query, locationiqKey!);
+      if (result) {
+        void trackMapUsage("locationiq", "geocode");
+        res.json({ ...result, source: "locationiq" });
+        return;
+      }
+      if (address) {
+        try {
+          const nom = await nominatimForwardGeocode(address);
+          if (nom) { void trackMapUsage("osm", "geocode"); res.json({ ...nom, source: "nominatim" }); return; }
+        } catch { /* Nominatim unavailable */ }
+      }
+      res.status(404).json({ error: "Location not found" });
+    } catch {
+      if (address) {
+        try {
+          const nom = await nominatimForwardGeocode(address);
+          if (nom) { void trackMapUsage("osm", "geocode"); res.json({ ...nom, source: "nominatim" }); return; }
+        } catch { /* Nominatim unavailable */ }
+      }
+      res.status(500).json({ error: "Maps geocode request failed" });
+    }
+    return;
+  }
+
   try {
     const param = placeId ? `place_id=${encodeURIComponent(placeId)}` : `address=${encodeURIComponent(address)}`;
     const url   = `${GOOGLE_BASE}/geocode/json?${param}&key=${key}`;
@@ -281,7 +358,6 @@ router.get("/geocode", async (req, res) => {
     const data  = await raw.json() as any;
 
     if (data.status !== "OK" || !data.results?.length) {
-      /* Google failed — try Nominatim as secondary */
       if (address) {
         try {
           const nom = await nominatimForwardGeocode(address);
@@ -301,7 +377,6 @@ router.get("/geocode", async (req, res) => {
       source:           "google",
     });
   } catch (err) {
-    /* Google threw — try Nominatim as last resort */
     if (address) {
       try {
         const nom = await nominatimForwardGeocode(address);
@@ -332,42 +407,7 @@ router.get("/reverse-geocode", async (req, res) => {
     res.json({ address: cached, source: "cache" }); return;
   }
 
-  const { key, enabled, geocoding } = await getKey();
-
-  if (!enabled || !key || !geocoding) {
-    /* Try Nominatim OSM first (free, no key required) */
-    try {
-      const nomUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
-      const nomRaw = await fetch(nomUrl, { headers: { "User-Agent": "AJKMart-Server/1.0" } });
-      if (nomRaw.ok) {
-        const nomData = await nomRaw.json() as any;
-        if (nomData?.display_name) {
-          const addr = nomData.address;
-          /* Build a concise address: road/suburb + city/town */
-          const parts: string[] = [];
-          if (addr?.road) parts.push(addr.road);
-          else if (addr?.suburb) parts.push(addr.suburb);
-          else if (addr?.village) parts.push(addr.village);
-          if (addr?.city || addr?.town || addr?.county) parts.push(addr.city ?? addr.town ?? addr.county);
-          const address = parts.length ? parts.join(", ") : nomData.display_name;
-          await revGeoCacheSet(lat, lng, address);
-          void trackMapUsage("osm", "reverse-geocode");
-          res.json({ address, formattedAddress: nomData.display_name, source: "nominatim" }); return;
-        }
-      }
-    } catch { /* Nominatim unavailable — fall through to AJK city nearest-match */ }
-
-    /* Last resort: closest AJK fallback location */
-    let closest = AJK_FALLBACK[0]!;
-    let closestDist = Infinity;
-    for (const loc of AJK_FALLBACK) {
-      const d = haversineKm(lat, lng, loc.lat, loc.lng);
-      if (d < closestDist) { closestDist = d; closest = loc; }
-    }
-    const address = closest.description;
-    await revGeoCacheSet(lat, lng, address);
-    res.json({ address, source: "fallback" }); return;
-  }
+  const { key, enabled, geocoding, provider: configuredProvider, locationiqKey } = await getKey();
 
   /* Helper: Nominatim reverse geocode for lat/lng */
   async function nominatimReverseGeocode(rlat: number, rlng: number): Promise<string | null> {
@@ -385,13 +425,105 @@ router.get("/reverse-geocode", async (req, res) => {
     return parts.length ? parts.join(", ") : nomData.display_name;
   }
 
+  /* Helper: LocationIQ reverse geocode */
+  async function locationiqReverseGeocode(rlat: number, rlng: number, liqKey: string): Promise<{ address: string; formattedAddress: string } | null> {
+    const liqUrl = `https://us1.locationiq.com/v1/reverse?key=${liqKey}&lat=${rlat}&lon=${rlng}&format=json&addressdetails=1`;
+    const liqRaw = await fetch(liqUrl, { signal: AbortSignal.timeout(8000) });
+    if (!liqRaw.ok) return null;
+    const liqData = await liqRaw.json() as any;
+    if (!liqData?.display_name) return null;
+    const addr = liqData.address;
+    const parts: string[] = [];
+    if (addr?.road) parts.push(addr.road);
+    else if (addr?.suburb) parts.push(addr.suburb);
+    else if (addr?.village) parts.push(addr.village);
+    if (addr?.city || addr?.town || addr?.county) parts.push(addr.city ?? addr.town ?? addr.county);
+    const address = parts.length ? parts.join(", ") : liqData.display_name;
+    return { address, formattedAddress: liqData.display_name };
+  }
+
+  /* Helper: fallback to nearest AJK location */
+  function ajkFallback(): string {
+    let closest = AJK_FALLBACK[0]!;
+    let closestDist = Infinity;
+    for (const loc of AJK_FALLBACK) {
+      const d = haversineKm(lat, lng, loc.lat, loc.lng);
+      if (d < closestDist) { closestDist = d; closest = loc; }
+    }
+    return closest.description;
+  }
+
+  const useLocationIQ = enabled && configuredProvider === "locationiq" && locationiqKey && geocoding;
+  const useGoogle     = enabled && configuredProvider !== "locationiq" && key && geocoding;
+
+  if (!useLocationIQ && !useGoogle) {
+    try {
+      const nomUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+      const nomRaw = await fetch(nomUrl, { headers: { "User-Agent": "AJKMart-Server/1.0" } });
+      if (nomRaw.ok) {
+        const nomData = await nomRaw.json() as any;
+        if (nomData?.display_name) {
+          const addr = nomData.address;
+          const parts: string[] = [];
+          if (addr?.road) parts.push(addr.road);
+          else if (addr?.suburb) parts.push(addr.suburb);
+          else if (addr?.village) parts.push(addr.village);
+          if (addr?.city || addr?.town || addr?.county) parts.push(addr.city ?? addr.town ?? addr.county);
+          const address = parts.length ? parts.join(", ") : nomData.display_name;
+          await revGeoCacheSet(lat, lng, address);
+          void trackMapUsage("osm", "reverse-geocode");
+          res.json({ address, formattedAddress: nomData.display_name, source: "nominatim" }); return;
+        }
+      }
+    } catch { /* Nominatim unavailable */ }
+
+    const address = ajkFallback();
+    await revGeoCacheSet(lat, lng, address);
+    res.json({ address, source: "fallback" }); return;
+  }
+
+  if (useLocationIQ) {
+    try {
+      const result = await locationiqReverseGeocode(lat, lng, locationiqKey!);
+      if (result) {
+        await revGeoCacheSet(lat, lng, result.address);
+        void trackMapUsage("locationiq", "reverse-geocode");
+        res.json({ address: result.address, formattedAddress: result.formattedAddress, source: "locationiq" });
+        return;
+      }
+      try {
+        const nomAddr = await nominatimReverseGeocode(lat, lng);
+        if (nomAddr) {
+          await revGeoCacheSet(lat, lng, nomAddr);
+          void trackMapUsage("osm", "reverse-geocode");
+          res.json({ address: nomAddr, source: "nominatim" }); return;
+        }
+      } catch { /* Nominatim unavailable */ }
+      const address = ajkFallback();
+      await revGeoCacheSet(lat, lng, address);
+      res.json({ address, source: "fallback" });
+    } catch {
+      try {
+        const nomAddr = await nominatimReverseGeocode(lat, lng);
+        if (nomAddr) {
+          await revGeoCacheSet(lat, lng, nomAddr);
+          void trackMapUsage("osm", "reverse-geocode");
+          res.json({ address: nomAddr, source: "nominatim" }); return;
+        }
+      } catch { /* Nominatim also unavailable */ }
+      const address = ajkFallback();
+      await revGeoCacheSet(lat, lng, address);
+      res.json({ address, source: "fallback" });
+    }
+    return;
+  }
+
   try {
     const url  = `${GOOGLE_BASE}/geocode/json?latlng=${lat},${lng}&language=en&key=${key}`;
     const raw  = await fetch(url);
     const data = await raw.json() as any;
 
     if (data.status !== "OK" || !data.results?.length) {
-      /* Google returned no results — try Nominatim before giving up */
       try {
         const nomAddr = await nominatimReverseGeocode(lat, lng);
         if (nomAddr) {
@@ -408,7 +540,6 @@ router.get("/reverse-geocode", async (req, res) => {
     void trackMapUsage("google", "reverse-geocode");
     res.json({ address, formattedAddress: data.results[0].formatted_address, source: "google" });
   } catch {
-    /* Google threw — try Nominatim before error response */
     try {
       const nomAddr = await nominatimReverseGeocode(lat, lng);
       if (nomAddr) {
@@ -550,12 +681,13 @@ router.get("/directions", async (req, res) => {
    Returns whether Maps is configured and active.
 ══════════════════════════════════════════════════════════ */
 router.get("/status", async (_req, res) => {
-  const { key, enabled } = await getKey();
+  const { key, enabled, provider, locationiqKey } = await getKey();
+  const providerKeyConfigured = provider === "locationiq" ? !!locationiqKey : !!key;
   res.json({
     mapsEnabled:     enabled,
-    keyConfigured:   !!key,
+    keyConfigured:   providerKeyConfigured,
     apisAvailable:   ["autocomplete", "directions", "geocode"],
-    fallbackActive:  !enabled || !key,
+    fallbackActive:  !enabled || !providerKeyConfigured,
   });
 });
 
@@ -586,7 +718,7 @@ router.get("/config", async (req, res) => {
   const routingEngine    = s["routing_engine"] ?? s["routing_api_provider"] ?? "osrm";
 
   /* Helper: resolve token for a given provider — only returned for that provider */
-  const tokenFor = (prov: string) => prov === "mapbox" ? mapboxToken : prov === "google" ? googleKey : "";
+  const tokenFor = (prov: string) => prov === "mapbox" ? mapboxToken : prov === "google" ? googleKey : prov === "locationiq" ? locationIqKey : "";
 
   /* Per-app provider overrides */
   const appOverrideKeys: Record<string, string> = {
@@ -600,7 +732,7 @@ router.get("/config", async (req, res) => {
   const resolveAppProvider = (override: string): string => {
     if (override === "primary")   return mapProvider;
     if (override === "secondary") return secondaryProvider;
-    if (["osm", "mapbox", "google"].includes(override)) return override;
+    if (["osm", "mapbox", "google", "locationiq"].includes(override)) return override;
     return mapProvider;
   };
 
@@ -662,9 +794,10 @@ router.get("/config", async (req, res) => {
 
     /* Per-provider health/status — no tokens in this block */
     providers: {
-      osm:    { enabled: (s["osm_enabled"]          ?? "on")  === "on", role: s["map_provider_role_osm"]    ?? "primary",  lastTested: s["map_last_tested_osm"]    ?? null, testStatus: s["map_test_status_osm"]    ?? "unknown" },
-      mapbox: { enabled: (s["mapbox_enabled"]        ?? "off") === "on", role: s["map_provider_role_mapbox"] ?? "disabled", lastTested: s["map_last_tested_mapbox"] ?? null, testStatus: s["map_test_status_mapbox"] ?? "unknown" },
-      google: { enabled: (s["google_maps_enabled"]   ?? "off") === "on", role: s["map_provider_role_google"] ?? "disabled", lastTested: s["map_last_tested_google"] ?? null, testStatus: s["map_test_status_google"] ?? "unknown" },
+      osm:        { enabled: (s["osm_enabled"]          ?? "on")  === "on", role: s["map_provider_role_osm"]        ?? "primary",  lastTested: s["map_last_tested_osm"]        ?? null, testStatus: s["map_test_status_osm"]        ?? "unknown" },
+      mapbox:     { enabled: (s["mapbox_enabled"]        ?? "off") === "on", role: s["map_provider_role_mapbox"]     ?? "disabled", lastTested: s["map_last_tested_mapbox"]     ?? null, testStatus: s["map_test_status_mapbox"]     ?? "unknown" },
+      google:     { enabled: (s["google_maps_enabled"]   ?? "off") === "on", role: s["map_provider_role_google"]     ?? "disabled", lastTested: s["map_last_tested_google"]     ?? null, testStatus: s["map_test_status_google"]     ?? "unknown" },
+      locationiq: { enabled: (s["locationiq_enabled"]    ?? "off") === "on", role: s["map_provider_role_locationiq"] ?? "disabled", lastTested: s["map_last_tested_locationiq"] ?? null, testStatus: s["map_test_status_locationiq"] ?? "unknown" },
     },
 
     /* General */
@@ -939,19 +1072,20 @@ export const adminMapsRouter: IRouter = Router();
 
 /* ── POST /test
    Pings the real provider API and returns { ok, latencyMs, error? }
-   Body: { provider: "osm"|"mapbox"|"google", key?: string }
+   Body: { provider: "osm"|"mapbox"|"google"|"locationiq", key?: string }
    ── */
 async function handleMapsTest(req: import("express").Request, res: import("express").Response): Promise<void> {
   const { provider, key: keyOverride } = req.body as { provider?: string; key?: string };
-  if (!provider || !["osm", "mapbox", "google"].includes(provider)) {
-    sendValidationError(res, "provider must be 'osm', 'mapbox', or 'google'"); return;
+  if (!provider || !["osm", "mapbox", "google", "locationiq"].includes(provider)) {
+    sendValidationError(res, "provider must be 'osm', 'mapbox', 'google', or 'locationiq'"); return;
   }
 
   const settings = await getPlatformSettings();
   const s = settings as Record<string, string>;
 
-  const mapboxToken = keyOverride ?? (provider === "mapbox" ? (s["mapbox_api_key"] ?? "") : "");
-  const googleKey   = keyOverride ?? (provider === "google"  ? (s["google_maps_api_key"] ?? s["maps_api_key"] ?? "") : "");
+  const mapboxToken    = keyOverride ?? (provider === "mapbox" ? (s["mapbox_api_key"] ?? "") : "");
+  const googleKey      = keyOverride ?? (provider === "google"  ? (s["google_maps_api_key"] ?? s["maps_api_key"] ?? "") : "");
+  const locationiqKey  = keyOverride ?? (provider === "locationiq" ? (s["locationiq_api_key"] ?? "") : "");
 
   const start = Date.now();
   let ok = false;
@@ -990,6 +1124,18 @@ async function handleMapsTest(req: import("express").Request, res: import("expre
       const data = await r.json() as any;
       ok = data?.status === "OK" || data?.status === "ZERO_RESULTS";
       if (!ok) error = data?.error_message ?? data?.status ?? `HTTP ${r.status}`;
+
+    } else if (provider === "locationiq") {
+      if (!locationiqKey) { sendError(res, "LocationIQ API key is not configured", 422); return; }
+      const r = await fetch(
+        `https://us1.locationiq.com/v1/search?key=${locationiqKey}&q=Muzaffarabad&format=json&limit=1`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      ok = r.ok;
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as any;
+        error = body?.error ?? `HTTP ${r.status}`;
+      }
     }
   } catch (e: any) {
     ok = false;
@@ -1042,9 +1188,10 @@ async function handleMapsUsage(_req: import("express").Request, res: import("exp
 
     /* Cost estimates (approximate published pricing, USD per 1000 calls) */
     const COST_PER_1K: Record<string, Record<string, number>> = {
-      google:  { geocode: 5, directions: 5, autocomplete: 2.83, "reverse-geocode": 5 },
-      mapbox:  { geocode: 0.75, directions: 1, autocomplete: 0.75, "reverse-geocode": 0.75 },
-      osm:     { geocode: 0, directions: 0, autocomplete: 0, "reverse-geocode": 0 },
+      google:     { geocode: 5, directions: 5, autocomplete: 2.83, "reverse-geocode": 5 },
+      mapbox:     { geocode: 0.75, directions: 1, autocomplete: 0.75, "reverse-geocode": 0.75 },
+      osm:        { geocode: 0, directions: 0, autocomplete: 0, "reverse-geocode": 0 },
+      locationiq: { geocode: 0.50, directions: 0, autocomplete: 0.50, "reverse-geocode": 0.50 },
     };
 
     const costEstimates: Record<string, number> = {};
