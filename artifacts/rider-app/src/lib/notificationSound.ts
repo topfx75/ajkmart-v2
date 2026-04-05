@@ -28,8 +28,12 @@ function getCtx(): AudioContext | null {
   return audioCtx;
 }
 
+/* ── Audio unlock / lock state ───────────────────────────────────────────────
+   After a user gesture we attempt to resume the AudioContext and mark it as
+   unlocked.  Components can query isAudioLocked() to decide whether to show
+   the "Tap to enable sounds" prompt. */
+
 export function unlockAudio() {
-  if (unlocked) return;
   const ctx = getCtx();
   if (!ctx) return;
   if (ctx.state === "suspended") ctx.resume();
@@ -38,6 +42,14 @@ export function unlockAudio() {
   osc.start();
   osc.stop(ctx.currentTime + 0.001);
   unlocked = true;
+}
+
+/** Returns true when the browser autoplay policy has blocked audio playback */
+export function isAudioLocked(): boolean {
+  if (unlocked) return false;
+  const ctx = getCtx();
+  if (!ctx) return false;
+  return ctx.state === "suspended";
 }
 
 export function isSilenced(): boolean {
@@ -72,7 +84,10 @@ export function playRequestSound() {
       vibrateFallback();
       return;
     }
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state === "suspended") {
+      vibrateFallback();
+      return;
+    }
 
     const now = ctx.currentTime;
 

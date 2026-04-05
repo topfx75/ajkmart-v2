@@ -604,9 +604,15 @@ router.get("/requests", async (req, res) => {
     receiverPhone: r.receiverPhone ? maskPhone(r.receiverPhone) : null,
   }));
 
-  sendSuccess(res, {
-    orders: orders.map(o => ({ ...o, total: safeNum(o.total) })),
-    rides: maskedRides,
+  /* Include serverTime in the response so the client can compute clock offset
+     for AcceptCountdown drift correction without a separate NTP round-trip. */
+  res.status(200).json({
+    success: true,
+    serverTime: new Date().toISOString(),
+    data: {
+      orders: orders.map(o => ({ ...o, total: safeNum(o.total) })),
+      rides: maskedRides,
+    },
   });
 });
 

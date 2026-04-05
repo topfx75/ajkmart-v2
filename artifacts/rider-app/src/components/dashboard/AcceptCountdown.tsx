@@ -3,20 +3,39 @@ import { ACCEPT_TIMEOUT_SEC } from "./helpers";
 
 export function AcceptCountdown({
   createdAt,
+  serverTime,
   onExpired,
 }: {
   createdAt: string;
+  serverTime?: string | null;
   onExpired?: () => void;
 }) {
-  const [secs, setSecs] = useState(() => {
-    const elapsed = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
-    return Math.max(0, ACCEPT_TIMEOUT_SEC - elapsed);
-  });
-  const expiredRef = useRef(false);
+  /* client–server clock offset: positive means client clock is ahead of server */
+  const offsetMs = useRef<number>(serverTime ? Date.now() - new Date(serverTime).getTime() : 0);
+
+  /* Recompute offset if serverTime changes (e.g. on refetch) */
   useEffect(() => {
+    if (serverTime) {
+      offsetMs.current = Date.now() - new Date(serverTime).getTime();
+    }
+  }, [serverTime]);
+
+  const calcRemaining = () => {
+    const adjustedNow = Date.now() - offsetMs.current;
+    const elapsed = Math.floor((adjustedNow - new Date(createdAt).getTime()) / 1000);
+    return Math.max(0, ACCEPT_TIMEOUT_SEC - elapsed);
+  };
+
+  /* Initialize with offset already applied — no transient mismatch on first render */
+  const [secs, setSecs] = useState(() => calcRemaining());
+  const expiredRef = useRef(false);
+
+  useEffect(() => {
+    expiredRef.current = false;
+    /* Recalculate immediately so the display corrects before the first tick */
+    setSecs(calcRemaining());
     const id = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
-      const remaining = Math.max(0, ACCEPT_TIMEOUT_SEC - elapsed);
+      const remaining = calcRemaining();
       setSecs(remaining);
       if (remaining === 0 && !expiredRef.current) {
         expiredRef.current = true;
@@ -25,12 +44,13 @@ export function AcceptCountdown({
     }, 1000);
     return () => clearInterval(id);
   }, [createdAt, onExpired]);
+
   const pct = secs / ACCEPT_TIMEOUT_SEC;
-  const r = 14,
-    stroke = 3;
+  const r = 14, stroke = 3;
   const circ = 2 * Math.PI * r;
   const dashOffset = circ * (1 - pct);
   const col = secs > 30 ? "#22c55e" : secs > 10 ? "#f59e0b" : "#ef4444";
+
   return (
     <div
       className="flex-shrink-0 relative flex items-center justify-center"

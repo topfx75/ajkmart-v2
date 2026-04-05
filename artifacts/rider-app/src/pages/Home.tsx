@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   playRequestSound,
   unlockAudio,
+  isAudioLocked,
   isSilenced,
   getSilenceRemaining,
   getSilenceMode,
@@ -20,9 +21,10 @@ import {
   enqueue,
   addDismissed,
   removeDismissed,
-  loadDismissed,
+  sweepAndLoadDismissed,
   clearAllDismissed,
 } from "../lib/gpsQueue";
+import { haversineMeters } from "../components/dashboard/helpers";
 import {
   Bike,
   Wifi,
@@ -64,10 +66,15 @@ export default function Home() {
   const [newFlash, setNewFlash] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set<string>());
 
+
+  const [audioLocked, setAudioLocked] = useState(false);
+
   useEffect(() => {
-    loadDismissed().then((ids) => {
+    sweepAndLoadDismissed().then((ids) => {
       if (ids.size > 0) setDismissed(ids);
     });
+    /* Check audio lock state on mount */
+    setAudioLocked(isAudioLocked());
   }, []);
 
   const [silenceOn, setSilenceOn] = useState(getSilenceMode());
@@ -80,7 +87,11 @@ export default function Home() {
   const [showSilenceMenu, setShowSilenceMenu] = useState(false);
 
   useEffect(() => {
-    const handler = () => unlockAudio();
+
+    const handler = () => {
+      unlockAudio();
+      setAudioLocked(false);
+    };
     document.addEventListener("click", handler, { once: true });
     document.addEventListener("touchstart", handler, { once: true });
     return () => {
@@ -193,7 +204,7 @@ export default function Home() {
   });
   const hasActiveTask = !!(activeData?.order || activeData?.ride);
 
-  const { data: requestsData } = useQuery({
+  const { data: requestsData, isLoading: requestsLoading, isError: requestsError } = useQuery({
     queryKey: ["rider-requests"],
     queryFn: () => api.getRequests(),
     refetchInterval: tabVisible ? (user?.isOnline ? 12000 : 60000) : false,
@@ -216,7 +227,10 @@ export default function Home() {
 
   const allOrders: any[] = requestsData?.orders || [];
   const allRides: any[] = requestsData?.rides || [];
+  /* Server time from the API envelope — used to offset AcceptCountdown for clock drift */
+  const requestsServerTime: string | null = requestsData?._serverTime ?? null;
 
+  /* Sync dismissed set with server: drop dismissed IDs no longer on server */
   useEffect(() => {
     if (!requestsData) return;
     const serverIds = new Set<string>([
@@ -224,6 +238,7 @@ export default function Home() {
       ...allRides.map((r: any) => r.id),
     ]);
     setDismissed((prev) => {
+      /* Keep only IDs that still exist on the server */
       const next = new Set([...prev].filter((id) => serverIds.has(id)));
       if (next.size === prev.size) return prev;
       [...prev].filter((id) => !serverIds.has(id)).forEach((id) => removeDismissed(id));
@@ -231,6 +246,7 @@ export default function Home() {
     });
   }, [requestsData]);
 
+  /* New-request flash — pulse the header text; ring around the card container */
   const currentIdsSig = [...allOrders.map((o: any) => o.id), ...allRides.map((r: any) => r.id)]
     .sort()
     .join(",");
@@ -245,7 +261,10 @@ export default function Home() {
     if (hasNew && currentIds.size > 0) {
       setNewFlash(true);
       setTimeout(() => setNewFlash(false), 2500);
-      playRequestSound();
+      /* Recheck audio lock before playing — policy may have changed since mount */
+      const locked = isAudioLocked();
+      setAudioLocked(locked);
+      if (!locked) playRequestSound();
       hasUnseenRequestsRef.current = true;
     }
 
@@ -261,7 +280,8 @@ export default function Home() {
           hasUnseenRequestsRef.current &&
           !getSilenceMode() &&
           !isSilenced() &&
-          !document.hidden
+          !document.hidden &&
+          !isAudioLocked()
         )
           playRequestSound();
       }, 8000);
@@ -270,11 +290,25 @@ export default function Home() {
     prevIdsRef.current = currentIds;
   }, [currentIdsSig]);
 
+  /* On tab re-focus: purge expired dismissed entries, then refetch */
   useEffect(() => {
-    const handler = () => setTabVisible(!document.hidden);
+    const handler = () => {
+      const visible = !document.hidden;
+      setTabVisible(visible);
+      if (visible) {
+        /* Recheck audio lock — browser may re-suspend AudioContext while hidden */
+        setAudioLocked(isAudioLocked());
+        /* Sweep expired dismissed entries before triggering the refetch */
+        sweepAndLoadDismissed().then((freshIds) => {
+          setDismissed(freshIds);
+          qc.invalidateQueries({ queryKey: ["rider-requests"] });
+          qc.invalidateQueries({ queryKey: ["rider-active"] });
+        });
+      }
+    };
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
-  }, []);
+  }, [qc]);
 
   useEffect(() => {
     if (!effectiveOnline || !tabVisible) return;
@@ -317,13 +351,6 @@ export default function Home() {
     return () => window.removeEventListener("ajkmart:logout", handleLogout);
   }, []);
 
-  useEffect(() => {
-    if (tabVisible) {
-      qc.invalidateQueries({ queryKey: ["rider-requests"] });
-      qc.invalidateQueries({ queryKey: ["rider-active"] });
-    }
-  }, [tabVisible]);
-
   const [gpsWarning, setGpsWarning] = useState<string | null>(null);
   const gpsWarningRef = useRef<string | null>(null);
 
@@ -347,19 +374,36 @@ export default function Home() {
     }
   }, []);
 
+  /* Socket event listeners — invalidate queries on new or changed requests */
   useEffect(() => {
     if (!sharedSocket) return;
     const handleNewRequest = () => {
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
     };
+    /* Also listen for admin/customer-driven state changes */
+    const handleStateChange = () => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      qc.invalidateQueries({ queryKey: ["rider-active"] });
+    };
     sharedSocket.on("rider:new-request", handleNewRequest);
     sharedSocket.on("new:request", handleNewRequest);
+    sharedSocket.on("rider:request-cancelled", handleStateChange);
+    sharedSocket.on("rider:ride-updated", handleStateChange);
+    sharedSocket.on("rider:order-updated", handleStateChange);
     return () => {
       sharedSocket.off("rider:new-request", handleNewRequest);
       sharedSocket.off("new:request", handleNewRequest);
+      sharedSocket.off("rider:request-cancelled", handleStateChange);
+      sharedSocket.off("rider:ride-updated", handleStateChange);
+      sharedSocket.off("rider:order-updated", handleStateChange);
     };
-  }, [sharedSocket]);
+  }, [sharedSocket, qc]);
 
+  /* GPS watch — idle Home screen, no active task.
+     The socket heartbeat (socket.tsx) is the sole liveness signal.
+     REST pings here only update the stored coordinate when position changes
+     meaningfully; they are not keepalive traffic. Memoized haversineMeters
+     from helpers.ts is used so no redundant trig runs per position event. */
   useEffect(() => {
     if (!user?.isOnline || hasActiveTask || !user?.id) return;
     if (!navigator?.geolocation) return;
@@ -367,25 +411,11 @@ export default function Home() {
     let lastSentTime = 0;
     let lastLat: number | null = null;
     let lastLng: number | null = null;
-    const IDLE_INTERVAL_MS = 5 * 1000;
+    /* Only send REST location updates on meaningful movement. No time-based
+       periodic fallback — the socket heartbeat is the sole liveness signal. */
     const MIN_DISTANCE_METERS = 25;
-
-    function haversineMeters(
-      lat1: number,
-      lon1: number,
-      lat2: number,
-      lon2: number,
-    ): number {
-      const R = 6371000;
-      const dLat = ((lat2 - lat1) * Math.PI) / 180;
-      const dLon = ((lon2 - lon1) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos((lat1 * Math.PI) / 180) *
-          Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLon / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
+    /* Minimum interval to debounce burst callbacks from the OS */
+    const DEBOUNCE_MS = 1000;
 
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -400,14 +430,22 @@ export default function Home() {
           return;
         }
 
-        const timeSinceLast = now - lastSentTime;
-        if (timeSinceLast < 1000) return;
+        if (now - lastSentTime < DEBOUNCE_MS) return;
+
+        /* memoized haversine — skip if position hasn't changed meaningfully */
         if (lastLat !== null && lastLng !== null) {
           const dist = haversineMeters(lastLat, lastLng, latitude, longitude);
-          if (dist < MIN_DISTANCE_METERS && timeSinceLast < IDLE_INTERVAL_MS) return;
-        } else {
-          if (timeSinceLast < IDLE_INTERVAL_MS) return;
+          if (dist < MIN_DISTANCE_METERS) return;
         }
+        /* No previous position — record it but don't send a keepalive ping;
+           the socket heartbeat already signals liveness to the server. */
+        if (lastLat === null) {
+          lastLat = latitude;
+          lastLng = longitude;
+          lastSentTime = now;
+          return;
+        }
+
         lastSentTime = now;
         lastLat = latitude;
         lastLng = longitude;
@@ -496,6 +534,7 @@ export default function Home() {
     }
   };
 
+  /* Mutations — invalidate rider-requests on both success and error to prevent ghost cards */
   const acceptOrderMut = useMutation({
     mutationFn: (id: string) => api.acceptOrder(id),
     onSuccess: () => {
@@ -523,6 +562,7 @@ export default function Home() {
       showToast("Order rejected.", "success");
     },
     onError: (e: any) => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
       showToast(e.message || "Could not reject order", "error");
     },
   });
@@ -556,16 +596,23 @@ export default function Home() {
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
       showToast("Counter offer submitted!", "success");
     },
-    onError: (e: any) => showToast(e.message || "Counter offer failed", "error"),
+    onError: (e: any) => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      showToast(e.message || "Counter offer failed", "error");
+    },
   });
 
   const rejectOfferMut = useMutation({
     mutationFn: (id: string) => api.rejectOffer(id),
     onSuccess: (_: any, id: string) => {
       dismiss(id);
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
       showToast("Ride skipped.", "success");
     },
-    onError: (e: any) => showToast(e.message, "error"),
+    onError: (e: any) => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      showToast(e.message, "error");
+    },
   });
 
   const ignoreRideMut = useMutation({
@@ -583,7 +630,10 @@ export default function Home() {
         showToast(`Ride ignored (${p?.dailyIgnores || "?"} today).`, "success");
       }
     },
-    onError: (e: any) => showToast(e.message || "Ignore failed", "error"),
+    onError: (e: any) => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      showToast(e.message || "Ignore failed", "error");
+    },
   });
 
   const toggleSilence = () => {
@@ -620,18 +670,111 @@ export default function Home() {
     return T("goodEvening");
   })();
 
+  /* ── Request list content — loading / error / empty / data states ─────── */
+  const renderRequestList = () => {
+    if (requestsLoading) {
+      return (
+        <div className="bg-white p-10 text-center">
+          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-gray-400 text-xs font-medium">Loading requests…</p>
+        </div>
+      );
+    }
+    if (requestsError) {
+      return (
+        <div className="bg-white p-8 text-center">
+          <AlertTriangle size={28} className="text-red-300 mx-auto mb-3" />
+          <p className="text-gray-600 font-bold text-sm">Could not load requests</p>
+          <p className="text-gray-400 text-xs mt-1">Check your connection and try again.</p>
+          <button
+            onClick={() => qc.invalidateQueries({ queryKey: ["rider-requests"] })}
+            className="mt-3 text-xs text-indigo-600 font-bold underline"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    if (totalRequests === 0) {
+      return (
+        <div className="bg-white p-8 sm:p-10 text-center">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gray-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
+            <Bike size={28} className="text-gray-300" />
+          </div>
+          <p className="text-gray-600 font-bold text-sm sm:text-base">{T("noRequestsNow")}</p>
+          <p className="text-gray-400 text-xs mt-1.5">{T("autoRefreshes")}</p>
+          {dismissed.size > 0 && (
+            <button
+              onClick={() => {
+                setDismissed(new Set());
+                clearAllDismissed();
+              }}
+              className="mt-4 text-xs text-gray-900 font-bold bg-gray-100 border border-gray-200 px-4 py-2 rounded-full inline-flex items-center gap-1.5 hover:bg-gray-200 transition-colors"
+              aria-label={`Show ${dismissed.size} hidden requests`}
+            >
+              <Eye size={12} /> Show {dismissed.size} hidden request
+              {dismissed.size > 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="bg-white divide-y divide-gray-100">
+        {orders.map((o: any) => (
+          <OrderRequestCard
+            key={o.id}
+            order={o}
+            earnings={getDeliveryEarn(o.type)}
+            currency={currency}
+            onAccept={(id) => acceptOrderMut.mutate(id)}
+            onReject={(id) => rejectOrderMut.mutate(id)}
+            onDismiss={dismiss}
+            acceptPending={acceptOrderMut.isPending}
+            rejectPending={rejectOrderMut.isPending}
+            anyAcceptPending={acceptRideMut.isPending}
+            serverTime={requestsServerTime}
+            T={T}
+          />
+        ))}
+        {rides.map((r: any) => (
+          <RideRequestCard
+            key={r.id}
+            ride={r}
+            userId={user?.id || ""}
+            isRestricted={!!user?.isRestricted}
+            config={config}
+            currency={currency}
+            onAccept={(id) => acceptRideMut.mutate(id)}
+            onCounter={(id, fare) => counterRideMut.mutate({ id, counterFare: fare })}
+            onRejectOffer={(id) => rejectOfferMut.mutate(id)}
+            onIgnore={(id) => ignoreRideMut.mutate(id)}
+            onDismiss={dismiss}
+            acceptPending={acceptRideMut.isPending}
+            counterPending={counterRideMut.isPending}
+            rejectOfferPending={rejectOfferMut.isPending}
+            ignorePending={ignoreRideMut.isPending}
+            anyAcceptPending={acceptOrderMut.isPending}
+            serverTime={requestsServerTime}
+            T={T}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  /* Count how many top-fixed banners are currently active (28 px each).
+     This must mirror the logic in FixedBanners so the header always sits
+     below the last visible banner regardless of how many are showing. */
+  const BANNER_H_PX = 28;
+  const topBannerCount =
+    (!socketConnected && effectiveOnline ? 1 : 0) +
+    (!!zoneWarning && effectiveOnline ? 1 : 0) +
+    (audioLocked && effectiveOnline ? 1 : 0);
+  const topBannerOffsetPx = topBannerCount * BANNER_H_PX;
+
   return (
     <div className="flex flex-col min-h-screen bg-[#F5F6F8] animate-[fadeIn_0.3s_ease-out]">
-      {newFlash && (
-        <div className="fixed inset-0 z-[1100] pointer-events-none">
-          <div className="absolute inset-0 border-[6px] border-green-400 rounded-none animate-ping opacity-50" />
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white font-extrabold text-sm px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 animate-bounce">
-            <span className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse" />
-            New Request Available!
-          </div>
-        </div>
-      )}
-
       <FixedBanners
         socketConnected={socketConnected}
         effectiveOnline={effectiveOnline}
@@ -639,33 +782,46 @@ export default function Home() {
         onDismissZone={() => setZoneWarning(null)}
         wakeLockWarning={wakeLockWarning}
         onDismissWakeLock={() => setWakeLockWarning(false)}
+        audioLocked={audioLocked}
+        onUnlockAudio={() => {
+          unlockAudio();
+          setAudioLocked(false);
+        }}
         T={T}
       />
 
       <header
-        className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 text-white px-5 pb-8 rounded-b-[2rem] relative overflow-hidden"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 3.5rem)" }}
+        className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 text-white px-4 sm:px-6 pb-6 sm:pb-8 rounded-b-[2rem] relative overflow-hidden"
+        style={{
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 3.5rem + ${topBannerOffsetPx}px)`,
+        }}
       >
         <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-green-500/[0.04]" />
         <div className="absolute bottom-10 -left-16 w-56 h-56 rounded-full bg-white/[0.02]" />
         <div className="absolute top-1/2 right-1/4 w-32 h-32 rounded-full bg-white/[0.015]" />
 
-        <div className="relative">
+        <div className="relative max-w-2xl mx-auto">
           <div className="flex items-start justify-between mb-5">
             <div>
               <p className="text-white/40 text-[11px] font-semibold tracking-widest uppercase flex items-center gap-1.5 mb-1">
                 <Clock size={11} /> <LiveClock /> · AJKMart Rider
               </p>
-              <h1 className="text-[22px] font-extrabold tracking-tight leading-tight">
+              <h1 className={`text-[20px] sm:text-[22px] font-extrabold tracking-tight leading-tight transition-colors ${newFlash ? "text-green-300" : "text-white"}`}>
                 {greeting}, {user?.name?.split(" ")[0] || "Rider"} 👋
               </h1>
+              {newFlash && (
+                <p className="text-green-400 text-[11px] font-bold mt-0.5 animate-pulse flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />
+                  New request available!
+                </p>
+              )}
             </div>
-            <Link href="/wallet" className="flex flex-col items-end" aria-label="View wallet balance">
-              <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.06] rounded-2xl px-3.5 py-2 text-right">
+            <Link href="/wallet" className="flex flex-col items-end flex-shrink-0" aria-label="View wallet balance">
+              <div className="bg-white/[0.06] backdrop-blur-sm border border-white/[0.06] rounded-2xl px-3 sm:px-3.5 py-2 text-right">
                 <p className="text-white/40 text-[9px] font-bold uppercase tracking-wider">
                   {T("wallet")}
                 </p>
-                <p className="font-extrabold text-lg leading-tight">
+                <p className="font-extrabold text-base sm:text-lg leading-tight">
                   {formatCurrency(Number(user?.walletBalance) || 0, currency)}
                 </p>
               </div>
@@ -701,7 +857,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="px-4 pt-4 space-y-3 relative z-10">
+      <main className="px-3 sm:px-4 pt-4 space-y-3 relative z-10 w-full max-w-2xl mx-auto pb-6">
         <InlineWarnings
           gpsWarning={gpsWarning}
           onDismissGps={() => setGpsWarning(null)}
@@ -736,80 +892,18 @@ export default function Home() {
             )}
 
             <div
-              className={`rounded-3xl shadow-sm overflow-hidden transition-all ${newFlash ? "ring-4 ring-green-400 ring-offset-2" : ""}`}
+              className={`rounded-3xl shadow-sm overflow-hidden transition-all duration-300 ${newFlash ? "ring-4 ring-green-400 ring-offset-2 ring-offset-[#F5F6F8]" : ""}`}
             >
               <RequestListHeader totalRequests={totalRequests} T={T} />
-
-              {totalRequests === 0 ? (
-                <div className="bg-white p-10 text-center">
-                  <div className="w-16 h-16 bg-gray-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                    <Bike size={32} className="text-gray-300" />
-                  </div>
-                  <p className="text-gray-600 font-bold text-base">{T("noRequestsNow")}</p>
-                  <p className="text-gray-400 text-xs mt-1.5">{T("autoRefreshes")}</p>
-                  {dismissed.size > 0 && (
-                    <button
-                      onClick={() => {
-                        setDismissed(new Set());
-                        clearAllDismissed();
-                      }}
-                      className="mt-4 text-xs text-gray-900 font-bold bg-gray-100 border border-gray-200 px-4 py-2 rounded-full inline-flex items-center gap-1.5 hover:bg-gray-200 transition-colors"
-                      aria-label={`Show ${dismissed.size} hidden requests`}
-                    >
-                      <Eye size={12} /> Show {dismissed.size} hidden request
-                      {dismissed.size > 1 ? "s" : ""}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="bg-white divide-y divide-gray-100">
-                  {orders.map((o: any) => (
-                    <OrderRequestCard
-                      key={o.id}
-                      order={o}
-                      earnings={getDeliveryEarn(o.type)}
-                      currency={currency}
-                      onAccept={(id) => acceptOrderMut.mutate(id)}
-                      onReject={(id) => rejectOrderMut.mutate(id)}
-                      onDismiss={dismiss}
-                      acceptPending={acceptOrderMut.isPending}
-                      rejectPending={rejectOrderMut.isPending}
-                      anyAcceptPending={acceptRideMut.isPending}
-                      T={T}
-                    />
-                  ))}
-
-                  {rides.map((r: any) => (
-                    <RideRequestCard
-                      key={r.id}
-                      ride={r}
-                      userId={user?.id || ""}
-                      isRestricted={!!user?.isRestricted}
-                      config={config}
-                      currency={currency}
-                      onAccept={(id) => acceptRideMut.mutate(id)}
-                      onCounter={(id, fare) => counterRideMut.mutate({ id, counterFare: fare })}
-                      onRejectOffer={(id) => rejectOfferMut.mutate(id)}
-                      onIgnore={(id) => ignoreRideMut.mutate(id)}
-                      onDismiss={dismiss}
-                      acceptPending={acceptRideMut.isPending}
-                      counterPending={counterRideMut.isPending}
-                      rejectOfferPending={rejectOfferMut.isPending}
-                      ignorePending={ignoreRideMut.isPending}
-                      anyAcceptPending={acceptOrderMut.isPending}
-                      T={T}
-                    />
-                  ))}
-                </div>
-              )}
+              {renderRequestList()}
             </div>
           </>
         ) : (
-          <div className="bg-white rounded-3xl shadow-sm p-10 text-center border border-gray-100 animate-[slideUp_0.3s_ease-out]">
-            <div className="w-20 h-20 bg-gray-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
-              <Wifi size={36} className="text-gray-300" />
+          <div className="bg-white rounded-3xl shadow-sm p-8 sm:p-10 text-center border border-gray-100 animate-[slideUp_0.3s_ease-out]">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
+              <Wifi size={32} className="text-gray-300" />
             </div>
-            <p className="text-gray-700 font-extrabold text-lg tracking-tight">You are Offline</p>
+            <p className="text-gray-700 font-extrabold text-base sm:text-lg tracking-tight">You are Offline</p>
             <p className="text-gray-400 text-sm mt-1.5">
               Toggle the switch above to start accepting orders
             </p>

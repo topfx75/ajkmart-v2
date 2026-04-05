@@ -9,7 +9,13 @@ import {
   ArrowUpRight,
   XCircle,
   SkipForward,
+  Volume2,
 } from "lucide-react";
+
+/* ── Banner height constants — keep in sync with the CSS values below ──────
+   Each banner is ~28 px tall (py-1.5 + text-xs = ~28 px). We stack them
+   vertically so they never overlap each other or the page header.          */
+const BANNER_H = 28; /* px — height of each top fixed banner               */
 
 interface FixedBannersProps {
   socketConnected: boolean;
@@ -18,6 +24,8 @@ interface FixedBannersProps {
   onDismissZone: () => void;
   wakeLockWarning: boolean;
   onDismissWakeLock: () => void;
+  audioLocked: boolean;
+  onUnlockAudio: () => void;
   T: (key: string) => string;
 }
 
@@ -28,34 +36,62 @@ export function FixedBanners({
   onDismissZone,
   wakeLockWarning,
   onDismissWakeLock,
+  audioLocked,
+  onUnlockAudio,
   T,
 }: FixedBannersProps) {
+  /* Build the ordered list of active top banners so we can stack them
+     without overlap — each one is offset by the cumulative height of those
+     above it. */
+  const showConnection = !socketConnected && effectiveOnline;
+  const showZone       = !!zoneWarning && effectiveOnline;
+  const showAudio      = audioLocked && effectiveOnline;
+
+  /* Safe-area base padding */
+  const safeTop = "env(safe-area-inset-top, 0px)";
+
+  /* Stack positions (top offset for each banner) */
+  let bannerIdx = 0;
+  const connectionTop = showConnection ? bannerIdx++ : -1;
+  const zoneTop       = showZone       ? bannerIdx++ : -1;
+  const audioTop      = showAudio      ? bannerIdx++ : -1;
+
+  /* Number of top banners currently visible — used to position the bottom WakeLock toast */
+  const totalTopBanners = bannerIdx;
+
   return (
     <>
-      {!socketConnected && effectiveOnline && (
+      {/* ── Connection lost banner ── */}
+      {showConnection && (
         <div
-          className="fixed top-0 left-0 right-0 z-40 bg-red-600 text-white text-xs font-bold text-center py-1.5 flex items-center justify-center gap-1.5 shadow-lg animate-pulse"
-          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 6px)" }}
+          className="fixed left-0 right-0 z-[50] bg-red-600 text-white text-xs font-bold text-center flex items-center justify-center gap-1.5 shadow-lg animate-pulse"
+          style={{
+            top: `calc(${safeTop} + ${connectionTop * BANNER_H}px)`,
+            height: BANNER_H,
+          }}
           role="alert"
+          aria-live="assertive"
         >
           <WifiOff size={13} /> {T("connectionLost")}
         </div>
       )}
 
-      {zoneWarning && effectiveOnline && (
+      {/* ── Zone warning banner ── */}
+      {showZone && (
         <div
-          className="fixed top-0 left-0 right-0 z-[39] bg-amber-500 text-white text-xs font-bold text-center py-1.5 flex items-center justify-center gap-1.5 shadow-lg"
+          className="fixed left-0 right-0 z-[49] bg-amber-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg px-3"
           style={{
-            paddingTop: !socketConnected
-              ? "calc(env(safe-area-inset-top, 0px) + 30px)"
-              : "calc(env(safe-area-inset-top, 0px) + 6px)",
+            top: `calc(${safeTop} + ${zoneTop * BANNER_H}px)`,
+            height: BANNER_H,
           }}
           role="alert"
+          aria-live="polite"
         >
-          <MapPin size={13} /> {zoneWarning}
+          <MapPin size={13} className="flex-shrink-0" />
+          <span className="truncate">{zoneWarning}</span>
           <button
             onClick={onDismissZone}
-            className="ml-2 bg-white/20 rounded-full p-0.5"
+            className="ml-1 bg-white/20 rounded-full p-0.5 flex-shrink-0"
             aria-label="Dismiss zone warning"
           >
             <X size={11} />
@@ -63,9 +99,27 @@ export function FixedBanners({
         </div>
       )}
 
+      {/* ── Audio locked banner ── */}
+      {showAudio && (
+        <button
+          onClick={onUnlockAudio}
+          className="fixed left-0 right-0 z-[48] bg-indigo-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg px-3 w-full"
+          style={{
+            top: `calc(${safeTop} + ${audioTop * BANNER_H}px)`,
+            height: BANNER_H,
+          }}
+          aria-label="Tap to enable ride alert sounds"
+        >
+          <Volume2 size={13} className="flex-shrink-0 animate-pulse" />
+          Tap to enable ride sounds
+        </button>
+      )}
+
+      {/* ── WakeLock toast (bottom, above nav) ── */}
       {wakeLockWarning && effectiveOnline && (
         <div
-          className="fixed bottom-20 left-4 right-4 z-[1050] bg-amber-600 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2.5 animate-[slideUp_0.3s_ease-out]"
+          className="fixed left-4 right-4 z-[1050] bg-amber-600 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2.5 animate-[slideUp_0.3s_ease-out]"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)" }}
           role="alert"
         >
           <AlertTriangle size={14} className="flex-shrink-0" />

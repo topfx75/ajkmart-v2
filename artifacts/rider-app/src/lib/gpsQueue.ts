@@ -128,7 +128,7 @@ export async function queueSize(): Promise<number> {
   } catch { return 0; }
 }
 
-/* ── Dismissed-request store (T5) ──────────────────────────────────────────────
+/* ── Dismissed-request store ──────────────────────────────────────────────────
    Persists dismissed request IDs across tab close with a 90-second TTL.
    On read, expired entries are purged automatically so the store stays small. */
 
@@ -171,17 +171,34 @@ export async function loadDismissed(): Promise<Set<string>> {
     const valid = entries.filter(e => e.expiresAt > now);
     const expired = entries.filter(e => e.expiresAt <= now);
     if (expired.length) {
-      const db2 = await openDB();
-      await new Promise<void>((resolve, reject) => {
-        const tx = db2.transaction(DISMISSED, "readwrite");
-        const store = tx.objectStore(DISMISSED);
-        expired.forEach(e => store.delete(e.id));
-        tx.oncomplete = () => { db2.close(); resolve(); };
-        tx.onerror    = () => { db2.close(); reject(tx.error); };
-      });
+      purgeExpiredDismissed(expired.map(e => e.id));
     }
     return new Set(valid.map(e => e.id));
   } catch { return new Set(); }
+}
+
+/** Purge expired entries from the dismissed store (fire-and-forget) */
+async function purgeExpiredDismissed(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(DISMISSED, "readwrite");
+      const store = tx.objectStore(DISMISSED);
+      ids.forEach(id => store.delete(id));
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror    = () => { db.close(); reject(tx.error); };
+    });
+  } catch {}
+}
+
+/**
+ * Sweep the dismissed store for expired entries and return the current valid set.
+ * Call this on tab re-focus (visibilitychange) so stale dismissals don't hide
+ * newly-arrived requests after the TTL has elapsed.
+ */
+export async function sweepAndLoadDismissed(): Promise<Set<string>> {
+  return loadDismissed();
 }
 
 export async function clearAllDismissed(): Promise<void> {
@@ -196,7 +213,7 @@ export async function clearAllDismissed(): Promise<void> {
   } catch {}
 }
 
-/* ── Drain handler (T7) ────────────────────────────────────────────────────────
+/* ── Drain handler ────────────────────────────────────────────────────────────
    The drain function calls the registered batch-upload callback.
    If the server responds with GPS_SPOOF_DETECTED (HTTP 422), those pings
    are dropped from the queue permanently — never re-queued.
@@ -227,12 +244,6 @@ async function drainQueue(): Promise<void> {
         await _drainFn(chunk);
         await clearQueue(chunk.map(p => p.id));
       } catch (rawErr: unknown) {
-        /* GPS_SPOOF_DETECTED: server rejected the pings as spoofed (422).
-           Drop them permanently — re-queuing would just fail again.
-           The error shape from apiFetch on a non-OK response is:
-             err.status     = HTTP status code
-             err.responseData = parsed JSON body (may contain .code and .data)
-           We use a typed guard to avoid `any` escapes. */
         const err = rawErr as Record<string, unknown>;
         const responseData = err.responseData as Record<string, unknown> | undefined;
         const responseDataNested = responseData?.data as Record<string, unknown> | undefined;
@@ -244,8 +255,6 @@ async function drainQueue(): Promise<void> {
         if (isSpoofRejection) {
           await clearQueue(chunk.map(p => p.id));
         }
-        /* Any other error: leave pings in the queue and stop draining.
-           The next online event will trigger a retry. */
         break;
       }
     }

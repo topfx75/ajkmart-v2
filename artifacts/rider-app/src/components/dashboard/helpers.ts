@@ -39,3 +39,65 @@ export const SVC_NAMES: Record<string, string> = {
 };
 
 export const ACCEPT_TIMEOUT_SEC = 90;
+
+/* ── Ride / order pricing fallbacks ──────────────────────────────────────────
+   All hardcoded pricing constants live here so they can be updated in one
+   place without hunting through individual card components. */
+export const PRICING_DEFAULTS = {
+  bikeMinFare:          50,
+  carMinFare:           80,
+  rickshawMinFare:      50,
+  dabaMinFare:          60,
+  counterMaxMultiplier: 3,
+  defaultDeliveryFee:   0,
+  defaultRiderEarningPct: 80,
+} as const;
+
+/* ── Haversine distance (km) — memoized ──────────────────────────────────────
+   Results are cached by a rounded-coordinate key to avoid redundant trig calls
+   on high-frequency GPS updates.  Rounding to 4 decimal places ≈ 11 m
+   resolution, which is more than sufficient for the filtering decisions made
+   in the GPS watch loop. */
+const _haversineCache = new Map<string, number>();
+const _MAX_CACHE_ENTRIES = 512;
+
+export function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const k1 = lat1.toFixed(4);
+  const k2 = lon1.toFixed(4);
+  const k3 = lat2.toFixed(4);
+  const k4 = lon2.toFixed(4);
+  const key = `${k1},${k2}|${k3},${k4}`;
+
+  if (_haversineCache.has(key)) return _haversineCache.get(key)!;
+
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  const result = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  if (_haversineCache.size >= _MAX_CACHE_ENTRIES) {
+    const firstKey = _haversineCache.keys().next().value;
+    if (firstKey !== undefined) _haversineCache.delete(firstKey);
+  }
+  _haversineCache.set(key, result);
+  return result;
+}
+
+export function haversineMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  return haversineKm(lat1, lon1, lat2, lon2) * 1000;
+}

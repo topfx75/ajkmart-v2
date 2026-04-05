@@ -149,7 +149,15 @@ interface ApiEnvelope<T = unknown> {
   code?: string;
 }
 
-export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudget = 2): Promise<any> {
+/** Typed shape returned by GET /rider/requests (includes serverTime envelope field) */
+export interface RiderRequestsResponse {
+  orders: any[];
+  rides: any[];
+  /** ISO timestamp from the server at response time — used to offset AcceptCountdown */
+  _serverTime: string | null;
+}
+
+export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudget = 2, _returnEnvelope = false): Promise<any> {
   const token = getToken();
   const isFormData = opts.body instanceof FormData;
   const headers: Record<string, string> = {
@@ -178,12 +186,12 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
   if (res.status === 401 && _retryBudget > 0) {
     const refreshResult = await attemptTokenRefresh();
     if (refreshResult === "refreshed") {
-      return apiFetch(path, opts, _retryBudget - 1);
+      return apiFetch(path, opts, _retryBudget - 1, _returnEnvelope);
     }
     if (refreshResult === "transient" && _retryBudget > 1) {
       /* Transient server error during refresh — wait briefly and retry once more */
       await new Promise((r) => setTimeout(r, 800));
-      return apiFetch(path, opts, _retryBudget - 1);
+      return apiFetch(path, opts, _retryBudget - 1, _returnEnvelope);
     }
     /* auth_failed or budget exhausted — session is definitely invalid */
     triggerLogout("session_expired");
@@ -219,6 +227,9 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
     throw error;
   }
   const json = await res.json() as ApiEnvelope;
+  /* When returnEnvelope is true, the caller receives the full JSON envelope
+     (e.g. to read top-level fields like serverTime alongside data). */
+  if (_returnEnvelope) return json;
   return json.data !== undefined ? json.data : json;
 }
 
@@ -299,7 +310,15 @@ export const api = {
   getMe:        (signal?: AbortSignal) => apiFetch("/rider/me", signal ? { signal } : {}),
   setOnline:    (isOnline: boolean) => apiFetch("/rider/online", { method: "PATCH", body: JSON.stringify({ isOnline }) }),
   updateProfile:(data: any) => apiFetch("/rider/profile", { method: "PATCH", body: JSON.stringify(data) }),
-  getRequests:  () => apiFetch("/rider/requests"),
+  getRequests:  (): Promise<RiderRequestsResponse> =>
+    apiFetch("/rider/requests", {}, 2, true).then((env: ApiEnvelope<{ orders: any[]; rides: any[] }> & { serverTime?: string }) => {
+      const payload = env.data ?? { orders: [], rides: [] };
+      return {
+        orders: payload.orders ?? [],
+        rides: payload.rides ?? [],
+        _serverTime: env.serverTime ?? null,
+      };
+    }),
   getActive:    () => apiFetch("/rider/active"),
   acceptOrder:  (id: string) => apiFetch(`/rider/orders/${id}/accept`, { method: "POST", body: "{}" }),
   rejectOrder:  (id: string, reason?: string) => apiFetch(`/rider/orders/${id}/reject`, { method: "POST", body: JSON.stringify({ reason: reason || "not_interested" }) }),
