@@ -118,7 +118,7 @@ router.get("/platform-settings", async (_req, res) => {
 /* Keys that must be valid finite numbers */
 const NUMERIC_SETTING_KEYS = new Set([
   "dispatch_min_radius_km", "dispatch_max_radius_km", "dispatch_avg_speed_kmh",
-  "ride_cancellation_fee", "ride_surge_multiplier", "ride_bargaining_min_pct",
+  "ride_cancellation_fee", "ride_cancel_grace_sec", "ride_surge_multiplier", "ride_bargaining_min_pct",
   "finance_gst_pct", "customer_signup_bonus",
   "payment_min_online", "payment_max_online",
   "security_login_max_attempts", "security_lockout_minutes", "security_otp_cooldown_sec",

@@ -75,6 +75,7 @@ router.get("/", async (req, res) => {
       surgeEnabled:       (s["ride_surge_enabled"]              ?? "off") === "on",
       surgeMultiplier:    parseFloat(s["ride_surge_multiplier"] ?? "1.5"),
       cancellationFee:    parseFloat(s["ride_cancellation_fee"] ?? "30"),
+      cancelGraceSec:     parseInt(s["ride_cancel_grace_sec"]   ?? "180", 10),
       riderEarningPct:    (Number(s["rider_keep_pct"]) || 80),
       bargainingEnabled:  (s["ride_bargaining_enabled"]         ?? "on")  === "on",
       bargainingMinPct:   parseFloat(s["ride_bargaining_min_pct"]    ?? "70"),

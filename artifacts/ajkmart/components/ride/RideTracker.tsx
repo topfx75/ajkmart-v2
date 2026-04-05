@@ -16,6 +16,7 @@ import {
   TextInput,
   View,
   useColorScheme,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
@@ -87,8 +88,11 @@ export function RideTracker({
 
   const { ride, setRide, connectionType, reconnect } = useRideStatus(rideId);
   const RIDE_STEPS = ["searching", "accepted", "arrived", "in_transit", "completed"];
+  const { width: screenWidth } = useWindowDimensions();
+  const mapHeight = Math.min(Math.max(screenWidth * 0.38, 160), 260);
   const { config } = usePlatformConfig();
   const sosEnabled = config.features?.sos !== false;
+  const CANCEL_GRACE_SEC = config.rides?.cancelGraceSec ?? 180;
   const [sosLoading, setSosLoading] = useState(false);
   const [sosSent, setSosSent] = useState(false);
 
@@ -108,7 +112,6 @@ export function RideTracker({
     cancelReason?: string;
   } | null>(null);
   const [acceptedAt, setAcceptedAt] = useState<number | null>(null);
-  const CANCEL_GRACE_SEC = 180;
 
   /* ── Trip OTP — shown to customer when rider has arrived ── */
   const [tripOtp, setTripOtp] = useState<string | null>(null);
@@ -2291,6 +2294,31 @@ export function RideTracker({
                 </View>
               </View>
 
+              {/* Map skeleton: show while waiting for first rider location */}
+              {(riderLivePos == null && ride.riderLat == null) &&
+                (status === "accepted" || status === "arrived" || status === "in_transit") && (
+                <View
+                  style={{
+                    width: "100%",
+                    height: mapHeight,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: C.border,
+                    backgroundColor: C.surfaceSecondary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  <ActivityIndicator size="small" color={C.primary} />
+                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: C.textMuted }}>
+                    {tl("waitingForDriverLocation")}
+                  </Text>
+                </View>
+              )}
+
               {(riderLivePos != null || ride.riderLat != null) &&
                 (status === "accepted" || status === "arrived" || status === "in_transit") &&
                 (() => {
@@ -2335,7 +2363,7 @@ export function RideTracker({
                       >
                         <Image
                           source={{ uri: mapImgUrl }}
-                          style={{ width: "100%", height: 190 }}
+                          style={{ width: "100%", height: mapHeight }}
                           resizeMode="cover"
                         />
                         {/* "Live Map" badge top-left */}

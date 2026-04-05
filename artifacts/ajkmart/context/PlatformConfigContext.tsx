@@ -81,6 +81,7 @@ export interface PlatformConfig {
     surgeEnabled: boolean;
     surgeMultiplier: number;
     cancellationFee: number;
+    cancelGraceSec: number;
     bargainingEnabled: boolean;
     bargainingMinPct: number;
     bargainingMaxRounds: number;
@@ -225,7 +226,7 @@ const DEFAULT: PlatformConfig = {
   rides: {
     bikeBaseFare: 15, bikePerKm: 8, bikeMinFare: 50,
     carBaseFare: 25, carPerKm: 12, carMinFare: 80,
-    surgeEnabled: false, surgeMultiplier: 1.5, cancellationFee: 30,
+    surgeEnabled: false, surgeMultiplier: 1.5, cancellationFee: 30, cancelGraceSec: 180,
     bargainingEnabled: true, bargainingMinPct: 70, bargainingMaxRounds: 3,
     riderEarningPct: 80,
   },
@@ -411,6 +412,7 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           surgeEnabled:        raw.rides?.surgeEnabled        ?? DEFAULT.rides.surgeEnabled,
           surgeMultiplier:     raw.rides?.surgeMultiplier     ?? DEFAULT.rides.surgeMultiplier,
           cancellationFee:     raw.rides?.cancellationFee     ?? DEFAULT.rides.cancellationFee,
+          cancelGraceSec:      raw.rides?.cancelGraceSec      ?? DEFAULT.rides.cancelGraceSec,
           bargainingEnabled:   raw.rides?.bargainingEnabled   ?? DEFAULT.rides.bargainingEnabled,
           bargainingMinPct:    raw.rides?.bargainingMinPct    ?? DEFAULT.rides.bargainingMinPct,
           bargainingMaxRounds: raw.rides?.bargainingMaxRounds ?? DEFAULT.rides.bargainingMaxRounds,

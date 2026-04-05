@@ -76,7 +76,11 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
       try {
         const d = await getRideApi(rideId);
         if (mountedRef.current) {
-          setRide(d);
+          /* Merge polled data with existing state rather than replacing it
+             entirely — this preserves any fields (e.g. tripOtp) that arrived
+             via a socket event and might not be re-sent in every poll response,
+             and prevents a "jumpy" UI reset when upgrading back to SSE. */
+          setRide((prev) => (prev ? { ...prev, ...d } : d));
           const status = d?.status;
           if (status === "completed" || status === "cancelled") {
             stopPolling();
@@ -151,7 +155,10 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
           try {
             const data = JSON.parse(line.slice(5).trim()) as Ride;
             if (!mountedRef.current) return;
-            setRide(data);
+            /* Merge SSE payload with previous state so that fields delivered via
+               socket events (e.g. tripOtp set by ride:otp) are not lost when
+               the next SSE push omits them. */
+            setRide((prev) => (prev ? { ...prev, ...data } : data));
             if (data?.status === "completed" || data?.status === "cancelled") {
               /* Terminal state — close SSE cleanly and stop polling. */
               reader.releaseLock();

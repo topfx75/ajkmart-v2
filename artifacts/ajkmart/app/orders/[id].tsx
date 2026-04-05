@@ -49,6 +49,7 @@ export default function OrderDetailScreen() {
   /* Responsive breakpoints */
   const isTablet = Platform.OS === "web" && screenWidth >= 768;
   const isWide   = Platform.OS === "web" && screenWidth >= 1080;
+  const mapHeight = Math.min(Math.max(screenWidth * 0.34, 140), 220);
   const { id: routeId, type, action } = useLocalSearchParams<{ id: string; type?: string; action?: string }>();
   const orderId = routeId;
   const isParcel = type === "parcel";
@@ -487,10 +488,27 @@ export default function OrderDetailScreen() {
             {mapUrl ? (
               <Image
                 source={{ uri: mapUrl }}
-                style={{ width: "100%", height: 160 }}
+                style={{ width: "100%", height: mapHeight }}
                 resizeMode="cover"
               />
-            ) : null}
+            ) : trackFailed ? (
+              /* Tracking failed — render a fixed-height placeholder so the card
+                 never collapses to a blank gap. Pairs with the amber warning above. */
+              <View style={{ width: "100%", height: mapHeight, alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.surfaceSecondary }}>
+                <Ionicons name="map-outline" size={28} color={C.textMuted} />
+                <Text style={{ ...Typ.caption, color: C.textMuted, textAlign: "center", paddingHorizontal: 16 }}>
+                  Map unavailable — your order is still on the way
+                </Text>
+              </View>
+            ) : (
+              /* No location yet — show a loading skeleton */
+              <View style={{ width: "100%", height: mapHeight, alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.surfaceSecondary }}>
+                <ActivityIndicator size="small" color={C.emerald} />
+                <Text style={{ ...Typ.caption, color: C.textMuted }}>
+                  {T("waitingForDriverLocation" as TranslationKey)}
+                </Text>
+              </View>
+            )}
             <View style={{ padding: 14 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: riderLat ? 10 : 0 }}>
                 <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: C.emerald, alignItems: "center", justifyContent: "center" }}>

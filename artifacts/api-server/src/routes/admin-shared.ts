@@ -69,6 +69,7 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "ride_surge_enabled",          value: "off", label: "Enable Surge Pricing",                    category: "rides" },
   { key: "ride_surge_multiplier",       value: "1.5", label: "Surge Multiplier",                        category: "rides" },
   { key: "ride_cancellation_fee",       value: "30",  label: "Cancellation Fee after Acceptance (Rs.)",  category: "rides" },
+  { key: "ride_cancel_grace_sec",       value: "180", label: "Free-Cancel Grace Period (seconds)",        category: "rides" },
   { key: "ride_bargaining_enabled",     value: "on",  label: "Enable Price Bargaining",                  category: "rides" },
   { key: "ride_bargaining_min_pct",     value: "70",  label: "Minimum Offer % of Platform Fare",         category: "rides" },
   { key: "ride_bargaining_max_rounds",  value: "3",   label: "Max Bargaining Rounds",                    category: "rides" },
