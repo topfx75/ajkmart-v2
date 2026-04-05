@@ -287,6 +287,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     /* FIX 4 + FIX 8: Use doLogoutRef so we always call the latest doLogout, and await it */
     setOnUnauthorized(async (statusCode?: number, errorMsg?: string) => {
       if (statusCode === 403) {
+        /* wallet_frozen is a wallet-specific restriction — NOT account suspension.
+           Let the wallet screen handle it locally; do not show the suspension screen. */
+        if (errorMsg === "wallet_frozen") return;
         setIsSuspended(true);
         setSuspendedMessage(errorMsg || "Your account has been suspended. Contact support.");
         return;

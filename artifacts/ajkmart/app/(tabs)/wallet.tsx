@@ -167,7 +167,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
       const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
         if (data.error === "wallet_frozen") { onFrozen?.(); onClose(); return; }
-        setErr(data.error || "Request failed");
+        setErr(data.message || data.error || "Request failed");
         setSubmitting(false); return;
       }
       setStep("done");
@@ -419,7 +419,7 @@ function DepositModal({ onClose, onSuccess, onFrozen, token, minTopup, maxTopup 
       const data = unwrapApiResponse(await res.json());
       if (!res.ok) {
         if (data.error === "wallet_frozen") { onFrozen?.(); }
-        setErr(data.error === "wallet_frozen" ? data.message : (data.error || "Request failed"));
+        setErr(data.error === "wallet_frozen" ? data.message : (data.message || data.error || "Request failed"));
         setSubmitting(false); return;
       }
       const newSet = new Set(submittedTxIds).add(normalizedTxId);

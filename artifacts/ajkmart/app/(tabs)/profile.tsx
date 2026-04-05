@@ -170,7 +170,10 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ name: name.trim(), email: email.trim(), cnic: cnic.trim(), city: city.trim() }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || "Update failed");
+      }
       const data = unwrapApiResponse(await res.json());
       updateUser({
         name: data.name ?? name.trim(),
@@ -187,7 +190,7 @@ function EditProfileModal({ visible, onClose }: { visible: boolean; onClose: () 
       setPendingAsset(null);
       onClose();
       showToast("Profile updated!", "success");
-    } catch { showToast("Update failed. Please try again.", "error"); }
+    } catch (e: any) { showToast(e.message || "Update failed. Please try again.", "error"); }
     setSaving(false);
   };
 
@@ -475,10 +478,11 @@ function DeleteAccountRow({ token }: { token?: string }) {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        body: JSON.stringify({ confirmation: "DELETE" }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Could not delete account");
+        throw new Error(data.message || data.error || "Could not delete account");
       }
       showToast("Account deleted successfully", "success");
       await logout();
@@ -681,7 +685,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
     try {
       const res = await fetch(`${API}/auth/2fa/setup`, { headers: authHdrs });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.message || data.error || "2FA setup failed");
       setTwoFASecret(data.secret); setTwoFAUri(data.uri); setTwoFAQR(data.qrDataUrl ?? "");
       setShow2FASetup(true);
     } catch (e: any) { showToast(e.message || "2FA setup failed", "error"); }
@@ -697,7 +701,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
         body: JSON.stringify({ code: twoFACode }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.message || data.error || "Verification failed");
       setBackupCodes(data.backupCodes || []);
       updateUser({ totpEnabled: true });
       showToast("2FA enabled successfully!", "success");
@@ -714,7 +718,7 @@ function PrivacyModal({ visible, userId, token, onClose }: { visible: boolean; u
         body: JSON.stringify({ code: disableCode }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.message || data.error || "Failed to disable 2FA");
       updateUser({ totpEnabled: false });
       setShowDisable2FA(false); setDisableCode(""); setDisableTwoFAError("");
       showToast("2FA disabled", "success");
@@ -1108,10 +1112,14 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
     setSaving(true);
     const opt = LABEL_OPTS.find(o => o.label === label) ?? LABEL_OPTS[0];
     try {
-      await fetch(`${API}/addresses`, { method: "POST", headers: { "Content-Type": "application/json", ...authHdrs }, body: JSON.stringify({ label, address: addr.trim(), city, icon: opt.icon, isDefault: list.length === 0 }) });
+      const res = await fetch(`${API}/addresses`, { method: "POST", headers: { "Content-Type": "application/json", ...authHdrs }, body: JSON.stringify({ label, address: addr.trim(), city, icon: opt.icon, isDefault: list.length === 0 }) });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error((errBody as any).message || (errBody as any).error || "Could not save address");
+      }
       setAddr(""); setCity("Muzaffarabad"); setShowAdd(false); await load();
       showToast("Address saved!", "success");
-    } catch { showToast("Could not save address", "error"); }
+    } catch (e: any) { showToast(e.message || "Could not save address", "error"); }
     setSaving(false);
   };
   const del = async (id: string) => {
@@ -1139,11 +1147,14 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
         headers: { "Content-Type": "application/json", ...authHdrs },
         body: JSON.stringify({ label: editLabel, address: editAddr.trim(), city: editCity, icon: opt?.icon }),
       });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const errBody = await r.json().catch(() => ({}));
+        throw new Error((errBody as any).message || (errBody as any).error || "Could not update address");
+      }
       setList(p => p.map(a => a.id === editId ? { ...a, label: editLabel, address: editAddr.trim(), city: editCity, icon: opt?.icon } : a));
       setEditId(null);
       showToast("Address updated!", "success");
-    } catch { showToast("Could not update address", "error"); }
+    } catch (e: any) { showToast(e.message || "Could not update address", "error"); }
     setEditSaving(false);
   };
 
@@ -1152,10 +1163,13 @@ function AddressesModal({ visible, userId, token, onClose }: { visible: boolean;
     setSettingDefault(id);
     try {
       const r = await fetch(`${API}/addresses/${id}/set-default`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHdrs } });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const errBody = await r.json().catch(() => ({}));
+        throw new Error((errBody as any).message || (errBody as any).error || "Could not set default");
+      }
       setList(p => p.map(a => ({ ...a, isDefault: a.id === id })));
       showToast("Default address set!", "success");
-    } catch { showToast("Could not set default", "error"); }
+    } catch (e: any) { showToast(e.message || "Could not set default", "error"); }
     setSettingDefault(null);
   };
 
