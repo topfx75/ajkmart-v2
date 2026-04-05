@@ -345,23 +345,25 @@ export default function OrderDetailScreen() {
 
   const mapUrl = useMemo(() => {
     if (riderLat === null || riderLng === null) return null;
+    const destLat = isRide ? order?.dropLat : order?.deliveryLat;
+    const destLng = isRide ? order?.dropLng : order?.deliveryLng;
     return staticMapUrl(
       [
         { lat: riderLat, lng: riderLng, color: "blue" },
-        ...(order?.deliveryLat && order?.deliveryLng
-          ? [{ lat: Number(order.deliveryLat), lng: Number(order.deliveryLng), color: "red" }]
+        ...(destLat && destLng
+          ? [{ lat: Number(destLat), lng: Number(destLng), color: "red" }]
           : []),
       ],
       { width: 600, height: 180, zoom: 14 },
     );
-  }, [riderLat, riderLng, order?.deliveryLat, order?.deliveryLng]);
+  }, [riderLat, riderLng, order?.deliveryLat, order?.deliveryLng, order?.dropLat, order?.dropLng, isRide]);
 
   if (loading) {
     return (
       <View style={[s.root, { paddingTop: topPad }]}>
         <View style={s.loadingWrap}>
           <ActivityIndicator color={C.primary} size="large" />
-          <Text style={s.loadingText}>{isParcel ? "Loading parcel..." : "Loading order..."}</Text>
+          <Text style={s.loadingText}>{isParcel ? T("loadingParcel") : isRide ? T("loadingRide") : T("loadingOrder")}</Text>
         </View>
       </View>
     );
@@ -374,18 +376,18 @@ export default function OrderDetailScreen() {
           <TouchableOpacity activeOpacity={0.7} onPress={goBack} style={s.backBtn}>
             <Ionicons name="chevron-back" size={20} color={C.text} />
           </TouchableOpacity>
-          <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : isRide ? "Ride Details" : "Order Details"}</Text>
+          <Text style={s.headerTitle}>{isParcel ? T("parcelDetails") : isRide ? T("rideDetails") : T("orderDetails")}</Text>
           <View style={{ width: 36 }} />
         </View>
         <View style={s.loadingWrap}>
           <Ionicons name="alert-circle-outline" size={48} color={C.textMuted} />
-          <Text style={s.loadingText}>{isParcel ? "Parcel not found" : isRide ? "Ride not found" : "Order not found"}</Text>
-          <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginTop: 4 }}>This order may have been removed or you may not have access.</Text>
+          <Text style={s.loadingText}>{isParcel ? T("parcelNotFound") : isRide ? T("rideNotFound") : T("orderNotFound")}</Text>
+          <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted, marginTop: 4 }}>{T("orderNotFoundDesc" as TranslationKey)}</Text>
           <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.replace("/(tabs)")}
             style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: C.primary, borderRadius: 14 }}
           >
-            <Text style={{ ...Typ.bodySemiBold, color: C.textInverse }}>Go to Home</Text>
+            <Text style={{ ...Typ.bodySemiBold, color: C.textInverse }}>{T("goToHome" as TranslationKey)}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -451,7 +453,7 @@ export default function OrderDetailScreen() {
         <TouchableOpacity activeOpacity={0.7} onPress={goBack} style={s.backBtn}>
           <Ionicons name="chevron-back" size={20} color={C.text} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>{isParcel ? "Parcel Details" : isRide ? "Ride Details" : "Order Details"}</Text>
+        <Text style={s.headerTitle}>{isParcel ? T("parcelDetails") : isRide ? T("rideDetails") : T("orderDetails")}</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -496,10 +498,10 @@ export default function OrderDetailScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ ...Typ.body, fontFamily: Font.bold, color: C.emeraldDeep }}>
-                    {order.status === "in_transit" ? "In Transit" : "On the Way to You"}
+                    {order.status === "in_transit" ? T("inTransit") : T("deliveryOnWay" as TranslationKey)}
                   </Text>
                   <Text style={{ ...Typ.caption, color: C.emeraldDark, marginTop: 2 }}>
-                    {etaMinutes !== null ? `ETA: ~${etaMinutes} min` : "Your delivery is heading your way"}
+                    {etaMinutes !== null ? `ETA: ~${etaMinutes} ${T("etaMin" as TranslationKey)}` : T("deliveryHeading" as TranslationKey)}
                   </Text>
                 </View>
                 <View style={{ backgroundColor: C.emerald, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
@@ -532,7 +534,7 @@ export default function OrderDetailScreen() {
 
         {isActive && stepIdx >= 0 && (
           <View style={s.stepperCard}>
-            <Text style={s.sectionTitle}>Order Progress</Text>
+            <Text style={s.sectionTitle}>{isRide ? T("rideProgressLabel") : T("orderProgressLabel")}</Text>
             <View style={s.stepperRow}>
               {activeSteps.map((step, i) => {
                 const done = stepIdx >= i;
@@ -626,7 +628,7 @@ export default function OrderDetailScreen() {
               ) : (
                 <View style={[s.typeChip, { backgroundColor: isFood ? C.amberSoft : C.blueSoft }]}>
                   <Ionicons name={isFood ? "restaurant-outline" : "storefront-outline"} size={13} color={isFood ? C.amber : C.brandBlue} />
-                  <Text style={[s.typeChipText, { color: isFood ? C.amber : C.brandBlue }]}>{isFood ? "Food" : "Mart"}</Text>
+                  <Text style={[s.typeChipText, { color: isFood ? C.amber : C.brandBlue }]}>{isFood ? T("food" as TranslationKey) : T("mart" as TranslationKey)}</Text>
                 </View>
               )}
               {order.vendorName && <Text style={s.vendorName}>{order.vendorName}</Text>}
@@ -659,7 +661,7 @@ export default function OrderDetailScreen() {
 
         {!isRide && order.deliveryAddress && (
           <View style={s.card}>
-            <Text style={s.sectionTitle}>Delivery Address</Text>
+            <Text style={s.sectionTitle}>{T("deliveryAddress")}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: C.blueSoft, alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="location-outline" size={18} color={C.primary} />
@@ -671,7 +673,7 @@ export default function OrderDetailScreen() {
 
         {order.riderName && (
           <View style={s.card}>
-            <Text style={s.sectionTitle}>{isRide ? "Your Driver" : "Delivery Rider"}</Text>
+            <Text style={s.sectionTitle}>{isRide ? T("yourDriver") : T("deliveryRider")}</Text>
             <View style={s.riderRow}>
               <View style={s.riderAvatar}>
                 <Text style={s.riderInitial}>{order.riderName.charAt(0).toUpperCase()}</Text>
@@ -708,12 +710,12 @@ export default function OrderDetailScreen() {
             <View style={{ flex: 1 }}>
               <Text style={s.paymentText}>
                 {order.paymentMethod === "wallet"
-                  ? "Wallet"
+                  ? T("paymentWallet" as TranslationKey)
                   : order.paymentMethod === "jazzcash"
-                  ? "JazzCash"
+                  ? T("paymentJazzCash" as TranslationKey)
                   : order.paymentMethod === "easypaisa"
-                  ? "EasyPaisa"
-                  : "Cash on Delivery"}
+                  ? T("paymentEasyPaisa" as TranslationKey)
+                  : T("cashOnDelivery")}
               </Text>
               {paymentStatus && paymentStatus !== "pending" && (
                 <Text style={{
@@ -722,9 +724,9 @@ export default function OrderDetailScreen() {
                     : paymentStatus === "failed" || paymentStatus === "expired" ? C.red
                     : C.textMuted,
                 }}>
-                  {paymentStatus === "completed" || paymentStatus === "success" ? "Payment confirmed"
-                    : paymentStatus === "failed" ? "Payment failed"
-                    : paymentStatus === "expired" ? "Payment expired"
+                  {paymentStatus === "completed" || paymentStatus === "success" ? T("paymentConfirmed" as TranslationKey)
+                    : paymentStatus === "failed" ? T("paymentFailedLabel" as TranslationKey)
+                    : paymentStatus === "expired" ? T("paymentExpiredLabel" as TranslationKey)
                     : `Status: ${paymentStatus}`}
                 </Text>
               )}
@@ -751,16 +753,16 @@ export default function OrderDetailScreen() {
             }}
           >
             <Ionicons name="close-circle-outline" size={16} color={C.red} />
-            <Text style={s.cancelOrderBtnText}>{isRide ? "Cancel Ride" : isParcelType ? "Cancel Booking" : "Cancel Order"}</Text>
+            <Text style={s.cancelOrderBtnText}>{isRide ? T("cancelRide") : isParcelType ? T("cancelBooking") : T("cancelOrder")}</Text>
           </TouchableOpacity>
         ) : isActive && !isDelivered && (
           <View style={s.cancelDisabledBtn}>
             <Ionicons name="close-circle-outline" size={16} color={C.textMuted} />
             <Text style={s.cancelDisabledBtnText}>
               {T("cancelOrder")} — {["preparing", "ready", "picked_up"].includes(order.status)
-                ? "Order is being prepared"
+                ? T("orderPreparing" as TranslationKey)
                 : order.status === "out_for_delivery" || order.status === "in_transit"
-                ? "Order is on the way"
+                ? T("deliveryOnWay" as TranslationKey)
                 : `Window passed (${cancelWindowMin}m)`}
             </Text>
           </View>
@@ -790,8 +792,8 @@ export default function OrderDetailScreen() {
             <Ionicons name="checkmark-circle" size={20} color={C.emerald} />
             <Text style={s.refundSuccessText}>
               {order.refundStatus === "approved" || order.refundStatus === "refunded"
-                ? "Refund has been processed."
-                : "Refund request submitted. You'll receive an update soon."}
+                ? T("refundProcessed" as TranslationKey)
+                : T("refundSubmitted" as TranslationKey)}
             </Text>
           </View>
         )}

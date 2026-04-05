@@ -20,6 +20,7 @@ import {
   type AdminRequest, auditLog,
 } from "../admin-shared.js";
 import { emitRideDispatchUpdate, getIO } from "../../lib/socketio.js";
+import { emitRideUpdate } from "../../lib/rideEvents.js";
 import { RIDE_VALID_STATUSES, getSocketRoom } from "@workspace/service-constants";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 
@@ -129,6 +130,7 @@ router.patch("/rides/:id/status", async (req, res) => {
     ioRide.to(getSocketRoom(ride.id, "ride")).emit("order:update", ridePayload);
     ioRide.to(`user:${ride.userId}`).emit("order:update", ridePayload);
   }
+  emitRideUpdate(ride.id);
 
   /* Audit: record terminal ride status transitions for compliance trail */
   if (["completed", "cancelled"].includes(status)) {

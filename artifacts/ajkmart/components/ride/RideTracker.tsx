@@ -86,7 +86,7 @@ export function RideTracker({
   const stepProgress = useRef(new Animated.Value(1)).current;
 
   const { ride, setRide, connectionType, reconnect } = useRideStatus(rideId);
-  const RIDE_STEPS = ["pending", "accepted", "in_transit", "arrived", "completed"];
+  const RIDE_STEPS = ["searching", "accepted", "arrived", "in_transit", "completed"];
   const { config } = usePlatformConfig();
   const sosEnabled = config.features?.sos !== false;
   const [sosLoading, setSosLoading] = useState(false);
@@ -118,13 +118,10 @@ export function RideTracker({
   const [riderLivePos, setRiderLivePos] = useState<{ lat: number; lng: number } | null>(null);
   const socketRef = useRef<{ disconnect: () => void } | null>(null);
 
+  const isSocketActive = ["accepted", "arrived", "in_transit"].includes(ride?.status ?? "");
+
   useEffect(() => {
-    /* Only the three valid ride statuses from the server state machine should
-       keep the socket open — "picked_up" and "in_progress" are delivery-order
-       statuses that can never appear on a ride record. */
-    const ACTIVE_STATUSES = ["accepted", "arrived", "in_transit"];
-    const isActive = ACTIVE_STATUSES.includes(ride?.status ?? "");
-    if (!isActive || !rideId) return;
+    if (!isSocketActive || !rideId) return;
 
     const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
     const socketUrl = `https://${domain}`;
@@ -140,7 +137,6 @@ export function RideTracker({
         extraHeaders: token ? { Authorization: `Bearer ${token}` } : {},
         transports: ["polling", "websocket"],
       });
-      /* Guard again: component may have unmounted while io() was connecting */
       if (unmounted) { socket.disconnect(); return; }
       socketRef.current = socket;
       socket.on("rider:location", (payload: { latitude: number; longitude: number; rideId?: string; orderId?: string }) => {
@@ -162,12 +158,12 @@ export function RideTracker({
       unmounted = true;
       if (socketRef.current) { socketRef.current.disconnect(); socketRef.current = null; }
     };
-    /* NOTE: ride?.status is intentionally NOT in the dep array.
-       Including it would tear down and re-create the socket on every status
-       transition (accepted → arrived → in_transit), causing a live-location gap
-       the customer sees as the rider pin freezing. The socket connection is keyed
-       only on the ride ID and auth token — status checks run inside the effect. */
-  }, [rideId, token]);
+    /* isSocketActive is a derived boolean — it only changes on non-active↔active
+       transitions (e.g. searching→accepted or in_transit→completed), NOT on
+       active→active transitions (accepted→arrived→in_transit). This avoids
+       tearing down the socket mid-ride while still connecting when the ride
+       first becomes active and disconnecting on terminal statuses. */
+  }, [rideId, token, isSocketActive]);
 
   useEffect(() => {
     AsyncStorage.getItem(`rated_ride_${rideId}`).then(val => {
@@ -305,7 +301,7 @@ export function RideTracker({
       setRide((r: any) => (r ? { ...r, status: "searching" } : r));
       setDispatchInfo(null);
     } catch {
-      showToast("Could not retry. Please try again.", "error");
+      showToast(tl("couldNotRetry"), "error");
     }
     setRetrying(false);
   };
@@ -350,8 +346,8 @@ export function RideTracker({
   const status = ride?.status ?? "searching";
   const rideType = ride?.type ?? initialType;
   const STEPS = RIDE_STEPS;
-  const LABELS = ["Pending", "Accepted", "En Route", "Arrived", "Completed"];
-  const stepIdx = STEPS.indexOf(status) !== -1 ? STEPS.indexOf(status) : 1;
+  const LABELS = [tl("stepSearching"), tl("stepAccepted"), tl("stepArrived"), tl("stepEnRoute"), tl("stepCompleted")];
+  const stepIdx = STEPS.indexOf(status) !== -1 ? STEPS.indexOf(status) : 0;
   const elapsedStr =
     elapsed < 60
       ? `${elapsed}s`
@@ -410,7 +406,7 @@ export function RideTracker({
               marginBottom: 8,
             }}
           >
-            No Drivers Available
+            {tl("noDriversAvailable")}
           </Text>
           <Text
             style={{
@@ -423,8 +419,8 @@ export function RideTracker({
             }}
           >
             {dispatchInfo?.notifiedRiders > 0
-              ? `We notified ${dispatchInfo.notifiedRiders} driver(s) but none accepted.`
-              : "No drivers are available right now. Try again shortly."}
+              ? tl("noDriversNotified").replace("{count}", String(dispatchInfo.notifiedRiders))
+              : tl("noDriversDefault")}
           </Text>
           {dispatchInfo && (
             <View
@@ -477,7 +473,7 @@ export function RideTracker({
                   color: C.primary,
                 }}
               >
-                Retry Search
+                {tl("retrySearch")}
               </Text>
             )}
           </TouchableOpacity>
@@ -506,7 +502,7 @@ export function RideTracker({
                 color: "#F59E0B",
               }}
             >
-              Increase Offer
+              {tl("increaseOffer")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity activeOpacity={0.7}
@@ -534,7 +530,7 @@ export function RideTracker({
                 color: "#818CF8",
               }}
             >
-              Try a Different Service
+              {tl("tryDifferentService")}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity activeOpacity={0.7}
@@ -556,11 +552,11 @@ export function RideTracker({
             ) : (
               <>
                 <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#EF4444" }}>
-                  Cancel Ride
+                  {tl("cancelRideLabel")}
                 </Text>
                 {inGracePeriod && graceSecondsLeft !== null && (
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "#16A34A", marginTop: 2 }}>
-                    Free cancel: {Math.floor(graceSecondsLeft / 60)}:{String(graceSecondsLeft % 60).padStart(2, "0")} left
+                    {tl("freeCancel")} {Math.floor(graceSecondsLeft / 60)}:{String(graceSecondsLeft % 60).padStart(2, "0")} left
                   </Text>
                 )}
               </>
@@ -585,7 +581,7 @@ export function RideTracker({
                 color: "rgba(255,255,255,0.5)",
               }}
             >
-              Go Back
+              {tl("goBack")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -667,7 +663,7 @@ export function RideTracker({
               marginBottom: 8,
             }}
           >
-            Finding Your Driver
+            {tl("findingYourDriver")}
           </Text>
           <Text
             style={{
@@ -678,7 +674,7 @@ export function RideTracker({
               lineHeight: 22,
             }}
           >
-            Searching nearby drivers... {elapsedStr}
+            {tl("searchingNearbyDrivers")} {elapsedStr}
           </Text>
 
           {connectionType === "sse" && (
@@ -709,7 +705,7 @@ export function RideTracker({
                   color: "#10B981",
                 }}
               >
-                Live updates
+                {tl("liveUpdates")}
               </Text>
             </View>
           )}
@@ -761,8 +757,8 @@ export function RideTracker({
             }}
           >
             {[
-              { val: "50+", lbl: "Active Drivers" },
-              { val: "2–5", lbl: "Min ETA" },
+              { val: "50+", lbl: tl("activeDrivers") },
+              { val: "2–5", lbl: tl("minEta") },
             ].map((s, i) => (
               <View
                 key={i}
@@ -826,7 +822,7 @@ export function RideTracker({
                   color: "#EF4444",
                 }}
               >
-                Cancel Ride
+                {tl("cancelRideLabel")}
               </Text>
             )}
           </TouchableOpacity>
@@ -891,7 +887,7 @@ export function RideTracker({
               color: C.text,
             }}
           >
-            Ride Cancelled
+            {tl("rideCancelledTitle")}
           </Text>
           <Text
             style={{
@@ -901,7 +897,7 @@ export function RideTracker({
               marginTop: 6,
             }}
           >
-            Your ride has been cancelled
+            {tl("rideCancelledSubtitle")}
           </Text>
         </View>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }}>
@@ -942,7 +938,7 @@ export function RideTracker({
                     color: "#991B1B",
                   }}
                 >
-                  Cancellation Fee Applied
+                  {tl("cancellationFeeApplied")}
                 </Text>
               </View>
               <Text
@@ -953,7 +949,7 @@ export function RideTracker({
                   lineHeight: 19,
                 }}
               >
-                Rs. {appliedFee} cancellation fee has been charged.
+                {tl("cancellationFeeMsg").replace("{amount}", String(appliedFee))}
               </Text>
             </View>
           )}
@@ -998,7 +994,7 @@ export function RideTracker({
                     color: "#065F46",
                   }}
                 >
-                  Refund Initiated
+                  {tl("refundInitiated")}
                 </Text>
               </View>
               <Text
@@ -1009,7 +1005,7 @@ export function RideTracker({
                   lineHeight: 19,
                 }}
               >
-                Rs. {Math.round((ride?.fare ?? 0) - appliedFee)} will be refunded to your wallet.
+                {tl("refundWalletMsg").replace("{amount}", String(Math.round(parseFloat(String(ride?.fare ?? 0)) - appliedFee)))}
               </Text>
             </View>
           )}
@@ -1031,7 +1027,7 @@ export function RideTracker({
                   marginBottom: 4,
                 }}
               >
-                Reason
+                {tl("reason")}
               </Text>
               <Text
                 style={{
@@ -1090,7 +1086,7 @@ export function RideTracker({
                   color: C.textSecondary,
                 }}
               >
-                Home
+                {tl("home")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.7}
@@ -1114,7 +1110,7 @@ export function RideTracker({
                   color: "#fff",
                 }}
               >
-                Book New Ride
+                {tl("bookNewRide")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1161,7 +1157,7 @@ export function RideTracker({
               color: C.text,
             }}
           >
-            Ride Complete!
+            {tl("rideCompleteExclaim")}
           </Text>
           <Text
             style={{
@@ -1171,7 +1167,7 @@ export function RideTracker({
               marginTop: 6,
             }}
           >
-            Rs. {ride?.fare} · {(ride?.distance ?? 0).toFixed(1)} km
+            Rs. {parseFloat(String(ride?.fare ?? 0)).toLocaleString()} · {parseFloat(String(ride?.distance ?? 0)).toFixed(1)} km
           </Text>
         </View>
 
@@ -1209,11 +1205,11 @@ export function RideTracker({
                   <Ionicons name="star" size={28} color="#F59E0B" />
                 </View>
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: "#fff" }}>
-                  Rate Your Driver
+                  {tl("rateYourDriver")}
                 </Text>
                 {ride.riderName ? (
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
-                    How was your ride with {ride.riderName}?
+                    {tl("howWasRide").replace("{name}", ride.riderName)}
                   </Text>
                 ) : null}
                 {/* Stars */}
@@ -1239,20 +1235,20 @@ export function RideTracker({
                     marginTop: 4,
                   }}>
                     <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: "#FCD34D" }}>
-                      {rating === 5 ? "Excellent!" : rating >= 4 ? "Great ride!" : rating >= 3 ? "It was okay" : "Could be better"}
+                      {rating === 5 ? tl("ratingExcellent") : rating >= 4 ? tl("ratingGreat") : rating >= 3 ? tl("ratingOkay") : tl("ratingCouldBeBetter")}
                     </Text>
                   </View>
                 )}
                 {rating === 0 && (
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: "rgba(255,255,255,0.35)", marginTop: 4 }}>
-                    Tap a star to rate
+                    {tl("tapStarToRate")}
                   </Text>
                 )}
               </LinearGradient>
               {/* Comment + submit */}
               <View style={{ backgroundColor: C.surface, padding: 20, gap: 12 }}>
                 <TextInput
-                  placeholder="Leave a comment (optional)..."
+                  placeholder={tl("leaveComment")}
                   value={ratingComment}
                   onChangeText={setRatingComment}
                   multiline
@@ -1282,7 +1278,7 @@ export function RideTracker({
                       setRatingDone(true);
                       AsyncStorage.setItem(`rated_ride_${rideId}`, "1").catch(() => {});
                     } catch {
-                      showToast("Could not submit rating. Please try again.", "error");
+                      showToast(tl("couldNotSubmitRating"), "error");
                     }
                   }}
                   disabled={rating === 0}
@@ -1303,7 +1299,7 @@ export function RideTracker({
                   >
                     <Ionicons name="paper-plane" size={16} color="#fff" />
                     <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>
-                      Submit Rating
+                      {tl("submitRating")}
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -1312,7 +1308,7 @@ export function RideTracker({
                   style={{ alignItems: "center", paddingVertical: 6 }}
                 >
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: C.textMuted }}>
-                    Skip for now
+                    {tl("skipForNow")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1332,7 +1328,7 @@ export function RideTracker({
             >
               <Ionicons name="checkmark-circle" size={20} color={C.emerald} />
               <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: C.emeraldDeep }}>
-                Thanks for rating!
+                {tl("thanksForRating")}
               </Text>
             </View>
           )}
@@ -1364,7 +1360,7 @@ export function RideTracker({
                   color: C.text,
                 }}
               >
-                Receipt
+                {tl("receiptTitle")}
               </Text>
               <Text
                 style={{
@@ -1379,25 +1375,25 @@ export function RideTracker({
             <View style={{ padding: 16, gap: 12 }}>
               {[
                 {
-                  lbl: "Vehicle",
+                  lbl: tl("vehicleLabel"),
                   val:
                     rideType === "bike"
-                      ? "Bike"
+                      ? tl("bike")
                       : rideType === "car"
-                        ? "Car"
+                        ? tl("car")
                         : rideType === "rickshaw"
-                          ? "Rickshaw"
+                          ? tl("rickshaw")
                           : rideType,
                 },
-                { lbl: tl("distance"), val: `${(ride?.distance ?? 0).toFixed(1)} km` },
+                { lbl: tl("distance"), val: `${parseFloat(String(ride?.distance ?? 0)).toFixed(1)} km` },
                 {
                   lbl: tl("payment"),
                   val:
-                    ride?.paymentMethod === "wallet" ? "Wallet" : ride?.paymentMethod === "jazzcash" ? "JazzCash" : ride?.paymentMethod === "easypaisa" ? "EasyPaisa" : "Cash",
+                    ride?.paymentMethod === "wallet" ? tl("paymentWallet") : ride?.paymentMethod === "jazzcash" ? tl("paymentJazzCash") : ride?.paymentMethod === "easypaisa" ? tl("paymentEasyPaisa") : tl("paymentCashLabel"),
                 },
                 {
                   lbl: tl("driver"),
-                  val: ride?.riderName || "AJK Driver",
+                  val: ride?.riderName || tl("ajkDriver"),
                 },
               ].map((r) => (
                 <View
@@ -1449,7 +1445,7 @@ export function RideTracker({
                     color: C.text,
                   }}
                 >
-                  Total
+                  {tl("total")}
                 </Text>
                 <Text
                   style={{
@@ -1458,7 +1454,7 @@ export function RideTracker({
                     color: C.success,
                   }}
                 >
-                  Rs. {ride?.fare}
+                  Rs. {parseFloat(String(ride?.fare ?? 0)).toLocaleString()}
                 </Text>
               </View>
             </View>
@@ -1488,7 +1484,7 @@ export function RideTracker({
                   color: C.text,
                 }}
               >
-                Route
+                {tl("routeLabel")}
               </Text>
               <TouchableOpacity activeOpacity={0.7}
                 onPress={openInMaps}
@@ -1554,7 +1550,7 @@ export function RideTracker({
                       color: C.textMuted,
                     }}
                   >
-                    Pickup
+                    {tl("pickup")}
                   </Text>
                   <Text
                     style={{
@@ -1575,7 +1571,7 @@ export function RideTracker({
                       color: C.textMuted,
                     }}
                   >
-                    Drop-off
+                    {tl("dropoff")}
                   </Text>
                   <Text
                     style={{
@@ -1616,7 +1612,7 @@ export function RideTracker({
                 color: C.emeraldDeep,
               }}
             >
-              Insured ride · Verified driver · GPS tracked
+              {tl("insuredRide")}
             </Text>
           </View>
 
@@ -1646,7 +1642,7 @@ export function RideTracker({
                   color: C.textSecondary,
                 }}
               >
-                Home
+                {tl("home")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.7}
@@ -1670,7 +1666,7 @@ export function RideTracker({
                   color: "#fff",
                 }}
               >
-                Book New Ride
+                {tl("bookNewRide")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1685,20 +1681,20 @@ export function RideTracker({
     accepted: {
       color: "#1A56DB",
       icon: "car",
-      title: "Driver Is Coming",
-      sub: "Your driver has accepted the ride",
+      title: tl("driverIsComing"),
+      sub: tl("driverAcceptedSub"),
     },
     arrived: {
       color: "#D97706",
       icon: "location",
-      title: "Driver Has Arrived",
-      sub: "Your driver is at the pickup point",
+      title: tl("driverHasArrived"),
+      sub: tl("driverAtPickup"),
     },
     in_transit: {
       color: "#059669",
       icon: "navigate",
-      title: "On Your Way",
-      sub: "Trip in progress",
+      title: tl("onYourWay"),
+      sub: tl("tripInProgress"),
     },
   };
   const hdrCfg = statusCfgs[status] ?? statusCfgs["accepted"]!;
@@ -1792,7 +1788,7 @@ export function RideTracker({
               opacity: livePulseOp,
             }} />
             <Text style={{ fontFamily: "Inter_700Bold", fontSize: 10, color: "#10B981", letterSpacing: 0.8 }}>
-              LIVE
+              {tl("liveLabel")}
             </Text>
           </View>
         </View>
@@ -1809,7 +1805,7 @@ export function RideTracker({
         }}>
           <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.4)" />
           <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-            Trip elapsed:
+            {tl("tripElapsed")}
           </Text>
           <Text style={{ fontFamily: "Inter_700Bold", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
             {elapsedStr}
@@ -1837,7 +1833,7 @@ export function RideTracker({
         >
           <Ionicons name="wifi-outline" size={15} color="#D97706" />
           <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#92400E", flex: 1 }}>
-            Live updates paused — tap to reconnect
+            {tl("liveUpdatesPaused")}
           </Text>
           <Ionicons name="refresh-outline" size={15} color="#D97706" />
         </TouchableOpacity>
@@ -1871,7 +1867,7 @@ export function RideTracker({
                   color: C.text,
                 }}
               >
-                Ride Progress
+                {tl("rideProgressLabel")}
               </Text>
               <View style={{
                 backgroundColor: `${hdrCfg.color}15`,
@@ -2016,7 +2012,7 @@ export function RideTracker({
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <Ionicons name="shield-checkmark-outline" size={24} color="#D97706" />
                 <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 14, color: "#92400E" }}>
-                  Generating Trip Security Code…
+                  {tl("securityCodeGenerating")}
                 </Text>
               </View>
               <View style={{ flexDirection: "row", gap: 10, justifyContent: "center" }}>
@@ -2035,7 +2031,7 @@ export function RideTracker({
                 ))}
               </View>
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#B45309", textAlign: "center" }}>
-                Your security code will appear here once ready
+                {tl("securityCodeReady")}
               </Text>
             </View>
           )}
@@ -2066,10 +2062,10 @@ export function RideTracker({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: "#92400E" }}>
-                    Trip Security Code
+                    {tl("tripSecurityCode")}
                   </Text>
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#B45309", marginTop: 1 }}>
-                    Share this with your driver to start the trip
+                    {tl("shareWithDriver")}
                   </Text>
                 </View>
               </View>
@@ -2125,7 +2121,7 @@ export function RideTracker({
                   color="#fff"
                 />
                 <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#fff" }}>
-                  {otpCopied ? "Copied!" : "Copy Code"}
+                  {otpCopied ? tl("copiedExclaim") : tl("copyCode")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2269,11 +2265,11 @@ export function RideTracker({
                     >
                       {
                         ({
-                          bike: "Bike",
-                          car: "Car",
-                          rickshaw: "Rickshaw",
-                          daba: "Daba",
-                          school_shift: "School",
+                          bike: tl("bike"),
+                          car: tl("car"),
+                          rickshaw: tl("rickshaw"),
+                          daba: tl("daba"),
+                          school_shift: tl("schoolShift"),
                         } as Record<string, string>)[rideType] ?? rideType
                       }
                     </Text>
@@ -2357,7 +2353,7 @@ export function RideTracker({
                         }}>
                           <Ionicons name="map" size={11} color="#fff" />
                           <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#fff" }}>
-                            Live Map
+                            {tl("liveMapLabel")}
                           </Text>
                         </View>
                         {/* Live/last known indicator top-right */}
@@ -2377,7 +2373,7 @@ export function RideTracker({
                         >
                           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#fff", opacity: isLive ? 1 : 0.6 }} />
                           <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: "#fff" }}>
-                            {isLive ? "LIVE" : "LAST KNOWN"}
+                            {isLive ? tl("liveLabel") : tl("lastKnownLabel")}
                           </Text>
                         </View>
                         {/* Refresh icon button — bottom-right */}
@@ -2431,15 +2427,15 @@ export function RideTracker({
                             }}
                           >
                             {nearby
-                              ? "Driver is nearby!"
-                              : `${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`} away`}
+                              ? tl("driverNearby")
+                              : `${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`} ${tl("awayLabel")}`}
                           </Text>
                           {isLive && (
                             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
                           )}
                           {stale && (
                             <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: C.textMuted }}>
-                              stale
+                              {tl("staleLabel")}
                             </Text>
                           )}
                         </View>
@@ -2566,7 +2562,7 @@ export function RideTracker({
                       </View>
                     </TouchableOpacity>
                     <Text style={{ fontFamily: "Inter_500Medium", fontSize: 11, color: sosSent ? C.textMuted : "#EF4444" }}>
-                      {sosSent ? "Sent" : "SOS"}
+                      {sosSent ? tl("sosSentShort") : "SOS"}
                     </Text>
                   </View>
                 )}
@@ -2592,7 +2588,7 @@ export function RideTracker({
                 color: C.text,
               }}
             >
-              Trip Details
+              {tl("tripDetailsLabel")}
             </Text>
             <View style={{ flexDirection: "row", gap: 12 }}>
               <View style={{ alignItems: "center", gap: 4 }}>
@@ -2630,7 +2626,7 @@ export function RideTracker({
                       color: C.textMuted,
                     }}
                   >
-                    Pickup
+                    {tl("pickup")}
                   </Text>
                   <Text
                     style={{
@@ -2651,7 +2647,7 @@ export function RideTracker({
                       color: C.textMuted,
                     }}
                   >
-                    Drop-off
+                    {tl("dropoff")}
                   </Text>
                   <Text
                     style={{
@@ -2682,7 +2678,7 @@ export function RideTracker({
                   color: C.textMuted,
                 }}
               >
-                Fare
+                {tl("fare")}
               </Text>
               <Text
                 style={{
@@ -2691,7 +2687,7 @@ export function RideTracker({
                   color: C.success,
                 }}
               >
-                Rs. {ride?.fare}
+                Rs. {parseFloat(String(ride?.fare ?? 0)).toLocaleString()}
               </Text>
             </View>
           </View>
@@ -2722,7 +2718,7 @@ export function RideTracker({
                 color: "#4285F4",
               }}
             >
-              Open in Google Maps
+              {tl("openInMaps")}
             </Text>
           </TouchableOpacity>
 
@@ -2754,12 +2750,12 @@ export function RideTracker({
                       color: C.red,
                     }}
                   >
-                    Cancel Ride
+                    {tl("cancelRideLabel")}
                   </Text>
                   {inGracePeriod && graceSecondsLeft !== null && (
                     <View style={{ backgroundColor: C.greenBg, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 }}>
                       <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: C.greenBright }}>
-                        Free · {Math.floor(graceSecondsLeft / 60)}:{String(graceSecondsLeft % 60).padStart(2, "0")}
+                        {tl("freeCancelShort")} · {Math.floor(graceSecondsLeft / 60)}:{String(graceSecondsLeft % 60).padStart(2, "0")}
                       </Text>
                     </View>
                   )}

@@ -241,13 +241,12 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
 
       <View style={styles.tapHint}>
         <Ionicons name="open-outline" size={11} color={C.textMuted} />
-        <Text style={styles.tapHintText}>Tap for details</Text>
+        <Text style={styles.tapHintText}>{T("tapForDetails")}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
-const RIDE_STEP_LABELS = ["Searching", "Accepted", "Arrived", "On Route", "Done"];
 
 function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }: {
   ride: any;
@@ -359,7 +358,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
         return (
           <View style={styles.fareBreakdownBar}>
             <View style={styles.fareRow}>
-              <Text style={styles.fareLabel}>Base Fare</Text>
+              <Text style={styles.fareLabel}>{T("baseFareLabel")}</Text>
               <Text style={styles.fareValue}>Rs. {baseFare.toLocaleString()}</Text>
             </View>
             <View style={styles.fareRow}>
@@ -367,7 +366,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
               <Text style={styles.fareValue}>{parseFloat(String(ride.distance)).toFixed(1)} km</Text>
             </View>
             <View style={styles.fareRow}>
-              <Text style={styles.fareLabel}>GST</Text>
+              <Text style={styles.fareLabel}>{T("gstLabel")}</Text>
               <Text style={styles.fareValue}>Rs. {gst.toLocaleString()}</Text>
             </View>
             <View style={[styles.fareRow, { borderTopWidth: 1, borderTopColor: C.borderLight, paddingTop: 6, marginTop: 2 }]}>
@@ -401,9 +400,9 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
       )}
 
       {reviews && isCompleted && !ride._reviewed && (
-        <TouchableOpacity activeOpacity={0.7} style={styles.rateBtn} onPress={() => onRate({ ...ride, _type: "ride" })} accessibilityRole="button" accessibilityLabel="Rate this ride">
+        <TouchableOpacity activeOpacity={0.7} style={styles.rateBtn} onPress={() => onRate({ ...ride, _type: "ride" })} accessibilityRole="button" accessibilityLabel={T("rateThisRide")}>
           <Ionicons name="star-outline" size={14} color={C.gold} />
-          <Text style={styles.rateBtnText}>Rate this ride</Text>
+          <Text style={styles.rateBtnText}>{T("rateThisRide")}</Text>
         </TouchableOpacity>
       )}
 
@@ -429,7 +428,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
           accessibilityLabel="Book this ride again"
         >
           <Ionicons name="repeat-outline" size={14} color={C.primary} />
-          <Text style={styles.bookAgainBtnText}>Book Again</Text>
+          <Text style={styles.bookAgainBtnText}>{T("bookAgain")}</Text>
         </TouchableOpacity>
       )}
 
@@ -453,7 +452,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
                         : <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: C.slate }} />}
                     </View>
                     <Text style={[styles.rideStepLabel, done && { color: C.text }, active && { fontFamily: Font.bold }]}>
-                      {RIDE_STEP_LABELS[i]}
+                      {[T("stepSearching"), T("stepAccepted"), T("stepArrived"), T("stepOnRoute"), T("stepDone")][i]}
                     </Text>
                   </View>
                   {!isLast && (
@@ -468,7 +467,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
 
       <View style={styles.tapHint}>
         <Ionicons name="open-outline" size={11} color={C.textMuted} />
-        <Text style={styles.tapHintText}>{isActive ? "Tap to track" : "Tap for details"}</Text>
+        <Text style={styles.tapHintText}>{isActive ? T("tapToTrack") : T("tapForDetails")}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -683,7 +682,7 @@ function ParcelCard({ booking, onCardPress }: { booking: any; onCardPress?: () =
 
       <View style={styles.tapHint}>
         <Ionicons name="open-outline" size={11} color={C.textMuted} />
-        <Text style={styles.tapHintText}>{isActive ? "Tap to track" : "Tap for details"}</Text>
+        <Text style={styles.tapHintText}>{isActive ? T("tapToTrack") : T("tapForDetails")}</Text>
       </View>
     </TouchableOpacity>
   );
