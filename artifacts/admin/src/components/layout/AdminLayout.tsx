@@ -582,6 +582,44 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             )}
 
 
+            {/* Language selector — desktop */}
+            <div className="relative hidden sm:block" ref={langRef}>
+              <button
+                onClick={() => setLangOpen(o => !o)}
+                disabled={langLoading}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all duration-150 hover:bg-slate-50"
+                style={{ borderColor: "rgba(0,0,0,0.08)", color: "#64748B" }}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                {currentLangLabel}
+                <ChevronDown className={`w-3 h-3 transition-transform ${langOpen ? "rotate-180" : ""}`} />
+              </button>
+              {langOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1.5 rounded-xl overflow-hidden z-50"
+                  style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 140 }}
+                >
+                  {LANGUAGE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setLanguage(opt.value as "en" | "ur"); setLangOpen(false); }}
+                      className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
+                      style={{
+                        fontWeight: language === opt.value ? 600 : 400,
+                        color: language === opt.value ? "#6366F1" : "#374151",
+                        background: language === opt.value ? "rgba(99,102,241,0.06)" : "transparent",
+                      }}
+                      onMouseEnter={e => { if (language !== opt.value) (e.currentTarget as HTMLElement).style.background = "#F8FAFC"; }}
+                      onMouseLeave={e => { if (language !== opt.value) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* User avatar + menu */}
             <div className="relative hidden sm:block" ref={userRef}>
               <button
