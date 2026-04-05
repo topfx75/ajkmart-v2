@@ -33,7 +33,7 @@ import { SkeletonBlock } from "@/components/ui/SkeletonBlock";
 import {
   useGetProduct, useGetProducts, getProductVariants, trackInteraction,
   addToWishlist, removeFromWishlist, checkWishlist,
-  getProductReviews, submitProductReview, uploadImage,
+  getProductReviews, checkCanReviewProduct, submitProductReview, uploadImage,
   type Product, type ProductReview,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -191,9 +191,11 @@ function WriteReviewModal({
       Alert.alert("Review Submitted", "Thank you! Your review has been submitted successfully.");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e || "Failed to submit review");
-      if (msg.includes("purchased")) {
-        setError("You can only review products you have purchased.");
-      } else if (msg.includes("Already reviewed")) {
+      const isApiErr = e && typeof e === "object" && "status" in e;
+      const status = isApiErr ? (e as { status: number }).status : 0;
+      if (status === 403 || msg.includes("purchased") || msg.includes("delivered") || msg.includes("خریدی")) {
+        setError("You can only review products you have purchased and received.");
+      } else if (status === 409 || msg.includes("Already reviewed") || msg.includes("پہلے سے")) {
         setError("You have already reviewed this product.");
       } else {
         setError(msg);
@@ -449,6 +451,13 @@ function ProductDetailScreenInner() {
     staleTime: 2 * 60 * 1000,
   });
 
+  const { data: reviewEligibility, refetch: refetchEligibility } = useQuery({
+    queryKey: ["can-review-product", id],
+    queryFn: () => checkCanReviewProduct(id || ""),
+    enabled: !!id && isLoggedIn,
+    staleTime: 60 * 1000,
+  });
+
   useEffect(() => {
     if (id) {
       trackInteraction({ productId: id, type: "view" }).catch(() => {});
@@ -531,6 +540,7 @@ function ProductDetailScreenInner() {
 
   const handleReviewSuccess = () => {
     refetchReviews();
+    refetchEligibility();
     refetch();
   };
 
@@ -841,13 +851,33 @@ function ProductDetailScreenInner() {
           <View style={styles.reviewsSection}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <Text style={styles.sectionTitle}>Ratings & Reviews</Text>
-              <TouchableOpacity activeOpacity={0.7}
-                onPress={() => isLoggedIn ? setShowWriteReview(true) : router.push("/auth")}
-                style={rs.writeBtn}
-              >
-                <Ionicons name="create-outline" size={14} color={C.primary} />
-                <Text style={rs.writeBtnTxt}>Write Review</Text>
-              </TouchableOpacity>
+              {!isLoggedIn ? (
+                <TouchableOpacity activeOpacity={0.7}
+                  onPress={() => router.push("/auth")}
+                  style={rs.writeBtn}
+                >
+                  <Ionicons name="create-outline" size={14} color={C.primary} />
+                  <Text style={rs.writeBtnTxt}>Write Review</Text>
+                </TouchableOpacity>
+              ) : reviewEligibility?.alreadyReviewed ? (
+                <View style={rs.reviewedHint}>
+                  <Ionicons name="checkmark-circle" size={14} color={C.emeraldDot} />
+                  <Text style={rs.reviewedHintTxt}>Reviewed</Text>
+                </View>
+              ) : reviewEligibility?.hasPurchased === false ? (
+                <View style={rs.purchaseHint}>
+                  <Ionicons name="bag-outline" size={13} color={C.textMuted} />
+                  <Text style={rs.purchaseHintTxt}>Buy & receive to review</Text>
+                </View>
+              ) : reviewEligibility?.canReview || !reviewEligibility ? (
+                <TouchableOpacity activeOpacity={0.7}
+                  onPress={() => setShowWriteReview(true)}
+                  style={rs.writeBtn}
+                >
+                  <Ionicons name="create-outline" size={14} color={C.primary} />
+                  <Text style={rs.writeBtnTxt}>Write Review</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {summary.total > 0 && (
@@ -985,6 +1015,10 @@ const rs = StyleSheet.create({
   fullScreenImg: { width: SCREEN_W, height: SCREEN_W },
   writeBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.primarySoft, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   writeBtnTxt: { fontFamily: Font.semiBold, fontSize: 12, color: C.primary },
+  reviewedHint: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#ecfdf5", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16 },
+  reviewedHintTxt: { fontFamily: Font.semiBold, fontSize: 11, color: "#059669" },
+  purchaseHint: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.surfaceSecondary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16 },
+  purchaseHintTxt: { fontFamily: Font.regular, fontSize: 11, color: C.textMuted },
   emptyReviews: { alignItems: "center", paddingVertical: 24, gap: 8 },
   emptyTitle: { fontFamily: Font.semiBold, fontSize: 15, color: C.text },
   emptySub: { fontFamily: Font.regular, fontSize: 13, color: C.textMuted },

@@ -770,8 +770,12 @@ function ReviewModal({ target, userId, apiBase, token, language, onClose, onDone
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const errStr = String(body["error"] || "");
+        const msgStr = String(body["message"] || "");
         if (body["expired"]) {
           setError(tDual("reviewWindowExpired", language));
+        } else if (res.status === 403 && (errStr.includes("delivered") || errStr.includes("completed") || msgStr.includes("ڈیلیور"))) {
+          setError(language === "ur" ? "صرف ڈیلیور شدہ آرڈرز کا جائزہ لیا جا سکتا ہے۔" : "You can only review orders that have been delivered.");
         } else {
           setError(tDual("reviewSubmitError", language));
         }

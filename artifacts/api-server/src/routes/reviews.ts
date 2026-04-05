@@ -175,6 +175,50 @@ router.get("/product/:productId/summary", async (req, res) => {
   sendSuccess(res, { average, total, distribution });
 });
 
+/* ── GET /reviews/can-review/:productId — check if user can review a product ── */
+router.get("/can-review/:productId", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const productId = req.params["productId"]!;
+
+  const [product] = await db
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(eq(productsTable.id, productId))
+    .limit(1);
+
+  if (!product) {
+    sendNotFound(res, "Product not found.", "پروڈکٹ نہیں ملی۔");
+    return;
+  }
+
+  const purchaseOrders = await db
+    .select({ id: ordersTable.id })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.userId, userId),
+        sql`${ordersTable.status} IN ('delivered', 'completed')`,
+        sql`EXISTS (
+          SELECT 1 FROM json_array_elements(${ordersTable.items}::json) elem
+          WHERE elem->>'productId' = ${productId}
+        )`
+      )
+    )
+    .limit(1);
+
+  const hasPurchased = purchaseOrders.length > 0;
+
+  const existing = await db
+    .select({ id: reviewsTable.id })
+    .from(reviewsTable)
+    .where(and(eq(reviewsTable.productId, productId), eq(reviewsTable.userId, userId), eq(reviewsTable.orderType, "product")))
+    .limit(1);
+
+  const alreadyReviewed = existing.length > 0;
+
+  sendSuccess(res, { canReview: hasPurchased && !alreadyReviewed, hasPurchased, alreadyReviewed });
+});
+
 /* ── POST /reviews — submit a review ─────────────────────────────────────── */
 router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
@@ -227,7 +271,7 @@ router.post("/", customerAuth, async (req, res) => {
 
   if (orderType === "ride") {
     const [rideRow] = await db
-      .select({ createdAt: ridesTable.createdAt, userId: ridesTable.userId, riderId: ridesTable.riderId })
+      .select({ createdAt: ridesTable.createdAt, userId: ridesTable.userId, riderId: ridesTable.riderId, status: ridesTable.status })
       .from(ridesTable)
       .where(eq(ridesTable.id, orderId))
       .limit(1);
@@ -240,7 +284,10 @@ router.post("/", customerAuth, async (req, res) => {
       sendForbidden(res, "You can only review your own rides.", "آپ صرف اپنی سواریوں کا جائزہ لے سکتے ہیں۔");
       return;
     }
-    /* Self-rating guard */
+    if (rideRow.status !== "completed") {
+      sendForbidden(res, "You can only review completed rides.", "آپ صرف مکمل شدہ سواریوں کا جائزہ لے سکتے ہیں۔");
+      return;
+    }
     if (rideRow.riderId && rideRow.riderId === userId) {
       sendForbidden(res, "You cannot rate yourself.", "آپ خود کو درجہ بندی نہیں دے سکتے۔");
       return;
@@ -254,7 +301,7 @@ router.post("/", customerAuth, async (req, res) => {
 
   } else if (orderType === "pharmacy") {
     const [row] = await db
-      .select({ createdAt: pharmacyOrdersTable.createdAt, userId: pharmacyOrdersTable.userId, riderId: pharmacyOrdersTable.riderId })
+      .select({ createdAt: pharmacyOrdersTable.createdAt, userId: pharmacyOrdersTable.userId, riderId: pharmacyOrdersTable.riderId, status: pharmacyOrdersTable.status })
       .from(pharmacyOrdersTable)
       .where(eq(pharmacyOrdersTable.id, orderId))
       .limit(1);
@@ -267,6 +314,10 @@ router.post("/", customerAuth, async (req, res) => {
       sendForbidden(res, "You can only review your own orders.", "آپ صرف اپنے آرڈرز کا جائزہ لے سکتے ہیں۔");
       return;
     }
+    if (row.status !== "delivered") {
+      sendForbidden(res, "You can only review delivered orders.", "آپ صرف ڈیلیور شدہ آرڈرز کا جائزہ لے سکتے ہیں۔");
+      return;
+    }
     const ageHours = (Date.now() - new Date(row.createdAt).getTime()) / (3_600_000);
     if (ageHours > ratingWindowHours) {
       sendValidationError(res, `Reviews can only be submitted within ${ratingWindowHours} hours of order completion.`);
@@ -276,7 +327,7 @@ router.post("/", customerAuth, async (req, res) => {
 
   } else if (orderType === "parcel") {
     const [row] = await db
-      .select({ createdAt: parcelBookingsTable.createdAt, userId: parcelBookingsTable.userId, riderId: parcelBookingsTable.riderId })
+      .select({ createdAt: parcelBookingsTable.createdAt, userId: parcelBookingsTable.userId, riderId: parcelBookingsTable.riderId, status: parcelBookingsTable.status })
       .from(parcelBookingsTable)
       .where(eq(parcelBookingsTable.id, orderId))
       .limit(1);
@@ -287,6 +338,10 @@ router.post("/", customerAuth, async (req, res) => {
     }
     if (row.userId !== userId) {
       sendForbidden(res, "You can only review your own bookings.", "آپ صرف اپنی بکنگ کا جائزہ لے سکتے ہیں۔");
+      return;
+    }
+    if (!["delivered", "completed"].includes(row.status)) {
+      sendForbidden(res, "You can only review delivered parcels.", "آپ صرف ڈیلیور شدہ پارسل کا جائزہ لے سکتے ہیں۔");
       return;
     }
     const ageHours = (Date.now() - new Date(row.createdAt).getTime()) / (3_600_000);
@@ -337,7 +392,7 @@ router.post("/", customerAuth, async (req, res) => {
   } else {
     /* Mart / food / general delivery — all in ordersTable */
     const [orderRow] = await db
-      .select({ createdAt: ordersTable.createdAt, userId: ordersTable.userId, vendorId: ordersTable.vendorId, riderId: ordersTable.riderId })
+      .select({ createdAt: ordersTable.createdAt, userId: ordersTable.userId, vendorId: ordersTable.vendorId, riderId: ordersTable.riderId, status: ordersTable.status })
       .from(ordersTable)
       .where(eq(ordersTable.id, orderId))
       .limit(1);
@@ -348,6 +403,10 @@ router.post("/", customerAuth, async (req, res) => {
     }
     if (orderRow.userId !== userId) {
       sendForbidden(res, "You can only review your own orders.", "آپ صرف اپنے آرڈرز کا جائزہ لے سکتے ہیں۔");
+      return;
+    }
+    if (!["delivered", "completed"].includes(orderRow.status)) {
+      sendForbidden(res, "You can only review orders that have been delivered.", "آپ صرف ڈیلیور شدہ آرڈرز کا جائزہ لے سکتے ہیں۔");
       return;
     }
     const ageHours = (Date.now() - new Date(orderRow.createdAt).getTime()) / (3_600_000);

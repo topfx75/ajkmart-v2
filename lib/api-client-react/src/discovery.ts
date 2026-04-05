@@ -290,6 +290,13 @@ export const getProductReviewSummary = async (
   return customFetch(`/reviews/product/${productId}/summary`, { ...options, method: "GET" });
 };
 
+export const checkCanReviewProduct = async (
+  productId: string,
+  options?: RequestInit,
+): Promise<{ canReview: boolean; hasPurchased: boolean; alreadyReviewed: boolean }> => {
+  return customFetch(`/reviews/can-review/${productId}`, { ...options, method: "GET" });
+};
+
 export const submitProductReview = async (
   body: {
     orderId?: string;

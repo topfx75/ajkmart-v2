@@ -792,7 +792,7 @@ Auth (OTP send/verify) → Profile (GET/PUT) → Products/Categories/Flash deals
 - Flash deals: `GET /api/products/flash-deals`
 - Seed: `POST /api/seed/products` with `x-admin-token` header
 - Parcel: requires `senderPhone`, `parcelType` (not `packageType`)
-- Reviews: require `orderType` field; product reviews require delivered/completed order
+- Reviews: require `orderType` field; ALL review types enforce delivery/completion status — product reviews require delivered/completed order with matching product, ride reviews require `completed` status, pharmacy/parcel/general orders require `delivered`/`completed` status. New `GET /reviews/can-review/:productId` endpoint checks purchase+delivery eligibility and duplicate review status. Frontend product page shows contextual review CTA (Write Review / Reviewed badge / "Buy & receive to review" hint). Error handling uses HTTP status codes (403/409) for reliable detection across English/Urdu responses.
 - Pharmacy: items must include `price` and `quantity` (digital pharmacy catalog model)
 - Notifications unread count: returned as `unreadCount` in `GET /api/notifications` response
 

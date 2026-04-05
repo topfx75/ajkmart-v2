@@ -30,6 +30,7 @@ export {
   checkWishlist,
   getProductReviews,
   getProductReviewSummary,
+  checkCanReviewProduct,
   submitProductReview,
   uploadImage,
   getHierarchicalCategories,
