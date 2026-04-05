@@ -5,13 +5,14 @@ import { usersTable, walletTransactionsTable, notificationsTable } from "@worksp
 import { eq, and, gte, sum, desc, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings, adminAuth } from "./admin.js";
-import { customerAuth, checkAvailableRateLimit, getClientIp } from "../middleware/security.js";
+import { customerAuth, checkAvailableRateLimit, getClientIp, JWT_SECRET } from "../middleware/security.js";
 import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO } from "../lib/socketio.js";
 import { z } from "zod";
 import { sendSuccess, sendCreated, sendAccepted, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 /* ── IS_PRODUCTION guard — independent of NODE_ENV for simulate-topup hardening ── */
 const IS_PRODUCTION = process.env["IS_PRODUCTION"] === "true" || process.env["NODE_ENV"] === "production";
@@ -466,23 +467,8 @@ router.post("/resolve-phone", customerAuth, async (req, res) => {
 });
 
 /* ── POST /wallet/send ───────────────────────────────────────────────────── */
-router.post("/send", customerAuth, async (req, res) => {
+router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
   const senderUserId = req.customerId!;
-
-  const s0 = await getPlatformSettings();
-  if ((s0["wallet_mpin_enabled"] ?? "on") === "on") {
-    const [senderUser] = await db.select().from(usersTable).where(eq(usersTable.id, senderUserId)).limit(1);
-    if (senderUser?.walletPinHash) {
-      const pinToken = req.headers["x-wallet-pin-token"] as string | undefined;
-      if (!pinToken) { sendForbidden(res, "pin_required", "MPIN verification required for this transaction"); return; }
-      const entry = pinVerifyTokens.get(pinToken);
-      if (!entry || entry.userId !== senderUserId || (Date.now() - entry.ts > PIN_TOKEN_TTL_MS)) {
-        sendForbidden(res, "pin_expired", "MPIN verification expired. Please verify again.");
-        return;
-      }
-      pinVerifyTokens.delete(pinToken);
-    }
-  }
 
   const sendRateLimit = await checkAvailableRateLimit(`send:${senderUserId}`, 5, 1);
   if (sendRateLimit.limited) {
@@ -769,23 +755,8 @@ router.get("/withdrawal-methods", customerAuth, async (_req, res) => {
 });
 
 /* ── POST /wallet/withdraw — Customer requests a withdrawal ─────────────── */
-router.post("/withdraw", customerAuth, async (req, res) => {
+router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
   const userId = req.customerId!;
-
-  const sW = await getPlatformSettings();
-  if ((sW["wallet_mpin_enabled"] ?? "on") === "on") {
-    const [wUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (wUser?.walletPinHash) {
-      const pinToken = req.headers["x-wallet-pin-token"] as string | undefined;
-      if (!pinToken) { sendForbidden(res, "pin_required", "MPIN verification required for this transaction"); return; }
-      const entry = pinVerifyTokens.get(pinToken);
-      if (!entry || entry.userId !== userId || (Date.now() - entry.ts > PIN_TOKEN_TTL_MS)) {
-        sendForbidden(res, "pin_expired", "MPIN verification expired. Please verify again.");
-        return;
-      }
-      pinVerifyTokens.delete(pinToken);
-    }
-  }
 
   const withdrawRateLimit = await checkAvailableRateLimit(`withdraw:${userId}`, 3, 10);
   if (withdrawRateLimit.limited) {
@@ -992,17 +963,81 @@ router.get("/pending-topups", customerAuth, async (req, res) => {
 const MPIN_MAX_ATTEMPTS = 5;
 const MPIN_LOCK_DURATION_MS = 30 * 60 * 1000;
 const MPIN_BCRYPT_ROUNDS = 10;
+const WALLET_ACTION_TOKEN_TTL_SEC = 5 * 60;
 
 const mpinSchema = z.string().regex(/^\d{4}$/, "MPIN must be exactly 4 digits");
 
-const pinVerifyTokens = new Map<string, { userId: string; ts: number }>();
-const PIN_TOKEN_TTL_MS = 5 * 60 * 1000;
+const revokedWalletTokens = new Set<string>();
 setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of pinVerifyTokens) {
-    if (now - entry.ts > PIN_TOKEN_TTL_MS) pinVerifyTokens.delete(key);
+  revokedWalletTokens.clear();
+}, 10 * 60 * 1000);
+
+function signWalletActionToken(userId: string): string {
+  const jti = generateId();
+  return jwt.sign(
+    { sub: userId, scope: "wallet-action", jti, iat: Math.floor(Date.now() / 1000) },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: WALLET_ACTION_TOKEN_TTL_SEC },
+  );
+}
+
+function verifyWalletActionToken(
+  token: string,
+  expectedUserId: string,
+  pinChangedAt?: Date | null,
+): { valid: true; jti: string } | { valid: false; reason: string } {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as jwt.JwtPayload;
+    if (payload.scope !== "wallet-action") return { valid: false, reason: "Invalid token scope" };
+    if (payload.sub !== expectedUserId) return { valid: false, reason: "Token user mismatch" };
+    if (!payload.jti) return { valid: false, reason: "Missing token identifier" };
+    if (revokedWalletTokens.has(payload.jti)) return { valid: false, reason: "Token already used" };
+    if (pinChangedAt && payload.iat && payload.iat < Math.floor(pinChangedAt.getTime() / 1000)) {
+      return { valid: false, reason: "Token issued before PIN change" };
+    }
+    return { valid: true, jti: payload.jti };
+  } catch (e: unknown) {
+    const err = e as Error;
+    if (err.name === "TokenExpiredError") return { valid: false, reason: "Token expired" };
+    return { valid: false, reason: "Invalid token" };
   }
-}, 2 * 60 * 1000);
+}
+
+async function requireWalletPin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const userId = req.customerId!;
+
+  const s = await getPlatformSettings();
+  if ((s["wallet_mpin_enabled"] ?? "on") !== "on") {
+    next();
+    return;
+  }
+
+  const [user] = await db.select({
+    walletPinHash: usersTable.walletPinHash,
+    updatedAt: usersTable.updatedAt,
+  }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user?.walletPinHash) {
+    next();
+    return;
+  }
+
+  const pinToken = req.headers["x-wallet-pin-token"] as string | undefined;
+  if (!pinToken) {
+    sendForbidden(res, "pin_required", "MPIN verification required for this transaction");
+    return;
+  }
+
+  const result = verifyWalletActionToken(pinToken, userId, user.updatedAt);
+  if (!result.valid) {
+    sendForbidden(res, "pin_expired", result.reason === "Token expired"
+      ? "MPIN verification expired. Please verify again."
+      : `MPIN verification failed: ${result.reason}`);
+    return;
+  }
+
+  revokedWalletTokens.add(result.jti);
+  next();
+}
 
 function isWalletPinLocked(user: { walletPinLockedUntil: Date | null }): boolean {
   if (!user.walletPinLockedUntil) return false;
@@ -1074,10 +1109,9 @@ router.post("/pin/verify", customerAuth, async (req, res) => {
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
 
-    const tokenId = generateId();
-    pinVerifyTokens.set(tokenId, { userId, ts: Date.now() });
+    const pinToken = signWalletActionToken(userId);
 
-    sendSuccess(res, { verified: true, pinToken: tokenId });
+    sendSuccess(res, { verified: true, pinToken });
   } catch (e: unknown) {
     logger.error("[wallet /pin/verify] error:", e);
     sendError(res, "Something went wrong, please try again.", 500);
@@ -1121,8 +1155,6 @@ router.post("/pin/change", customerAuth, async (req, res) => {
       walletPinLockedUntil: null,
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
-
-    pinVerifyTokens.forEach((v, k) => { if (v.userId === userId) pinVerifyTokens.delete(k); });
 
     sendSuccess(res, { message: "MPIN changed successfully" });
   } catch (e: unknown) {
@@ -1208,8 +1240,6 @@ router.post("/pin/reset-confirm", customerAuth, async (req, res) => {
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
 
-    pinVerifyTokens.forEach((v, k) => { if (v.userId === userId) pinVerifyTokens.delete(k); });
-
     sendSuccess(res, { message: "MPIN reset successfully", pinSetup: true });
   } catch (e: unknown) {
     logger.error("[wallet /pin/reset-confirm] error:", e);
@@ -1235,6 +1265,6 @@ router.patch("/visibility", customerAuth, async (req, res) => {
   }
 });
 
-export { pinVerifyTokens };
+export { requireWalletPin };
 
 export default router;
