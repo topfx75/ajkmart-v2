@@ -204,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (meRes.ok) {
           const meData = await meRes.json();
-          const freshUser: AppUser = meData.user || meData;
+          const freshUser: AppUser = meData.data || meData.user || meData;
           setUser(freshUser);
           await AsyncStorage.setItem(USER_KEY, JSON.stringify(freshUser));
         }
@@ -502,7 +502,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (!meRes.ok) return null;
       const meData = await meRes.json();
-      const freshUser: AppUser = meData.user || meData;
+      const freshUser: AppUser = meData.data || meData.user || meData;
 
       await login(freshUser, data.token, data.refreshToken);
       if (data.refreshToken) {

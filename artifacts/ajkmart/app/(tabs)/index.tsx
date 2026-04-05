@@ -273,8 +273,8 @@ function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabB
   if (ordersLoading || ridesLoading) return null;
   if (ordersError || ridesError) return null;
 
-  const activeOrders = Array.isArray(ordersData) ? ordersData.filter((o: any) => !["delivered", "cancelled"].includes(o.status)) : [];
-  const activeRides = Array.isArray(ridesData) ? ridesData.filter((r: any) => !["completed", "cancelled"].includes(r.status)) : [];
+  const activeOrders = (Array.isArray(ordersData) ? ordersData : (ordersData?.orders ?? [])).filter((o: any) => !["delivered", "cancelled"].includes(o.status));
+  const activeRides = (Array.isArray(ridesData) ? ridesData : (ridesData?.rides ?? [])).filter((r: any) => !["completed", "cancelled"].includes(r.status));
   const total = activeOrders.length + activeRides.length;
   if (total === 0) return null;
 
