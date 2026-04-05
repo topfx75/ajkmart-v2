@@ -196,6 +196,60 @@ router.put("/platform-settings", async (req, res) => {
   sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })) });
 });
 
+/* ── Backup: download all settings as JSON ───────────────────────────────── */
+router.get("/platform-settings/backup", async (req, res) => {
+  const rows = await db.select().from(platformSettingsTable);
+  const payload = {
+    _meta: {
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      count: rows.length,
+      source: "AJKMart Admin Panel",
+    },
+    settings: rows.map(r => ({
+      key: r.key,
+      value: r.value,
+      category: r.category,
+      label: r.label,
+    })),
+  };
+  addAuditEntry({ action: "settings_backup", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Exported ${rows.length} settings`, result: "success" });
+  sendSuccess(res, payload);
+});
+
+/* ── Restore: import settings from a backup JSON ─────────────────────────── */
+router.post("/platform-settings/restore", async (req, res) => {
+  const { settings } = req.body as { settings: Array<{ key: string; value: string }> };
+  if (!Array.isArray(settings) || settings.length === 0) {
+    sendValidationError(res, "settings array required"); return;
+  }
+  const errors: string[] = [];
+  for (const { key, value } of settings) {
+    if (typeof key !== "string" || typeof value !== "string") {
+      errors.push(`Invalid entry: ${JSON.stringify({ key, value })}`); continue;
+    }
+    const err = validateSettingValue(key, value);
+    if (err) errors.push(err);
+  }
+  if (errors.length > 0) { sendError(res, `Validation failed: ${errors.slice(0, 3).join("; ")}`, 422); return; }
+
+  let updated = 0;
+  let skipped = 0;
+  for (const { key, value } of settings) {
+    const result = await db
+      .update(platformSettingsTable)
+      .set({ value: String(value), updatedAt: new Date() })
+      .where(eq(platformSettingsTable.key, key))
+      .returning({ key: platformSettingsTable.key });
+    if (result.length > 0) { updated++; } else { skipped++; }
+  }
+  invalidateSettingsCache();
+  invalidatePlatformSettingsCache();
+  addAuditEntry({ action: "settings_restore", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Restored ${updated} settings (${skipped} unrecognised keys skipped)`, result: "success" });
+  const rows = await db.select().from(platformSettingsTable);
+  sendSuccess(res, { restored: updated, skipped, settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })) });
+});
+
 const patchSettingSchema = z.object({ value: z.string() });
 
 router.patch("/platform-settings/:key", validateBody(patchSettingSchema), async (req, res) => {

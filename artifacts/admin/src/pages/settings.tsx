@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Settings2, Save, RefreshCw, Truck, Car, BarChart3,
   ShoppingCart, Globe, Users, Bike, Store, Zap, Info,
@@ -124,6 +124,54 @@ export default function SettingsPage() {
     setSaving(false);
   };
 
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBackup = async () => {
+    setBackingUp(true);
+    try {
+      const data = await fetcher("/platform-settings/backup");
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      a.href = url;
+      a.download = `ajkmart-settings-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Backup downloaded ✅", description: `${data.count ?? data.settings?.length ?? 0} settings exported.` });
+    } catch (e: any) {
+      toast({ title: "Backup failed", description: e.message, variant: "destructive" });
+    }
+    setBackingUp(false);
+  };
+
+  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!fileInputRef.current) return;
+    fileInputRef.current.value = "";
+    if (!file) return;
+    if (!window.confirm(`Restore settings from "${file.name}"?\n\nThis will overwrite existing values with the backup. Your current settings will be replaced. Continue?`)) return;
+    setRestoring(true);
+    try {
+      const text = await file.text();
+      let parsed: any;
+      try { parsed = JSON.parse(text); } catch { throw new Error("Invalid JSON file."); }
+      const settingsArr = parsed?.settings ?? parsed;
+      if (!Array.isArray(settingsArr)) throw new Error("Backup file must contain a settings array.");
+      const payload = settingsArr.map((s: any) => ({ key: String(s.key ?? ""), value: String(s.value ?? "") }));
+      const result = await fetcher("/platform-settings/restore", { method: "POST", body: JSON.stringify({ settings: payload }) });
+      await loadSettings();
+      toast({ title: "Settings restored ✅", description: `${result.restored ?? payload.length} settings applied${result.skipped ? `, ${result.skipped} skipped` : ""}.` });
+    } catch (e: any) {
+      toast({ title: "Restore failed", description: e.message, variant: "destructive" });
+    }
+    setRestoring(false);
+  };
+
   const grouped: Record<string,Setting[]> = {};
   for (const s of settings) {
     if (!grouped[s.category]) grouped[s.category] = [];
@@ -196,6 +244,15 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4 max-w-5xl">
+      {/* Hidden file input for restore */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={handleRestoreFile}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -211,7 +268,27 @@ export default function SettingsPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 justify-end">
+          <Button
+            variant="outline"
+            onClick={handleBackup}
+            disabled={backingUp || loading}
+            title="Download all settings as a JSON backup file"
+            className="h-9 rounded-xl gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+          >
+            {backingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span className="hidden sm:inline">Backup</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={restoring || loading}
+            title="Restore settings from a JSON backup file"
+            className="h-9 rounded-xl gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+          >
+            {restoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            <span className="hidden sm:inline">Restore</span>
+          </Button>
           <Button variant="outline" onClick={() => { loadSettings(); toast({ title: "Reloaded" }); }} disabled={loading} className="h-9 rounded-xl gap-2">
             <RefreshCw className="w-4 h-4" /> <span className="hidden xs:inline">Reset</span>
           </Button>
