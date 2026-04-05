@@ -323,8 +323,10 @@ export default function Orders() {
         || (statusFilter === "active" && ["pending", "confirmed", "preparing", "out_for_delivery"].includes(o.status))
         || o.status === statusFilter;
       const matchesType = typeFilter === "all" || o.type === typeFilter;
-      const matchesDate = (!dateFrom || new Date(o.createdAt) >= new Date(dateFrom))
-                       && (!dateTo || new Date(o.createdAt) <= new Date(dateTo + "T23:59:59"));
+      const orderDate = new Date(o.createdAt);
+      const matchesDateFrom = !dateFrom || orderDate >= new Date(dateFrom + "T00:00:00.000Z");
+      const matchesDateTo = !dateTo || orderDate <= new Date(dateTo + "T23:59:59.999Z");
+      const matchesDate = matchesDateFrom && matchesDateTo;
       return matchesSearch && matchesStatus && matchesType && matchesDate;
     });
   }, [orders, q, statusFilter, typeFilter, dateFrom, dateTo]);
@@ -516,17 +518,17 @@ export default function Orders() {
           ))}
         </div>
 
-        {hasActiveFilters && (
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/30">
-            <span aria-live="polite">Showing {sorted.length} of {totalCount} orders</span>
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/30">
+          <span aria-live="polite">Showing {sorted.length} of {totalCount} orders</span>
+          {hasActiveFilters && (
             <button
               onClick={() => { setSearch(""); setStatusFilter("all"); setTypeFilter("all"); setDateFrom(""); setDateTo(""); }}
               className="flex items-center gap-1 text-primary hover:underline min-h-[36px]"
             >
               <XCircle className="w-3 h-3" /> Clear all filters
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </Card>
 
       {isError && orders.length === 0 && (
