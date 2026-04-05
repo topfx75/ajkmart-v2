@@ -44,3 +44,4 @@ export * from "./service_zones";
 export * from "./categories";
 export * from "./location_history";
 export * from "./map_api_usage_log";
+export * from "./delivery_whitelist";

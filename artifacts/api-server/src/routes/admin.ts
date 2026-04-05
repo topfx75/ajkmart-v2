@@ -8,6 +8,7 @@ import financeRoutes from "./admin/finance.js";
 import contentRoutes from "./admin/content.js";
 import systemRoutes from "./admin/system.js";
 import serviceZonesRoutes from "./admin/service-zones.js";
+import deliveryAccessRoutes from "./admin/delivery-access.js";
 
 export {
   DEFAULT_PLATFORM_SETTINGS,
@@ -36,5 +37,6 @@ router.use(financeRoutes);
 router.use(contentRoutes);
 router.use(systemRoutes);
 router.use("/service-zones", serviceZonesRoutes);
+router.use(deliveryAccessRoutes);
 
 export default router;

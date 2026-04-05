@@ -33,7 +33,7 @@ import { API_BASE, unwrapApiResponse } from "@/utils/api";
 import { AuthGateSheet, useAuthGate, useRoleGate, RoleBlockSheet } from "@/components/AuthGateSheet";
 
 const C = Colors.light;
-type PayMethod = "cash" | "wallet" | "jazzcash" | "easypaisa";
+type PayMethod = "cash" | "wallet" | "jazzcash" | "easypaisa" | "pickup";
 
 interface PaymentMethod {
   id: PayMethod;
@@ -447,6 +447,7 @@ function CartScreenInner() {
   const [gwStep, setGwStep] = useState<"input" | "waiting" | "done">("input");
 
   const [gwBackgrounded, setGwBackgrounded] = useState(false);
+  const [deliveryBlocked, setDeliveryBlocked] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   const gwPollRef = useRef<{ active: boolean; intervalId?: ReturnType<typeof setInterval> }>({ active: false });
@@ -464,6 +465,32 @@ function CartScreenInner() {
       if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    if (!token || items.length === 0) { setDeliveryBlocked(null); return; }
+    const svc = cartType === "mixed" ? "mart" : cartType;
+    const firstPid = items[0]?.productId;
+    const qs = `serviceType=${svc}${firstPid ? `&productId=${firstPid}` : ""}`;
+    fetch(`${API_BASE}/delivery/eligibility?${qs}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        if (!mountedRef.current) return;
+        const d = json?.data ?? json;
+        if (d && d.eligible === false) {
+          const msg = d.reason === "user_not_whitelisted"
+            ? "Delivery is not available for your account at this time. You can use self-pickup."
+            : d.reason === "store_not_whitelisted"
+            ? "Delivery is not available for this store at this time. You can use self-pickup."
+            : "Delivery is not available at this time. You can use self-pickup.";
+          setDeliveryBlocked(msg);
+        } else {
+          setDeliveryBlocked(null);
+        }
+      })
+      .catch(() => { if (mountedRef.current) setDeliveryBlocked(null); });
+  }, [token, items.length, cartType]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", nextState => {
@@ -818,12 +845,13 @@ function CartScreenInner() {
     }
     if (items.length === 0) { showToast(T("cartEmpty"), "error"); return; }
     if (cartType === "pharmacy") { router.push("/pharmacy"); return; }
-    if (!deliveryLine) {
+    const isPickup = payMethod === "pickup";
+    if (!isPickup && !deliveryLine) {
       showToast(T("selectDeliveryAddress"), "error");
       setShowAddrPicker(true);
       return;
     }
-    if (selectedAddr && !selectedAddr.city?.trim()) {
+    if (!isPickup && selectedAddr && !selectedAddr.city?.trim()) {
       Alert.alert(
         T("cityMissingTitle"),
         T("cityMissingError"),
@@ -839,6 +867,7 @@ function CartScreenInner() {
     }
     const serviceableCities = orderRules.serviceableCities;
     if (
+      !isPickup &&
       selectedAddr &&
       selectedAddr.city?.trim() &&
       serviceableCities.length > 0
@@ -877,8 +906,41 @@ function CartScreenInner() {
       return;
     }
 
+    if (!isPickup) {
+      try {
+        const svcQ = cartType === "mixed" ? "mart" : cartType;
+        const pidQ = items[0]?.productId;
+        const eligQs = `serviceType=${svcQ}${pidQ ? `&productId=${pidQ}` : ""}`;
+        const eligRes = await fetch(`${API_BASE}/delivery/eligibility?${eligQs}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (eligRes.ok) {
+          const eligData = await eligRes.json();
+          const elig = eligData?.data ?? eligData;
+          if (elig && elig.eligible === false) {
+            const blockMsg = elig.reason === "user_not_whitelisted"
+              ? "Delivery is not available for your account at this time. You can use self-pickup."
+              : elig.reason === "store_not_whitelisted"
+              ? "Delivery is not available for this store at this time. You can use self-pickup."
+              : "Delivery is not available at this time. You can use self-pickup.";
+            setDeliveryBlocked(blockMsg);
+            showToast(blockMsg, "error");
+            return;
+          }
+        }
+      } catch {}
+    }
+
     const cartResult = await validateCart();
     if (!cartResult.valid) {
+      return;
+    }
+
+    if (isPickup) {
+      setLoading(true);
+      try { await placeOrder("pickup"); }
+      catch (e: any) { showToast(e.message || T("couldNotPlaceOrder"), "error"); }
+      setLoading(false);
       return;
     }
 
@@ -889,7 +951,13 @@ function CartScreenInner() {
       }
       setLoading(true);
       try { await placeOrder("wallet"); }
-      catch (e: any) { showToast(e.message || T("couldNotPlaceOrder"), "error"); }
+      catch (e: any) {
+        const rc = e?.data?.reasonCode ?? e?.reasonCode;
+        const isDeliveryBlock = rc === "delivery_not_eligible" || e?.message?.includes("Delivery is not available");
+        const errText = e?.data?.error ?? e?.message ?? T("couldNotPlaceOrder");
+        if (isDeliveryBlock) setDeliveryBlocked(errText);
+        showToast(errText, "error");
+      }
       setLoading(false);
       return;
     }
@@ -903,7 +971,13 @@ function CartScreenInner() {
 
     setLoading(true);
     try { await placeOrder("cash"); }
-    catch (e: any) { showToast(e.message || T("couldNotPlaceOrderRetry"), "error"); }
+    catch (e: any) {
+      const rc = e?.data?.reasonCode ?? e?.reasonCode;
+      const isDeliveryBlock = rc === "delivery_not_eligible" || e?.message?.includes("Delivery is not available");
+      const errText = e?.data?.error ?? e?.message ?? T("couldNotPlaceOrderRetry");
+      if (isDeliveryBlock) setDeliveryBlocked(errText);
+      showToast(errText, "error");
+    }
     setLoading(false);
   };
 
@@ -1594,6 +1668,29 @@ function CartScreenInner() {
             <View style={[styles.minOrderBar]}>
               <View style={[styles.minOrderFill, { width: `${Math.min(100, (total / orderRules.minOrderAmount) * 100)}%` }]} />
             </View>
+          </View>
+        ) : deliveryBlocked ? (
+          <View style={{ gap: 8 }}>
+            <View style={{ backgroundColor: "#FEF3C7", borderRadius: 16, padding: 14, alignItems: "center", gap: 6 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="alert-circle" size={18} color="#D97706" />
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#92400E" }}>Delivery Unavailable</Text>
+              </View>
+              <Text style={{ fontSize: 12, color: "#92400E", textAlign: "center" }}>{deliveryBlocked}</Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={[styles.checkoutBtn, { backgroundColor: "#059669" }, (loading || addrLoading) && { opacity: 0.7 }]}
+              onPress={() => {
+                setPayMethod("pickup");
+                setDeliveryBlocked(null);
+                handleCheckout();
+              }}
+              disabled={loading || addrLoading}
+            >
+              <Ionicons name="storefront-outline" size={16} color={C.textInverse} />
+              <Text style={styles.checkoutBtnTxt}>Self-Pickup Instead</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity activeOpacity={0.7} style={[styles.checkoutBtn, (loading || addrLoading || promoLoading) && { opacity: 0.7 }]} onPress={handleCheckout} disabled={loading || addrLoading || promoLoading}>

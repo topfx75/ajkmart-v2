@@ -39,6 +39,7 @@ import SosAlerts from "@/pages/sos-alerts";
 import ReviewsPage from "@/pages/reviews";
 import KycPage from "@/pages/kyc";
 import VanService from "@/pages/van";
+import DeliveryAccess from "@/pages/delivery-access";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -133,6 +134,7 @@ function Router() {
       <Route path="/reviews"><ProtectedRoute component={ReviewsPage} /></Route>
       <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
       <Route path="/van"><ProtectedRoute component={VanService} /></Route>
+      <Route path="/delivery-access"><ProtectedRoute component={DeliveryAccess} /></Route>
 
       <Route component={NotFound} />
     </Switch>

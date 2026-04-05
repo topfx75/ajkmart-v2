@@ -34,6 +34,7 @@ import {
   ChevronDown,
   User,
   Bus,
+  Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -96,6 +97,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { nameKey: "navSettings",        href: "/settings",       icon: Settings2 },
       { nameKey: "navFeatureToggles",  href: "/app-management", icon: ToggleLeft },
+      { nameKey: "navDeliveryAccess", href: "/delivery-access", icon: Truck },
       { nameKey: "navBanners",         href: "/banners",        icon: Layers },
     ],
   },

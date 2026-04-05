@@ -122,6 +122,7 @@ router.get("/", async (req, res) => {
       ratingWindowHours: parseInt(s["order_rating_window_hours"]   ?? "48"),
       scheduleEnabled:   (s["order_schedule_enabled"]              ?? "off") === "on",
     },
+    deliveryAccessMode: s["delivery_access_mode"] ?? "all",
     features: {
       mart:         (s["feature_mart"]          ?? "on")  === "on",
       food:         (s["feature_food"]          ?? "on")  === "on",

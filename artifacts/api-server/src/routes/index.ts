@@ -33,6 +33,7 @@ import kycRouter from "./kyc.js";
 import wishlistRouter from "./wishlist.js";
 import vanRouter from "./van.js";
 import webhooksRouter from "./webhooks.js";
+import deliveryEligibilityRouter from "./delivery-eligibility.js";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use("/kyc", kycRouter);
 router.use("/wishlist", wishlistRouter);
 router.use("/van", vanRouter);
 router.use("/webhooks", webhooksRouter);
+router.use("/delivery/eligibility", deliveryEligibilityRouter);
 
 export default router;

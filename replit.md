@@ -40,6 +40,34 @@ AJKMart is a full-stack "Super App" designed for Azad Jammu & Kashmir (AJK), Pak
 #### Home Screen Service Navigation
 - **`app/(tabs)/index.tsx`**: Service grid/list no longer redirects guests to `/auth`; guests navigate directly to service screens where action-level auth gates handle protected operations. Lock badge icons removed.
 
+### White Label Delivery Access Control — Completed Changes
+
+#### Database Schema
+- **`lib/db/src/schema/delivery_whitelist.ts`**: Three new tables — `delivery_whitelist` (type, targetId, serviceType, status, validUntil, deliveryLabel, notes, createdBy), `delivery_access_requests` (vendorId, serviceType, status, requestedAt, resolvedAt, resolvedBy, notes), `system_audit_log` (adminId, adminName, action, targetType, targetId, oldValue, newValue).
+- **`lib/db/migrations/0022_delivery_access_control.sql`**: Migration file matching Drizzle schema exactly.
+
+#### API — Delivery Access Library
+- **`artifacts/api-server/src/lib/delivery-access.ts`**: Core utility with `checkDeliveryEligibility(userId, vendorId, serviceType)` for full eligibility check and `checkUserOnlyEligibility(userId, serviceType)` for cart pre-check (no vendorId). Uses 5-min TTL cache (`_whitelistCache`) with `invalidateDeliveryAccessCache()`. Supports four modes: `all` (everyone allowed), `stores` (vendor whitelist only), `users` (user whitelist only), `both` (both must be whitelisted). Fail-open on errors.
+
+#### API — Admin Endpoints
+- **`artifacts/api-server/src/routes/admin/delivery-access.ts`**: Full admin CRUD — GET/PUT mode, GET/POST/DELETE whitelist entries (with DB-level search filtering pre-pagination), GET/PATCH requests (approve auto-creates whitelist entry + sends notification), GET audit log. All changes logged to `system_audit_log`.
+
+#### API — Customer & Vendor Endpoints
+- **`artifacts/api-server/src/routes/delivery-eligibility.ts`**: GET `/delivery/eligibility` for customer pre-check (supports both full check with vendorId and user-only check without). Vendor endpoints: GET `/vendor/delivery-status` (per-service-type status), POST `/vendor/delivery-request` (submit access request).
+
+#### API — Order Enforcement
+- POST `/orders` enforces delivery eligibility server-side, returns 403 with `reasonCode: "delivery_not_eligible"` when blocked.
+
+#### Admin UI
+- **`artifacts/admin/src/pages/delivery-access.tsx`**: Full admin page with mode selector (all/stores/users/both), whitelist management with search/filter, request management with approve/reject, audit log viewer. Routed in App.tsx and AdminLayout.tsx with i18n.
+- **`artifacts/admin/src/pages/vendors.tsx`**: Inline delivery toggle badges on vendor cards (click to whitelist/unwhitelist). Pending delivery request count badge with one-click approve action. Uses `vendorWhitelistMap` (targetId → whitelistEntryId) for delete operations.
+
+#### Vendor App
+- **`artifacts/vendor-app/src/pages/Dashboard.tsx`**: Per-service-type delivery status display (Active/Pending/Request button for mart/food/pharmacy/parcel). API methods `getDeliveryAccessStatus()` and `requestDeliveryAccess()` in api.ts.
+
+#### Customer App
+- **`artifacts/ajkmart/app/cart/index.tsx`**: Delivery eligibility pre-check on cart load — passes `productId` from first cart item to resolve vendorId server-side for store-level blocking. Shows store-specific and user-specific blocking messages. Prominent "Delivery Unavailable" yellow banner with "Self-Pickup Instead" green button replaces Place Order button when blocked. Self-pickup orders use `paymentMethod: "pickup"` which bypasses delivery eligibility on server. Server-side 403 errors from POST /orders read `ApiError.data.reasonCode` and `ApiError.data.error` for delivery-specific messaging.
+
 ### Dynamic Categories System — Completed Changes
 
 #### Database Schema
@@ -391,6 +419,35 @@ The project is structured as a pnpm monorepo using TypeScript. The frontend leve
 - **jsonwebtoken:** For JWT generation and verification.
 - **crypto.scryptSync:** For password hashing.
 - **react-native-qrcode-svg:** For generating real QR codes in the wallet Receive Money modal.
+
+### White Label Delivery Access Control (Task #5)
+
+**DB Schema:**
+- `lib/db/src/schema/delivery_whitelist.ts`: Three new tables — `delivery_whitelist` (vendor/user whitelisting with service type, expiry, status), `delivery_access_requests` (vendor requests for delivery access), `system_audit_log` (admin action audit trail).
+
+**API Server:**
+- `artifacts/api-server/src/lib/delivery-access.ts`: Core `checkDeliveryEligibility(userId, vendorId, serviceType)` utility supporting four modes (`all`, `stores`, `users`, `both`) with 5-min caching and auto-expiry of expired whitelist entries.
+- `artifacts/api-server/src/routes/admin/delivery-access.ts`: Full admin CRUD — GET/PUT mode, POST/PATCH/DELETE whitelist entries, bulk import, request management (approve/reject), audit log.
+- `artifacts/api-server/src/routes/vendor.ts`: Added `GET /vendor/delivery-access/status` (returns per-service-type whitelist status + pending requests) and `POST /vendor/delivery-access/request`.
+- `artifacts/api-server/src/routes/delivery-eligibility.ts`: Customer-facing `GET /delivery/eligibility` pre-check endpoint (fail-open on errors).
+- Server-side enforcement on `POST /orders` blocks ineligible orders at placement time.
+
+**Admin Panel:**
+- `artifacts/admin/src/pages/delivery-access.tsx`: Full management UI with mode selection cards, whitelist management (add/edit/delete), access request approval queue, and audit log viewer.
+- `artifacts/admin/src/pages/vendors.tsx`: Delivery badge on vendor cards showing whitelist status when mode is `stores` or `both`.
+- `artifacts/admin/src/hooks/use-admin.ts`: Hooks for all delivery access admin operations.
+
+**Vendor App:**
+- `artifacts/vendor-app/src/pages/Dashboard.tsx`: Delivery access status banner showing enabled/disabled/pending state with "Request Access" button.
+- `artifacts/vendor-app/src/lib/api.ts`: Added `getDeliveryAccessStatus()` and `requestDeliveryAccess()` API calls.
+
+**Customer App:**
+- `artifacts/ajkmart/app/cart/index.tsx`: Pre-checkout eligibility check calls `/delivery/eligibility`. Skips `no_vendor` reason (fail-open for store-level checks, handled server-side on order). Blocks only on `user_not_whitelisted` with user-friendly message.
+
+**Design Decisions:**
+- Fail-open: Cart pre-check without vendorId skips store-based denial; server enforces definitive check at order time.
+- In-flight orders unaffected — eligibility only checked at placement time.
+- i18n keys added: `navDeliveryAccess` in English, Urdu, and Roman Urdu.
 
 ### Order-to-Delivery Stabilization (Task #1 Rider-Admin Sync + Order Reliability)
 

@@ -5,12 +5,12 @@ import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
-  Download, CalendarDays, Percent,
+  Download, CalendarDays, Percent, Truck,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension } from "@/hooks/use-admin";
+import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension, useDeliveryAccess, useAddWhitelistEntry, useDeleteWhitelistEntry, useDeliveryAccessRequests, useResolveDeliveryRequest } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { useToast } from "@/hooks/use-toast";
@@ -224,6 +224,11 @@ export default function Vendors() {
   const { data, isLoading, refetch, isFetching } = useVendors();
   const { data: settingsData } = usePlatformSettings();
   const overrideSuspM = useOverrideSuspension("vendors");
+  const { data: daData } = useDeliveryAccess();
+  const addWhitelistM = useAddWhitelistEntry();
+  const deleteWhitelistM = useDeleteWhitelistEntry();
+  const { data: reqData } = useDeliveryAccessRequests();
+  const resolveReqM = useResolveDeliveryRequest();
   const { toast } = useToast();
 
   const [search,       setSearch]       = useState("");
@@ -239,6 +244,21 @@ export default function Vendors() {
   const vendorShare = 1 - vendorCommissionPct / 100;
 
   const vendors: any[] = data?.vendors || [];
+  const deliveryMode = daData?.mode || "all";
+  const vendorWhitelistMap = new Map<string, string>();
+  (daData?.whitelist || [])
+    .filter((w: any) => w.type === "vendor" && w.status === "active")
+    .forEach((w: any) => vendorWhitelistMap.set(w.targetId, w.id));
+  const whitelistedVendorIds = new Set(vendorWhitelistMap.keys());
+  const pendingRequests: any[] = reqData?.requests || [];
+  const vendorPendingReqs = new Map<string, any[]>();
+  pendingRequests
+    .filter((r: any) => r.status === "pending")
+    .forEach((r: any) => {
+      const arr = vendorPendingReqs.get(r.vendorId) || [];
+      arr.push(r);
+      vendorPendingReqs.set(r.vendorId, arr);
+    });
 
   const filtered = vendors.filter((v: any) => {
     const q = search.toLowerCase();
@@ -384,6 +404,47 @@ export default function Vendors() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-bold text-sm text-foreground truncate">{v.storeName || "Unnamed Store"}</p>
                         {getStatusBadge(v)}
+                        {(deliveryMode === "stores" || deliveryMode === "both") && (
+                          whitelistedVendorIds.has(v.id)
+                            ? <Badge
+                                className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] gap-1 cursor-pointer hover:bg-blue-200"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  const entryId = vendorWhitelistMap.get(v.id);
+                                  if (entryId) deleteWhitelistM.mutate(entryId, {
+                                    onSuccess: () => toast({ title: "Delivery disabled", description: `${v.storeName || "Store"} removed from delivery whitelist` }),
+                                    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+                                  });
+                                }}
+                              ><Truck className="w-2.5 h-2.5" /> Delivery ✓</Badge>
+                            : <Badge
+                                className="bg-gray-100 text-gray-500 border-gray-200 text-[10px] gap-1 cursor-pointer hover:bg-gray-200"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  addWhitelistM.mutate({ type: "vendor", targetId: v.id, serviceType: "all" }, {
+                                    onSuccess: () => toast({ title: "Delivery enabled", description: `${v.storeName || "Store"} added to delivery whitelist` }),
+                                    onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+                                  });
+                                }}
+                              ><Truck className="w-2.5 h-2.5" /> No Delivery</Badge>
+                        )}
+                        {vendorPendingReqs.has(v.id) && (
+                          <Badge
+                            className="bg-yellow-100 text-yellow-700 border-yellow-200 text-[10px] gap-1 cursor-pointer hover:bg-yellow-200"
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              const reqs = vendorPendingReqs.get(v.id) || [];
+                              reqs.forEach((r: any) => {
+                                resolveReqM.mutate({ id: r.id, status: "approved" }, {
+                                  onSuccess: () => {
+                                    toast({ title: "Request approved", description: `Delivery access granted to ${v.storeName || "store"}` });
+                                  },
+                                  onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
+                                });
+                              });
+                            }}
+                          >📋 {vendorPendingReqs.get(v.id)!.length} Request{vendorPendingReqs.get(v.id)!.length > 1 ? "s" : ""} — Approve</Badge>
+                        )}
                         {v.storeCategory && (
                           <Badge variant="outline" className="text-[10px] capitalize">{v.storeCategory}</Badge>
                         )}

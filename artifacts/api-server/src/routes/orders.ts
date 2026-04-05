@@ -8,6 +8,7 @@ import { addSecurityEvent, addAuditEntry, getClientIp, getCachedSettings, custom
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
 import { isInServiceZone } from "../lib/geofence.js";
+import { checkDeliveryEligibility } from "../lib/delivery-access.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 
 const router: IRouter = Router();
@@ -475,6 +476,40 @@ router.post("/", customerAuth, async (req, res) => {
     const bypass  = ((req.headers["x-maintenance-key"] as string) ?? "").trim();
     if (!mainKey || bypass !== mainKey) {
       sendError(res, s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!", 503); return;
+    }
+  }
+
+  /* ── Resolve vendorId from first product if not provided ── */
+  let resolvedVendorId = (req.body.vendorId as string | undefined) || null;
+  if (!resolvedVendorId && items.length > 0) {
+    try {
+      const firstProductId = items[0].productId;
+      if (firstProductId) {
+        const [prod] = await db.select({ vendorId: productsTable.vendorId })
+          .from(productsTable)
+          .where(eq(productsTable.id, firstProductId))
+          .limit(1);
+        resolvedVendorId = prod?.vendorId ?? null;
+      }
+    } catch {}
+  }
+
+  /* ── Delivery access eligibility ── */
+  if (paymentMethod !== "pickup") {
+    const eligibility = await checkDeliveryEligibility(userId, resolvedVendorId, type ?? "mart");
+    if (!eligibility.eligible) {
+      const reason = eligibility.reason === "store_not_whitelisted"
+        ? "Delivery is not available for this store. Please choose self-pickup."
+        : eligibility.reason === "user_not_whitelisted"
+        ? "Delivery is not available for your account. Please choose self-pickup."
+        : "Delivery is not available. Please choose self-pickup.";
+      res.status(403).json({
+        success: false,
+        error: reason,
+        reasonCode: "delivery_not_eligible",
+        detailCode: eligibility.reason,
+      });
+      return;
     }
   }
 

@@ -1080,3 +1080,85 @@ export const useDeleteServiceZone = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-service-zones"] }),
   });
 };
+
+export const useDeliveryAccess = () => {
+  return useQuery({
+    queryKey: ["admin-delivery-access"],
+    queryFn: () => fetcher("/delivery-access"),
+    refetchInterval: REFETCH_INTERVAL,
+  });
+};
+
+export const useUpdateDeliveryMode = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: string) =>
+      fetcher("/delivery-access/mode", { method: "PUT", body: JSON.stringify({ mode }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-delivery-access"] });
+    },
+  });
+};
+
+export const useAddWhitelistEntry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { type: string; targetId: string; serviceType?: string; validUntil?: string; deliveryLabel?: string; notes?: string }) =>
+      fetcher("/delivery-access/whitelist", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-delivery-access"] }),
+  });
+};
+
+export const useBulkAddWhitelist = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (entries: any[]) =>
+      fetcher("/delivery-access/whitelist/bulk", { method: "POST", body: JSON.stringify({ entries }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-delivery-access"] }),
+  });
+};
+
+export const useUpdateWhitelistEntry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; deliveryLabel?: string; notes?: string; validUntil?: string; status?: string }) =>
+      fetcher(`/delivery-access/whitelist/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-delivery-access"] }),
+  });
+};
+
+export const useDeleteWhitelistEntry = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetcher(`/delivery-access/whitelist/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-delivery-access"] }),
+  });
+};
+
+export const useDeliveryAccessRequests = () => {
+  return useQuery({
+    queryKey: ["admin-delivery-requests"],
+    queryFn: () => fetcher("/delivery-access/requests"),
+    refetchInterval: REFETCH_INTERVAL,
+  });
+};
+
+export const useResolveDeliveryRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, notes }: { id: string; status: "approved" | "rejected"; notes?: string }) =>
+      fetcher(`/delivery-access/requests/${id}`, { method: "PATCH", body: JSON.stringify({ status, notes }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-delivery-requests"] });
+      qc.invalidateQueries({ queryKey: ["admin-delivery-access"] });
+    },
+  });
+};
+
+export const useDeliveryAccessAudit = () => {
+  return useQuery({
+    queryKey: ["admin-delivery-audit"],
+    queryFn: () => fetcher("/delivery-access/audit"),
+  });
+};

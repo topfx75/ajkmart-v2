@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable } from "@workspace/db/schema";
+import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable, deliveryWhitelistTable, deliveryAccessRequestsTable } from "@workspace/db/schema";
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -804,6 +804,118 @@ router.post("/orders/:id/auto-assign", requireRole("vendor"), async (req, res) =
   if (io) io.to(`user:${nearest.id}`).emit("order:assigned", { orderId });
 
   sendSuccess(res, { riderId: nearest.id, riderName: nearest.name });
+});
+
+router.get("/delivery-access/status", async (req, res) => {
+  const vendorId = req.vendorId!;
+  try {
+    const s = await getPlatformSettings();
+    const mode = s["delivery_access_mode"] ?? "all";
+
+    const SERVICE_TYPES = ["mart", "food", "pharmacy", "parcel"];
+    const statuses: Record<string, { active: boolean; deliveryLabel?: string }> = {};
+
+    if (mode === "all") {
+      for (const st of SERVICE_TYPES) {
+        statuses[st] = { active: true };
+      }
+    } else if (mode === "stores" || mode === "both") {
+      const entries = await db
+        .select()
+        .from(deliveryWhitelistTable)
+        .where(
+          and(
+            eq(deliveryWhitelistTable.type, "vendor"),
+            eq(deliveryWhitelistTable.targetId, vendorId),
+            eq(deliveryWhitelistTable.status, "active"),
+          ),
+        );
+
+      for (const st of SERVICE_TYPES) {
+        const match = entries.find(
+          e =>
+            (e.serviceType === st || e.serviceType === "all") &&
+            (!e.validUntil || e.validUntil > new Date()),
+        );
+        statuses[st] = { active: !!match, deliveryLabel: match?.deliveryLabel ?? undefined };
+      }
+    } else {
+      for (const st of SERVICE_TYPES) {
+        statuses[st] = { active: true };
+      }
+    }
+
+    const pendingRequests = await db
+      .select()
+      .from(deliveryAccessRequestsTable)
+      .where(
+        and(
+          eq(deliveryAccessRequestsTable.vendorId, vendorId),
+          eq(deliveryAccessRequestsTable.status, "pending"),
+        ),
+      );
+
+    sendSuccess(res, { mode, statuses, pendingRequests });
+  } catch (e: any) {
+    sendError(res, e.message || "Failed to fetch delivery status", 500);
+  }
+});
+
+router.post("/delivery-access/request", async (req, res) => {
+  const vendorId = req.vendorId!;
+  const { serviceType } = req.body;
+
+  if (serviceType && !["mart", "food", "pharmacy", "parcel", "all"].includes(serviceType)) {
+    sendValidationError(res, "Invalid serviceType");
+    return;
+  }
+
+  try {
+    const [existing] = await db
+      .select()
+      .from(deliveryAccessRequestsTable)
+      .where(
+        and(
+          eq(deliveryAccessRequestsTable.vendorId, vendorId),
+          eq(deliveryAccessRequestsTable.serviceType, serviceType || "all"),
+          eq(deliveryAccessRequestsTable.status, "pending"),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      sendError(res, "You already have a pending request for this service type", 409);
+      return;
+    }
+
+    const id = generateId();
+    await db.insert(deliveryAccessRequestsTable).values({
+      id,
+      vendorId,
+      serviceType: serviceType || "all",
+      status: "pending",
+    });
+
+    const [vendor] = await db
+      .select({ name: usersTable.name, storeName: usersTable.storeName })
+      .from(usersTable)
+      .where(eq(usersTable.id, vendorId))
+      .limit(1);
+
+    try {
+      await db.insert(notificationsTable).values({
+        id: generateId(),
+        userId: "admin",
+        title: "New Delivery Access Request",
+        body: `${vendor?.storeName || vendor?.name || "Vendor"} has requested delivery access for ${serviceType || "all"} service.`,
+        type: "system",
+      });
+    } catch {}
+
+    sendCreated(res, { id, status: "pending" });
+  } catch (e: any) {
+    sendError(res, e.message || "Failed to submit request", 500);
+  }
 });
 
 export default router;

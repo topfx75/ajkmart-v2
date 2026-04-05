@@ -9,6 +9,7 @@ import { useState, useRef, useCallback } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { fc, CARD, STAT_VAL, STAT_LBL, DEFAULT_COMMISSION_PCT, errMsg } from "../lib/ui";
+import { Truck } from "lucide-react";
 
 function VendorNoticeBanner({ message }: { message: string }) {
   const key = `vendor_notice_dismissed_${message.split("").reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)}`;
@@ -54,6 +55,12 @@ export default function Dashboard() {
 
   const { data: stats, isLoading } = useQuery({ queryKey: ["vendor-stats"], queryFn: () => api.getStats(), refetchInterval: 30000 });
   const { data: ordersData } = useQuery({ queryKey: ["vendor-orders", "all"], queryFn: () => api.getOrders(), refetchInterval: 20000 });
+  const { data: daStatus } = useQuery({ queryKey: ["vendor-delivery-access"], queryFn: () => api.getDeliveryAccessStatus(), refetchInterval: 60000 });
+  const requestDeliveryMut = useMutation({
+    mutationFn: (data: { serviceType?: string; reason?: string }) => api.requestDeliveryAccess(data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendor-delivery-access"] }); showToast("✅ Delivery access request submitted"); },
+    onError: (e: Error) => showToast("❌ " + errMsg(e)),
+  });
 
   const toggleMut = useMutation({
     mutationFn: (isOpen: boolean) => api.updateStore({ storeIsOpen: isOpen }),
@@ -200,6 +207,58 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* Delivery Access Status */}
+        {(() => {
+          const da = daStatus?.data ?? daStatus;
+          if (!da || da.mode === "all") return null;
+          const statuses: Record<string, { active: boolean; deliveryLabel?: string }> = da.statuses || {};
+          const pendingReqs: any[] = da.pendingRequests || [];
+          const pendingServiceTypes = new Set(pendingReqs.map((r: any) => r.serviceType || "all"));
+          const anyActive = Object.values(statuses).some(s => s.active);
+
+          return (
+            <div className={`rounded-2xl overflow-hidden md:mb-6 ${
+              anyActive ? "border border-blue-200" : "border border-amber-200"
+            }`}>
+              <div className={`px-4 py-3 flex items-center gap-3 ${
+                anyActive ? "bg-blue-50" : "bg-amber-50"
+              }`}>
+                <Truck className={`w-5 h-5 ${anyActive ? "text-blue-600" : "text-amber-600"}`} />
+                <p className={`font-bold text-sm flex-1 ${anyActive ? "text-blue-700" : "text-amber-700"}`}>
+                  Delivery Access
+                </p>
+              </div>
+              <div className="divide-y divide-gray-100 bg-white">
+                {Object.entries(statuses).map(([svc, info]) => {
+                  const hasPendingForService = pendingServiceTypes.has(svc) || pendingServiceTypes.has("all");
+                  return (
+                    <div key={svc} className="px-4 py-2.5 flex items-center gap-3">
+                      <span className="text-sm capitalize font-medium text-gray-700 flex-1">{svc}</span>
+                      {info.active ? (
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-green-100 text-green-700">
+                          Active{info.deliveryLabel ? ` · ${info.deliveryLabel}` : ""}
+                        </span>
+                      ) : hasPendingForService ? (
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                          Pending
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => requestDeliveryMut.mutate({ serviceType: svc, reason: `Requesting ${svc} delivery access` })}
+                          disabled={requestDeliveryMut.isPending}
+                          className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-60"
+                        >
+                          Request
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Desktop: 2-column layout for orders ── */}
         <div className="md:grid md:grid-cols-2 md:gap-6 space-y-4 md:space-y-0">
