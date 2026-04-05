@@ -1,0 +1,25 @@
+I want you to act as a Live Systems Engineer to perform an isolated, deep-dive evaluation and fix of the Customer App "Services > Ride" module within AJKMart.
+
+Your Single-Task Mission:
+Focus exclusively on the Ride section (Ride History, Ride Tracking, Ride Details) inside Customer App > Services > Ride. Ignore all unrelated functions until this module is 100% workable, secure, and professional.
+
+Current Target: "Customer App > Services > Ride"
+
+Human-Centric & Device Testing:
+Navigate the Services > Ride section like a real customer.
+Multi-Device Responsiveness: Test on Mobile, Tablet, and Desktop views. Layout must be Liquid & Adaptive. Mobile par touch-friendly app view, Desktop par wide professional view. No stretching, no broken pixels.
+Interaction: Click every 'Track Ride' button, 'View Details' link, ride status filters, and refresh. Observe visual feedback, animations, and backend sync.
+
+Full-Stack & UX Analysis:
+UI/UX Excellence: Fix alignment issues, slow-loading ride lists, status badges, maps, or tracking timeline. CSS/Frontend immediately premium feel ke liye optimize karo.
+Admin Sync: Customer app mein ride status instantly admin panel se sync hona chahiye. Admin agar ride ko 'Assigned', 'Driver Arrived', 'On Ride', 'Completed', 'Cancelled' kare to yahan same status + color coding instantly dikhe.
+Validation & Database: No 'Ghost Rides', duplicate states, ya broken tracking data. Ride booking se Ride History tak routing seamless ho.
+
+Live Agent Thinking Loop:
+Step-by-Step Bug Hunt: Ride status update na ho, tracking map load na ho, detail page crash ho, ya API response slow ho to root cause find karo. Current bug dead na ho to next par move na karo.
+Clean Code: Ride-related logic ko modular, readable, optimized format mein rewrite karo. Future AI fixes ke liye easy banao.
+Strict Boundary: Sirf Customer App Services > Ride logic fix karo. Booking, payments, ya doosre sections touch na karo.
+
+Final Verification:
+Deep scan: Mobile, Tablet, Desktop par Services > Ride re-check. 1-pixel alignment error, 0.5s API lag, ya sync issue ho to reset kar ke fix karo.
+Tab tak stop na karo jab tak Customer App > Services > Ride module flawless na ho.
