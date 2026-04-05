@@ -66,7 +66,7 @@ router.post("/whatsapp", async (req, res) => {
         const type = msg?.type;
         const text = msg?.text?.body ?? "";
 
-        console.log(`[WhatsApp webhook] Incoming message from ${from} — type: ${type}${text ? ` — text: "${text}"` : ""}`);
+        console.log(`[WhatsApp webhook] Incoming message from ${from} — type: ${type}`);
       }
 
       for (const status of statuses) {

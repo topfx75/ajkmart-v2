@@ -70,6 +70,21 @@ const otpLimiter = rateLimit({
   },
 });
 
+/** Per-ride OTP attempt counter.  After MAX_OTP_ATTEMPTS failed guesses the OTP
+ *  is invalidated and the rider must request a fresh one.  Entries auto-expire
+ *  once the ride is verified or 30 minutes after the first failed attempt. */
+const rideOtpAttempts = new Map<string, { count: number; firstAt: number }>();
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_ATTEMPT_TTL_MS = 30 * 60_000;
+
+/* Periodically purge stale entries so the map doesn't grow unbounded */
+setInterval(() => {
+  const now = Date.now();
+  for (const [rideId, entry] of rideOtpAttempts) {
+    if (now - entry.firstAt > OTP_ATTEMPT_TTL_MS) rideOtpAttempts.delete(rideId);
+  }
+}, 5 * 60_000);
+
 function normalizeVehicleType(raw: string | null | undefined): string {
   const v = (raw ?? "").trim().toLowerCase();
   if (!v) return "";
@@ -1319,15 +1334,33 @@ router.post("/rides/:id/verify-otp", otpLimiter, async (req, res) => {
     sendValidationError(res, "OTP can only be verified once you have accepted and are en route to the pickup location."); return;
   }
   if (ride.otpVerified) {
+    /* Clear the attempt counter on success */
+    rideOtpAttempts.delete(rideId);
     sendSuccess(res, undefined, "OTP already verified"); return;
   }
   if (!ride.tripOtp) {
-    sendValidationError(res, "No OTP found for this ride"); return;
+    sendValidationError(res, "No OTP found for this ride. The customer needs to request a new one."); return;
   }
   if (ride.tripOtp.trim() !== otp.trim()) {
-    sendErrorWithData(res, "Incorrect OTP. Please check with your customer.", { code: "OTP_MISMATCH" }, 400); return;
+    /* Track failed attempt */
+    const entry = rideOtpAttempts.get(rideId) ?? { count: 0, firstAt: Date.now() };
+    entry.count += 1;
+    rideOtpAttempts.set(rideId, entry);
+
+    if (entry.count >= MAX_OTP_ATTEMPTS) {
+      /* Invalidate the current OTP so the customer must request a fresh one */
+      await db.update(ridesTable).set({ tripOtp: null, updatedAt: new Date() }).where(eq(ridesTable.id, rideId)).catch(() => {});
+      rideOtpAttempts.delete(rideId);
+      sendErrorWithData(res, "Too many incorrect OTP attempts. The current OTP has been invalidated. Please ask the customer to refresh their app to receive a new OTP.", { code: "OTP_INVALIDATED" }, 400);
+      return;
+    }
+
+    const remaining = MAX_OTP_ATTEMPTS - entry.count;
+    sendErrorWithData(res, `Incorrect OTP. Please check with your customer. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`, { code: "OTP_MISMATCH", attemptsRemaining: remaining }, 400); return;
   }
 
+  /* Success — clear attempt counter and mark verified */
+  rideOtpAttempts.delete(rideId);
   await db.update(ridesTable).set({ otpVerified: true, updatedAt: new Date() }).where(eq(ridesTable.id, rideId));
   emitRideDispatchUpdate({ rideId, action: "otp-verified", status: ride.status });
   emitRideUpdate(rideId);

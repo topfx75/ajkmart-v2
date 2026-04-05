@@ -781,19 +781,21 @@ router.post("/", customerAuth, async (req, res) => {
 
   /* ── Cash / JazzCash / EasyPaisa / Bank — wrapped in try/catch to prevent unhandled rejections ── */
   try {
-    const [order] = await db.insert(ordersTable).values({
-      id: generateId(), userId, type, items,
-      status: "pending", total: total.toFixed(2),
-      deliveryAddress, paymentMethod,
-      estimatedTime,
-      ...gpsInsert,
-    }).returning();
-    if (promoId) {
-      await db.update(promoCodesTable)
-        .set({ usedCount: sql`${promoCodesTable.usedCount} + 1` })
-        .where(eq(promoCodesTable.id, promoId))
-        .catch(() => {});
-    }
+    const [order] = await db.transaction(async (tx) => {
+      const [newOrder] = await tx.insert(ordersTable).values({
+        id: generateId(), userId, type, items,
+        status: "pending", total: total.toFixed(2),
+        deliveryAddress, paymentMethod,
+        estimatedTime,
+        ...gpsInsert,
+      }).returning();
+      if (promoId) {
+        await tx.update(promoCodesTable)
+          .set({ usedCount: sql`${promoCodesTable.usedCount} + 1` })
+          .where(eq(promoCodesTable.id, promoId));
+      }
+      return [newOrder];
+    });
     const mapped = { ...mapOrder(order!, deliveryFee, gstAmount, codFee), promoDiscount };
 
     /* ── Emit to admin IMMEDIATELY after DB commit (Task 7: <500ms latency) ── */

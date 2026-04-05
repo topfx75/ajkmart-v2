@@ -215,49 +215,52 @@ router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(chec
   const exists    = !!user;
   const isNewUser = !exists;
 
-  /* ── If user is banned or locked, surface it early ── */
-  if (user?.isBanned) {
-    addSecurityEvent({ type: "banned_user_identifier_check", ip, userId: user.id, details: `Banned user check: ${identifier}`, severity: "medium" });
-    res.json({ isNewUser: false, isBanned: true, action: "blocked", availableMethods: [] });
-    return;
-  }
+  /* ── Phone / email enumeration hardening ─────────────────────────────────
+     For phone/email identifiers we must return an IDENTICAL response whether
+     the account exists, is banned, is locked, is Google-linked, or doesn't
+     exist at all.  Any distinguishable response would let an attacker enumerate
+     registered phone numbers.
 
-  const maxAttempts    = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
-  const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
-  const lockoutKey     = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim();
-  const lockout        = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
-  if (lockout.locked) {
-    res.json({ isNewUser: false, isLocked: true, lockedMinutes: lockout.minutesLeft, action: "locked", availableMethods: [] });
-    return;
-  }
+     Security events are still logged server-side; actual enforcement (banned,
+     locked, Google-linked) happens in /auth/verify-otp after OTP proof.
 
-  /* ── Device fingerprint abuse check ── */
-  let deviceFlagged = false;
-  const DEVICE_ACCOUNT_THRESHOLD = 5;
-  if (deviceId && isNewUser) {
-    const deviceAccounts = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(eq(usersTable.deviceId, deviceId))
-      .limit(DEVICE_ACCOUNT_THRESHOLD + 1);
-    if (deviceAccounts.length >= DEVICE_ACCOUNT_THRESHOLD) {
-      deviceFlagged = true;
-      addSecurityEvent({
-        type: "device_multi_account_flag",
-        ip,
-        details: `Device ${deviceId} has ${deviceAccounts.length} accounts — registration flagged`,
-        severity: "high",
-      });
+     Exception: username-based identifiers may safely reveal existence (the
+     attacker must already know the username) and may show banned/locked there.
+
+     Rule: for phone/email, always use the *request* role, never the DB user's
+     role — the latter would differ between existing and non-existing records. ── */
+
+  /* For username path only: surface banned/locked at check time (acceptable) */
+  if (!looksLikePhone && !looksLikeEmail) {
+    if (user?.isBanned) {
+      addSecurityEvent({ type: "banned_user_identifier_check", ip, userId: user.id, details: `Banned user check: ${identifier}`, severity: "medium" });
+      res.json({ isBanned: true, action: "blocked", availableMethods: [] });
+      return;
+    }
+    const maxAttempts    = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
+    const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
+    const lockoutKey     = identifier.trim();
+    const lockout        = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
+    if (lockout.locked) {
+      res.json({ isLocked: true, lockedMinutes: lockout.minutesLeft, action: "locked", availableMethods: [] });
+      return;
+    }
+  } else {
+    /* Phone / email: log security events silently, never gate on them */
+    if (user?.isBanned) {
+      addSecurityEvent({ type: "banned_user_identifier_check", ip, userId: user.id, details: `Banned user phone/email check: ${identifier}`, severity: "medium" });
     }
   }
 
-  /* ── Build available methods based on admin config + actual role ── */
-  const effectiveCheckRole = user?.role ?? userRole;
-  const googleEnabled   = isAuthMethodEnabled(settings, "auth_google_enabled", effectiveCheckRole);
-  const facebookEnabled = isAuthMethodEnabled(settings, "auth_facebook_enabled", effectiveCheckRole);
-  const phoneOtpEnabled = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveCheckRole);
-  const emailOtpEnabled = isAuthMethodEnabled(settings, "auth_email_otp_enabled", effectiveCheckRole);
-  const passwordEnabled = isAuthMethodEnabled(settings, "auth_username_password_enabled", effectiveCheckRole);
+  /* ── Build available methods based on admin config + request role ──
+     Use userRole (from request) for phone/email — never user?.role — so the
+     response shape is identical for existing and non-existing identifiers. ── */
+  const effectiveCheckRole = (looksLikePhone || looksLikeEmail) ? userRole : (user?.role ?? userRole);
+  const googleEnabled    = isAuthMethodEnabled(settings, "auth_google_enabled", effectiveCheckRole);
+  const facebookEnabled  = isAuthMethodEnabled(settings, "auth_facebook_enabled", effectiveCheckRole);
+  const phoneOtpEnabled  = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveCheckRole);
+  const emailOtpEnabled  = isAuthMethodEnabled(settings, "auth_email_otp_enabled", effectiveCheckRole);
+  const passwordEnabled  = isAuthMethodEnabled(settings, "auth_username_password_enabled", effectiveCheckRole);
   const magicLinkEnabled = isAuthMethodEnabled(settings, "auth_magic_link_enabled", effectiveCheckRole);
 
   const availableMethods: string[] = [];
@@ -268,78 +271,64 @@ router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(chec
   if (facebookEnabled)  availableMethods.push("facebook");
   if (magicLinkEnabled) availableMethods.push("magic_link");
 
-  /* ── For EXISTING users: determine the best/enforced action ── */
+  /* ── Phone / email enumeration hardening ─────────────────────────────────
+     For phone and email identifiers we MUST NOT reveal whether an account
+     exists.  Return a single generic action ("send_otp") for every phone/email,
+     regardless of whether the account is new, existing, Google-linked, etc.
+     Account state is only enforced inside /auth/verify-otp (after OTP proof).
+
+     For username-based identifiers the threat model is different (the attacker
+     must already know the username), so we can still route to "register" vs
+     "login_password" there — but we never return social-linked flags. ── */
   let action: string;
-  const hasGoogle   = !!(user?.googleId);
-  const hasFacebook = !!(user?.facebookId);
+  let responseAvailableMethods: string[] = availableMethods;
 
-  const usableMethods = availableMethods.filter(m => {
-    if (m === "password") return !!user?.passwordHash;
-    return true;
-  });
+  if (looksLikePhone) {
+    /* Always say "send OTP" — never distinguish new vs returning user */
+    action = phoneOtpEnabled ? "send_phone_otp" : "no_method";
+  } else if (looksLikeEmail) {
+    if (emailOtpEnabled)       action = "send_email_otp";
+    else if (magicLinkEnabled) action = "send_magic_link";
+    else                       action = "no_method";
+  } else {
+    /* Username path: determine action from existence without leaking social links */
+    const usableMethods = availableMethods.filter(m => {
+      if (m === "password") return !!user?.passwordHash;
+      return true;
+    });
+    responseAvailableMethods = exists ? usableMethods : availableMethods;
 
-  const profileIncomplete = exists && (!user?.name || user.name === "User" || user.name === "Pending") && !user?.passwordHash;
-
-  if (exists && profileIncomplete) {
-    if (looksLikePhone && phoneOtpEnabled) {
-      action = "send_phone_otp";
-    } else if (looksLikeEmail && emailOtpEnabled) {
-      action = "send_email_otp";
-    } else {
+    if (!registrationOpen && !exists) {
+      action = "registration_closed";
+    } else if (!exists) {
       action = "register";
-    }
-  } else if (exists) {
-    if (hasGoogle && googleEnabled) {
-      action = "force_google";
-    } else if (hasFacebook && facebookEnabled && !hasGoogle) {
-      action = "force_facebook";
-    } else if (looksLikePhone && phoneOtpEnabled) {
-      action = "send_phone_otp";
-    } else if (looksLikeEmail && emailOtpEnabled) {
-      action = "send_email_otp";
-    } else if (looksLikeEmail && magicLinkEnabled) {
-      action = "send_magic_link";
     } else if (passwordEnabled && user?.passwordHash) {
       action = "login_password";
-    } else if (phoneOtpEnabled) {
-      action = "send_phone_otp";
     } else if (usableMethods.length > 0) {
       const first = usableMethods[0]!;
-      action = first === "password" ? "login_password" : first === "phone_otp" ? "send_phone_otp" : first === "email_otp" ? "send_email_otp" : first === "magic_link" ? "send_magic_link" : "no_method";
+      action = first === "password" ? "login_password"
+             : first === "phone_otp" ? "send_phone_otp"
+             : first === "email_otp" ? "send_email_otp"
+             : first === "magic_link" ? "send_magic_link"
+             : "no_method";
     } else {
       action = "no_method";
     }
-  } else {
-    action = registrationOpen ? "register" : "registration_closed";
   }
 
   const whatsappOn = settings["integration_whatsapp"] === "on";
-  const smsOn      = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveCheckRole);
-  const emailOn    = isAuthMethodEnabled(settings, "auth_email_otp_enabled", effectiveCheckRole);
+  const smsOn      = phoneOtpEnabled;
   const otpChannels: string[] = [];
-  if (whatsappOn)  otpChannels.push("whatsapp");
-  if (smsOn)       otpChannels.push("sms");
-  if (emailOn && user?.email) otpChannels.push("email");
-
-  const canMerge = !exists && (looksLikePhone || looksLikeEmail);
+  if (whatsappOn) otpChannels.push("whatsapp");
+  if (smsOn)      otpChannels.push("sms");
 
   res.json({
-    exists,
-    isNewUser,
     registrationOpen,
     action,
-    profileIncomplete: !!profileIncomplete,
-    availableMethods: exists ? usableMethods : availableMethods,
-    hasGoogle,
-    hasFacebook,
-    hasPhone: !!user?.phone,
-    hasEmail: !!user?.email,
-    requiresPhoneVerification: exists && !user?.phoneVerified,
-    deviceFlagged,
+    availableMethods: responseAvailableMethods,
     isBanned:  false,
     isLocked:  false,
     otpChannels,
-    canMerge,
   });
 });
 
@@ -492,7 +481,7 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
 
   const otpEnabled = isAuthMethodEnabled(settings, "auth_phone_otp_enabled");
 
-  /* ── Check if new-user registration is allowed ── */
+  /* ── Look up existing user (not exposed in response — only used server-side) ── */
   const existingUser = await db
     .select()
     .from(usersTable)
@@ -502,13 +491,16 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   const effectiveRole = existingUser[0]?.role ?? ((req.body.role === "rider" || req.body.role === "vendor") ? req.body.role : "customer");
   const otpEnabledForRole = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveRole);
 
-  if (existingUser.length === 0 && settings["feature_new_users"] === "off") {
-    res.status(403).json({ error: "New user registration is currently disabled. Please contact support." });
-    return;
-  }
+  /* ── Phone enumeration hardening ─────────────────────────────────────────
+     Do NOT return distinguishable errors for banned accounts, Google-linked
+     accounts, or registration-closed states — all of these would reveal
+     whether a phone number is registered.  Enforcement of these rules happens
+     inside /auth/verify-otp (after the caller has proven OTP ownership).
 
-  /* ── Phone verify flag: when ON, OTP bypass is disabled globally ──
-     Enforcement happens in verify-otp; nothing to gate at send-otp. ── */
+     Exceptions that are acceptable to surface at send-otp:
+       • lockout  — rate-limit response, keyed on the phone, not on account existence
+       • invalid phone format — rejected before DB lookup
+     Everything else: silently write OTP to pending_otps and return generic success. ── */
 
   /* ── Check lockout before generating new OTP ── */
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
@@ -523,25 +515,13 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
     return;
   }
 
-  /* ── Check banned status ── */
+  /* Log security events server-side without blocking the OTP flow */
   if (existingUser[0]?.isBanned) {
     addSecurityEvent({ type: "banned_user_otp_request", ip, details: `Banned user attempted OTP: ${phone}`, severity: "high" });
-    res.status(403).json({ error: "Your account has been suspended. Please contact support." });
-    return;
   }
-
-  /* ── Method Enforcement (Unified Auth Gatekeeper) ──
-     If this number is linked to a Google account and Google login is enabled,
-     the user MUST log in via Google — not OTP — to prevent account hijacking. ── */
   const existingGoogleId = existingUser[0]?.googleId;
   if (existingGoogleId && isAuthMethodEnabled(settings, "auth_google_enabled", existingUser[0]?.role ?? effectiveRole)) {
     addSecurityEvent({ type: "otp_blocked_google_account", ip, details: `OTP attempt on Google-linked account: ${phone}`, severity: "low" });
-    res.status(403).json({
-      error: "This account is linked to Google. Please sign in with Google.",
-      useGoogle: true,
-      googleLinked: true,
-    });
-    return;
   }
 
   /* ── Determine approval status for NEW users ── */
@@ -549,25 +529,9 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
   const newUserApprovalStatus = isNewUser && requireApproval ? "pending" : "approved";
 
-  /* ══ OTP DISABLED — require password for existing users, block new registrations ══ */
+  /* ══ OTP DISABLED — return generic "use another method" without revealing account state ══ */
   if (!otpEnabled || !otpEnabledForRole) {
-    if (isNewUser) {
-      res.status(403).json({ error: "Phone verification is required for new registrations. Please contact support." });
-      return;
-    }
-    const u = existingUser[0]!;
-    if (!u.passwordHash) {
-      res.status(403).json({ error: "Phone OTP is currently disabled. Please use password or another login method." });
-      return;
-    }
-    res.json({
-      otpRequired: false,
-      requiresPassword: true,
-      message: "Phone OTP is disabled. Please enter your password.",
-      action: "login_password",
-      availableMethods: ["password"],
-      user: { id: u.id, phone: u.phone, name: u.name },
-    });
+    res.status(403).json({ error: "Phone OTP is currently disabled. Please use another login method or contact support." });
     return;
   }
   /* ── Per-phone OTP resend cooldown (60 s) — prevents SMS bombing ── */
@@ -861,6 +825,16 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
   if (user.isBanned) {
     addSecurityEvent({ type: "banned_login_attempt", ip, userId: user.id, details: `Banned user tried to verify OTP: ${phone}`, severity: "high" });
     res.status(403).json({ error: "Your account has been suspended. Please contact support." });
+    return;
+  }
+
+  /* ── Google-linked account: block OTP hijack ─────────────────────────────
+     Enforcement moved here from send-otp to avoid leaking account existence.
+     After OTP proof the caller is bound to this phone, so we can safely tell
+     them to use Google instead without disclosing anything about other numbers. ── */
+  if (user.googleId && isAuthMethodEnabled(await getCachedSettings(), "auth_google_enabled", user.role ?? undefined)) {
+    addSecurityEvent({ type: "otp_hijack_google_account", ip, userId: user.id, details: `OTP verify attempted on Google-linked account: ${phone}`, severity: "medium" });
+    res.status(403).json({ error: "This account is linked to Google. Please sign in with Google.", useGoogle: true });
     return;
   }
 
@@ -2693,7 +2667,7 @@ async function issueTokensForUser(user: any, ip: string, method: string, userAge
   const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   await db.insert(refreshTokensTable).values({ id: generateId(), userId: user.id, tokenHash: refreshHash, authMethod: method, expiresAt: refreshExpiresAt });
-  db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch(() => {});
+  db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch((err) => { console.error("[auth] Expired token cleanup failed:", err); });
   await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
   writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent, metadata: { method } });
 
@@ -2709,7 +2683,7 @@ async function issueTokensForUser(user: any, ip: string, method: string, userAge
       os: parsed.os,
       ip,
     });
-  } catch {}
+  } catch (err) { console.error("[auth] Session record insert failed:", err); }
 
   try {
     await db.insert(loginHistoryTable).values({
@@ -2722,7 +2696,7 @@ async function issueTokensForUser(user: any, ip: string, method: string, userAge
       success: true,
       method,
     });
-  } catch {}
+  } catch (err) { console.error("[auth] Login history insert failed:", err); }
 
   return {
     token: accessToken,
@@ -2975,7 +2949,7 @@ router.get("/2fa/setup", async (req, res) => {
   await db.update(usersTable).set({ totpSecret: encryptedSecret, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
   let qrDataUrl: string | null = null;
-  try { qrDataUrl = await generateQRCodeDataURL(secret, label); } catch {}
+  try { qrDataUrl = await generateQRCodeDataURL(secret, label); } catch (err) { console.error("[2fa/setup] QR code generation failed:", err); }
 
   res.json({ secret, uri, qrDataUrl });
 });

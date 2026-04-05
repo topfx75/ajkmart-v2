@@ -70,6 +70,6 @@ async function sendPushToSubs(subs: typeof pushSubscriptionsTable.$inferSelect[]
     }),
   );
   if (stale.length > 0) {
-    await db.delete(pushSubscriptionsTable).where(inArray(pushSubscriptionsTable.id, stale)).catch(() => {});
+    await db.delete(pushSubscriptionsTable).where(inArray(pushSubscriptionsTable.id, stale)).catch((err) => { console.error("[webpush] Stale subscription cleanup failed:", err); });
   }
 }
