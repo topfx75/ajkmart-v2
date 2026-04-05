@@ -35,6 +35,15 @@ export const useUsers = (conditionTier?: string) => {
   });
 };
 
+export const useSearchRiders = (q: string, onlineOnly = true) => {
+  return useQuery({
+    queryKey: ["admin-search-riders", q, onlineOnly],
+    queryFn: () => fetcher(`/users/search-riders?q=${encodeURIComponent(q)}&limit=20&onlineOnly=${onlineOnly}`),
+    enabled: true,
+    staleTime: 10_000,
+  });
+};
+
 export const usePendingUsers = () => {
   return useQuery({
     queryKey: ["admin-users-pending"],

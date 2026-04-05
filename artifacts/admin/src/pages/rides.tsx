@@ -8,7 +8,7 @@ import {
   useRidesEnriched, useRideServices, useCreateRideService, useUpdateRideService, useDeleteRideService,
   usePopularLocations, useCreateLocation, useUpdateLocation, useDeleteLocation,
   useSchoolRoutes, useCreateSchoolRoute, useUpdateSchoolRoute, useDeleteSchoolRoute, useSchoolSubscriptions,
-  useUsers,
+  useSearchRiders,
   useAdminCancelRide, useAdminRefundRide, useAdminReassignRide,
   useRideDetail, useRideAuditTrail, useDispatchMonitor,
   usePlatformSettings, useUpdatePlatformSettings,
@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { MobileDrawer } from "@/components/MobileDrawer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -111,7 +112,6 @@ function RideDetailModal({
 }) {
   const { data, isLoading, isError, error, refetch } = useRideDetail(rideId);
   const { data: auditData } = useRideAuditTrail(rideId);
-  const { data: usersData } = useUsers();
   const cancelMut = useAdminCancelRide();
   const refundMut = useAdminRefundRide();
   const reassignMut = useAdminReassignRide();
@@ -127,6 +127,14 @@ function RideDetailModal({
   const [assignPhone, setAssignPhone] = useState("");
   const [selectedRiderId, setSelectedRiderId] = useState<string | null>(null);
   const [riderSearch, setRiderSearch] = useState("");
+  const [debouncedRiderSearch, setDebouncedRiderSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedRiderSearch(riderSearch), 300);
+    return () => clearTimeout(t);
+  }, [riderSearch]);
+
+  const { data: riderSearchData } = useSearchRiders(debouncedRiderSearch);
 
   if (isError) return (
     <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
@@ -169,22 +177,11 @@ function RideDetailModal({
     }
     refundMut.mutate({ id: rideId, amount: amt, reason: refundReason || undefined }, {
       onSuccess: (d: any) => { toast({ title: `Refunded ${formatCurrency(Number(d.refundedAmount))}` }); setShowRefund(false); refetch(); },
+      onError: (e: Error) => { toast({ title: "Refund failed", description: e.message, variant: "destructive" }); },
     });
   };
 
-  const allRiders = useMemo(() => {
-    const users: any[] = usersData?.users ?? [];
-    return users.filter((u: any) => u.role === "rider" && u.isActive !== false);
-  }, [usersData]);
-
-  const filteredRiders = useMemo(() => {
-    if (!riderSearch) return allRiders.slice(0, 20);
-    const q = riderSearch.toLowerCase();
-    return allRiders.filter((u: any) =>
-      (u.name || "").toLowerCase().includes(q) ||
-      (u.phone || "").toLowerCase().includes(q)
-    ).slice(0, 20);
-  }, [allRiders, riderSearch]);
+  const filteredRiders: any[] = riderSearchData?.riders ?? [];
 
   const selectRider = (r: any) => {
     setSelectedRiderId(r.id);
@@ -201,6 +198,7 @@ function RideDetailModal({
     }
     reassignMut.mutate({ id: rideId, riderId: selectedRiderId, riderName: assignName.trim(), riderPhone: assignPhone.trim() }, {
       onSuccess: () => { toast({ title: "Rider reassigned" }); setShowReassign(false); refetch(); },
+      onError: (e: Error) => { toast({ title: "Reassignment failed", description: e.message, variant: "destructive" }); },
     });
   };
 
@@ -1078,6 +1076,54 @@ function RideSettings() {
   );
 }
 
+interface ServiceFormValues {
+  key: string; name: string; nameUrdu: string; icon: string; description: string;
+  baseFare: string; perKm: string; minFare: string; maxPassengers: string; allowBargaining: boolean; color: string;
+}
+
+interface ServiceFormPanelProps {
+  isNew: boolean;
+  form: ServiceFormValues;
+  setForm: React.Dispatch<React.SetStateAction<ServiceFormValues>>;
+  onSubmit: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+}
+
+function ServiceFormPanel({ isNew, form, setForm, onSubmit, onCancel, isPending }: ServiceFormPanelProps) {
+  return (
+    <Card className="p-5 rounded-2xl border-2 border-primary/20 bg-primary/5 space-y-4">
+      <h3 className="font-bold text-base">{isNew ? "Add Custom Service" : `Edit: ${form.name}`}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Icon</label><Input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} placeholder="🚗" className="text-2xl" /></div>
+        {isNew && <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Key</label><Input value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value.toLowerCase().replace(/\s+/g, "_") }))} placeholder="school_van" /></div>}
+        <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Name</label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="School Van" /></div>
+        <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Name (Urdu)</label><Input value={form.nameUrdu} onChange={e => setForm(f => ({ ...f, nameUrdu: e.target.value }))} className="text-right" dir="rtl" /></div>
+        <div className={isNew ? "sm:col-span-2" : ""}><label className="text-xs font-semibold text-muted-foreground mb-1 block">Description</label><Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
+      </div>
+      <div className="border-t pt-4">
+        <p className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wide">Fare Settings (Rs.)</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[{ label: "Base Fare", key: "baseFare" }, { label: "Per Km", key: "perKm" }, { label: "Min Fare", key: "minFare" }, { label: "Max Pax", key: "maxPassengers" }].map(f => (
+            <div key={f.key}><label className="text-xs font-semibold text-muted-foreground mb-1 block">{f.label}</label><Input type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} /></div>
+          ))}
+        </div>
+      </div>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={form.allowBargaining} onChange={e => setForm(f => ({ ...f, allowBargaining: e.target.checked }))} className="w-4 h-4 rounded" />
+        <span className="text-sm font-medium">Allow Bargaining</span>
+      </label>
+      <div className="flex gap-3">
+        <button onClick={onSubmit} disabled={isPending}
+          className="flex-1 bg-primary text-white font-bold py-2.5 rounded-xl hover:opacity-90 disabled:opacity-60 transition-opacity">
+          {isPending ? "Saving..." : isNew ? "Create" : "Save"}
+        </button>
+        <button onClick={onCancel} className="px-4 py-2.5 rounded-xl border text-sm font-semibold text-muted-foreground hover:bg-muted/50">Cancel</button>
+      </div>
+    </Card>
+  );
+}
+
 function ServicesManager() {
   const { data: svcData, isLoading: svcLoading } = useRideServices();
   const createMut  = useCreateRideService();
@@ -1086,8 +1132,8 @@ function ServicesManager() {
   const { toast }  = useToast();
 
   const services: any[] = svcData?.services ?? [];
-  const EMPTY_FORM = { key: "", name: "", nameUrdu: "", icon: "🚗", description: "", baseFare: "15", perKm: "8", minFare: "50", maxPassengers: "1", allowBargaining: true, color: "#6B7280" };
-  const [form, setForm]     = useState(EMPTY_FORM);
+  const EMPTY_FORM: ServiceFormValues = { key: "", name: "", nameUrdu: "", icon: "🚗", description: "", baseFare: "15", perKm: "8", minFare: "50", maxPassengers: "1", allowBargaining: true, color: "#6B7280" };
+  const [form, setForm]     = useState<ServiceFormValues>(EMPTY_FORM);
   const [editId, setEditId] = useState<string|null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [delConfirm, setDelConfirm] = useState<string|null>(null);
@@ -1120,9 +1166,12 @@ function ServicesManager() {
     } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
   };
 
+  const isPending = createMut.isPending || updateMut.isPending;
+
   const toggleEnabled = (svc: any) => {
     updateMut.mutate({ id: svc.id, isEnabled: !svc.isEnabled }, {
       onSuccess: () => toast({ title: svc.isEnabled ? "Disabled" : "Enabled" }),
+      onError: (e: Error) => toast({ title: "Toggle failed", description: e.message, variant: "destructive" }),
     });
   };
 
@@ -1143,38 +1192,6 @@ function ServicesManager() {
     catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
   };
 
-  const FormPanel = ({ isNew }: { isNew: boolean }) => (
-    <Card className="p-5 rounded-2xl border-2 border-primary/20 bg-primary/5 space-y-4">
-      <h3 className="font-bold text-base">{isNew ? "Add Custom Service" : `Edit: ${form.name}`}</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Icon</label><Input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))} placeholder="🚗" className="text-2xl" /></div>
-        {isNew && <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Key</label><Input value={form.key} onChange={e => setForm(f => ({ ...f, key: e.target.value.toLowerCase().replace(/\s+/g, "_") }))} placeholder="school_van" /></div>}
-        <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Name</label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="School Van" /></div>
-        <div><label className="text-xs font-semibold text-muted-foreground mb-1 block">Name (Urdu)</label><Input value={form.nameUrdu} onChange={e => setForm(f => ({ ...f, nameUrdu: e.target.value }))} className="text-right" dir="rtl" /></div>
-        <div className={isNew ? "sm:col-span-2" : ""}><label className="text-xs font-semibold text-muted-foreground mb-1 block">Description</label><Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
-      </div>
-      <div className="border-t pt-4">
-        <p className="text-xs font-bold text-muted-foreground mb-3 uppercase tracking-wide">Fare Settings (Rs.)</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[{ label: "Base Fare", key: "baseFare" }, { label: "Per Km", key: "perKm" }, { label: "Min Fare", key: "minFare" }, { label: "Max Pax", key: "maxPassengers" }].map(f => (
-            <div key={f.key}><label className="text-xs font-semibold text-muted-foreground mb-1 block">{f.label}</label><Input type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} /></div>
-          ))}
-        </div>
-      </div>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" checked={form.allowBargaining} onChange={e => setForm(f => ({ ...f, allowBargaining: e.target.checked }))} className="w-4 h-4 rounded" />
-        <span className="text-sm font-medium">Allow Bargaining</span>
-      </label>
-      <div className="flex gap-3">
-        <button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending}
-          className="flex-1 bg-primary text-white font-bold py-2.5 rounded-xl hover:opacity-90 disabled:opacity-60 transition-opacity">
-          {createMut.isPending || updateMut.isPending ? "Saving..." : isNew ? "Create" : "Save"}
-        </button>
-        <button onClick={resetForm} className="px-4 py-2.5 rounded-xl border text-sm font-semibold text-muted-foreground hover:bg-muted/50">Cancel</button>
-      </div>
-    </Card>
-  );
-
   const sorted = [...services].sort((a, b) => a.sortOrder - b.sortOrder);
 
   return (
@@ -1190,7 +1207,7 @@ function ServicesManager() {
         </button>
       </div>
 
-      {showAdd && !editId && <FormPanel isNew />}
+      {showAdd && !editId && <ServiceFormPanel isNew form={form} setForm={setForm} onSubmit={handleSubmit} onCancel={resetForm} isPending={isPending} />}
 
       {svcLoading ? (
         <Card className="p-12 rounded-2xl text-center"><p className="text-muted-foreground">Loading...</p></Card>
@@ -1221,7 +1238,7 @@ function ServicesManager() {
                     </div>
                   ))}
                 </div>
-                {editId === svc.id && <FormPanel isNew={false} />}
+                {editId === svc.id && <ServiceFormPanel isNew={false} form={form} setForm={setForm} onSubmit={handleSubmit} onCancel={resetForm} isPending={isPending} />}
                 {editId !== svc.id && (
                   <div className="flex items-center gap-2">
                     <div className="flex gap-1">
@@ -1259,6 +1276,7 @@ function LocationsManager() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ name: "", nameUrdu: "", lat: "", lng: "", category: "general", icon: "📍", sortOrder: "0", isActive: true });
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const locations = data?.locations || [];
   const CATEGORIES = ["chowk", "school", "hospital", "bazar", "park", "landmark", "general"];
 
@@ -1300,7 +1318,7 @@ function LocationsManager() {
                 <div className="flex flex-col gap-1.5 shrink-0">
                   <button onClick={() => updateMut.mutate({ id: l.id, isActive: !l.isActive })}>{l.isActive ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5" />}</button>
                   <button onClick={() => openEdit(l)} className="text-muted-foreground hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => { if (confirm(`Delete "${l.name}"?`)) deleteMut.mutate(l.id); }} className="text-muted-foreground hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => setDeleteTarget(l)} className="text-muted-foreground hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             </Card>
@@ -1333,6 +1351,21 @@ function LocationsManager() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="rounded-2xl max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-500" /> Delete Location</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <span className="font-semibold">"{deleteTarget?.name}"</span>? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { deleteMut.mutate(deleteTarget.id, { onError: (e: Error) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }) }); setDeleteTarget(null); }} className="bg-red-600 hover:bg-red-700 text-white">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1347,6 +1380,7 @@ function SchoolRoutesManager() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ routeName: "", schoolName: "", schoolNameUrdu: "", fromArea: "", fromAreaUrdu: "", toAddress: "", monthlyPrice: "", morningTime: "7:30 AM", afternoonTime: "", capacity: "30", vehicleType: "school_shift", notes: "", isActive: true, sortOrder: "0" });
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const routes = routesData?.routes || [];
   const allSubs = subsData?.subscriptions || [];
 
@@ -1391,7 +1425,7 @@ function SchoolRoutesManager() {
                 <div className="flex flex-col gap-1.5 shrink-0">
                   <button onClick={() => updateMut.mutate({ id: r.id, isActive: !r.isActive })}>{r.isActive ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5" />}</button>
                   <button onClick={() => { setEditing(r); setForm({ routeName: r.routeName, schoolName: r.schoolName, schoolNameUrdu: r.schoolNameUrdu || "", fromArea: r.fromArea, fromAreaUrdu: r.fromAreaUrdu || "", toAddress: r.toAddress, monthlyPrice: String(r.monthlyPrice), morningTime: r.morningTime || "7:30 AM", afternoonTime: r.afternoonTime || "", capacity: String(r.capacity), vehicleType: r.vehicleType, notes: r.notes || "", isActive: r.isActive, sortOrder: String(r.sortOrder) }); setShowForm(true); }} className="text-muted-foreground hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => { if (confirm(`Delete "${r.routeName}"?`)) deleteMut.mutate(r.id); }} className="text-muted-foreground hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={() => setDeleteTarget(r)} className="text-muted-foreground hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             </Card>
@@ -1417,6 +1451,21 @@ function SchoolRoutesManager() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="rounded-2xl max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-500" /> Delete Route</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <span className="font-semibold">"{deleteTarget?.routeName}"</span>? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { deleteMut.mutate(deleteTarget.id, { onError: (e: Error) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }) }); setDeleteTarget(null); }} className="bg-red-600 hover:bg-red-700 text-white">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

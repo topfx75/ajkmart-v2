@@ -48,6 +48,7 @@ export const ridesTable = pgTable("rides", {
   startedAt:    timestamp("started_at"),
   completedAt:  timestamp("completed_at"),
   cancelledAt:  timestamp("cancelled_at"),
+  refundedAt:   timestamp("refunded_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

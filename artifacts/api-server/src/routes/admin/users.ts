@@ -67,6 +67,38 @@ router.post("/users", async (req, res) => {
   }
 });
 
+/* GET /admin/users/search-riders?q=...&limit=20&onlineOnly=true
+   Lightweight server-side rider search used by RideDetailModal for reassignment.
+   Returns only active, non-rejected riders matching the search query.
+   Pass onlineOnly=true to restrict to riders currently online (matches reassign constraints). */
+router.get("/users/search-riders", async (req, res) => {
+  const q = ((req.query?.q as string) ?? "").trim();
+  const limitN = Math.min(50, Math.max(1, parseInt((req.query?.limit as string) ?? "20", 10)));
+  const onlineOnly = (req.query?.onlineOnly as string) === "true";
+
+  const conditions = [
+    eq(usersTable.role, "rider"),
+    eq(usersTable.isActive, true),
+    ne(usersTable.approvalStatus, "rejected"),
+  ];
+  if (onlineOnly) {
+    conditions.push(eq(usersTable.isOnline, true) as ReturnType<typeof eq>);
+  }
+  if (q) {
+    conditions.push(or(
+      ilike(usersTable.name, `%${q}%`),
+      ilike(usersTable.phone, `%${q}%`),
+    )! as ReturnType<typeof eq>);
+  }
+  const riders = await db
+    .select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, isOnline: usersTable.isOnline, approvalStatus: usersTable.approvalStatus })
+    .from(usersTable)
+    .where(and(...conditions))
+    .orderBy(asc(usersTable.name))
+    .limit(limitN);
+  sendSuccess(res, { riders, total: riders.length });
+});
+
 router.get("/users", async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
