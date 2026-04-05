@@ -1,10 +1,12 @@
 import { useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import {
   Search, CheckCircle2, XCircle, Wallet, RefreshCw, Trash2,
   Activity, ShoppingBag, Car, Pill, Package, Shield, UserCog,
   Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
   Download, FileText, CalendarDays, Eye, AlertCircle, MessageSquare,
   Users as UsersIcon, Loader2, AtSign, Phone, Mail, User as UserIcon,
+  Gavel,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -785,9 +787,11 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
 /* ══════════ Main Users Page ══════════ */
 
 export default function Users() {
+  const [, navigate] = useLocation();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
-  const { data, isLoading, refetch, isFetching, isError } = useUsers();
+  const [conditionTier, setConditionTier] = useState("all");
+  const { data, isLoading, refetch, isFetching, isError } = useUsers(conditionTier !== "all" ? conditionTier : undefined);
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const updateMutation   = useUpdateUser();
   const topupMutation    = useWalletTopup();
@@ -1097,6 +1101,20 @@ export default function Users() {
               <SelectItem value="banned">Banned</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={conditionTier} onValueChange={setConditionTier}>
+            <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-48">
+              <SelectValue placeholder="Condition Tier" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Conditions</SelectItem>
+              <SelectItem value="clean">Clean (No Conditions)</SelectItem>
+              <SelectItem value="has_conditions">Has Conditions</SelectItem>
+              <SelectItem value="warnings">Warnings</SelectItem>
+              <SelectItem value="restrictions">Restrictions</SelectItem>
+              <SelectItem value="suspensions">Suspensions</SelectItem>
+              <SelectItem value="bans">Bans</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-3">
           <div className="flex items-center gap-2 flex-1">
@@ -1183,6 +1201,10 @@ export default function Users() {
                     <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 px-2.5 rounded-lg border-slate-200 text-slate-600 text-xs">
                       <Shield className="w-3.5 h-3.5" />
                     </Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/account-conditions?userId=${user.id}`)} className="h-8 px-2.5 rounded-lg border-violet-200 text-violet-600 text-xs gap-1" title="Conditions">
+                      <Gavel className="w-3.5 h-3.5" />
+                      {user.conditionCount > 0 && <span className="text-[10px] font-bold bg-violet-100 text-violet-700 rounded-full px-1.5 min-w-[18px] text-center">{user.conditionCount}</span>}
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => { setTopupUser(user); setTopupAmount(""); setTopupNote(""); }} className="h-8 px-2.5 rounded-lg border-emerald-200 text-emerald-700 text-xs">
                       <Wallet className="w-3.5 h-3.5" />
                     </Button>
@@ -1228,7 +1250,7 @@ export default function Users() {
                           <UsersIcon className="w-6 h-6 text-muted-foreground" />
                         </div>
                         <p className="font-medium text-muted-foreground">No users found</p>
-                        {(search || roleFilter !== "all" || statusFilter !== "all" || dateFrom || dateTo) && (
+                        {(search || roleFilter !== "all" || statusFilter !== "all" || conditionTier !== "all" || dateFrom || dateTo) && (
                           <p className="text-xs text-muted-foreground">Try adjusting your filters</p>
                         )}
                       </div>
@@ -1287,14 +1309,26 @@ export default function Users() {
                           <span className="font-bold text-foreground">{formatCurrency(user.walletBalance)}</span>
                         </TableCell>
                         <TableCell className="text-center">
-                          {isBanned ? (
-                            <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">Banned</Badge>
-                          ) : (
-                            <div className="flex items-center justify-center gap-2">
-                              <Switch checked={user.isActive} onCheckedChange={(val) => handleUpdate(user.id, { isActive: val })} />
-                              {user.isActive ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
-                            </div>
-                          )}
+                          <div className="flex flex-col items-center gap-1">
+                            {isBanned ? (
+                              <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">Banned</Badge>
+                            ) : (
+                              <div className="flex items-center justify-center gap-2">
+                                <Switch checked={user.isActive} onCheckedChange={(val) => handleUpdate(user.id, { isActive: val })} />
+                                {user.isActive ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
+                              </div>
+                            )}
+                            {user.conditionCount > 0 && (
+                              <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${
+                                user.maxConditionSeverity === "ban" ? "bg-red-50 text-red-600 border-red-200" :
+                                user.maxConditionSeverity === "suspension" ? "bg-orange-50 text-orange-600 border-orange-200" :
+                                (user.maxConditionSeverity === "restriction_normal" || user.maxConditionSeverity === "restriction_strict") ? "bg-amber-50 text-amber-600 border-amber-200" :
+                                "bg-yellow-50 text-yellow-600 border-yellow-200"
+                              }`}>
+                                {user.conditionCount} {user.maxConditionSeverity === "restriction_normal" ? "restriction" : user.maxConditionSeverity === "restriction_strict" ? "strict restriction" : user.maxConditionSeverity}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
                         <TableCell className="text-right">
@@ -1304,6 +1338,10 @@ export default function Users() {
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 p-0 flex items-center justify-center transition-colors" title="Security Settings">
                               <Shield className="w-3.5 h-3.5"/>
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => navigate(`/account-conditions?userId=${user.id}`)} className="h-8 rounded-lg border-violet-200 text-violet-600 hover:bg-violet-50 hover:border-violet-300 px-2 flex items-center justify-center gap-1 transition-colors" title="Conditions">
+                              <Gavel className="w-3.5 h-3.5"/>
+                              {user.conditionCount > 0 && <span className="text-[10px] font-bold bg-violet-100 text-violet-700 rounded-full px-1.5 min-w-[18px] text-center">{user.conditionCount}</span>}
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => setActivityUser(user)} className="h-8 w-8 rounded-lg border-[#1A56DB]/20 text-[#1A56DB] hover:bg-[#1A56DB]/5 hover:border-[#1A56DB]/30 p-0 flex items-center justify-center transition-colors" title="Activity">
                               <Activity className="w-3.5 h-3.5" />

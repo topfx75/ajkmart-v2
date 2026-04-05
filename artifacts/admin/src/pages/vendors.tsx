@@ -5,7 +5,7 @@ import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
-  Download, CalendarDays, Percent, Truck,
+  Download, CalendarDays, Percent, Truck, Gavel,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -495,6 +495,10 @@ export default function Vendors() {
                         ? <><Ban className="w-3.5 h-3.5" /> Suspend</>
                         : <><CheckCircle2 className="w-3.5 h-3.5" /> Activate</>
                       }
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setLocation(`/account-conditions?userId=${v.id}`)}
+                      className="h-9 rounded-xl gap-1.5 text-xs border-violet-200 text-violet-700 hover:bg-violet-50" title="Conditions">
+                      <Gavel className="w-3.5 h-3.5" /> Conditions
                     </Button>
                     {v.autoSuspendedAt && !v.adminOverrideSuspension && (
                       <Button size="sm" variant="outline" onClick={() => {

@@ -6,6 +6,7 @@ import {
   walletTransactionsTable,
   notificationsTable,
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable,
+  accountConditionsTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import {
@@ -23,23 +24,55 @@ import {
 import { writeAuthAuditLog } from "../../middleware/security.js";
 import { hashPassword } from "../../services/password.js";
 import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
+import { reconcileUserFlags } from "./conditions.js";
 
 const router = Router();
 router.get("/users", async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
+  const conditionTier = (req.query?.conditionTier as string) ?? "";
   let query = db.select().from(usersTable);
   if (filter === "2fa_enabled") {
     query = query.where(eq(usersTable.totpEnabled, true)) as any;
   }
   const users = await query.orderBy(desc(usersTable.createdAt));
+
+  const condCounts = await db.select({
+    userId: accountConditionsTable.userId,
+    activeCount: count(),
+    maxSeverity: sql<string>`MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)`,
+    maxSeverityLabel: sql<string>`(ARRAY['warning','warning','restriction_normal','restriction_strict','suspension','ban'])[1 + MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)]`,
+  }).from(accountConditionsTable)
+    .where(eq(accountConditionsTable.isActive, true))
+    .groupBy(accountConditionsTable.userId);
+
+  const condMap = new Map(condCounts.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
+
+  let enrichedUsers = users.map((u) => ({
+    ...stripUser(u),
+    walletBalance: parseFloat(u.walletBalance ?? "0"),
+    createdAt: u.createdAt.toISOString(),
+    updatedAt: u.updatedAt.toISOString(),
+    conditionCount: condMap.get(u.id)?.count || 0,
+    maxConditionSeverity: condMap.get(u.id)?.maxSeverity || null,
+  }));
+
+  if (conditionTier === "has_conditions") {
+    enrichedUsers = enrichedUsers.filter(u => u.conditionCount > 0);
+  } else if (conditionTier === "warnings") {
+    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "warning");
+  } else if (conditionTier === "restrictions") {
+    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "restriction_normal" || u.maxConditionSeverity === "restriction_strict");
+  } else if (conditionTier === "suspensions") {
+    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "suspension");
+  } else if (conditionTier === "bans") {
+    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "ban");
+  } else if (conditionTier === "clean") {
+    enrichedUsers = enrichedUsers.filter(u => u.conditionCount === 0);
+  }
+
   sendSuccess(res, {
-    users: users.map((u) => ({
-      ...stripUser(u),
-      walletBalance: parseFloat(u.walletBalance ?? "0"),
-      createdAt: u.createdAt.toISOString(),
-      updatedAt: u.updatedAt.toISOString(),
-    })),
-    total: users.length,
+    users: enrichedUsers,
+    total: enrichedUsers.length,
   });
 });
 
@@ -232,6 +265,42 @@ router.patch("/users/:id/security", async (req, res) => {
   if (body.blockedServices !== undefined) updates.blockedServices = body.blockedServices;
   if (body.securityNote !== undefined) updates.securityNote = body.securityNote || null;
   if (body.devOtpEnabled !== undefined) updates.devOtpEnabled = body.devOtpEnabled === true;
+
+  const adminReq = req as AdminRequest;
+  if (willBeBanned && !alreadyBanned) {
+    const [existingUser] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id!)).limit(1);
+    await db.insert(accountConditionsTable).values({
+      id: generateId(),
+      userId: id!,
+      userRole: existingUser?.role || "customer",
+      conditionType: "ban_hard",
+      severity: "ban",
+      category: "ban",
+      reason: String(body.banReason || "Banned by admin via security panel"),
+      appliedBy: adminReq.adminId || "admin",
+      notes: body.securityNote ? String(body.securityNote) : null,
+    });
+    await reconcileUserFlags(id!);
+  } else if (!willBeBanned && alreadyBanned && body.isBanned === false) {
+    await db.update(accountConditionsTable).set({
+      isActive: false,
+      liftedAt: new Date(),
+      liftedBy: adminReq.adminId || "admin",
+      liftReason: "Unbanned via security panel",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(accountConditionsTable.userId, id!),
+      eq(accountConditionsTable.isActive, true),
+      eq(accountConditionsTable.severity, "ban"),
+    ));
+    await reconcileUserFlags(id!);
+  }
+
+  if (willBeBanned !== alreadyBanned) {
+    delete updates.isBanned;
+    delete (updates as any).isActive;
+    delete (updates as any).banReason;
+  }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id!)).returning();
   if (!user) { sendNotFound(res, "User not found"); return; }
 
@@ -394,13 +463,33 @@ router.patch("/users/:id/waive-debt", async (req, res) => {
 router.patch("/users/bulk-ban", async (req, res) => {
   const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
   if (!ids?.length) { sendValidationError(res, "ids required"); return; }
-  const updates = action === "ban"
-    ? { isBanned: true, isActive: false, banReason: (reason || "Banned by admin") as string | null, updatedAt: new Date() }
-    : { isBanned: false, isActive: true, banReason: null as string | null, updatedAt: new Date() };
+  const adminReq = req as AdminRequest;
   for (const id of ids) {
-    await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).catch(() => {});
+    if (action === "ban") {
+      const [u] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
+      await db.insert(accountConditionsTable).values({
+        id: generateId(),
+        userId: id,
+        userRole: u?.role || "customer",
+        conditionType: "ban_hard",
+        severity: "ban",
+        category: "ban",
+        reason: reason || "Bulk banned by admin",
+        appliedBy: adminReq.adminId || "admin",
+      });
+    } else {
+      await db.update(accountConditionsTable).set({
+        isActive: false, liftedAt: new Date(), liftedBy: adminReq.adminId || "admin",
+        liftReason: "Bulk unbanned via admin", updatedAt: new Date(),
+      }).where(and(
+        eq(accountConditionsTable.userId, id),
+        eq(accountConditionsTable.isActive, true),
+        eq(accountConditionsTable.severity, "ban"),
+      ));
+    }
+    await reconcileUserFlags(id);
   }
-  addAuditEntry({ action: `bulk_${action}`, ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Bulk ${action}: ${ids.length} users`, result: "success" });
+  addAuditEntry({ action: `bulk_${action}`, ip: getClientIp(req), adminId: adminReq.adminId, details: `Bulk ${action}: ${ids.length} users`, result: "success" });
   sendSuccess(res, { success: true, affected: ids.length, action });
 });
 

@@ -92,6 +92,14 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    labelKey: "navAccountConditions",
+    color: "#8B5CF6",
+    items: [
+      { nameKey: "navConditionsHub",   href: "/account-conditions", icon: Shield },
+      { nameKey: "navConditionRules",  href: "/condition-rules",    icon: Settings2 },
+    ],
+  },
+  {
     labelKey: "navConfig",
     color: "#F59E0B",
     items: [
@@ -119,6 +127,7 @@ const GROUP_DOT: Record<string, string> = {
   navInventory: "#0EA5E9",
   navFinancials: "#22C55E",
   navSafetyAndSecurity: "#EF4444",
+  navAccountConditions: "#8B5CF6",
   navConfig: "#F59E0B",
 };
 

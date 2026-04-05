@@ -40,6 +40,8 @@ import ReviewsPage from "@/pages/reviews";
 import KycPage from "@/pages/kyc";
 import VanService from "@/pages/van";
 import DeliveryAccess from "@/pages/delivery-access";
+import AccountConditions from "@/pages/account-conditions";
+import ConditionRules from "@/pages/condition-rules";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -135,6 +137,8 @@ function Router() {
       <Route path="/kyc"><ProtectedRoute component={KycPage} /></Route>
       <Route path="/van"><ProtectedRoute component={VanService} /></Route>
       <Route path="/delivery-access"><ProtectedRoute component={DeliveryAccess} /></Route>
+      <Route path="/account-conditions"><ProtectedRoute component={AccountConditions} /></Route>
+      <Route path="/condition-rules"><ProtectedRoute component={ConditionRules} /></Route>
 
       <Route component={NotFound} />
     </Switch>

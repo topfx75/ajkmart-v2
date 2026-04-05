@@ -9,6 +9,7 @@ import contentRoutes from "./admin/content.js";
 import systemRoutes from "./admin/system.js";
 import serviceZonesRoutes from "./admin/service-zones.js";
 import deliveryAccessRoutes from "./admin/delivery-access.js";
+import conditionsRoutes from "./admin/conditions.js";
 
 export {
   DEFAULT_PLATFORM_SETTINGS,
@@ -38,5 +39,6 @@ router.use(contentRoutes);
 router.use(systemRoutes);
 router.use("/service-zones", serviceZonesRoutes);
 router.use(deliveryAccessRoutes);
+router.use(conditionsRoutes);
 
 export default router;

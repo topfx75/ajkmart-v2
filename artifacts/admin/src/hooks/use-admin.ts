@@ -26,10 +26,11 @@ export const useStats = () => {
 };
 
 // Users
-export const useUsers = () => {
+export const useUsers = (conditionTier?: string) => {
+  const params = conditionTier ? `?conditionTier=${conditionTier}` : "";
   return useQuery({
-    queryKey: ["admin-users"],
-    queryFn: () => fetcher("/users"),
+    queryKey: ["admin-users", conditionTier || ""],
+    queryFn: () => fetcher(`/users${params}`),
     refetchInterval: REFETCH_INTERVAL,
   });
 };
@@ -1160,5 +1161,150 @@ export const useDeliveryAccessAudit = () => {
   return useQuery({
     queryKey: ["admin-delivery-audit"],
     queryFn: () => fetcher("/delivery-access/audit"),
+  });
+};
+
+export const useConditions = (filters?: Record<string, string>) => {
+  const params = new URLSearchParams(filters || {}).toString();
+  return useQuery({
+    queryKey: ["admin-conditions", filters],
+    queryFn: () => fetcher(`/conditions${params ? `?${params}` : ""}`),
+    refetchInterval: REFETCH_INTERVAL,
+  });
+};
+
+export const useUserConditions = (userId: string) => {
+  return useQuery({
+    queryKey: ["admin-conditions-user", userId],
+    queryFn: () => fetcher(`/conditions/user/${userId}`),
+    enabled: !!userId,
+  });
+};
+
+export const useApplyCondition = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, any>) =>
+      fetcher("/conditions", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-conditions"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+      qc.invalidateQueries({ queryKey: ["admin-riders"] });
+    },
+  });
+};
+
+export const useUpdateCondition = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) =>
+      fetcher(`/conditions/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-conditions"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+};
+
+export const useDeleteCondition = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetcher(`/conditions/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-conditions"] });
+    },
+  });
+};
+
+export const useBulkConditionAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { ids: string[]; action: string; reason?: string }) =>
+      fetcher("/conditions/bulk", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-conditions"] });
+    },
+  });
+};
+
+export const useConditionRules = () => {
+  return useQuery({
+    queryKey: ["admin-condition-rules"],
+    queryFn: () => fetcher("/condition-rules"),
+  });
+};
+
+export const useCreateConditionRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, any>) =>
+      fetcher("/condition-rules", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-condition-rules"] });
+    },
+  });
+};
+
+export const useUpdateConditionRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) =>
+      fetcher(`/condition-rules/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-condition-rules"] });
+    },
+  });
+};
+
+export const useDeleteConditionRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetcher(`/condition-rules/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-condition-rules"] });
+    },
+  });
+};
+
+export const useSeedDefaultRules = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      fetcher("/condition-rules/seed-defaults", { method: "POST", body: "{}" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-condition-rules"] });
+    },
+  });
+};
+
+export const useConditionSettings = () => {
+  return useQuery({
+    queryKey: ["admin-condition-settings"],
+    queryFn: () => fetcher("/condition-settings"),
+  });
+};
+
+export const useUpdateConditionSettings = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, any>) =>
+      fetcher("/condition-settings", { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-condition-settings"] });
+    },
+  });
+};
+
+export const useEvaluateRules = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      fetcher(`/condition-rules/evaluate/${userId}`, { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-conditions"] });
+    },
   });
 };

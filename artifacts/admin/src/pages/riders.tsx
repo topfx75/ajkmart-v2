@@ -1,9 +1,10 @@
 import { useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Bike, Search, RefreshCw, Wallet, CircleDollarSign, Gift,
   CheckCircle2, Ban, AlertTriangle, Star, Phone, Download, CalendarDays,
-  WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward,
+  WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward, Gavel,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -277,6 +278,7 @@ function exportRidersCSV(riders: any[]) {
 
 /* ══════════ Main Riders Page ══════════ */
 export default function Riders() {
+  const [, navigate] = useLocation();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const { data, isLoading, refetch, isFetching } = useRiders();
@@ -498,6 +500,10 @@ export default function Riders() {
                     <Button size="sm" variant="outline" onClick={() => setDetailModal(r)}
                       className="h-9 rounded-xl gap-1.5 text-xs border-blue-200 text-blue-700 hover:bg-blue-50">
                       <Eye className="w-3.5 h-3.5" /> Details
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/account-conditions?userId=${r.id}`)}
+                      className="h-9 rounded-xl gap-1.5 text-xs border-violet-200 text-violet-700 hover:bg-violet-50" title="Conditions">
+                      <Gavel className="w-3.5 h-3.5" /> Conditions
                     </Button>
                     {r.autoSuspendedAt && !r.adminOverrideSuspension && (
                       <Button size="sm" variant="outline" onClick={() => {
