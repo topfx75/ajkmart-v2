@@ -4,7 +4,7 @@ import { productsTable, productVariantsTable, flashDealsTable, reviewsTable } fr
 import { eq, ilike, and, SQL, gte, lte, gt, desc, asc, sql, isNotNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { generateId } from "../lib/id.js";
-import { sendSuccess, sendCreated, sendNotFound, sendError } from "../lib/response.js";
+import { sendSuccess, sendCreated, sendNotFound, sendError, sendInternalError } from "../lib/response.js";
 import { validateBody } from "../middleware/validate.js";
 import { adminAuth, getPlatformSettings } from "./admin.js";
 
@@ -24,52 +24,57 @@ router.get("/flash-deals", async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
   const now = new Date();
 
-  const conditions: SQL[] = [
-    eq(productsTable.approvalStatus, "approved"),
-    eq(productsTable.inStock, true),
-    isNotNull(productsTable.originalPrice),
-    gt(productsTable.originalPrice, productsTable.price),
-    isNotNull(productsTable.dealExpiresAt),
-    gt(productsTable.dealExpiresAt, now),
-  ];
+  try {
+    const conditions: SQL[] = [
+      eq(productsTable.approvalStatus, "approved"),
+      eq(productsTable.inStock, true),
+      isNotNull(productsTable.originalPrice),
+      gt(productsTable.originalPrice, productsTable.price),
+      isNotNull(productsTable.dealExpiresAt),
+      gt(productsTable.dealExpiresAt, now),
+    ];
 
-  const products = await db.select().from(productsTable)
-    .where(and(...conditions))
-    .orderBy(asc(productsTable.dealExpiresAt))
-    .limit(limit);
+    const products = await db.select().from(productsTable)
+      .where(and(...conditions))
+      .orderBy(asc(productsTable.dealExpiresAt))
+      .limit(limit);
 
-  const activeDeals = await db.select({
-    productId: flashDealsTable.productId,
-    dealStock: flashDealsTable.dealStock,
-    soldCount: flashDealsTable.soldCount,
-  }).from(flashDealsTable).where(
-    and(
-      eq(flashDealsTable.isActive, true),
-      lte(flashDealsTable.startTime, now),
-      gte(flashDealsTable.endTime, now),
-    )
-  );
-  const dealMap = new Map(activeDeals.map(d => [d.productId, d]));
+    const activeDeals = await db.select({
+      productId: flashDealsTable.productId,
+      dealStock: flashDealsTable.dealStock,
+      soldCount: flashDealsTable.soldCount,
+    }).from(flashDealsTable).where(
+      and(
+        eq(flashDealsTable.isActive, true),
+        lte(flashDealsTable.startTime, now),
+        gte(flashDealsTable.endTime, now),
+      )
+    );
+    const dealMap = new Map(activeDeals.map(d => [d.productId, d]));
 
-  sendSuccess(res, {
-    products: products.map(p => {
-      const price = parseFloat(p.price);
-      const origPrice = p.originalPrice ? parseFloat(p.originalPrice) : price;
-      const discount = origPrice > price ? Math.round(((origPrice - price) / origPrice) * 100) : 0;
-      const dealInfo = dealMap.get(p.id);
-      return {
-        ...p,
-        price,
-        originalPrice: origPrice,
-        rating: p.rating ? parseFloat(p.rating) : 4.0,
-        discountPercent: discount,
-        dealExpiresAt: p.dealExpiresAt!.toISOString(),
-        dealStock: dealInfo?.dealStock ?? null,
-        soldCount: dealInfo?.soldCount ?? 0,
-      };
-    }),
-    total: products.length,
-  });
+    sendSuccess(res, {
+      products: products.map(p => {
+        const price = parseFloat(p.price);
+        const origPrice = p.originalPrice ? parseFloat(p.originalPrice) : price;
+        const discount = origPrice > price ? Math.round(((origPrice - price) / origPrice) * 100) : 0;
+        const dealInfo = dealMap.get(p.id);
+        return {
+          ...p,
+          price,
+          originalPrice: origPrice,
+          rating: p.rating ? parseFloat(p.rating) : 4.0,
+          discountPercent: discount,
+          dealExpiresAt: p.dealExpiresAt!.toISOString(),
+          dealStock: dealInfo?.dealStock ?? null,
+          soldCount: dealInfo?.soldCount ?? 0,
+        };
+      }),
+      total: products.length,
+    });
+  } catch (e: unknown) {
+    console.error("[products GET /flash-deals] DB error:", e);
+    sendInternalError(res);
+  }
 });
 
 /* ── GET /products/trending-searches — top search terms (MVP: top product names) ── */

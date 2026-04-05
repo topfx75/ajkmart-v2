@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Link, router, type Href } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Dimensions,
   useWindowDimensions,
@@ -18,7 +19,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import Colors, { spacing, radii, shadows, typography, getFontFamily } from "@/constants/colors";
 import { T as Typ, Font } from "@/constants/typography";
@@ -53,10 +54,16 @@ const H_PAD = spacing.lg;
 function safeNavigate(route: string) {
   const knownRoutes = new Set<string>([
     ...Object.values(SERVICE_REGISTRY).map(s => String(s.route)),
-    "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/cart", "/search",
-    "/van", "/van/bookings", "/categories", "/wishlist", "/order", "/my-reviews",
+    "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/(tabs)/profile",
+    "/cart", "/search", "/categories", "/wishlist",
+    "/order", "/ride",
+    "/van", "/van/bookings",
+    "/mart", "/food", "/pharmacy", "/parcel",
+    "/my-reviews",
+    "/auth",
   ]);
   if (!route || (!knownRoutes.has(route) && !route.startsWith("/(tabs)") && !route.startsWith("/product/"))) {
+    if (__DEV__) console.warn("[Home] safeNavigate: unknown route blocked:", route);
     router.push("/(tabs)" as Href);
     return;
   }
@@ -365,7 +372,7 @@ const ws = StyleSheet.create({
 });
 
 function DynamicBannerCarousel() {
-  const { data: banners } = useQuery({
+  const { data: banners, isLoading: bannersLoading, isError: bannersError, refetch: refetchBanners } = useQuery({
     queryKey: ["dynamic-banners", "home"],
     queryFn: () => getBanners({ placement: "home" }),
     staleTime: 5 * 60 * 1000,
@@ -427,6 +434,37 @@ function DynamicBannerCarousel() {
       }
     }
   };
+
+  if (bannersLoading) {
+    return (
+      <View style={{ marginTop: 16 }}>
+        <View style={ban.headerRow}>
+          <Text style={ban.headerTitle}>Featured</Text>
+          <Text style={ban.headerSub}>Promotions & offers</Text>
+        </View>
+        <View style={{ paddingHorizontal: H_PAD }}>
+          <SkeletonBlock w="100%" h={140} r={16} />
+        </View>
+      </View>
+    );
+  }
+
+  if (bannersError) {
+    return (
+      <View style={{ marginTop: 16 }}>
+        <View style={ban.headerRow}>
+          <Text style={ban.headerTitle}>Featured</Text>
+          <Text style={ban.headerSub}>Promotions & offers</Text>
+        </View>
+        <View style={{ paddingHorizontal: H_PAD }}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => refetchBanners()} style={ban.errorCard}>
+            <Ionicons name="refresh-outline" size={18} color={C.textMuted} />
+            <Text style={ban.errorTxt}>Couldn't load banners. Tap to retry.</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   if (items.length === 0) return null;
 
@@ -540,6 +578,8 @@ const ban = StyleSheet.create({
   iconWrap: { marginLeft: 10 },
   dotsRow: { flexDirection: "row" as const, justifyContent: "center" as const, gap: 6, marginTop: 10 },
   dot: { height: 5, borderRadius: 3 },
+  errorCard: { height: 80, borderRadius: 16, backgroundColor: C.surfaceSecondary, borderWidth: 1, borderColor: C.borderLight, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  errorTxt: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
 });
 
 function FlashCountdownTimer({ targetTime }: { targetTime: Date }) {
@@ -603,7 +643,7 @@ const fct = StyleSheet.create({
 });
 
 function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => string }) {
-  const { data: deals, isLoading } = useQuery({
+  const { data: deals, isLoading, isError, refetch } = useQuery({
     queryKey: ["flash-deals"],
     queryFn: () => getFlashDeals({ limit: 10 }),
     staleTime: 3 * 60 * 1000,
@@ -639,6 +679,23 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
     );
   }
 
+  if (isError) {
+    return (
+      <View style={fd.section}>
+        <LinearGradient colors={["#FF4444", "#FF6B35"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={fd.headerGrad}>
+          <View style={fd.headerInner}>
+            <Ionicons name="flash" size={16} color="#FFD700" />
+            <Text style={fd.headerTitle}>{T("todaysDeals")}</Text>
+          </View>
+        </LinearGradient>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={fd.errorRow} accessibilityRole="button" accessibilityLabel="Retry flash deals">
+          <Ionicons name="refresh-outline" size={16} color={C.textMuted} />
+          <Text style={fd.errorTxt}>Couldn't load deals. Tap to retry.</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (items.length === 0) return null;
 
   return (
@@ -649,7 +706,7 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
           <Text style={fd.headerTitle}>{T("todaysDeals")}</Text>
           <Ionicons name="flash" size={12} color="#FFD700" style={{ opacity: 0.6 }} />
         </View>
-        {earliestExpiry && (
+        {earliestExpiry !== null && (
           <View style={fd.timerWrap}>
             <Text style={fd.endsLabel}>Ends in</Text>
             <FlashCountdownTimer targetTime={earliestExpiry} />
@@ -740,17 +797,35 @@ const fd = StyleSheet.create({
   progressWrap: { marginTop: 2 },
   progressBg: { height: 14, backgroundColor: "#FFE4E1", borderRadius: 7, overflow: "hidden", position: "relative" as const, justifyContent: "center" },
   progressFill: { position: "absolute" as const, left: 0, top: 0, bottom: 0, borderRadius: 7 },
-  progressText: { fontFamily: Font.bold, fontSize: 8, color: "#fff", textAlign: "center", zIndex: 1, textShadow: "0px 0.5px 1px rgba(0,0,0,0.3)" },
+  progressText: { fontFamily: Font.bold, fontSize: 8, color: "#fff", textAlign: "center", zIndex: 1 },
+  errorRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 20 },
+  errorTxt: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
 });
 
 function TrendingSection() {
-  const { data: trending } = useQuery({
+  const { data: trending, isError, refetch } = useQuery({
     queryKey: ["trending-products"],
     queryFn: () => getTrending({ limit: 8 }),
     staleTime: 5 * 60 * 1000,
   });
 
   const items = trending ?? [];
+
+  if (isError) {
+    return (
+      <View style={{ marginTop: 16 }}>
+        <View style={tr2.headerRow}>
+          <Text style={tr2.title}>Trending Now</Text>
+          <Text style={tr2.sub}>Popular products</Text>
+        </View>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={tr2.errorRow} accessibilityRole="button" accessibilityLabel="Retry trending">
+          <Ionicons name="refresh-outline" size={16} color={C.textMuted} />
+          <Text style={tr2.errorTxt}>Couldn't load trending. Tap to retry.</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (items.length === 0) return null;
 
   return (
@@ -808,6 +883,8 @@ const tr2 = StyleSheet.create({
   price: { fontFamily: Font.bold, fontSize: 12, color: C.primary },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 3 },
   ratingTxt: { fontFamily: Font.regular, fontSize: 10, color: C.textSecondary },
+  errorRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: H_PAD, paddingVertical: 12 },
+  errorTxt: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
 });
 
 function HomeSkeleton() {
@@ -830,8 +907,9 @@ function HomeSkeleton() {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { itemCount } = useCart();
+  const queryClient = useQueryClient();
   const topPad = Math.max(insets.top, 12);
   const TAB_H = Platform.OS === "web" ? 72 : 49;
   const hdOp = useRef(new Animated.Value(0)).current;
@@ -839,10 +917,33 @@ export default function HomeScreen() {
 
   const { config: platformConfig, loading: configLoading, refresh: refreshConfig } = usePlatformConfig();
 
+  const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const isGuest = !user?.id;
+
+  const { data: walletData } = useQuery({
+    queryKey: ["home-wallet-balance", user?.id],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/wallet`, { headers: authHdrs });
+      if (!r.ok) throw new Error("wallet fetch failed");
+      return r.json().then(unwrapApiResponse<{ balance: number; transactions: any[] }>);
+    },
+    enabled: !isGuest && !!token,
+    staleTime: 30000,
+    retry: 1,
+  });
+
   const handleHomeRefresh = useCallback(async () => {
     try { await refreshConfig(); } catch (err) { if (__DEV__) console.warn("[Home] Config refresh failed:", err instanceof Error ? err.message : String(err)); }
+    queryClient.invalidateQueries({ queryKey: ["dynamic-banners"] });
+    queryClient.invalidateQueries({ queryKey: ["flash-deals"] });
+    queryClient.invalidateQueries({ queryKey: ["trending-products"] });
+    if (!isGuest) {
+      queryClient.invalidateQueries({ queryKey: ["home-wallet-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["home-active-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["home-active-rides"] });
+    }
     setLastRefreshed(new Date());
-  }, [refreshConfig]);
+  }, [refreshConfig, queryClient, isGuest]);
 
   const features = platformConfig.features;
   const appName = platformConfig.platform.appName;
@@ -887,12 +988,23 @@ export default function HomeScreen() {
 
   const activeServices = getActiveServices(features);
   const noServicesActive = activeServices.length === 0;
-  const isGuest = !user?.id;
-  const walletBalance = (user as any)?.walletBalance ?? 0;
+
+  const walletBalance = walletData?.balance ?? 0;
+  const walletHasActivity = (walletData?.transactions?.length ?? 0) > 0;
+  const walletLoaded = !isGuest && walletData !== undefined;
+  const showWalletStrip = walletLoaded && (walletBalance > 0 || walletHasActivity);
+
+  const handleLocationPress = () => {
+    Alert.alert(
+      "Location",
+      "Location selection is not yet available. Please check back in a future update.",
+      [{ text: "OK" }]
+    );
+  };
 
   return (
     <View style={s.root}>
-      {announcement && !announceDismissed && (
+      {!!announcement && !announceDismissed && (
         <View style={[s.announceBar, { paddingTop: topPad }]} accessibilityRole="alert">
           <View style={s.announceIcon}>
             <Ionicons name="megaphone" size={11} color="#fff" />
@@ -920,7 +1032,7 @@ export default function HomeScreen() {
           style={[s.header, { paddingTop: (announcement && !announceDismissed) ? 8 : topPad + 8 }]}
         >
           <View style={s.hdrRow}>
-            <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={() => {}}>
+            <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={handleLocationPress} accessibilityRole="button" accessibilityLabel="Location selector">
               <Ionicons name="location" size={14} color="#fff" />
               <Text style={s.locTxt} numberOfLines={1}>{platformConfig.platform.businessAddress || "AJK, Pakistan"}</Text>
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
@@ -990,11 +1102,11 @@ export default function HomeScreen() {
 
             {isGuest && <GuestSignInStrip />}
 
-            {!isGuest && user?.id && (
+            {!isGuest && !!user?.id && (
               <ActiveTrackerStrip userId={user.id} />
             )}
 
-            {!isGuest && walletBalance >= 0 && (
+            {showWalletStrip && (
               <View style={{ marginTop: 10 }}>
                 <WalletStrip
                   balance={walletBalance}
@@ -1017,7 +1129,7 @@ export default function HomeScreen() {
         <View style={{ height: TAB_H + insets.bottom + 20 }} />
       </SmartRefresh>
 
-      {user?.id && itemCount > 0 && (
+      {!!user?.id && itemCount > 0 && (
         <TouchableOpacity activeOpacity={0.7}
           onPress={() => router.push("/cart" as Href)}
           style={[s.cartFab, { bottom: TAB_H + insets.bottom + 16 }]}

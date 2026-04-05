@@ -52,10 +52,7 @@ const webStyles = Platform.OS === "web" ? StyleSheet.create({
     maxWidth: 430,
     flex: 1,
     overflow: "hidden" as const,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.6,
-    shadowRadius: 32,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
   },
 }) : { bg: {}, phone: {} };
 

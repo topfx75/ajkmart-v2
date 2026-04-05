@@ -201,16 +201,17 @@ export function getFontFamily(language: string) {
 }
 
 const _mkShadow = (yOff: number, blur: number, opacity: number, elev: number) =>
-  Platform.OS === "web"
-    ? { boxShadow: `0 ${yOff}px ${blur}px rgba(15,23,42,${opacity})` }
-    : { shadowColor: "#0F172A", shadowOffset: { width: 0, height: yOff }, shadowOpacity: opacity, shadowRadius: blur, elevation: elev };
+  Platform.select({
+    web: { boxShadow: `0 ${yOff}px ${blur}px rgba(15,23,42,${opacity})` },
+    default: { shadowColor: "#0F172A", shadowOffset: { width: 0, height: yOff }, shadowOpacity: opacity, shadowRadius: blur, elevation: elev },
+  }) as { boxShadow?: string; shadowColor?: string; shadowOffset?: { width: number; height: number }; shadowOpacity?: number; shadowRadius?: number; elevation?: number };
 
 export const shadows = {
   sm: _mkShadow(1, 3, 0.04, 1),
   md: _mkShadow(2, 8, 0.06, 3),
   lg: _mkShadow(4, 16, 0.08, 6),
   xl: _mkShadow(8, 24, 0.12, 10),
-} as const;
+};
 
 export const gradients = {
   primary: [primary, primaryDark] as const,

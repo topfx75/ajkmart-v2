@@ -4,7 +4,7 @@ import { productsTable, ordersTable, userInteractionsTable } from "@workspace/db
 import { eq, and, desc, sql, ilike, inArray, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
-import { sendSuccess, sendNotFound, sendValidationError } from "../lib/response.js";
+import { sendSuccess, sendNotFound, sendValidationError, sendInternalError } from "../lib/response.js";
 
 const router: IRouter = Router();
 
@@ -115,72 +115,77 @@ router.get("/trending", async (req, res) => {
   const limit = Math.min(20, parseInt(String(req.query["limit"] || "10")));
   const type = req.query["type"] as string | undefined;
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const trendingProducts = await db
-    .select({
-      productId: userInteractionsTable.productId,
-      score: sql<number>`SUM(${userInteractionsTable.weight})`.as("score"),
-    })
-    .from(userInteractionsTable)
-    .where(gte(userInteractionsTable.createdAt, sevenDaysAgo))
-    .groupBy(userInteractionsTable.productId)
-    .orderBy(sql`score DESC`)
-    .limit(limit * 2);
+    const trendingProducts = await db
+      .select({
+        productId: userInteractionsTable.productId,
+        score: sql<number>`SUM(${userInteractionsTable.weight})`.as("score"),
+      })
+      .from(userInteractionsTable)
+      .where(gte(userInteractionsTable.createdAt, sevenDaysAgo))
+      .groupBy(userInteractionsTable.productId)
+      .orderBy(sql`score DESC`)
+      .limit(limit * 2);
 
-  if (trendingProducts.length === 0) {
+    if (trendingProducts.length === 0) {
+      const conditions = [
+        eq(productsTable.approvalStatus, "approved"),
+        eq(productsTable.inStock, true),
+      ];
+      if (type) conditions.push(eq(productsTable.type, type));
+      const fallback = await db
+        .select()
+        .from(productsTable)
+        .where(and(...conditions))
+        .orderBy(desc(productsTable.reviewCount))
+        .limit(limit);
+
+      sendSuccess(res, {
+        products: fallback.map(p => ({
+          ...p,
+          price: parseFloat(p.price),
+          originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : undefined,
+          rating: p.rating ? parseFloat(p.rating) : 4.0,
+          trendScore: 0,
+        })),
+        total: fallback.length,
+      });
+      return;
+    }
+
+    const productIds = trendingProducts.map(t => t.productId);
+    const scoreMap = new Map(trendingProducts.map(t => [t.productId, t.score]));
+
     const conditions = [
       eq(productsTable.approvalStatus, "approved"),
       eq(productsTable.inStock, true),
+      inArray(productsTable.id, productIds),
     ];
     if (type) conditions.push(eq(productsTable.type, type));
-    const fallback = await db
+
+    const products = await db
       .select()
       .from(productsTable)
-      .where(and(...conditions))
-      .orderBy(desc(productsTable.reviewCount))
-      .limit(limit);
+      .where(and(...conditions));
 
-    res.json({
-      products: fallback.map(p => ({
+    const result = products
+      .map(p => ({
         ...p,
         price: parseFloat(p.price),
         originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : undefined,
         rating: p.rating ? parseFloat(p.rating) : 4.0,
-        trendScore: 0,
-      })),
-      total: fallback.length,
-    });
-    return;
+        trendScore: scoreMap.get(p.id) ?? 0,
+      }))
+      .sort((a, b) => b.trendScore - a.trendScore)
+      .slice(0, limit);
+
+    sendSuccess(res, { products: result, total: result.length });
+  } catch (e: unknown) {
+    console.error("[recommendations GET /trending] DB error:", e);
+    sendInternalError(res);
   }
-
-  const productIds = trendingProducts.map(t => t.productId);
-  const scoreMap = new Map(trendingProducts.map(t => [t.productId, t.score]));
-
-  const conditions = [
-    eq(productsTable.approvalStatus, "approved"),
-    eq(productsTable.inStock, true),
-    inArray(productsTable.id, productIds),
-  ];
-  if (type) conditions.push(eq(productsTable.type, type));
-
-  const products = await db
-    .select()
-    .from(productsTable)
-    .where(and(...conditions));
-
-  const result = products
-    .map(p => ({
-      ...p,
-      price: parseFloat(p.price),
-      originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : undefined,
-      rating: p.rating ? parseFloat(p.rating) : 4.0,
-      trendScore: scoreMap.get(p.id) ?? 0,
-    }))
-    .sort((a, b) => b.trendScore - a.trendScore)
-    .slice(0, limit);
-
-  res.json({ products: result, total: result.length });
 });
 
 router.get("/similar/:productId", async (req, res) => {
