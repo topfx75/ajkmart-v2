@@ -74,6 +74,11 @@ function useMiniMapTileConfig(): { tileUrl: string; attribution: string } {
       tileUrl: `https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${token}`,
       attribution: "© Google Maps",
     };
+  if (provider === "locationiq" && token)
+    return {
+      tileUrl: `https://{s}.locationiq.com/v3/street/r/{z}/{x}/{y}.png?key=${token}`,
+      attribution: '© <a href="https://locationiq.com">LocationIQ</a> © OSM',
+    };
   return {
     tileUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "© OSM",

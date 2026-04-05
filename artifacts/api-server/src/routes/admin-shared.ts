@@ -543,6 +543,14 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "map_test_status_osm",             value: "unknown",  label: "OSM Test Status (ok|fail|unknown)",                  category: "map" },
   { key: "map_test_status_mapbox",          value: "unknown",  label: "Mapbox Test Status (ok|fail|unknown)",               category: "map" },
   { key: "map_test_status_google",          value: "unknown",  label: "Google Maps Test Status (ok|fail|unknown)",          category: "map" },
+  /* LocationIQ */
+  { key: "locationiq_api_key",              value: "",         label: "LocationIQ API Key / Access Token",                  category: "map" },
+  { key: "locationiq_enabled",              value: "off",      label: "LocationIQ Enabled",                                 category: "map" },
+  { key: "map_provider_role_locationiq",    value: "disabled", label: "LocationIQ Provider Role (primary|secondary|both|disabled)", category: "map" },
+  { key: "map_test_status_locationiq",      value: "unknown",  label: "LocationIQ Test Status (ok|fail|unknown)",           category: "map" },
+  { key: "map_last_tested_locationiq",      value: "",         label: "LocationIQ Last Test Timestamp",                     category: "map" },
+  /* Search & geocoding provider (key used by frontend MapsMgmtSection) */
+  { key: "map_search_provider",             value: "locationiq", label: "Search & Geocoding Provider (locationiq|google|osm)", category: "map" },
 ];
 
 let _authMethodColumnMigrated = false;

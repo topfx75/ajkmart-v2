@@ -713,7 +713,7 @@ router.get("/config", async (req, res) => {
 
   const mapboxToken  = s["mapbox_api_key"]      ?? "";
   const googleKey    = s["google_maps_api_key"] ?? s["maps_api_key"] ?? "";
-  const searchProvider   = s["search_api_provider"] ?? "google";
+  const searchProvider   = s["map_search_provider"] ?? s["search_api_provider"] ?? "locationiq";
   const locationIqKey    = s["locationiq_api_key"]  ?? "";
   const routingEngine    = s["routing_engine"] ?? s["routing_api_provider"] ?? "osrm";
 

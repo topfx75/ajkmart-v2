@@ -183,9 +183,12 @@ router.put("/platform-settings", async (req, res) => {
   }
   for (const { key, value } of settings) {
     await db
-      .update(platformSettingsTable)
-      .set({ value: String(value), updatedAt: new Date() })
-      .where(eq(platformSettingsTable.key, key));
+      .insert(platformSettingsTable)
+      .values({ key, value: String(value), label: key, category: "custom", updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: platformSettingsTable.key,
+        set:    { value: String(value), updatedAt: new Date() },
+      });
   }
   /* Bust both caches so new values apply immediately to all call sites */
   invalidateSettingsCache();

@@ -58,6 +58,8 @@ function useRiderTileConfig() {
           setTile({ url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${tok}`, attribution: '© <a href="https://www.mapbox.com/">Mapbox</a> © OpenStreetMap', provider: "mapbox" });
         } else if (prov === "google" && tok) {
           setTile({ url: `https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=${tok}`, attribution: "© Google Maps", provider: "google" });
+        } else if (prov === "locationiq" && tok) {
+          setTile({ url: `https://{s}.locationiq.com/v3/street/r/{z}/{x}/{y}.png?key=${tok}`, attribution: '© <a href="https://locationiq.com">LocationIQ</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', provider: "locationiq" });
         }
       })
       .catch(() => {});

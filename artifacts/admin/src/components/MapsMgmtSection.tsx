@@ -307,8 +307,63 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
   const monthlyCost = usageData?.costEstimates ?? {};
   const monthlyByProvider = usageData?.monthlyByProvider ?? {};
 
+  /* ── Detect if the AJK-optimal configuration is active ── */
+  const isAjkOptimal =
+    (val("map_provider_primary") || "osm") === "locationiq" &&
+    (val("map_search_provider") || "locationiq") === "locationiq" &&
+    (val("routing_engine") || "osrm") === "osrm" &&
+    !!val("locationiq_api_key").trim();
+
   return (
     <div className="space-y-5">
+
+      {/* ── AJK Optimal Configuration Recommendation ── */}
+      <div className={`rounded-xl border-2 p-4 ${isAjkOptimal ? "border-emerald-300 bg-emerald-50" : "border-orange-200 bg-orange-50"}`}>
+        <div className="flex items-start gap-3">
+          <span className="text-2xl flex-shrink-0">{isAjkOptimal ? "✅" : "💡"}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-sm text-foreground">
+                {isAjkOptimal ? "AJK-Optimal Configuration Active" : "Recommended Setup for AJK / Pakistan"}
+              </span>
+              {isAjkOptimal && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">● CONFIGURED</span>}
+            </div>
+            {isAjkOptimal ? (
+              <p className="text-xs text-emerald-800 mt-1">
+                LocationIQ tiles + geocoding with OSRM routing — lowest cost, best AJK coverage.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-orange-800 mt-1 mb-3">
+                  For AJK & Pakistan: use <strong>LocationIQ</strong> (free tier, 5,000 requests/day, excellent Pakistan coverage)
+                  for map tiles, search &amp; geocoding, and <strong>OSRM</strong> (open-source, free) for routing. This gives
+                  the best coverage at the lowest cost.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div className="bg-white/80 rounded-lg px-3 py-2 border border-orange-200">
+                    <div className="font-bold text-orange-800">🗺️ Map Tiles</div>
+                    <div className="text-orange-700 mt-0.5">LocationIQ (Primary)</div>
+                    <div className="text-muted-foreground">Free · OSM-based · AJK coverage</div>
+                  </div>
+                  <div className="bg-white/80 rounded-lg px-3 py-2 border border-orange-200">
+                    <div className="font-bold text-orange-800">🔍 Search & Geocoding</div>
+                    <div className="text-orange-700 mt-0.5">LocationIQ</div>
+                    <div className="text-muted-foreground">Free tier · Pakistan-friendly</div>
+                  </div>
+                  <div className="bg-white/80 rounded-lg px-3 py-2 border border-orange-200">
+                    <div className="font-bold text-orange-800">🛣️ Routing Engine</div>
+                    <div className="text-orange-700 mt-0.5">OSRM (Open-Source)</div>
+                    <div className="text-muted-foreground">100% free · No API key needed</div>
+                  </div>
+                </div>
+                <div className="mt-3 text-[11px] text-orange-700">
+                  <strong>Why not Google Maps?</strong> Google charges $5–$10 per 1,000 requests. For a regional AJK platform, LocationIQ's free 5,000 daily requests is more than enough to start — upgrade only when you exceed that.
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* ── 1. API Health Dashboard ── */}
       <div>
