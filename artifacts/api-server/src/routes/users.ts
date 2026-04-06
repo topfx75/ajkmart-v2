@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable } from "@workspace/db/schema";
+import { usersTable, ordersTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable, pharmacyOrdersTable, parcelBookingsTable } from "@workspace/db/schema";
 import { eq, desc, and, count, sql, isNull, ne } from "drizzle-orm";
 import { customerAuth, getClientIp, writeAuthAuditLog, checkLockout, recordFailedAttempt, resetAttempts } from "../middleware/security.js";
 import { randomUUID, createHash } from "crypto";
@@ -94,6 +94,7 @@ router.get("/profile", async (req, res) => {
     accountLevel: user.accountLevel ?? "bronze",
     kycStatus: user.kycStatus ?? "none",
     totpEnabled: user.totpEnabled ?? false,
+    hasPassword: !!user.passwordHash,
     createdAt: user.createdAt.toISOString(),
   });
 });
@@ -120,13 +121,15 @@ router.post("/export-data", async (req, res) => {
     return;
   }
 
-  let orders: any[], rides: any[], walletHistory: any[], addresses: any[];
+  let orders: any[], rides: any[], walletHistory: any[], addresses: any[], pharmacyOrders: any[], parcelBookings: any[];
   try {
-    [orders, rides, walletHistory, addresses] = await Promise.all([
+    [orders, rides, walletHistory, addresses, pharmacyOrders, parcelBookings] = await Promise.all([
       db.select().from(ordersTable).where(eq(ordersTable.userId, userId)).orderBy(desc(ordersTable.createdAt)),
       db.select().from(ridesTable).where(eq(ridesTable.userId, userId)).orderBy(desc(ridesTable.createdAt)),
       db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.userId, userId)).orderBy(desc(walletTransactionsTable.createdAt)),
       db.select().from(savedAddressesTable).where(eq(savedAddressesTable.userId, userId)),
+      db.select().from(pharmacyOrdersTable).where(eq(pharmacyOrdersTable.userId, userId)).orderBy(desc(pharmacyOrdersTable.createdAt)),
+      db.select().from(parcelBookingsTable).where(eq(parcelBookingsTable.userId, userId)).orderBy(desc(parcelBookingsTable.createdAt)),
     ]);
   } catch (err) {
     sendError(res, "Failed to retrieve your data. Please try again later.");
@@ -165,6 +168,23 @@ router.post("/export-data", async (req, res) => {
       fare: parseFloat(r.fare),
       paymentMethod: r.paymentMethod,
       createdAt: r.createdAt.toISOString(),
+    })),
+    pharmacyOrders: pharmacyOrders.map((o: any) => ({
+      id: o.id,
+      status: o.status,
+      total: parseFloat(o.total ?? "0"),
+      items: o.items,
+      prescriptionNote: o.prescriptionNote,
+      createdAt: o.createdAt.toISOString(),
+    })),
+    parcelBookings: parcelBookings.map((b: any) => ({
+      id: b.id,
+      status: b.status,
+      parcelType: b.parcelType,
+      pickupAddress: b.pickupAddress,
+      dropAddress: b.dropAddress,
+      fare: parseFloat(b.fare ?? "0"),
+      createdAt: b.createdAt.toISOString(),
     })),
     walletHistory: walletHistory.map((t: any) => ({
       id: t.id,
@@ -238,7 +258,9 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
       role: user.role, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"),
     }});
   } catch (e: unknown) {
-    sendError(res, (e as Error)?.message || "Avatar upload failed");
+    const rawMsg = (e as Error)?.message || "Avatar upload failed";
+    const safeMsg = rawMsg.replace(/\/[^\s]+\//g, "").replace(/[A-Z]:\\[^\s]+/g, "");
+    sendError(res, safeMsg.includes("/") || safeMsg.includes("\\") ? "Avatar upload failed" : safeMsg);
   }
 });
 
@@ -371,6 +393,20 @@ router.delete("/delete-account", async (req, res) => {
       return;
     }
 
+    const pendingWithdrawals = await db.select({ c: count(), total: sql<string>`COALESCE(SUM(${walletTransactionsTable.amount}), 0)` })
+      .from(walletTransactionsTable)
+      .where(and(
+        eq(walletTransactionsTable.userId, userId),
+        eq(walletTransactionsTable.type, "withdrawal"),
+        eq(walletTransactionsTable.reference, "pending"),
+      ));
+
+    if (pendingWithdrawals[0] && pendingWithdrawals[0].c > 0) {
+      const pendingTotal = parseFloat(pendingWithdrawals[0].total || "0");
+      sendValidationError(res, `You have ${pendingWithdrawals[0].c} pending withdrawal(s) totalling Rs. ${pendingTotal.toLocaleString()}. These will be lost if you delete your account. Please wait for them to process or cancel them first.`);
+      return;
+    }
+
     const now = new Date();
     /* Scramble phone in a format that is NOT classified as banned — prefix with GDEL_
        so the original phone number is free for re-registration */
@@ -487,10 +523,19 @@ router.delete("/sessions/:sessionId", async (req, res) => {
     return;
   }
 
-  /* Revoke only this specific session — NOT all refresh tokens */
   await db.update(userSessionsTable)
     .set({ revokedAt: new Date() })
     .where(eq(userSessionsTable.id, sessionId));
+
+  if (session.refreshTokenId) {
+    await db.update(refreshTokensTable)
+      .set({ revokedAt: new Date() })
+      .where(and(
+        eq(refreshTokensTable.id, session.refreshTokenId),
+        eq(refreshTokensTable.userId, userId),
+        isNull(refreshTokensTable.revokedAt),
+      ));
+  }
 
   const ip = getClientIp(req);
   writeAuthAuditLog("session_revoked", { userId, ip, userAgent: req.headers["user-agent"] as string, metadata: { sessionId } });

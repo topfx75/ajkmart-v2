@@ -5,6 +5,7 @@ export const userSessionsTable = pgTable("user_sessions", {
   id:          text("id").primaryKey(),
   userId:      text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   tokenHash:   text("token_hash").notNull(),
+  refreshTokenId: text("refresh_token_id"),
   deviceName:  text("device_name"),
   browser:     text("browser"),
   os:          text("os"),

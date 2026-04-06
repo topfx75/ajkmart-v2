@@ -2666,7 +2666,8 @@ async function issueTokensForUser(user: any, ip: string, method: string, userAge
   const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
   const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  await db.insert(refreshTokensTable).values({ id: generateId(), userId: user.id, tokenHash: refreshHash, authMethod: method, expiresAt: refreshExpiresAt });
+  const refreshTokenId = generateId();
+  await db.insert(refreshTokensTable).values({ id: refreshTokenId, userId: user.id, tokenHash: refreshHash, authMethod: method, expiresAt: refreshExpiresAt });
   db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch((err) => { console.error("[auth] Expired token cleanup failed:", err); });
   await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
   writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent, metadata: { method } });
@@ -2678,6 +2679,7 @@ async function issueTokensForUser(user: any, ip: string, method: string, userAge
       id: generateId(),
       userId: user.id,
       tokenHash,
+      refreshTokenId,
       deviceName: parsed.deviceName,
       browser: parsed.browser,
       os: parsed.os,

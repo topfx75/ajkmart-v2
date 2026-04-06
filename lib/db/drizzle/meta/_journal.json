@@ -29,6 +29,13 @@
       "when": 1775391478036,
       "tag": "0003_wallet_mpin_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1775420077138,
+      "tag": "0004_flimsy_sally_floyd",
+      "breakpoints": true
     }
   ]
 }

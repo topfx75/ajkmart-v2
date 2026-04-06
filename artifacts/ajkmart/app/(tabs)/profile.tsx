@@ -76,6 +76,25 @@ function ProfileMpinChangeModal({ token, onClose, onSuccess }: { token: string |
   const [step, setStep] = useState<"old" | "new" | "confirm">("old");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [locked, setLocked] = useState(false);
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [lockCountdown, setLockCountdown] = useState("");
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+  const [showForgot, setShowForgot] = useState(false);
+
+  useEffect(() => {
+    if (!lockUntil) { setLockCountdown(""); return; }
+    const tick = () => {
+      const remaining = Math.max(0, lockUntil - Date.now());
+      if (remaining <= 0) { setLocked(false); setLockUntil(null); setLockCountdown(""); setError(""); setAttemptsRemaining(null); return; }
+      const mins = Math.floor(remaining / 60000);
+      const secs = Math.floor((remaining % 60000) / 1000);
+      setLockCountdown(`${mins}:${secs.toString().padStart(2, "0")}`);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [lockUntil]);
 
   const handleChange = async () => {
     if (confirmPin !== newPin) { setError("PINs do not match"); setConfirmPin(""); return; }
@@ -88,11 +107,27 @@ function ProfileMpinChangeModal({ token, onClose, onSuccess }: { token: string |
         body: JSON.stringify({ oldPin, newPin }),
       });
       const data = unwrapApiResponse(await res.json());
-      if (!res.ok) { setError(data.message || "Failed to change MPIN"); setLoading(false); return; }
+      if (!res.ok) {
+        if (data.error === "pin_locked") {
+          setLocked(true);
+          if (data.lockUntil) setLockUntil(new Date(data.lockUntil).getTime());
+          else if (data.lockMinutes) setLockUntil(Date.now() + data.lockMinutes * 60000);
+          setError(data.message || "MPIN locked. Try again later.");
+        } else {
+          if (typeof data.attemptsRemaining === "number") setAttemptsRemaining(data.attemptsRemaining);
+          setError(data.message || "Failed to change MPIN");
+        }
+        setLoading(false);
+        return;
+      }
       onSuccess();
     } catch { setError("Network error. Try again."); }
     setLoading(false);
   };
+
+  if (showForgot) {
+    return <ProfileMpinForgotModal token={token} onClose={() => setShowForgot(false)} onReset={() => { setShowForgot(false); onClose(); }} />;
+  }
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -100,44 +135,79 @@ function ProfileMpinChangeModal({ token, onClose, onSuccess }: { token: string |
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
           <TouchableOpacity activeOpacity={1} style={mpinStyles.sheet} onPress={e => e.stopPropagation()}>
             <View style={mpinStyles.handle} />
-            <View style={{ alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="key" size={28} color={C.primary} />
+            {locked ? (
+              <View style={{ alignItems: "center", gap: 12, paddingVertical: 8 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.dangerSoft, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="lock-closed" size={32} color={C.danger} />
+                </View>
+                <Text style={{ ...Typ.title, color: C.danger }}>MPIN Locked</Text>
+                <Text style={{ ...Typ.body, color: C.textSecondary, textAlign: "center", lineHeight: 20 }}>
+                  Too many incorrect attempts. Your MPIN has been temporarily locked.
+                </Text>
+                <View style={{ backgroundColor: C.dangerSoft, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12, borderWidth: 1, borderColor: C.danger + "33" }}>
+                  <Text style={{ ...Typ.h3, color: C.danger, textAlign: "center" }}>
+                    {lockCountdown ? `Try again in ${lockCountdown}` : error || "Please try again later."}
+                  </Text>
+                </View>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => setShowForgot(true)} style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
+                  <Ionicons name="key-outline" size={16} color={C.primary} />
+                  <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>Forgot MPIN? Reset via OTP</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={{ ...Typ.title, color: C.text }}>{step === "old" ? "Current MPIN" : step === "new" ? "New MPIN" : "Confirm New MPIN"}</Text>
-              <Text style={{ ...Typ.body, color: C.textSecondary, textAlign: "center" }}>
-                {step === "old" ? "Enter your current MPIN" : step === "new" ? "Enter your new 4-digit MPIN" : "Re-enter your new MPIN to confirm"}
-              </Text>
-            </View>
-            {step === "old" ? (
-              <>
-                <ProfileMpinInput value={oldPin} onChange={setOldPin} autoFocus />
-                {!!error && <Text style={{ ...Typ.caption, color: C.danger, textAlign: "center", marginTop: 8 }}>{error}</Text>}
-                <TouchableOpacity activeOpacity={0.7} onPress={() => { if (oldPin.length === 4) { setError(""); setStep("new"); } }} disabled={oldPin.length !== 4} style={[mpinStyles.actionBtn, { opacity: oldPin.length !== 4 ? 0.5 : 1, marginTop: 20 }]}>
-                  <Text style={mpinStyles.actionBtnTxt}>Continue</Text>
-                </TouchableOpacity>
-              </>
-            ) : step === "new" ? (
-              <>
-                <ProfileMpinInput value={newPin} onChange={setNewPin} autoFocus />
-                {!!error && <Text style={{ ...Typ.caption, color: C.danger, textAlign: "center", marginTop: 8 }}>{error}</Text>}
-                <TouchableOpacity activeOpacity={0.7} onPress={() => { if (newPin.length === 4) { setError(""); setStep("confirm"); } }} disabled={newPin.length !== 4} style={[mpinStyles.actionBtn, { opacity: newPin.length !== 4 ? 0.5 : 1, marginTop: 20 }]}>
-                  <Text style={mpinStyles.actionBtnTxt}>Continue</Text>
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={0.7} onPress={() => { setStep("old"); setNewPin(""); setError(""); }} style={{ alignItems: "center", marginTop: 12 }}>
-                  <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>Go Back</Text>
-                </TouchableOpacity>
-              </>
             ) : (
               <>
-                <ProfileMpinInput value={confirmPin} onChange={setConfirmPin} autoFocus />
-                {!!error && <Text style={{ ...Typ.caption, color: C.danger, textAlign: "center", marginTop: 8 }}>{error}</Text>}
-                <TouchableOpacity activeOpacity={0.7} onPress={handleChange} disabled={confirmPin.length !== 4 || loading} style={[mpinStyles.actionBtn, { opacity: confirmPin.length !== 4 ? 0.5 : 1, marginTop: 20 }]}>
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={mpinStyles.actionBtnTxt}>Change MPIN</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={0.7} onPress={() => { setStep("new"); setConfirmPin(""); setError(""); }} style={{ alignItems: "center", marginTop: 12 }}>
-                  <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>Go Back</Text>
-                </TouchableOpacity>
+                <View style={{ alignItems: "center", gap: 8, marginBottom: 16 }}>
+                  <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="key" size={28} color={C.primary} />
+                  </View>
+                  <Text style={{ ...Typ.title, color: C.text }}>{step === "old" ? "Current MPIN" : step === "new" ? "New MPIN" : "Confirm New MPIN"}</Text>
+                  <Text style={{ ...Typ.body, color: C.textSecondary, textAlign: "center" }}>
+                    {step === "old" ? "Enter your current MPIN" : step === "new" ? "Enter your new 4-digit MPIN" : "Re-enter your new MPIN to confirm"}
+                  </Text>
+                </View>
+                {step === "old" ? (
+                  <>
+                    <ProfileMpinInput value={oldPin} onChange={setOldPin} autoFocus />
+                    {!!error && (
+                      <View style={{ alignItems: "center", gap: 4, marginTop: 8 }}>
+                        <Text style={{ ...Typ.caption, color: C.danger, textAlign: "center" }}>{error}</Text>
+                        {attemptsRemaining !== null && (
+                          <Text style={{ ...Typ.caption, color: C.amber, textAlign: "center" }}>
+                            {attemptsRemaining} attempt{attemptsRemaining !== 1 ? "s" : ""} remaining before lockout
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => { if (oldPin.length === 4) { setError(""); setStep("new"); } }} disabled={oldPin.length !== 4} style={[mpinStyles.actionBtn, { opacity: oldPin.length !== 4 ? 0.5 : 1, marginTop: 20 }]}>
+                      <Text style={mpinStyles.actionBtnTxt}>Continue</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => setShowForgot(true)} style={{ alignItems: "center", marginTop: 12 }}>
+                      <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>Forgot MPIN?</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : step === "new" ? (
+                  <>
+                    <ProfileMpinInput value={newPin} onChange={setNewPin} autoFocus />
+                    {!!error && <Text style={{ ...Typ.caption, color: C.danger, textAlign: "center", marginTop: 8 }}>{error}</Text>}
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => { if (newPin.length === 4) { setError(""); setStep("confirm"); } }} disabled={newPin.length !== 4} style={[mpinStyles.actionBtn, { opacity: newPin.length !== 4 ? 0.5 : 1, marginTop: 20 }]}>
+                      <Text style={mpinStyles.actionBtnTxt}>Continue</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => { setStep("old"); setNewPin(""); setError(""); }} style={{ alignItems: "center", marginTop: 12 }}>
+                      <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>Go Back</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <ProfileMpinInput value={confirmPin} onChange={setConfirmPin} autoFocus />
+                    {!!error && <Text style={{ ...Typ.caption, color: C.danger, textAlign: "center", marginTop: 8 }}>{error}</Text>}
+                    <TouchableOpacity activeOpacity={0.7} onPress={handleChange} disabled={confirmPin.length !== 4 || loading} style={[mpinStyles.actionBtn, { opacity: confirmPin.length !== 4 ? 0.5 : 1, marginTop: 20 }]}>
+                      {loading ? <ActivityIndicator color="#fff" /> : <Text style={mpinStyles.actionBtnTxt}>Change MPIN</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity activeOpacity={0.7} onPress={() => { setStep("new"); setConfirmPin(""); setError(""); }} style={{ alignItems: "center", marginTop: 12 }}>
+                      <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>Go Back</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </>
             )}
           </TouchableOpacity>
@@ -155,8 +225,16 @@ function ProfileMpinForgotModal({ token, onClose, onReset }: { token: string | n
   const [error, setError] = useState("");
   const [maskedPhone, setMaskedPhone] = useState("");
   const [devOtp, setDevOtp] = useState("");
+  const [otpCooldown, setOtpCooldown] = useState(0);
+
+  useEffect(() => {
+    if (otpCooldown <= 0) return;
+    const timer = setInterval(() => setOtpCooldown(prev => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [otpCooldown]);
 
   const requestOtp = async () => {
+    if (otpCooldown > 0) return;
     setLoading(true);
     setError("");
     try {
@@ -168,6 +246,7 @@ function ProfileMpinForgotModal({ token, onClose, onReset }: { token: string | n
       if (!res.ok) { setError(data.message || "Failed to send OTP"); setLoading(false); return; }
       setMaskedPhone(data.phone || "");
       if (data._dev_otp) setDevOtp(data._dev_otp);
+      setOtpCooldown(60);
       setStep("verify");
     } catch { setError("Network error. Try again."); }
     setLoading(false);
@@ -229,6 +308,11 @@ function ProfileMpinForgotModal({ token, onClose, onReset }: { token: string | n
                 {!!error && <Text style={{ ...Typ.caption, color: C.danger, textAlign: "center", marginTop: 8 }}>{error}</Text>}
                 <TouchableOpacity activeOpacity={0.7} onPress={resetPin} disabled={loading || otp.length < 4 || newPin.length !== 4} style={[mpinStyles.actionBtn, { opacity: otp.length < 4 || newPin.length !== 4 ? 0.5 : 1, marginTop: 16 }]}>
                   {loading ? <ActivityIndicator color="#fff" /> : <Text style={mpinStyles.actionBtnTxt}>Reset MPIN</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7} onPress={requestOtp} disabled={loading || otpCooldown > 0} style={{ alignItems: "center", marginTop: 12, opacity: otpCooldown > 0 ? 0.5 : 1 }}>
+                  <Text style={{ ...Typ.bodySemiBold, color: C.primary }}>
+                    {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : "Resend OTP"}
+                  </Text>
                 </TouchableOpacity>
               </>
             )}
@@ -343,7 +427,7 @@ function ProfileScreenInner() {
                     + activePharmacy.reduce((s: number, p: any) => s + (parseFloat(p.total) || 0), 0)
                     + activeParcels.reduce((s: number,  p: any) => s + (parseFloat(p.price || p.fare || p.total) || 0), 0);
 
-        setStats({ orders: activeOrders.length, rides: activeRides.length, spent: Math.round(spent) });
+        setStats({ orders: activeOrders.length + activePharmacy.length + activeParcels.length, rides: activeRides.length, spent: Math.round(spent) });
         setUnread(nD.unreadCount || 0);
         setStatsError(false);
         break;
@@ -397,6 +481,7 @@ function ProfileScreenInner() {
     { filled: !!user?.city, label: "City" },
     { filled: !!user?.address, label: "Address" },
     { filled: !!user?.cnic, label: "CNIC" },
+    { filled: !!user?.hasPassword, label: "Password" },
   ];
   const filledCount = profileFields.filter(f => f.filled).length;
   const completionPct = Math.round((filledCount / profileFields.length) * 100);

@@ -33,6 +33,7 @@ export interface AppUser {
   accountLevel?: string;
   kycStatus?: string;
   totpEnabled?: boolean;
+  hasPassword?: boolean;
 }
 
 interface TwoFactorPending {

@@ -106,7 +106,7 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
   const cancelMinsLeft = Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
 
   const hourssinceDelivery = order.updatedAt
-    ? (Date.now() - new Date(order.updatedAt).getTime()) / 3600000
+    ? (nowMs - new Date(order.updatedAt).getTime()) / 3600000
     : 0;
   const canRate = reviews && isDelivered && !order._reviewed && hourssinceDelivery <= ratingWindowHours;
 
@@ -251,10 +251,12 @@ function OrderCard({ order, liveTracking, reviews, cancelWindowMin, refundDays, 
 }
 
 
-function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }: {
+function RideCard({ ride, liveTracking, reviews, ratingWindowHours, serverNow, onRate, onCancel, onCardPress }: {
   ride: any;
   liveTracking: boolean;
   reviews: boolean;
+  ratingWindowHours: number;
+  serverNow?: number;
   onRate: (o: any) => void;
   onCancel: (o: any) => void;
   onCardPress?: () => void;
@@ -266,6 +268,12 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
   const isActive    = !["completed", "cancelled"].includes(ride.status);
   const isCompleted = ride.status === "completed";
   const canCancel   = ["searching", "bargaining", "accepted", "arrived"].includes(ride.status);
+
+  const nowMs = serverNow ?? Date.now();
+  const hoursSinceCompleted = ride.updatedAt
+    ? (nowMs - new Date(ride.updatedAt).getTime()) / 3600000
+    : 0;
+  const canRate = reviews && isCompleted && !ride._reviewed && hoursSinceCompleted <= ratingWindowHours;
   const hasRider    = ["accepted", "arrived", "in_transit", "ongoing"].includes(ride.status);
   const rideStepIdx = RIDE_STEPS.indexOf(ride.status);
   const showStepper = isActive && rideStepIdx >= 0;
@@ -402,7 +410,7 @@ function RideCard({ ride, liveTracking, reviews, onRate, onCancel, onCardPress }
         </TouchableOpacity>
       )}
 
-      {reviews && isCompleted && !ride._reviewed && (
+      {canRate && (
         <TouchableOpacity activeOpacity={0.7} style={styles.rateBtn} onPress={() => onRate({ ...ride, _type: "ride" })} accessibilityRole="button" accessibilityLabel={T("rateThisRide")}>
           <Ionicons name="star-outline" size={14} color={C.gold} />
           <Text style={styles.rateBtnText}>{T("rateThisRide")}</Text>
@@ -496,7 +504,7 @@ function PharmacyCard({ order, reviews, cancelWindowMin, serverNow, onRate, onCa
   const minutesSincePlaced = order.createdAt
     ? (nowMs - new Date(order.createdAt).getTime()) / 60000
     : 999;
-  const canCancel = order.status === "pending" && minutesSincePlaced <= cancelWindowMin;
+  const canCancel = ["pending", "confirmed"].includes(order.status) && minutesSincePlaced <= cancelWindowMin;
   const cancelMinsLeft = Math.max(0, Math.ceil(cancelWindowMin - minutesSincePlaced));
 
   const hoverProps = Platform.OS === "web"
@@ -1121,7 +1129,7 @@ function OrdersScreenInner() {
       addItem({ productId: item.productId, name: item.name, price: item.price, quantity: item.quantity || 1, image: item.image, type: order.type || "mart" });
       count++;
     }
-    showToast(`${count} items added to cart (prices may have changed)`, "info");
+    showToast(`${count} items added to cart — stock and prices may have changed since your last order`, "info");
     router.push("/cart");
   }, [addItem, showToast, token]);
 
@@ -1591,7 +1599,7 @@ function OrdersScreenInner() {
             <SectionHeader title={T("activeLabel")} count={anyActive} active />
             <View style={isWide ? styles.cardGrid : undefined}>
               {activeOrders.map(o => <View key={o.id} style={isWide ? styles.cardGridItem : undefined}><OrderCard order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} onCardPress={isWide ? () => setSelectedOrder({ id: o.id, type: o.type || "mart" }) : undefined} /></View>)}
-              {activeRides.map(r => <View key={r.id} style={isWide ? styles.cardGridItem : undefined}><RideCard ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} onCardPress={isWide ? () => setSelectedOrder({ id: r.id, type: "ride" }) : undefined} /></View>)}
+              {activeRides.map(r => <View key={r.id} style={isWide ? styles.cardGridItem : undefined}><RideCard ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancelRide} onCardPress={isWide ? () => setSelectedOrder({ id: r.id, type: "ride" }) : undefined} /></View>)}
               {activePharm.map(o => <View key={o.id} style={isWide ? styles.cardGridItem : undefined}><PharmacyCard order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} serverNow={serverNow} onRate={handleRate} onCancel={handleCancelPharmacy} onCardPress={isWide ? () => setSelectedOrder({ id: o.id, type: "pharmacy" }) : undefined} /></View>)}
               {activeParcel.map(b => <View key={b.id} style={isWide ? styles.cardGridItem : undefined}><ParcelCard booking={b} onCardPress={isWide ? () => setSelectedOrder({ id: b.id, type: "parcel" }) : undefined} /></View>)}
             </View>
@@ -1603,7 +1611,7 @@ function OrdersScreenInner() {
             <SectionHeader title={T("historyLabel")} count={anyPast} />
             <View style={isWide ? styles.cardGrid : undefined}>
               {pastOrders.slice(0, historyLimit).map(o => <View key={o.id} style={isWide ? styles.cardGridItem : undefined}><OrderCard order={{ ...o, _reviewed: reviewedIds.has(o.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} refundDays={orderRules.refundDays} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancel} onReorder={handleReorder} onCardPress={isWide ? () => setSelectedOrder({ id: o.id, type: o.type || "mart" }) : undefined} /></View>)}
-              {pastRides.slice(0, historyLimit).map(r => <View key={r.id} style={isWide ? styles.cardGridItem : undefined}><RideCard ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} onRate={handleRate} onCancel={handleCancelRide} onCardPress={isWide ? () => setSelectedOrder({ id: r.id, type: "ride" }) : undefined} /></View>)}
+              {pastRides.slice(0, historyLimit).map(r => <View key={r.id} style={isWide ? styles.cardGridItem : undefined}><RideCard ride={{ ...r, _reviewed: reviewedIds.has(r.id) }} liveTracking={config.features.liveTracking} reviews={config.features.reviews} ratingWindowHours={orderRules.ratingWindowHours} serverNow={serverNow} onRate={handleRate} onCancel={handleCancelRide} onCardPress={isWide ? () => setSelectedOrder({ id: r.id, type: "ride" }) : undefined} /></View>)}
               {pastPharm.slice(0, historyLimit).map(o => <View key={o.id} style={isWide ? styles.cardGridItem : undefined}><PharmacyCard order={{ ...o, _reviewed: reviewedIds.has(o.id) }} reviews={config.features.reviews} cancelWindowMin={orderRules.cancelWindowMin} serverNow={serverNow} onRate={handleRate} onCancel={handleCancelPharmacy} onCardPress={isWide ? () => setSelectedOrder({ id: o.id, type: "pharmacy" }) : undefined} /></View>)}
               {pastParcel.slice(0, historyLimit).map(b => <View key={b.id} style={isWide ? styles.cardGridItem : undefined}><ParcelCard booking={b} onCardPress={isWide ? () => setSelectedOrder({ id: b.id, type: "parcel" }) : undefined} /></View>)}
             </View>
