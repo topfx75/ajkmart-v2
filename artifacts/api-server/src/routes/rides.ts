@@ -112,8 +112,8 @@ const bookRideSchema = z.object({
   /* ── Multi-stop ── */
   stops: z.array(z.object({
     address: z.string().max(500),
-    lat: z.number(),
-    lng: z.number(),
+    lat: z.preprocess(toNumber, latitudeSchema),
+    lng: z.preprocess(toNumber, coordinateSchema),
     order: z.number().int(),
   })).max(5).optional(),
   /* ── Pool / shared ride ── */
@@ -148,8 +148,8 @@ const estimateSchema = z.object({
 
 const eventLogSchema = z.object({
   event: z.string().min(1),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
+  lat: z.preprocess(toNumber, latitudeSchema.optional()),
+  lng: z.preprocess(toNumber, coordinateSchema.optional()),
   notes: z.string().max(1000).optional(),
 });
 
