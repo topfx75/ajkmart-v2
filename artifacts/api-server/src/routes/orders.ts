@@ -26,21 +26,56 @@ const idempotencyKeysTable = pgTable("idempotency_keys", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-async function getIdempotencyRecord(cacheKey: string): Promise<Record<string, unknown> | null> {
+const IDEMPOTENCY_PENDING_SENTINEL = "__pending__";
+
+/**
+ * Atomically claims an idempotency key at the start of a request.
+ * Returns:
+ *   - { claimed: true }  — key was successfully reserved for this request
+ *   - { claimed: false, cached: Record }  — a completed response already exists; return it
+ *   - { claimed: false, cached: null }    — another request is currently processing this key (conflict)
+ */
+async function claimIdempotencyKey(cacheKey: string): Promise<
+  { claimed: true } | { claimed: false; cached: Record<string, unknown> | null }
+> {
   try {
+    const result = await db
+      .insert(idempotencyKeysTable)
+      .values({ key: cacheKey, responseJson: IDEMPOTENCY_PENDING_SENTINEL })
+      .onConflictDoNothing()
+      .returning({ key: idempotencyKeysTable.key });
+
+    if (result.length > 0) {
+      return { claimed: true };
+    }
+
     const [row] = await db
       .select()
       .from(idempotencyKeysTable)
       .where(eq(idempotencyKeysTable.key, cacheKey))
       .limit(1);
-    if (!row) return null;
+
+    if (!row) {
+      return { claimed: true };
+    }
+
     if (Date.now() - row.createdAt.getTime() > IDEMPOTENCY_TTL_MS) {
       await db.delete(idempotencyKeysTable).where(eq(idempotencyKeysTable.key, cacheKey)).catch(() => {});
-      return null;
+      const retryResult = await db
+        .insert(idempotencyKeysTable)
+        .values({ key: cacheKey, responseJson: IDEMPOTENCY_PENDING_SENTINEL })
+        .onConflictDoNothing()
+        .returning({ key: idempotencyKeysTable.key });
+      return retryResult.length > 0 ? { claimed: true } : { claimed: false, cached: null };
     }
-    return JSON.parse(row.responseJson) as Record<string, unknown>;
+
+    if (row.responseJson === IDEMPOTENCY_PENDING_SENTINEL) {
+      return { claimed: false, cached: null };
+    }
+
+    return { claimed: false, cached: JSON.parse(row.responseJson) as Record<string, unknown> };
   } catch {
-    return null;
+    return { claimed: true };
   }
 }
 
@@ -53,6 +88,14 @@ async function setIdempotencyRecord(cacheKey: string, response: Record<string, u
         target: idempotencyKeysTable.key,
         set: { responseJson: JSON.stringify(response), createdAt: new Date() },
       });
+  } catch { /* non-fatal */ }
+}
+
+async function releaseIdempotencyKey(cacheKey: string): Promise<void> {
+  try {
+    await db
+      .delete(idempotencyKeysTable)
+      .where(and(eq(idempotencyKeysTable.key, cacheKey), eq(idempotencyKeysTable.responseJson, IDEMPOTENCY_PENDING_SENTINEL)));
   } catch { /* non-fatal */ }
 }
 
@@ -462,12 +505,28 @@ router.post("/", customerAuth, async (req, res) => {
     : typeof req.body?.idempotencyKey === "string"
     ? req.body.idempotencyKey.trim() : null;
   if (idempotencyKey) {
-    const cached = await getIdempotencyRecord(`${userId}:${idempotencyKey}`);
-    if (cached) {
-      sendSuccess(res, cached);
+    const claim = await claimIdempotencyKey(`${userId}:${idempotencyKey}`);
+    if (!claim.claimed) {
+      if (claim.cached) {
+        sendSuccess(res, claim.cached);
+      } else {
+        sendError(res, "A request with this idempotency key is already being processed. Please wait and retry.", 409);
+      }
       return;
     }
   }
+
+  const idempotencyCacheKey = idempotencyKey ? `${userId}:${idempotencyKey}` : null;
+  let idempotencyFinalized = false;
+
+  const finalizeIdempotency = async (response: Record<string, unknown>) => {
+    if (idempotencyCacheKey) {
+      await setIdempotencyRecord(idempotencyCacheKey, response);
+      idempotencyFinalized = true;
+    }
+  };
+
+  try {
 
   const lang = await getRequestLocale(req, userId);
 
@@ -885,6 +944,7 @@ router.post("/", customerAuth, async (req, res) => {
         if (io) io.to(`user:${userId}`).emit("wallet:balance", { balance: newBalance });
       }
 
+      await finalizeIdempotency(mapped as unknown as Record<string, unknown>);
       sendCreated(res, mapped);
       notifyOnlineRidersOfOrder(order.id, type || "mart").catch(() => {});
     } catch (e: unknown) {
@@ -893,7 +953,7 @@ router.post("/", customerAuth, async (req, res) => {
     return;
   }
 
-  /* ── Cash / JazzCash / EasyPaisa / Bank — wrapped in try/catch to prevent unhandled rejections ── */
+  /* ── Cash / JazzCash / EasyPaisa / Bank ── */
   try {
     const orderId = generateId();
     const [order] = await db.transaction(async (tx) => {
@@ -935,13 +995,17 @@ router.post("/", customerAuth, async (req, res) => {
     const io = getIO();
     if (io) io.to(`user:${userId}`).emit("order:ack", { orderId: order!.id, status: "pending", createdAt: order!.createdAt.toISOString() });
 
-    if (idempotencyKey) {
-      await setIdempotencyRecord(`${userId}:${idempotencyKey}`, mapped as unknown as Record<string, unknown>);
-    }
+    await finalizeIdempotency(mapped as unknown as Record<string, unknown>);
     sendCreated(res, mapped);
     notifyOnlineRidersOfOrder(order!.id, type || "mart").catch(() => {});
   } catch (e: unknown) {
     sendError(res, t("apiErrOrderCreationFailed", lang), 500);
+  }
+
+  } finally {
+    if (idempotencyCacheKey && !idempotencyFinalized) {
+      await releaseIdempotencyKey(idempotencyCacheKey);
+    }
   }
 });
 
