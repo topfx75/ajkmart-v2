@@ -56,7 +56,7 @@ async function moderateComment(comment: string): Promise<{ flagged: boolean; rea
   }
   try {
     const response = await client.chat.completions.create({
-      model: "gpt-5-mini",
+      model: "gpt-4o-mini",
       max_completion_tokens: 100,
       messages: [
         {
@@ -73,6 +73,8 @@ async function moderateComment(comment: string): Promise<{ flagged: boolean; rea
       return { flagged: !!parsed.flagged, reason: parsed.reason || null };
     }
   } catch (e) {
+    // Intentional fail-open: if the AI moderation service is unavailable or errors,
+    // allow the review through unflagged to avoid blocking legitimate reviews.
     logger.error("[moderation] AI check failed:", e);
   }
   return { flagged: false, reason: null };
