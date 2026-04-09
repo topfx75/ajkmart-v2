@@ -182,11 +182,18 @@ export default function WeatherDetailScreen() {
           } catch {
             const saved = await AsyncStorage.getItem(SAVED_CITY_KEY).catch(() => null);
             if (saved) {
-              const parsed = JSON.parse(saved);
-              lat = parsed.lat;
-              lng = parsed.lng;
-              locName = parsed.name;
-              isGps = false;
+              try {
+                const parsed = JSON.parse(saved);
+                lat = parsed.lat;
+                lng = parsed.lng;
+                locName = parsed.name;
+                isGps = false;
+              } catch {
+                AsyncStorage.removeItem(SAVED_CITY_KEY).catch(() => {});
+                setError("Could not get location. Add a city manually.");
+                setLoading(false);
+                return;
+              }
             } else {
               setError("Could not get location. Add a city manually.");
               setLoading(false);
@@ -196,11 +203,18 @@ export default function WeatherDetailScreen() {
         } else {
           const saved = await AsyncStorage.getItem(SAVED_CITY_KEY).catch(() => null);
           if (saved) {
-            const parsed = JSON.parse(saved);
-            lat = parsed.lat;
-            lng = parsed.lng;
-            locName = parsed.name;
-            isGps = false;
+            try {
+              const parsed = JSON.parse(saved);
+              lat = parsed.lat;
+              lng = parsed.lng;
+              locName = parsed.name;
+              isGps = false;
+            } catch {
+              AsyncStorage.removeItem(SAVED_CITY_KEY).catch(() => {});
+              setError("Location permission denied. Add a city manually.");
+              setLoading(false);
+              return;
+            }
           } else {
             setError("Location permission denied. Add a city manually.");
             setLoading(false);

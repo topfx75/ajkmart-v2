@@ -303,13 +303,23 @@ function PharmacyScreenInner() {
   }, [pharmacyCartItems, removeFromGlobalCart, updateQuantity]);
 
   const uploadPrescription = async (photoUri: string, refId: string): Promise<void> => {
-    const compressed = await ImageManipulator.manipulateAsync(
-      photoUri,
-      [{ resize: { width: 1024 } }],
-      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-    );
-    const base64 = await FileSystem.readAsStringAsync(compressed.uri, { encoding: "base64" as const });
-    const res = await fetch(`https://${process.env.EXPO_PUBLIC_DOMAIN}/api/uploads/prescription`, {
+    let compressed: ImageManipulator.ImageResult;
+    try {
+      compressed = await ImageManipulator.manipulateAsync(
+        photoUri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+    } catch {
+      throw new Error("Image manipulation failed — the file may be corrupt. Please pick another image.");
+    }
+    let base64: string;
+    try {
+      base64 = await FileSystem.readAsStringAsync(compressed.uri, { encoding: "base64" as const });
+    } catch {
+      throw new Error("Could not read the processed image. Please pick another image.");
+    }
+    const res = await fetch(`${API_BASE}/uploads/prescription`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -375,18 +385,30 @@ function PharmacyScreenInner() {
         setIsUploading(true);
         const MAX_UPLOAD_RETRIES = 3;
         let uploadSuccess = false;
+        let imageError = false;
         for (let attempt = 1; attempt <= MAX_UPLOAD_RETRIES; attempt++) {
           try {
             await uploadPrescription(prescriptionPhotoUri, prescriptionRefId);
             uploadSuccess = true;
             break;
-          } catch {
+          } catch (uploadErr: any) {
+            const msg: string = uploadErr?.message ?? "";
+            if (msg.includes("manipulation failed") || msg.includes("Could not read the processed image")) {
+              showToast(msg || "Could not process the prescription image. Please pick another image.", "error");
+              setPrescriptionPhotoUri(null);
+              imageError = true;
+              break;
+            }
             if (attempt < MAX_UPLOAD_RETRIES) {
               await new Promise<void>(r => setTimeout(r, 1000 * attempt));
             }
           }
         }
         setIsUploading(false);
+        if (imageError) {
+          setLoading(false);
+          return;
+        }
         if (!uploadSuccess) {
           setUploadFailed(true);
           showToast("Could not upload prescription photo. Tap 'Retry Upload' to try again.", "error");

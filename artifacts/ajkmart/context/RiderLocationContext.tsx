@@ -24,7 +24,7 @@ import * as Battery from "expo-battery";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, AppStateStatus, Platform } from "react-native";
 import { useAuth } from "./AuthContext";
-import { unwrapApiResponse } from "../utils/api";
+import { API_BASE, unwrapApiResponse } from "../utils/api";
 
 const BACKGROUND_LOCATION_TASK = "RIDER_BACKGROUND_LOCATION";
 const MIN_DISTANCE_METERS = 25;
@@ -96,8 +96,6 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
   const hasActiveTaskRef = useRef(false);
   hasActiveTaskRef.current = hasActiveTask;
 
-  const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
-
   /* ── Poll for active orders/rides to determine dual-mode ── */
   useEffect(() => {
     if (!isOnline || !user?.id) {
@@ -120,7 +118,7 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
     checkActive();
     const interval = setInterval(checkActive, 15_000);
     return () => clearInterval(interval);
-  }, [isOnline, user?.id, API_BASE]);
+  }, [isOnline, user?.id]);
 
   /* ── Dual-mode: update background location task interval when active task changes ── */
   useEffect(() => {
@@ -202,7 +200,7 @@ export function RiderLocationProvider({ children }: { children: React.ReactNode 
     } catch (err) {
       if (__DEV__) console.warn("[RiderLocation] Location patch network error:", err instanceof Error ? err.message : String(err));
     }
-  }, [API_BASE]);
+  }, []);
 
   /* ── Bug 5 fix: Register/unregister handler in the Set (no race condition on remount) ── */
   useEffect(() => {

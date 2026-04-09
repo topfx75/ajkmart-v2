@@ -400,17 +400,19 @@ function ProfileScreenInner() {
   const fetchAll = useCallback(async () => {
     if (!user?.id) return;
     const hdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const TIMEOUT_MS = 10_000;
+    const withTimeout = (p: Promise<Response>) =>
+      Promise.race([p, new Promise<Response>((_, rej) => setTimeout(() => rej(new Error("timeout")), TIMEOUT_MS))]);
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const [oR, rR, nR, phR, parR] = await Promise.all([
-          fetch(`${API}/orders`,            { headers: hdrs }),
-          fetch(`${API}/rides`,             { headers: hdrs }),
-          fetch(`${API}/notifications`,     { headers: hdrs }),
-          fetch(`${API}/pharmacy-orders`,   { headers: hdrs }),
-          fetch(`${API}/parcel-bookings`,   { headers: hdrs }),
+        const [oD, rD, nD, phD, parD] = await Promise.all([
+          withTimeout(fetch(`${API}/orders`,          { headers: hdrs })).then(r => r.json()).then(unwrapApiResponse).catch(() => ({})),
+          withTimeout(fetch(`${API}/rides`,           { headers: hdrs })).then(r => r.json()).then(unwrapApiResponse).catch(() => ({})),
+          withTimeout(fetch(`${API}/notifications`,   { headers: hdrs })).then(r => r.json()).then(unwrapApiResponse).catch(() => ({})),
+          withTimeout(fetch(`${API}/pharmacy-orders`, { headers: hdrs })).then(r => r.json()).then(unwrapApiResponse).catch(() => ({})),
+          withTimeout(fetch(`${API}/parcel-bookings`, { headers: hdrs })).then(r => r.json()).then(unwrapApiResponse).catch(() => ({})),
         ]);
-        const [oD, rD, nD, phD, parD] = await Promise.all([oR.json().then(unwrapApiResponse), rR.json().then(unwrapApiResponse), nR.json().then(unwrapApiResponse), phR.json().then(unwrapApiResponse).catch(() => ({})), parR.json().then(unwrapApiResponse).catch(() => ({}))]);
         const orders   = oD.orders   || [];
         const rides    = rD.rides    || [];
         const pharmacy = phD.orders  || phD.pharmacyOrders  || [];

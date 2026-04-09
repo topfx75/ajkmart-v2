@@ -19,13 +19,14 @@ import { initAnalytics, trackScreen, identifyUser } from "@/utils/analytics";
 import { registerPush } from "@/utils/push";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
+import { API_BASE } from "@/utils/api";
 import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
 import { PlatformConfigProvider, usePlatformConfig } from "@/context/PlatformConfigContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const _domain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-if (_domain) setBaseUrl(`https://${_domain}/api`);
+if (_domain) setBaseUrl(API_BASE);
 
 SplashScreen.preventAutoHideAsync();
 
@@ -137,8 +138,6 @@ function MaintenanceScreen() {
     </View>
   );
 }
-
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
 
 function MagicLinkHandler() {
   const { login, setTwoFactorPending } = useAuth();
