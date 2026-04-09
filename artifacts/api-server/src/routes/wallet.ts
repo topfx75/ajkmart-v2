@@ -823,6 +823,9 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
   if (amt < minWithdrawal) { clearKey(); sendValidationError(res, `Minimum withdrawal is Rs. ${minWithdrawal}`); return; }
   if (amt > maxWithdrawal) { clearKey(); sendValidationError(res, `Maximum single withdrawal is Rs. ${maxWithdrawal}`); return; }
 
+  /* Fast-fail UX shortcut — NOT authoritative. This balance may be stale if a concurrent
+     request committed between the read above and now. The SELECT FOR UPDATE inside the
+     transaction below is the authoritative check. */
   const balance = parseFloat(String(withdrawUser.walletBalance ?? "0"));
   if (balance < amt) {
     clearKey();

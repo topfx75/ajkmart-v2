@@ -793,14 +793,15 @@ router.post("/", customerAuth, async (req, res) => {
 
     try {
       const order = await db.transaction(async (tx) => {
-        const [freshUser] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        /* Lock user row (SELECT FOR UPDATE) — serializes concurrent wallet deductions so the
+           balance check uses the committed balance, preventing double-spend race conditions. */
+        const [freshUser] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1).for("update");
         if (!freshUser) throw new Error("User not found");
 
         const balance = parseFloat(freshUser.walletBalance ?? "0");
         if (balance < total) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${total.toFixed(0)}`);
 
-        /* DB floor guard — deducts only if balance ≥ amount at UPDATE time,
-           eliminating negative-balance race even when pre-flight checks pass concurrently */
+        /* DB floor guard — secondary check: deducts only if balance ≥ amount at UPDATE time */
         const [deducted] = await tx.update(usersTable)
           .set({ walletBalance: sql`wallet_balance - ${total.toFixed(2)}` })
           .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, total.toFixed(2))))

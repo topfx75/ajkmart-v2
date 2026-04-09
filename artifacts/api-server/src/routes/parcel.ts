@@ -245,13 +245,15 @@ router.post("/", customerAuth, async (req, res) => {
 
     try {
       const booking = await db.transaction(async (tx) => {
-        const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+        /* Lock user row (SELECT FOR UPDATE) — serializes concurrent wallet deductions so the
+           balance check uses the committed balance, preventing double-spend race conditions. */
+        const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1).for("update");
         if (!user) throw new Error("User not found");
 
         const balance = parseFloat(user.walletBalance ?? "0");
         if (balance < totalFare) throw new Error(`Insufficient wallet balance. Balance: Rs. ${balance.toFixed(0)}, Required: Rs. ${totalFare}`);
 
-        /* DB floor guard — deducts only if balance ≥ amount at UPDATE time */
+        /* DB floor guard — secondary check: deducts only if balance ≥ amount at UPDATE time */
         const [deducted] = await tx.update(usersTable)
           .set({ walletBalance: sql`wallet_balance - ${totalFare.toFixed(2)}` })
           .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, totalFare.toFixed(2))))

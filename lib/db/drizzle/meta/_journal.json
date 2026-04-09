@@ -36,6 +36,13 @@
       "when": 1775420077138,
       "tag": "0004_flimsy_sally_floyd",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1775421000000,
+      "tag": "0005_wallet_balance_non_negative",
+      "breakpoints": true
     }
   ]
 }
