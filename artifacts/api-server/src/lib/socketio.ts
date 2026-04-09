@@ -265,159 +265,187 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
        Server relays the heartbeat to admin-fleet AND persists batteryLevel, lastSeen, lastActive,
        and isOnline to DB — all fire-and-forget so the socket never blocks. */
     socket.on("rider:heartbeat", (payload: { batteryLevel?: number; isOnline?: boolean }) => {
-      const riderPay = cachedSession;
-      if (!riderPay?.userId || riderPay.role !== "rider") return;
-      const batteryLevel = typeof payload?.batteryLevel === "number" ? payload.batteryLevel : null;
-      const isOnline = payload?.isOnline !== false;
-      const now = new Date();
+      try {
+        const riderPay = cachedSession;
+        if (!riderPay?.userId || riderPay.role !== "rider") return;
+        const batteryLevel = typeof payload?.batteryLevel === "number" ? payload.batteryLevel : null;
+        const isOnline = payload?.isOnline !== false;
+        const now = new Date();
 
-      /* 1. Update live_locations: battery level + lastSeen timestamp */
-      db.update(liveLocationsTable)
-        .set({ batteryLevel: batteryLevel ?? undefined, lastSeen: now, updatedAt: now })
-        .where(eq(liveLocationsTable.userId, riderPay.userId))
-        .catch(() => {});
+        /* 1. Update live_locations: battery level + lastSeen timestamp */
+        db.update(liveLocationsTable)
+          .set({ batteryLevel: batteryLevel ?? undefined, lastSeen: now, updatedAt: now })
+          .where(eq(liveLocationsTable.userId, riderPay.userId))
+          .catch(() => {});
 
-      /* 2. Update users: isOnline flag + lastActive timestamp so the ghost-rider
-            cleanup timer correctly uses lastActive as the freshness signal. */
-      db.update(usersTable)
-        .set({ isOnline, lastActive: now, updatedAt: now })
-        .where(eq(usersTable.id, riderPay.userId))
-        .catch(() => {});
+        /* 2. Update users: isOnline flag + lastActive timestamp so the ghost-rider
+              cleanup timer correctly uses lastActive as the freshness signal. */
+        db.update(usersTable)
+          .set({ isOnline, lastActive: now, updatedAt: now })
+          .where(eq(usersTable.id, riderPay.userId))
+          .catch(() => {});
 
-      _io!.to("admin-fleet").emit("rider:heartbeat", {
-        userId: riderPay.userId,
-        batteryLevel,
-        isOnline,
-        sentAt: now.toISOString(),
-      });
+        _io!.to("admin-fleet").emit("rider:heartbeat", {
+          userId: riderPay.userId,
+          batteryLevel,
+          isOnline,
+          sentAt: now.toISOString(),
+        });
+      } catch (err) {
+        logger.error({ err, socketId: socket.id }, "rider:heartbeat handler error");
+      }
     });
 
     /* SOS relay: rider sends rider:sos event, server broadcasts to admin-fleet */
     socket.on("rider:sos", (payload: { latitude?: number; longitude?: number; rideId?: string | null }) => {
-      /* Use cached session — no redundant JWT verification */
-      if (!cachedSession?.userId || cachedSession.role !== "rider") return;
-      if (typeof payload?.latitude !== "number" || typeof payload?.longitude !== "number") return;
-      /* Rebroadcast to admin-fleet with enriched payload */
-      _io!.to("admin-fleet").emit("rider:sos", {
-        userId: cachedSession.userId,
-        name: "Rider",
-        phone: null,
-        latitude: payload.latitude,
-        longitude: payload.longitude,
-        rideId: payload.rideId ?? null,
-        sentAt: new Date().toISOString(),
-      });
+      try {
+        /* Use cached session — no redundant JWT verification */
+        if (!cachedSession?.userId || cachedSession.role !== "rider") return;
+        if (typeof payload?.latitude !== "number" || typeof payload?.longitude !== "number") return;
+        /* Rebroadcast to admin-fleet with enriched payload */
+        _io!.to("admin-fleet").emit("rider:sos", {
+          userId: cachedSession.userId,
+          name: "Rider",
+          phone: null,
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          rideId: payload.rideId ?? null,
+          sentAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        logger.error({ err, socketId: socket.id }, "rider:sos handler error");
+      }
     });
 
     /* Admin chat relay: admin sends message to specific rider */
     socket.on("admin:chat", (payload: { riderId: string; message: string }) => {
-      if (!payload?.riderId || typeof payload.message !== "string") return;
-      /* Only allow admins to send chat messages */
-      if (!isAuthorizedForAdminFleet(headers, query, auth)) return;
-      _io!.to(`rider:${payload.riderId}`).emit("admin:chat", {
-        message: payload.message,
-        sentAt: new Date().toISOString(),
-        from: "admin",
-      });
+      try {
+        if (!payload?.riderId || typeof payload.message !== "string") return;
+        /* Only allow admins to send chat messages */
+        if (!isAuthorizedForAdminFleet(headers, query, auth)) return;
+        _io!.to(`rider:${payload.riderId}`).emit("admin:chat", {
+          message: payload.message,
+          sentAt: new Date().toISOString(),
+          from: "admin",
+        });
+      } catch (err) {
+        logger.error({ err, socketId: socket.id }, "admin:chat handler error");
+      }
     });
 
     /* Rider reply chat relay: rider sends message back to admin */
     socket.on("rider:chat", (payload: { message: string }) => {
-      /* Use cached session — no redundant JWT verification */
-      if (!cachedSession?.userId || cachedSession.role !== "rider") return;
-      if (typeof payload?.message !== "string" || !payload.message.trim()) return;
-      /* Broadcast the rider's reply to all admin-fleet clients */
-      _io!.to("admin-fleet").emit("rider:chat", {
-        userId: cachedSession.userId,
-        message: payload.message.trim(),
-        sentAt: new Date().toISOString(),
-        from: "rider",
-      });
+      try {
+        /* Use cached session — no redundant JWT verification */
+        if (!cachedSession?.userId || cachedSession.role !== "rider") return;
+        if (typeof payload?.message !== "string" || !payload.message.trim()) return;
+        /* Broadcast the rider's reply to all admin-fleet clients */
+        _io!.to("admin-fleet").emit("rider:chat", {
+          userId: cachedSession.userId,
+          message: payload.message.trim(),
+          sentAt: new Date().toISOString(),
+          from: "rider",
+        });
+      } catch (err) {
+        logger.error({ err, socketId: socket.id }, "rider:chat handler error");
+      }
     });
 
 
     /* Join event: client can request additional rooms after connect */
     socket.on("join", (room: string) => {
-      if (typeof room !== "string") return;
+      try {
+        if (typeof room !== "string") return;
 
-      if (room === "admin-fleet") {
-        if (isAuthorizedForAdminFleet(headers, query, auth)) {
-          socket.join(room);
-          logger.debug({ socketId: socket.id, room }, "Socket joined admin-fleet");
-        } else {
-          logger.debug({ socketId: socket.id, room }, "Socket join denied admin-fleet (unauthorized)");
-        }
-      } else if (room.startsWith("vendor:")) {
-        const vendorId = room.slice("vendor:".length);
-        if (isAuthorizedForVendorRoom(vendorId, socket.id, headers, auth)) {
-          socket.join(room);
-          logger.debug({ socketId: socket.id, room }, "Socket joined vendor room");
-        } else {
-          logger.debug({ socketId: socket.id, room }, "Socket join denied vendor room (unauthorized)");
-        }
-      } else if (room.startsWith("ride:")) {
-        const rideId = room.slice("ride:".length);
-        const key = bufferKey(socket.id, room);
-        _pendingRideJoins.set(key, []);
-        isAuthorizedForRideRoom(rideId, headers, auth).then(ok => {
-          const buffered = _pendingRideJoins.get(key) ?? [];
-          _pendingRideJoins.delete(key);
-          if (ok) {
+        if (room === "admin-fleet") {
+          if (isAuthorizedForAdminFleet(headers, query, auth)) {
             socket.join(room);
-            for (const payload of buffered) {
-              socket.emit("rider:location", payload);
+            logger.debug({ socketId: socket.id, room }, "Socket joined admin-fleet");
+          } else {
+            logger.debug({ socketId: socket.id, room }, "Socket join denied admin-fleet (unauthorized)");
+          }
+        } else if (room.startsWith("vendor:")) {
+          const vendorId = room.slice("vendor:".length);
+          if (isAuthorizedForVendorRoom(vendorId, socket.id, headers, auth)) {
+            socket.join(room);
+            logger.debug({ socketId: socket.id, room }, "Socket joined vendor room");
+          } else {
+            logger.debug({ socketId: socket.id, room }, "Socket join denied vendor room (unauthorized)");
+          }
+        } else if (room.startsWith("ride:")) {
+          const rideId = room.slice("ride:".length);
+          const key = bufferKey(socket.id, room);
+          _pendingRideJoins.set(key, []);
+          isAuthorizedForRideRoom(rideId, headers, auth).then(ok => {
+            const buffered = _pendingRideJoins.get(key) ?? [];
+            _pendingRideJoins.delete(key);
+            if (ok) {
+              socket.join(room);
+              for (const payload of buffered) {
+                socket.emit("rider:location", payload);
+              }
+              logger.debug({ socketId: socket.id, room }, "Socket joined ride room");
+            } else {
+              logger.debug({ socketId: socket.id, room }, "Socket join denied ride room (not a participant)");
             }
-            logger.debug({ socketId: socket.id, room }, "Socket joined ride room");
-          } else {
-            logger.debug({ socketId: socket.id, room }, "Socket join denied ride room (not a participant)");
-          }
-        }).catch(() => { _pendingRideJoins.delete(key); });
-      } else if (room.startsWith("order:")) {
-        const orderId = room.slice("order:".length);
-        isAuthorizedForOrderRoom(orderId, headers, auth).then(ok => {
-          if (ok) {
-            socket.join(room);
-            logger.debug({ socketId: socket.id, room }, "Socket joined order room");
-          } else {
-            logger.debug({ socketId: socket.id, room }, "Socket join denied order room (not a participant)");
-          }
-        }).catch(() => {});
+          }).catch(() => { _pendingRideJoins.delete(key); });
+        } else if (room.startsWith("order:")) {
+          const orderId = room.slice("order:".length);
+          isAuthorizedForOrderRoom(orderId, headers, auth).then(ok => {
+            if (ok) {
+              socket.join(room);
+              logger.debug({ socketId: socket.id, room }, "Socket joined order room");
+            } else {
+              logger.debug({ socketId: socket.id, room }, "Socket join denied order room (not a participant)");
+            }
+          }).catch(() => {});
+        }
+      } catch (err) {
+        logger.error({ err, socketId: socket.id, room }, "join handler error");
       }
     });
 
     socket.on("leave", (room: string) => {
-      socket.leave(room);
+      try {
+        socket.leave(room);
+      } catch (err) {
+        logger.error({ err, socketId: socket.id, room }, "leave handler error");
+      }
     });
 
     socket.on("disconnect", () => {
-      /* Clean up any pending ride-room buffers for this socket */
-      const prefix = `${socket.id}::`;
-      for (const key of _pendingRideJoins.keys()) {
-        if (key.startsWith(prefix)) _pendingRideJoins.delete(key);
+      try {
+        /* Clean up any pending ride-room buffers for this socket */
+        const prefix = `${socket.id}::`;
+        for (const key of _pendingRideJoins.keys()) {
+          if (key.startsWith(prefix)) _pendingRideJoins.delete(key);
+        }
+
+        /* Evict session cache entry — no longer needed after disconnect */
+        _sessionCache.delete(socket.id);
+
+        /* Use the already-resolved session (cached from connection handshake) */
+        if (cachedSession?.userId && cachedSession.role === "rider") {
+          const riderId = cachedSession.userId;
+          const deleteWithRetry = (attempt: number) => {
+            db.delete(liveLocationsTable)
+              .where(eq(liveLocationsTable.userId, riderId))
+              .catch((err) => {
+                if (attempt < 3) {
+                  setTimeout(() => deleteWithRetry(attempt + 1), 1000 * attempt);
+                } else {
+                  logger.warn({ err, riderId }, "Failed to clean up stale live_location on disconnect after retries");
+                }
+              });
+          };
+          deleteWithRetry(1);
+          _riderLocLastEmit.delete(riderId);
+        }
+
+        logger.debug({ socketId: socket.id }, "Socket disconnected");
+      } catch (err) {
+        logger.error({ err, socketId: socket.id }, "disconnect handler error");
       }
-
-      /* Evict session cache entry — no longer needed after disconnect */
-      _sessionCache.delete(socket.id);
-
-      /* Use the already-resolved session (cached from connection handshake) */
-      if (cachedSession?.userId && cachedSession.role === "rider") {
-        const riderId = cachedSession.userId;
-        const deleteWithRetry = (attempt: number) => {
-          db.delete(liveLocationsTable)
-            .where(eq(liveLocationsTable.userId, riderId))
-            .catch((err) => {
-              if (attempt < 3) {
-                setTimeout(() => deleteWithRetry(attempt + 1), 1000 * attempt);
-              } else {
-                logger.warn({ err, riderId }, "Failed to clean up stale live_location on disconnect after retries");
-              }
-            });
-        };
-        deleteWithRetry(1);
-        _riderLocLastEmit.delete(riderId);
-      }
-
-      logger.debug({ socketId: socket.id }, "Socket disconnected");
     });
   });
 

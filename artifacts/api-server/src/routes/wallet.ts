@@ -14,9 +14,6 @@ import { sendSuccess, sendCreated, sendAccepted, sendError, sendNotFound, sendFo
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-/* ── IS_PRODUCTION guard — independent of NODE_ENV for simulate-topup hardening ── */
-const IS_PRODUCTION = process.env["IS_PRODUCTION"] === "true" || process.env["NODE_ENV"] === "production";
-
 type IdempotencyEntry =
   | { state: "in_flight"; ts: number }
   | { state: "success"; ts: number; statusCode: number; body: unknown }
@@ -982,68 +979,6 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
   const responseBody = { txId, status: "pending", amount: amt };
   if (withdrawCacheKey) idempotencyCache.set(withdrawCacheKey, { state: "success", ts: Date.now(), statusCode: 200, body: responseBody });
   sendSuccess(res, responseBody);
-});
-
-/* ── POST /wallet/simulate-topup — Customer self-service simulated top-up
-   For demo/testing purposes. Allowed amounts: 500, 1000, 2000, 5000 PKR.
-   Daily limit: Rs. 10,000. Labeled clearly as simulated.
-   Hardened: blocked in IS_PRODUCTION regardless of NODE_ENV.
-──────────────────────────────────────────────────────────────────────── */
-const SIMULATE_ALLOWED = [500, 1000, 2000, 5000];
-const SIMULATE_DAILY_LIMIT = 10000;
-
-router.post("/simulate-topup", customerAuth, async (req, res) => {
-  if (IS_PRODUCTION) {
-    logger.warn("[SECURITY] /wallet/simulate-topup hit on production instance — blocked");
-    sendForbidden(res, "Not available in production"); return;
-  }
-  const userId = req.customerId!;
-  const amount = parseInt(String(req.body["amount"] ?? ""), 10);
-
-  if (!SIMULATE_ALLOWED.includes(amount)) {
-    sendValidationError(res, `Invalid amount. Choose from: ${SIMULATE_ALLOWED.join(", ")}`); return;
-  }
-
-  try {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) { sendNotFound(res, "User not found"); return; }
-    if (isWalletFrozen(user)) { sendForbidden(res, "wallet_frozen", "Your wallet has been temporarily frozen. Contact support."); return; }
-
-    /* Check daily simulated topup total */
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayTxns = await db.select({ s: sum(walletTransactionsTable.amount) })
-      .from(walletTransactionsTable)
-      .where(and(
-        eq(walletTransactionsTable.userId, userId),
-        eq(walletTransactionsTable.type, "simulated_topup"),
-        gte(walletTransactionsTable.createdAt, todayStart),
-      ));
-    const todayTotal = parseFloat(todayTxns[0]?.s ?? "0") || 0;
-    if (todayTotal + amount > SIMULATE_DAILY_LIMIT) {
-      sendError(res, `Daily simulation limit is Rs. ${SIMULATE_DAILY_LIMIT}. You have Rs. ${SIMULATE_DAILY_LIMIT - todayTotal} remaining today.`, 429); return;
-    }
-
-    const newBalance = await db.transaction(async (tx) => {
-      const [updated] = await tx.update(usersTable)
-        .set({ walletBalance: sql`wallet_balance + ${amount}`, updatedAt: new Date() })
-        .where(eq(usersTable.id, userId))
-        .returning({ walletBalance: usersTable.walletBalance });
-      await tx.insert(walletTransactionsTable).values({
-        id: generateId(), userId, type: "simulated_topup",
-        amount: amount.toFixed(2),
-        description: `Simulated top-up — Rs. ${amount} (Demo Mode)`,
-        reference: `sim:${Date.now()}`,
-        paymentMethod: "simulation",
-      });
-      return parseFloat(updated?.walletBalance ?? "0");
-    });
-
-    broadcastWalletUpdate(userId, newBalance);
-    sendSuccess(res, { amount, newBalance });
-  } catch (e: unknown) {
-    logger.error("[wallet /simulate-topup] Unexpected error:", e);
-    sendError(res, "Something went wrong, please try again.", 500);
-  }
 });
 
 /* ── GET /wallet/pending-topups — Customer pending topup count ────────── */
