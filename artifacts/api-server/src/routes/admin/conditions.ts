@@ -406,15 +406,28 @@ router.get("/conditions/user/:userId", async (req, res) => {
   }
 });
 
-router.get("/condition-rules", async (_req, res) => {
+router.get("/condition-rules", async (req, res) => {
   try {
-    const rules = await db.select().from(conditionRulesTable).orderBy(conditionRulesTable.targetRole, conditionRulesTable.name);
+    const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+    const offset = (page - 1) * limit;
+
+    const [totalResult, rules] = await Promise.all([
+      db.select({ total: count() }).from(conditionRulesTable),
+      db.select().from(conditionRulesTable).orderBy(conditionRulesTable.targetRole, conditionRulesTable.name).limit(limit).offset(offset),
+    ]);
+
+    const total = Number(totalResult[0]?.total ?? 0);
     sendSuccess(res, {
       rules: rules.map(r => ({
         ...r,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
       })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     });
   } catch (e: unknown) {
     sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch rules", 500);

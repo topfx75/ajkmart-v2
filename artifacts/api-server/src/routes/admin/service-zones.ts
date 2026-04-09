@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { serviceZonesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 import { invalidateZoneCache } from "../../lib/geofence.js";
 import type { AdminRequest } from "../admin.js";
@@ -9,12 +9,18 @@ import type { AdminRequest } from "../admin.js";
 const router: IRouter = Router();
 
 /* ── GET /admin/service-zones — list all zones ── */
-router.get("/", async (_req, res) => {
-  const zones = await db
-    .select()
-    .from(serviceZonesTable)
-    .orderBy(serviceZonesTable.city, serviceZonesTable.name);
-  sendSuccess(res, zones);
+router.get("/", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, zones] = await Promise.all([
+    db.select({ total: count() }).from(serviceZonesTable),
+    db.select().from(serviceZonesTable).orderBy(serviceZonesTable.city, serviceZonesTable.name).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  sendSuccess(res, { zones, total, page, limit, totalPages: Math.ceil(total / limit) });
 });
 
 /* ── POST /admin/service-zones — create a zone ── */

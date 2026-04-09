@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { wishlistTable, productsTable } from "@workspace/db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { z } from "zod";
 import { generateId } from "../lib/id.js";
 import { sendSuccess, sendCreated, sendNotFound } from "../lib/response.js";
@@ -70,19 +70,29 @@ router.delete("/:productId", async (req, res) => {
 
 router.get("/", async (req, res) => {
   const userId = req.customerId!;
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 20));
+  const offset = (page - 1) * limit;
 
-  const items = await db
-    .select({
+  const [totalResult, items] = await Promise.all([
+    db.select({ total: count() }).from(wishlistTable).where(eq(wishlistTable.userId, userId)),
+    db.select({
       id: wishlistTable.id,
       productId: wishlistTable.productId,
       createdAt: wishlistTable.createdAt,
     })
-    .from(wishlistTable)
-    .where(eq(wishlistTable.userId, userId))
-    .orderBy(desc(wishlistTable.createdAt));
+      .from(wishlistTable)
+      .where(eq(wishlistTable.userId, userId))
+      .orderBy(desc(wishlistTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const totalPages = Math.ceil(total / limit);
 
   if (items.length === 0) {
-    sendSuccess(res, { items: [], total: 0 });
+    sendSuccess(res, { items: [], total, page, limit, totalPages });
     return;
   }
 
@@ -120,7 +130,7 @@ router.get("/", async (req, res) => {
     })
     .filter(Boolean);
 
-  sendSuccess(res, { items: enriched, total: enriched.length });
+  sendSuccess(res, { items: enriched, total, page, limit, totalPages });
 });
 
 router.get("/check/:productId", async (req, res) => {

@@ -8,7 +8,7 @@ import {
   notificationsTable,
   ordersTable, productsTable, flashDealsTable, promoCodesTable, categoriesTable, bannersTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -24,8 +24,24 @@ import {
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 
 const router = Router();
-router.get("/products", async (_req, res) => {
-  const products = await db.select().from(productsTable).orderBy(desc(productsTable.createdAt));
+router.get("/products", async (req, res) => {
+  const search = (req.query?.search as string) ?? "";
+  const category = (req.query?.category as string) ?? "";
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const whereConditions: ReturnType<typeof and>[] = [];
+  if (search) whereConditions.push(ilike(productsTable.name, `%${search}%`));
+  if (category && category !== "all") whereConditions.push(eq(productsTable.category, category));
+  const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+  const [totalResult, products] = await Promise.all([
+    db.select({ total: count() }).from(productsTable).where(whereClause),
+    db.select().from(productsTable).where(whereClause).orderBy(desc(productsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
     products: products.map(p => ({
       ...p,
@@ -34,16 +50,31 @@ router.get("/products", async (_req, res) => {
       rating: p.rating ? parseFloat(p.rating) : null,
       createdAt: p.createdAt.toISOString(),
     })),
-    total: products.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
-router.get("/products/pending", async (_req, res) => {
-  const products = await db
-    .select()
-    .from(productsTable)
-    .where(eq(productsTable.approvalStatus, "pending"))
-    .orderBy(desc(productsTable.createdAt));
+router.get("/products/pending", async (req, res) => {
+  const search = (req.query?.search as string) ?? "";
+  const category = (req.query?.category as string) ?? "";
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const whereConditions: ReturnType<typeof and>[] = [eq(productsTable.approvalStatus, "pending")];
+  if (search) whereConditions.push(ilike(productsTable.name, `%${search}%`));
+  if (category && category !== "all") whereConditions.push(eq(productsTable.category, category));
+  const whereClause = and(...whereConditions);
+
+  const [totalResult, products] = await Promise.all([
+    db.select({ total: count() }).from(productsTable).where(whereClause),
+    db.select().from(productsTable).where(whereClause).orderBy(desc(productsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
     products: products.map(p => ({
       ...p,
@@ -52,7 +83,10 @@ router.get("/products/pending", async (_req, res) => {
       rating: p.rating ? parseFloat(p.rating) : null,
       createdAt: p.createdAt.toISOString(),
     })),
-    total: products.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
@@ -423,9 +457,22 @@ router.delete("/banners/:id", async (req, res) => {
 });
 
 /* ── Flash Deals ── */
-router.get("/flash-deals", async (_req, res) => {
-  const deals = await db.select().from(flashDealsTable).orderBy(desc(flashDealsTable.createdAt));
-  const products = await db.select({ id: productsTable.id, name: productsTable.name, price: productsTable.price, image: productsTable.image, category: productsTable.category }).from(productsTable);
+router.get("/flash-deals", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, deals] = await Promise.all([
+    db.select({ total: count() }).from(flashDealsTable),
+    db.select().from(flashDealsTable).orderBy(desc(flashDealsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+
+  const dealProductIds = deals.map(d => d.productId);
+  const products = dealProductIds.length > 0
+    ? await db.select({ id: productsTable.id, name: productsTable.name, price: productsTable.price, image: productsTable.image, category: productsTable.category }).from(productsTable).where(inArray(productsTable.id, dealProductIds))
+    : [];
   const productMap = Object.fromEntries(products.map(p => [p.id, p]));
   const now = new Date();
   sendSuccess(res, {
@@ -443,6 +490,10 @@ router.get("/flash-deals", async (_req, res) => {
             : d.dealStock !== null && d.soldCount >= d.dealStock ? "sold_out"
             : "live",
     })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
@@ -488,8 +539,17 @@ router.delete("/flash-deals/:id", async (req, res) => {
 });
 
 /* ── Promo Codes ── */
-router.get("/promo-codes", async (_req, res) => {
-  const codes = await db.select().from(promoCodesTable).orderBy(desc(promoCodesTable.createdAt));
+router.get("/promo-codes", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, codes] = await Promise.all([
+    db.select({ total: count() }).from(promoCodesTable),
+    db.select().from(promoCodesTable).orderBy(desc(promoCodesTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   const now = new Date();
   sendSuccess(res, {
     codes: codes.map(c => ({
@@ -505,6 +565,10 @@ router.get("/promo-codes", async (_req, res) => {
             : c.usageLimit !== null && c.usedCount >= c.usageLimit ? "exhausted"
             : "active",
     })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 

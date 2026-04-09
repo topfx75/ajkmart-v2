@@ -8,7 +8,7 @@ import {
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable,
   accountConditionsTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -103,24 +103,125 @@ router.get("/users/search-riders", async (req, res) => {
 router.get("/users", async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
-  let query = db.select().from(usersTable);
-  if (filter === "2fa_enabled") {
-    query = query.where(eq(usersTable.totpEnabled, true)) as typeof query;
-  }
-  const users = await query.orderBy(desc(usersTable.createdAt));
+  const search = (req.query?.search as string) ?? "";
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
 
-  const condCounts = await db.select({
-    userId: accountConditionsTable.userId,
-    activeCount: count(),
-    maxSeverity: sql<string>`MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)`,
-    maxSeverityLabel: sql<string>`(ARRAY['warning','warning','restriction_normal','restriction_strict','suspension','ban'])[1 + MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)]`,
-  }).from(accountConditionsTable)
-    .where(eq(accountConditionsTable.isActive, true))
-    .groupBy(accountConditionsTable.userId);
+  const whereConditions: ReturnType<typeof and>[] = [];
+  if (filter === "2fa_enabled") {
+    whereConditions.push(eq(usersTable.totpEnabled, true));
+  }
+  if (search) {
+    whereConditions.push(or(
+      ilike(usersTable.name, `%${search}%`),
+      ilike(usersTable.phone, `%${search}%`),
+      ilike(usersTable.email, `%${search}%`),
+    )!);
+  }
+
+  if (conditionTier === "has_conditions") {
+    whereConditions.push(
+      sql`EXISTS (
+        SELECT 1 FROM ${accountConditionsTable}
+        WHERE ${accountConditionsTable.userId} = ${usersTable.id}
+          AND ${accountConditionsTable.isActive} = true
+      )`
+    );
+  } else if (conditionTier === "clean") {
+    whereConditions.push(
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${accountConditionsTable}
+        WHERE ${accountConditionsTable.userId} = ${usersTable.id}
+          AND ${accountConditionsTable.isActive} = true
+      )`
+    );
+  } else if (conditionTier === "warnings") {
+    whereConditions.push(
+      sql`(
+        SELECT MAX(CASE severity::text
+          WHEN 'ban'                THEN 5
+          WHEN 'suspension'         THEN 4
+          WHEN 'restriction_strict' THEN 3
+          WHEN 'restriction_normal' THEN 2
+          WHEN 'warning'            THEN 1
+          ELSE 0 END)
+        FROM ${accountConditionsTable}
+        WHERE ${accountConditionsTable.userId} = ${usersTable.id}
+          AND ${accountConditionsTable.isActive} = true
+      ) = 1`
+    );
+  } else if (conditionTier === "restrictions") {
+    whereConditions.push(
+      sql`(
+        SELECT MAX(CASE severity::text
+          WHEN 'ban'                THEN 5
+          WHEN 'suspension'         THEN 4
+          WHEN 'restriction_strict' THEN 3
+          WHEN 'restriction_normal' THEN 2
+          WHEN 'warning'            THEN 1
+          ELSE 0 END)
+        FROM ${accountConditionsTable}
+        WHERE ${accountConditionsTable.userId} = ${usersTable.id}
+          AND ${accountConditionsTable.isActive} = true
+      ) IN (2, 3)`
+    );
+  } else if (conditionTier === "suspensions") {
+    whereConditions.push(
+      sql`(
+        SELECT MAX(CASE severity::text
+          WHEN 'ban'                THEN 5
+          WHEN 'suspension'         THEN 4
+          WHEN 'restriction_strict' THEN 3
+          WHEN 'restriction_normal' THEN 2
+          WHEN 'warning'            THEN 1
+          ELSE 0 END)
+        FROM ${accountConditionsTable}
+        WHERE ${accountConditionsTable.userId} = ${usersTable.id}
+          AND ${accountConditionsTable.isActive} = true
+      ) = 4`
+    );
+  } else if (conditionTier === "bans") {
+    whereConditions.push(
+      sql`(
+        SELECT MAX(CASE severity::text
+          WHEN 'ban'                THEN 5
+          WHEN 'suspension'         THEN 4
+          WHEN 'restriction_strict' THEN 3
+          WHEN 'restriction_normal' THEN 2
+          WHEN 'warning'            THEN 1
+          ELSE 0 END)
+        FROM ${accountConditionsTable}
+        WHERE ${accountConditionsTable.userId} = ${usersTable.id}
+          AND ${accountConditionsTable.isActive} = true
+      ) = 5`
+    );
+  }
+
+  const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+  const [totalResult, users] = await Promise.all([
+    db.select({ total: count() }).from(usersTable).where(whereClause),
+    db.select().from(usersTable).where(whereClause).orderBy(desc(usersTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const totalPages = Math.ceil(total / limit);
+
+  const pageUserIds = users.map(u => u.id);
+  const condCounts = pageUserIds.length > 0
+    ? await db.select({
+        userId: accountConditionsTable.userId,
+        activeCount: count(),
+        maxSeverityLabel: sql<string>`(ARRAY['warning','warning','restriction_normal','restriction_strict','suspension','ban'])[1 + MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)]`,
+      }).from(accountConditionsTable)
+        .where(and(eq(accountConditionsTable.isActive, true), inArray(accountConditionsTable.userId, pageUserIds)))
+        .groupBy(accountConditionsTable.userId)
+    : [];
 
   const condMap = new Map(condCounts.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
 
-  let enrichedUsers = users.map((u) => ({
+  const enrichedUsers = users.map((u) => ({
     ...stripUser(u),
     walletBalance: parseFloat(u.walletBalance ?? "0"),
     createdAt: u.createdAt.toISOString(),
@@ -129,23 +230,12 @@ router.get("/users", async (req, res) => {
     maxConditionSeverity: condMap.get(u.id)?.maxSeverity || null,
   }));
 
-  if (conditionTier === "has_conditions") {
-    enrichedUsers = enrichedUsers.filter(u => u.conditionCount > 0);
-  } else if (conditionTier === "warnings") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "warning");
-  } else if (conditionTier === "restrictions") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "restriction_normal" || u.maxConditionSeverity === "restriction_strict");
-  } else if (conditionTier === "suspensions") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "suspension");
-  } else if (conditionTier === "bans") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "ban");
-  } else if (conditionTier === "clean") {
-    enrichedUsers = enrichedUsers.filter(u => u.conditionCount === 0);
-  }
-
   sendSuccess(res, {
     users: enrichedUsers,
-    total: enrichedUsers.length,
+    total,
+    page,
+    limit,
+    totalPages,
   });
 });
 
@@ -176,10 +266,23 @@ router.patch("/users/:id", async (req, res) => {
 });
 
 /* ── Pending Approval Users ── */
-router.get("/users/pending", async (_req, res) => {
-  const users = await db.select().from(usersTable)
-    .where(eq(usersTable.approvalStatus, "pending"))
-    .orderBy(desc(usersTable.createdAt));
+router.get("/users/pending", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, users] = await Promise.all([
+    db.select({ total: count() }).from(usersTable).where(eq(usersTable.approvalStatus, "pending")),
+    db.select().from(usersTable)
+      .where(eq(usersTable.approvalStatus, "pending"))
+      .orderBy(desc(usersTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const totalPages = Math.ceil(total / limit);
+
   sendSuccess(res, {
     users: users.map(({ otpCode: _otp, otpExpiry: _exp, passwordHash: _ph, emailOtpCode: _eotp, emailOtpExpiry: _eexp, ...u }) => ({
       ...u,
@@ -187,7 +290,10 @@ router.get("/users/pending", async (_req, res) => {
       createdAt: u.createdAt.toISOString(),
       updatedAt: u.updatedAt.toISOString(),
     })),
-    total: users.length,
+    total,
+    page,
+    limit,
+    totalPages,
   });
 });
 

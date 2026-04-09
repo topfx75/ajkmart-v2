@@ -165,22 +165,40 @@ router.get("/stats", async (req, res) => {
 router.get("/orders", async (req, res) => {
   const vendorId = req.vendorId!;
   const status = req.query["status"] as string | undefined;
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 20));
+  const offset = (page - 1) * limit;
+
   const conditions: ReturnType<typeof and>[] = [eq(ordersTable.vendorId, vendorId)];
   if (status && status !== "all") {
     if (status === "new") conditions.push(or(eq(ordersTable.status, "pending"), eq(ordersTable.status, "confirmed")));
     else if (status === "active") conditions.push(or(eq(ordersTable.status, "preparing"), eq(ordersTable.status, "ready"), eq(ordersTable.status, "picked_up"), eq(ordersTable.status, "out_for_delivery")));
     else conditions.push(eq(ordersTable.status, status));
   }
-  const orders = await db.select({
-    order: ordersTable,
-    riderName: usersTable.name,
-    riderPhone: usersTable.phone,
-  }).from(ordersTable)
-    .leftJoin(usersTable, eq(ordersTable.riderId, usersTable.id))
-    .where(and(...conditions))
-    .orderBy(desc(ordersTable.createdAt))
-    .limit(100);
-  sendSuccess(res, { orders: orders.map(row => ({ ...row.order, total: safeNum(row.order.total), riderName: row.riderName ?? undefined, riderPhone: row.riderPhone ?? undefined })) });
+  const whereClause = and(...conditions);
+
+  const [totalResult, orders] = await Promise.all([
+    db.select({ total: count() }).from(ordersTable).where(whereClause),
+    db.select({
+      order: ordersTable,
+      riderName: usersTable.name,
+      riderPhone: usersTable.phone,
+    }).from(ordersTable)
+      .leftJoin(usersTable, eq(ordersTable.riderId, usersTable.id))
+      .where(whereClause)
+      .orderBy(desc(ordersTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  sendSuccess(res, {
+    orders: orders.map(row => ({ ...row.order, total: safeNum(row.order.total), riderName: row.riderName ?? undefined, riderPhone: row.riderPhone ?? undefined })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  });
 });
 
 /* ── PATCH /vendor/orders/:id/status ── */
@@ -292,11 +310,28 @@ router.get("/products", async (req, res) => {
   const vendorId = req.vendorId!;
   const q = req.query["q"] as string | undefined;
   const cat = req.query["category"] as string | undefined;
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 20));
+  const offset = (page - 1) * limit;
+
   const conditions: ReturnType<typeof and>[] = [eq(productsTable.vendorId, vendorId)];
   if (q) conditions.push(ilike(productsTable.name, `%${q}%`));
   if (cat && cat !== "all") conditions.push(eq(productsTable.category, cat));
-  const products = await db.select().from(productsTable).where(and(...conditions)).orderBy(desc(productsTable.createdAt));
-  sendSuccess(res, { products: products.map(p => ({ ...p, price: safeNum(p.price), originalPrice: p.originalPrice ? safeNum(p.originalPrice) : null, rating: safeNum(p.rating, 4.0) })) });
+  const whereClause = and(...conditions);
+
+  const [totalResult, products] = await Promise.all([
+    db.select({ total: count() }).from(productsTable).where(whereClause),
+    db.select().from(productsTable).where(whereClause).orderBy(desc(productsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  sendSuccess(res, {
+    products: products.map(p => ({ ...p, price: safeNum(p.price), originalPrice: p.originalPrice ? safeNum(p.originalPrice) : null, rating: safeNum(p.rating, 4.0) })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  });
 });
 
 /* ── POST /vendor/products ── Add single product ── */

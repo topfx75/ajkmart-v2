@@ -6,7 +6,7 @@ import {
   notificationsTable,
   ordersTable, pharmacyOrdersTable, parcelBookingsTable, ridesTable, rideBidsTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -71,21 +71,33 @@ router.post("/orders", async (req, res) => {
 });
 
 router.get("/orders", async (req, res) => {
-  const { status, type, limit: lim } = req.query;
-  const orders = await db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt)).limit(Number(lim) || 200);
+  const { status, type } = req.query;
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
 
-  const filtered = orders
-    .filter(o => !status || o.status === status)
-    .filter(o => !type || o.type === type);
+  const whereConditions: ReturnType<typeof and>[] = [];
+  if (status) whereConditions.push(eq(ordersTable.status, status as string));
+  if (type) whereConditions.push(eq(ordersTable.type, type as string));
+  const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
+  const [totalResult, orders] = await Promise.all([
+    db.select({ total: count() }).from(ordersTable).where(whereClause),
+    db.select().from(ordersTable).where(whereClause).orderBy(desc(ordersTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
-    orders: filtered.map(o => ({
+    orders: orders.map(o => ({
       ...o,
       total: parseFloat(String(o.total)),
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
     })),
-    total: filtered.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
@@ -324,12 +336,17 @@ router.post("/orders/:id/refund", async (req, res) => {
 
   sendSuccess(res, { success: true, refundedAmount: refundAmt, orderId: order.id });
 });
-router.get("/pharmacy-orders", async (_req, res) => {
-  const orders = await db
-    .select()
-    .from(pharmacyOrdersTable)
-    .orderBy(desc(pharmacyOrdersTable.createdAt))
-    .limit(200);
+router.get("/pharmacy-orders", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, orders] = await Promise.all([
+    db.select({ total: count() }).from(pharmacyOrdersTable),
+    db.select().from(pharmacyOrdersTable).orderBy(desc(pharmacyOrdersTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
     orders: orders.map(o => ({
       ...o,
@@ -337,7 +354,10 @@ router.get("/pharmacy-orders", async (_req, res) => {
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
     })),
-    total: orders.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
@@ -392,12 +412,17 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
 });
 
 /* ── Parcel Bookings ── */
-router.get("/parcel-bookings", async (_req, res) => {
-  const bookings = await db
-    .select()
-    .from(parcelBookingsTable)
-    .orderBy(desc(parcelBookingsTable.createdAt))
-    .limit(200);
+router.get("/parcel-bookings", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, bookings] = await Promise.all([
+    db.select({ total: count() }).from(parcelBookingsTable),
+    db.select().from(parcelBookingsTable).orderBy(desc(parcelBookingsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
     bookings: bookings.map(b => ({
       ...b,
@@ -405,7 +430,10 @@ router.get("/parcel-bookings", async (_req, res) => {
       createdAt: b.createdAt.toISOString(),
       updatedAt: b.updatedAt.toISOString(),
     })),
-    total: bookings.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
@@ -458,9 +486,21 @@ router.patch("/parcel-bookings/:id/status", async (req, res) => {
 
   sendSuccess(res, { ...booking, fare: parseFloat(booking.fare) });
 });
-router.get("/pharmacy-enriched", async (_req, res) => {
-  const orders = await db.select().from(pharmacyOrdersTable).orderBy(desc(pharmacyOrdersTable.createdAt)).limit(200);
-  const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
+router.get("/pharmacy-enriched", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, orders] = await Promise.all([
+    db.select({ total: count() }).from(pharmacyOrdersTable),
+    db.select().from(pharmacyOrdersTable).orderBy(desc(pharmacyOrdersTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const userIds = orders.map(o => o.userId);
+  const users = userIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable).where(inArray(usersTable.id, userIds))
+    : [];
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
   sendSuccess(res, {
     orders: orders.map(o => ({
@@ -471,14 +511,29 @@ router.get("/pharmacy-enriched", async (_req, res) => {
       userName: userMap[o.userId]?.name || null,
       userPhone: userMap[o.userId]?.phone || null,
     })),
-    total: orders.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
 /* ── Parcel Bookings Enriched ── */
-router.get("/parcel-enriched", async (_req, res) => {
-  const bookings = await db.select().from(parcelBookingsTable).orderBy(desc(parcelBookingsTable.createdAt)).limit(200);
-  const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
+router.get("/parcel-enriched", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, bookings] = await Promise.all([
+    db.select({ total: count() }).from(parcelBookingsTable),
+    db.select().from(parcelBookingsTable).orderBy(desc(parcelBookingsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const userIds = bookings.map(b => b.userId);
+  const users = userIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable).where(inArray(usersTable.id, userIds))
+    : [];
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
   sendSuccess(res, {
     bookings: bookings.map(b => ({
@@ -489,14 +544,29 @@ router.get("/parcel-enriched", async (_req, res) => {
       userName: userMap[b.userId]?.name || null,
       userPhone: userMap[b.userId]?.phone || null,
     })),
-    total: bookings.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 
 /* ── Transactions Enriched ── */
-router.get("/transactions-enriched", async (_req, res) => {
-  const transactions = await db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(300);
-  const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
+router.get("/transactions-enriched", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, transactions] = await Promise.all([
+    db.select({ total: count() }).from(walletTransactionsTable),
+    db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const userIds = transactions.map(t => t.userId);
+  const users = userIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable).where(inArray(usersTable.id, userIds))
+    : [];
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
   const enriched = transactions.map(t => ({
@@ -510,7 +580,7 @@ router.get("/transactions-enriched", async (_req, res) => {
   const totalCredit = enriched.filter(t => t.type === "credit").reduce((s, t) => s + t.amount, 0);
   const totalDebit = enriched.filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0);
 
-  sendSuccess(res, { transactions: enriched, total: transactions.length, totalCredit, totalDebit });
+  sendSuccess(res, { transactions: enriched, total, page, limit, totalPages: Math.ceil(total / limit), totalCredit, totalDebit });
 });
 
 /* ── Delete User ── */

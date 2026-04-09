@@ -25,8 +25,24 @@ import { RIDE_VALID_STATUSES, getSocketRoom } from "@workspace/service-constants
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 
 const router = Router();
-router.get("/rides", async (_req, res) => {
-  const rides = await db.select().from(ridesTable).orderBy(desc(ridesTable.createdAt)).limit(200);
+router.get("/rides", async (req, res) => {
+  const status = req.query?.status as string | undefined;
+  const type = req.query?.type as string | undefined;
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const whereConditions: ReturnType<typeof and>[] = [];
+  if (status) whereConditions.push(eq(ridesTable.status, status));
+  if (type) whereConditions.push(eq(ridesTable.type, type as string));
+  const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+  const [totalResult, rides] = await Promise.all([
+    db.select({ total: count() }).from(ridesTable).where(whereClause),
+    db.select().from(ridesTable).where(whereClause).orderBy(desc(ridesTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
     rides: rides.map(r => ({
       ...r,
@@ -35,7 +51,10 @@ router.get("/rides", async (_req, res) => {
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
     })),
-    total: rides.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
   });
 });
 

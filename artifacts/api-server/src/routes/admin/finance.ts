@@ -22,13 +22,17 @@ import {
 import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
 
 const router = Router();
-router.get("/transactions", async (_req, res) => {
-  const transactions = await db
-    .select()
-    .from(walletTransactionsTable)
-    .orderBy(desc(walletTransactionsTable.createdAt))
-    .limit(200);
+router.get("/transactions", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
 
+  const [totalResult, transactions] = await Promise.all([
+    db.select({ total: count() }).from(walletTransactionsTable),
+    db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
   const totalCredit = transactions.filter(t => t.type === "credit").reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalDebit = transactions.filter(t => t.type === "debit").reduce((s, t) => s + parseFloat(t.amount), 0);
 
@@ -38,16 +42,31 @@ router.get("/transactions", async (_req, res) => {
       amount: parseFloat(t.amount),
       createdAt: t.createdAt.toISOString(),
     })),
-    total: transactions.length,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
     totalCredit,
     totalDebit,
   });
 });
 
 /* ── Platform Settings ── */
-router.get("/transactions-enriched", async (_req, res) => {
-  const transactions = await db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(300);
-  const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
+router.get("/transactions-enriched", async (req, res) => {
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalResult, transactions] = await Promise.all([
+    db.select({ total: count() }).from(walletTransactionsTable),
+    db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(limit).offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const userIds = transactions.map(t => t.userId);
+  const users = userIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable).where(inArray(usersTable.id, userIds))
+    : [];
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
   const enriched = transactions.map(t => ({
@@ -61,7 +80,7 @@ router.get("/transactions-enriched", async (_req, res) => {
   const totalCredit = enriched.filter(t => t.type === "credit").reduce((s, t) => s + t.amount, 0);
   const totalDebit = enriched.filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0);
 
-  sendSuccess(res, { transactions: enriched, total: transactions.length, totalCredit, totalDebit });
+  sendSuccess(res, { transactions: enriched, total, page, limit, totalPages: Math.ceil(total / limit), totalCredit, totalDebit });
 });
 
 /* ── Delete User ── */
@@ -380,20 +399,44 @@ router.post("/riders/:id/unrestrict", async (req, res) => {
 /* ── GET /admin/withdrawal-requests ─────────── */
 router.get("/withdrawal-requests", async (req, res) => {
   const statusFilter = req.query["status"] as string | undefined;
-  const txns = await db.select().from(walletTransactionsTable)
-    .where(eq(walletTransactionsTable.type, "withdrawal"))
-    .orderBy(desc(walletTransactionsTable.createdAt))
-    .limit(300);
-  const enriched = await Promise.all(txns.map(async t => {
-    const [user] = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, role: usersTable.role })
-      .from(usersTable).where(eq(usersTable.id, t.userId)).limit(1);
+  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+  const offset = (page - 1) * limit;
+
+  const whereConditions: ReturnType<typeof and>[] = [eq(walletTransactionsTable.type, "withdrawal")];
+  if (statusFilter === "pending") {
+    whereConditions.push(sql`(${walletTransactionsTable.reference} IS NULL OR ${walletTransactionsTable.reference} = 'pending')`);
+  } else if (statusFilter === "paid") {
+    whereConditions.push(sql`${walletTransactionsTable.reference} LIKE 'paid:%'`);
+  } else if (statusFilter === "rejected") {
+    whereConditions.push(sql`${walletTransactionsTable.reference} LIKE 'rejected:%'`);
+  }
+
+  const whereClause = and(...whereConditions);
+  const [totalResult, txns] = await Promise.all([
+    db.select({ total: count() }).from(walletTransactionsTable).where(whereClause),
+    db.select().from(walletTransactionsTable)
+      .where(whereClause)
+      .orderBy(desc(walletTransactionsTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+
+  const total = Number(totalResult[0]?.total ?? 0);
+  const userIds = txns.map(t => t.userId);
+  const usersData = userIds.length > 0
+    ? await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, role: usersTable.role }).from(usersTable).where(inArray(usersTable.id, userIds))
+    : [];
+  const userMap = Object.fromEntries(usersData.map(u => [u.id, u]));
+
+  const enriched = txns.map(t => {
     const ref = t.reference ?? "pending";
     const status = ref === "pending" ? "pending" : ref.startsWith("paid:") ? "paid" : ref.startsWith("rejected:") ? "rejected" : ref;
     const refNo = ref.startsWith("paid:") ? ref.slice(5) : ref.startsWith("rejected:") ? ref.slice(9) : "";
-    return { ...t, amount: parseFloat(String(t.amount)), user: user || null, status, refNo };
-  }));
-  const filtered = statusFilter ? enriched.filter(w => w.status === statusFilter) : enriched;
-  sendSuccess(res, { withdrawals: filtered });
+    return { ...t, amount: parseFloat(String(t.amount)), user: userMap[t.userId] || null, status, refNo };
+  });
+
+  sendSuccess(res, { withdrawals: enriched, total, page, limit, totalPages: Math.ceil(total / limit) });
 });
 
 /* ── PATCH /admin/withdrawal-requests/:id/approve ─── */
