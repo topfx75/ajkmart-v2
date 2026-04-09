@@ -2,11 +2,35 @@ import { Router, type IRouter } from "express";
 import { randomUUID } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
+import rateLimit from "express-rate-limit";
+import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError, sendTooManyRequests } from "../lib/response.js";
 import { customerAuth, riderAuth } from "../middleware/security.js";
 import { imageUpload, validateImageBuffer, validateBase64Image, handleMulterError, isUploadValidationError } from "../lib/upload-validator.js";
 
 const router: IRouter = Router();
+
+/* ── Upload rate limiter factory: 10 uploads per user per 15 minutes ─────
+   Must be mounted AFTER customerAuth / riderAuth so the authenticated user
+   ID is available in keyGenerator. Keying by user ID + route path (not raw
+   IP) gives each endpoint its own independent 10-request quota per user,
+   ensuring legitimate users on shared IPs are not affected by others. */
+function makeUploadRateLimiter(routeKey: string) {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    keyGenerator: (req) => `${routeKey}:${req.customerId ?? req.riderId ?? "anonymous"}`,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (_req, res) => {
+      sendTooManyRequests(res, 15 * 60);
+    },
+    validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
+  });
+}
+
+const uploadLimiter       = makeUploadRateLimiter("upload");
+const proofUploadLimiter  = makeUploadRateLimiter("proof");
+const rxUploadLimiter     = makeUploadRateLimiter("prescription");
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
 
@@ -29,7 +53,7 @@ async function saveBuffer(buffer: Buffer, prefix: string, mimeType: string): Pro
 }
 
 /* ── POST /uploads — JSON base64 upload (customers / super-app) ── */
-router.post("/", customerAuth, async (req, res) => {
+router.post("/", customerAuth, uploadLimiter, async (req, res) => {
   try {
     const { file, filename } = req.body;
 
@@ -65,6 +89,7 @@ router.post("/", customerAuth, async (req, res) => {
 router.post(
   "/proof",
   riderAuth,
+  proofUploadLimiter,
   (req, res, next) => {
     upload.single("file")(req, res, (err) => {
       handleMulterError(err, req, res, next);
@@ -100,7 +125,7 @@ router.post(
 );
 
 /* ── POST /uploads/prescription — base64 prescription upload (customers) ── */
-router.post("/prescription", customerAuth, async (req, res) => {
+router.post("/prescription", customerAuth, rxUploadLimiter, async (req, res) => {
   try {
     const { file, refId } = req.body;
 
