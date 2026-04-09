@@ -215,47 +215,29 @@ router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(chec
   const exists    = !!user;
   const isNewUser = !exists;
 
-  /* ── Phone / email enumeration hardening ─────────────────────────────────
-     For phone/email identifiers we must return an IDENTICAL response whether
+  /* ── Enumeration hardening (phone, email, and username) ─────────────────
+     For all identifier types we must return an IDENTICAL response whether
      the account exists, is banned, is locked, is Google-linked, or doesn't
      exist at all.  Any distinguishable response would let an attacker enumerate
-     registered phone numbers.
+     registered identifiers.
 
-     Security events are still logged server-side; actual enforcement (banned,
-     locked, Google-linked) happens in /auth/verify-otp after OTP proof.
+     Security events are logged server-side; actual enforcement (banned,
+     locked, Google-linked) happens downstream (in /auth/login or
+     /auth/verify-otp) after credential proof.
 
-     Exception: username-based identifiers may safely reveal existence (the
-     attacker must already know the username) and may show banned/locked there.
+     Rule: always use the *request* role, never the DB user's role — the
+     latter would differ between existing and non-existing records. ── */
 
-     Rule: for phone/email, always use the *request* role, never the DB user's
-     role — the latter would differ between existing and non-existing records. ── */
-
-  /* For username path only: surface banned/locked at check time (acceptable) */
-  if (!looksLikePhone && !looksLikeEmail) {
-    if (user?.isBanned) {
-      addSecurityEvent({ type: "banned_user_identifier_check", ip, userId: user.id, details: `Banned user check: ${identifier}`, severity: "medium" });
-      res.json({ isBanned: true, action: "blocked", availableMethods: [] });
-      return;
-    }
-    const maxAttempts    = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
-    const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
-    const lockoutKey     = identifier.trim();
-    const lockout        = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
-    if (lockout.locked) {
-      res.json({ isLocked: true, lockedMinutes: lockout.minutesLeft, action: "locked", availableMethods: [] });
-      return;
-    }
-  } else {
-    /* Phone / email: log security events silently, never gate on them */
-    if (user?.isBanned) {
-      addSecurityEvent({ type: "banned_user_identifier_check", ip, userId: user.id, details: `Banned user phone/email check: ${identifier}`, severity: "medium" });
-    }
+  /* Log security events silently for all identifier types — never gate here */
+  if (user?.isBanned) {
+    const identifierType = looksLikePhone ? "phone" : looksLikeEmail ? "email" : "username";
+    addSecurityEvent({ type: "banned_user_identifier_check", ip, userId: user.id, details: `Banned user ${identifierType} check: ${identifier}`, severity: "medium" });
   }
 
   /* ── Build available methods based on admin config + request role ──
-     Use userRole (from request) for phone/email — never user?.role — so the
-     response shape is identical for existing and non-existing identifiers. ── */
-  const effectiveCheckRole = (looksLikePhone || looksLikeEmail) ? userRole : (user?.role ?? userRole);
+     Always use userRole (from request) — never user?.role — so the
+     response shape is identical regardless of account existence. ── */
+  const effectiveCheckRole = userRole;
   const googleEnabled    = isAuthMethodEnabled(settings, "auth_google_enabled", effectiveCheckRole);
   const facebookEnabled  = isAuthMethodEnabled(settings, "auth_facebook_enabled", effectiveCheckRole);
   const phoneOtpEnabled  = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveCheckRole);
@@ -271,15 +253,14 @@ router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(chec
   if (facebookEnabled)  availableMethods.push("facebook");
   if (magicLinkEnabled) availableMethods.push("magic_link");
 
-  /* ── Phone / email enumeration hardening ─────────────────────────────────
-     For phone and email identifiers we MUST NOT reveal whether an account
-     exists.  Return a single generic action ("send_otp") for every phone/email,
-     regardless of whether the account is new, existing, Google-linked, etc.
-     Account state is only enforced inside /auth/verify-otp (after OTP proof).
+  /* ── Determine action — never reveal account existence ───────────────────
+     For all identifier types, return a generic action regardless of whether
+     the account exists, is new, banned, locked, or social-linked.
+     Account state enforcement happens downstream after credential proof.
 
-     For username-based identifiers the threat model is different (the attacker
-     must already know the username), so we can still route to "register" vs
-     "login_password" there — but we never return social-linked flags. ── */
+     Phone/email → always "send_otp" action.
+     Username    → always "login_password" (never "register"), so an attacker
+                   cannot tell whether the username is registered. ── */
   let action: string;
   let responseAvailableMethods: string[] = availableMethods;
 
@@ -291,21 +272,12 @@ router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(chec
     else if (magicLinkEnabled) action = "send_magic_link";
     else                       action = "no_method";
   } else {
-    /* Username path: determine action from existence without leaking social links */
-    const usableMethods = availableMethods.filter(m => {
-      if (m === "password") return !!user?.passwordHash;
-      return true;
-    });
-    responseAvailableMethods = exists ? usableMethods : availableMethods;
-
-    if (!registrationOpen && !exists) {
-      action = "registration_closed";
-    } else if (!exists) {
-      action = "register";
-    } else if (passwordEnabled && user?.passwordHash) {
+    /* Username path: always respond as if a password-protected account exists,
+       regardless of actual account state. This prevents username enumeration. */
+    if (passwordEnabled) {
       action = "login_password";
-    } else if (usableMethods.length > 0) {
-      const first = usableMethods[0]!;
+    } else if (availableMethods.length > 0) {
+      const first = availableMethods[0]!;
       action = first === "password" ? "login_password"
              : first === "phone_otp" ? "send_phone_otp"
              : first === "email_otp" ? "send_email_otp"
