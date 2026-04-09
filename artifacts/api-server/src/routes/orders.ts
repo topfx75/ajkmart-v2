@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { ordersTable, orderItemsTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, and, gte, count, desc, SQL, sql, inArray, lt } from "drizzle-orm";
@@ -13,10 +14,34 @@ import { checkDeliveryEligibility } from "../lib/delivery-access.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 import { t, type TranslationKey } from "@workspace/i18n";
 import { getRequestLocale } from "../lib/requestLocale.js";
+import { validateBody } from "../middleware/validate.js";
 
 const router: IRouter = Router();
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
+
+const placeOrderSchema = z.object({
+  type: z.string().min(1, "type is required"),
+  items: z.array(z.object({
+    productId: z.string().min(1),
+    name: z.string().optional(),
+    price: z.number().positive(),
+    quantity: z.number().int().positive(),
+    image: z.string().optional(),
+    weightKg: z.string().optional(),
+  })).min(1, "items cannot be empty"),
+  paymentMethod: z.string().min(1, "paymentMethod is required"),
+  deliveryAddress: z.string().optional(),
+  deliveryLat: z.number().optional(),
+  deliveryLng: z.number().optional(),
+  customerLat: z.number().optional(),
+  customerLng: z.number().optional(),
+  gpsAccuracy: z.number().optional(),
+  promoCode: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  note: z.string().optional(),
+  vendorId: z.string().optional(),
+}).strip();
 
 const IDEMPOTENCY_TTL_MS = 5 * 60_000;
 
@@ -494,7 +519,7 @@ router.get("/:id/track", customerAuth, async (req, res) => {
 });
 
 /* ── POST /orders ─────────────────────────────────────────────────────────── */
-router.post("/", customerAuth, async (req, res) => {
+router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) => {
   const userId = req.customerId!;
   const { type, items, paymentMethod, deliveryLat, deliveryLng, customerLat: rawCustLat, customerLng: rawCustLng, gpsAccuracy: rawGpsAcc } = req.body;
   const deliveryAddress = typeof req.body.deliveryAddress === "string" ? stripHtml(req.body.deliveryAddress) : req.body.deliveryAddress;

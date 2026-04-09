@@ -2,7 +2,8 @@ import { logger } from "../lib/logger.js";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { usersTable, walletTransactionsTable, notificationsTable, supportedPaymentMethodsTable } from "@workspace/db/schema";
-import { eq, and, gte, sum, desc, sql } from "drizzle-orm";
+import { eq, and, gte, sum, desc, sql, lt } from "drizzle-orm";
+import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings, adminAuth } from "./admin.js";
 import { customerAuth, checkAvailableRateLimit, getClientIp, JWT_SECRET } from "../middleware/security.js";
@@ -14,28 +15,88 @@ import { sendSuccess, sendCreated, sendAccepted, sendError, sendNotFound, sendFo
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-type IdempotencyEntry =
-  | { state: "in_flight"; ts: number }
-  | { state: "success"; ts: number; statusCode: number; body: unknown }
-  | { state: "failed"; ts: number };
-
-/* In-memory idempotency store shared by deposit, send, and withdraw routes.
+/* ── DB-backed idempotency store (shared table with orders) ─────────────────
    Namespaced by route prefix to avoid key collisions:
      deposit:<userId>:<key>
      send:<userId>:<key>
      withdraw:<userId>:<key>
-   - "in_flight": concurrent duplicate → 409
-   - "success": replays the original response body and status code
-   - "failed": key is removed so the client can retry with the same key
-   TTL = 10 min; swept every 5 min. */
-const idempotencyCache = new Map<string, IdempotencyEntry>();
-const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of idempotencyCache) {
-    if (now - entry.ts > IDEMPOTENCY_TTL_MS) idempotencyCache.delete(key);
+   - pending sentinel: concurrent duplicate → 409
+   - stored JSON { statusCode, body }: replays the original response
+   - deleted key: allows client retry with same key after failure
+   TTL = 10 min; swept every 60 s. */
+const walletIdempotencyTable = pgTable("idempotency_keys", {
+  key: text("key").primaryKey(),
+  responseJson: text("response_json").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+const WALLET_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+const WALLET_IDEMPOTENCY_PENDING = "__pending__";
+
+setInterval(async () => {
+  try {
+    const cutoff = new Date(Date.now() - WALLET_IDEMPOTENCY_TTL_MS);
+    await db.delete(walletIdempotencyTable).where(lt(walletIdempotencyTable.createdAt, cutoff));
+  } catch { /* non-fatal */ }
+}, 60_000);
+
+async function walletClaimIdempotencyKey(cacheKey: string): Promise<
+  { claimed: true } | { claimed: false; cached: { statusCode: number; body: unknown } | null }
+> {
+  try {
+    const result = await db
+      .insert(walletIdempotencyTable)
+      .values({ key: cacheKey, responseJson: WALLET_IDEMPOTENCY_PENDING })
+      .onConflictDoNothing()
+      .returning({ key: walletIdempotencyTable.key });
+
+    if (result.length > 0) return { claimed: true };
+
+    const [row] = await db
+      .select()
+      .from(walletIdempotencyTable)
+      .where(eq(walletIdempotencyTable.key, cacheKey))
+      .limit(1);
+
+    if (!row) return { claimed: true };
+
+    if (Date.now() - row.createdAt.getTime() > WALLET_IDEMPOTENCY_TTL_MS) {
+      await db.delete(walletIdempotencyTable).where(eq(walletIdempotencyTable.key, cacheKey)).catch(() => {});
+      const retry = await db
+        .insert(walletIdempotencyTable)
+        .values({ key: cacheKey, responseJson: WALLET_IDEMPOTENCY_PENDING })
+        .onConflictDoNothing()
+        .returning({ key: walletIdempotencyTable.key });
+      return retry.length > 0 ? { claimed: true } : { claimed: false, cached: null };
+    }
+
+    if (row.responseJson === WALLET_IDEMPOTENCY_PENDING) return { claimed: false, cached: null };
+
+    return { claimed: false, cached: JSON.parse(row.responseJson) as { statusCode: number; body: unknown } };
+  } catch {
+    return { claimed: true };
   }
-}, 5 * 60 * 1000);
+}
+
+async function walletSetIdempotencyRecord(cacheKey: string, statusCode: number, body: unknown): Promise<void> {
+  try {
+    await db
+      .insert(walletIdempotencyTable)
+      .values({ key: cacheKey, responseJson: JSON.stringify({ statusCode, body }) })
+      .onConflictDoUpdate({
+        target: walletIdempotencyTable.key,
+        set: { responseJson: JSON.stringify({ statusCode, body }), createdAt: new Date() },
+      });
+  } catch { /* non-fatal */ }
+}
+
+async function walletReleaseIdempotencyKey(cacheKey: string): Promise<void> {
+  try {
+    await db
+      .delete(walletIdempotencyTable)
+      .where(and(eq(walletIdempotencyTable.key, cacheKey), eq(walletIdempotencyTable.responseJson, WALLET_IDEMPOTENCY_PENDING)));
+  } catch { /* non-fatal */ }
+}
 
 /* ── Amount decimal precision validator ─────────────────────────────────────
    Rejects amounts with more than 2 decimal places (e.g. 100.001 → 400).
@@ -287,37 +348,14 @@ router.post("/deposit", customerAuth, async (req, res) => {
   }
 
   const cacheKey = `deposit:${userId}:${idempotencyKey}`;
-  /* Secondary in-memory guard keyed by txid — catches same TxID arriving
-     with a different idempotencyKey before it reaches the DB. */
-  const txidCacheKey = `deposit:${userId}:txid:${normalizedTxId}`;
 
-  const existing = idempotencyCache.get(cacheKey);
-  if (existing) {
-    if (existing.state === "in_flight") {
-      sendError(res, "Duplicate request — this deposit is already being processed.", 409);
-      return;
+  const claimResult = await walletClaimIdempotencyKey(cacheKey);
+  if (!claimResult.claimed) {
+    if (claimResult.cached === null) {
+      sendError(res, "Duplicate request — this deposit is already being processed.", 409); return;
     }
-    if (existing.state === "success") {
-      res.status(existing.statusCode).json(existing.body);
-      return;
-    }
-    /* state === "failed": key already removed below, allow retry with same key */
+    res.status(claimResult.cached.statusCode).json(claimResult.cached.body); return;
   }
-
-  const existingTxid = idempotencyCache.get(txidCacheKey);
-  if (existingTxid) {
-    if (existingTxid.state === "in_flight") {
-      sendError(res, "Duplicate request — this Transaction ID is already being processed.", 409);
-      return;
-    }
-    if (existingTxid.state === "success") {
-      sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
-      return;
-    }
-  }
-
-  idempotencyCache.set(cacheKey, { state: "in_flight", ts: Date.now() });
-  idempotencyCache.set(txidCacheKey, { state: "in_flight", ts: Date.now() });
 
   const s = await getPlatformSettings();
   const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
@@ -325,14 +363,11 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const maxTopup      = parseFloat(s["wallet_max_topup"]   ?? "25000");
   const autoApproveThreshold = Math.max(0, parseFloat(s["wallet_deposit_auto_approve"] ?? "0"));
 
-  const clearCacheKeys = () => {
-    idempotencyCache.delete(cacheKey);
-    idempotencyCache.delete(txidCacheKey);
-  };
+  const releaseCacheKey = () => walletReleaseIdempotencyKey(cacheKey).catch(() => {});
 
-  if (!walletEnabled) { clearCacheKeys(); sendError(res, "Wallet service is currently disabled", 503); return; }
-  if (amt < minTopup) { clearCacheKeys(); sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
-  if (amt > maxTopup) { clearCacheKeys(); sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
+  if (!walletEnabled) { void releaseCacheKey(); sendError(res, "Wallet service is currently disabled", 503); return; }
+  if (amt < minTopup) { void releaseCacheKey(); sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
+  if (amt > maxTopup) { void releaseCacheKey(); sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
 
   const txId = generateId();
   const desc = [
@@ -345,11 +380,10 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const shouldAutoApprove = autoApproveThreshold > 0 && amt <= autoApproveThreshold;
 
   const setIdempotencyResult = (statusCode: number, body: unknown) => {
-    idempotencyCache.set(cacheKey, { state: "success", ts: Date.now(), statusCode, body });
-    idempotencyCache.set(txidCacheKey, { state: "success", ts: Date.now(), statusCode, body });
+    void walletSetIdempotencyRecord(cacheKey, statusCode, body);
   };
   const setIdempotencyFailed = () => {
-    clearCacheKeys();
+    void releaseCacheKey();
   };
 
   if (shouldAutoApprove) {
@@ -402,9 +436,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
           /wallet_txn_deposit_normalized_tx_id_uidx/i.test(err.message ?? "")
         ));
       if (isDupTxId) {
-        /* Mark txid cache as settled so subsequent same-txid requests are caught in-memory */
-        idempotencyCache.set(txidCacheKey, { state: "success", ts: Date.now(), statusCode: 409, body: null });
-        idempotencyCache.delete(cacheKey);
+        setIdempotencyFailed();
         sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
         return;
       }
@@ -471,8 +503,7 @@ router.post("/deposit", customerAuth, async (req, res) => {
           /wallet_txn_deposit_normalized_tx_id_uidx/i.test(err.message ?? "")
         ));
       if (isDupTxId) {
-        idempotencyCache.set(txidCacheKey, { state: "success", ts: Date.now(), statusCode: 409, body: null });
-        idempotencyCache.delete(cacheKey);
+        setIdempotencyFailed();
         sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
         return;
       }
@@ -581,18 +612,13 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
   let sendCacheKey: string | null = null;
   if (idempotencyKey) {
     sendCacheKey = `send:${senderUserId}:${idempotencyKey}`;
-    const existing = idempotencyCache.get(sendCacheKey);
-    if (existing) {
-      if (existing.state === "in_flight") {
-        sendError(res, "Duplicate request — this transfer is already being processed.", 409);
-        return;
+    const claimResult = await walletClaimIdempotencyKey(sendCacheKey);
+    if (!claimResult.claimed) {
+      if (claimResult.cached === null) {
+        sendError(res, "Duplicate request — this transfer is already being processed.", 409); return;
       }
-      if (existing.state === "success") {
-        res.status(existing.statusCode).json(existing.body);
-        return;
-      }
+      res.status(claimResult.cached.statusCode).json(claimResult.cached.body); return;
     }
-    idempotencyCache.set(sendCacheKey, { state: "in_flight", ts: Date.now() });
   }
 
   const s = await getPlatformSettings();
@@ -604,7 +630,7 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
   const p2pDailyLimit  = parseFloat(s["wallet_p2p_daily_limit"]  ?? "10000");
   const p2pFeePct      = Math.max(0, Math.min(50, parseFloat(s["wallet_p2p_fee_pct"] ?? "0")));
 
-  const clearKey = () => { if (sendCacheKey) idempotencyCache.delete(sendCacheKey); };
+  const clearKey = () => { if (sendCacheKey) void walletReleaseIdempotencyKey(sendCacheKey!).catch(() => {}); };
 
   if (!p2pEnabled) {
     clearKey();
@@ -720,10 +746,10 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
     }).catch(e => logger.error("receiver send notif insert failed:", e));
 
     const { receiverId: _rid, senderName: _sn, ...responseData } = result;
-    if (sendCacheKey) idempotencyCache.set(sendCacheKey, { state: "success", ts: Date.now(), statusCode: 200, body: responseData });
+    if (sendCacheKey) void walletSetIdempotencyRecord(sendCacheKey, 200, responseData);
     sendSuccess(res, responseData);
   } catch (e: unknown) {
-    if (sendCacheKey) idempotencyCache.delete(sendCacheKey);
+    if (sendCacheKey) void walletReleaseIdempotencyKey(sendCacheKey).catch(() => {});
     const err = e as { walletFrozen?: string; message?: string };
     if (err.walletFrozen === "sender") {
       sendForbidden(res, "wallet_frozen", err.message); return;
@@ -874,21 +900,16 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
   let withdrawCacheKey: string | null = null;
   if (idempotencyKey) {
     withdrawCacheKey = `withdraw:${userId}:${idempotencyKey}`;
-    const existing = idempotencyCache.get(withdrawCacheKey);
-    if (existing) {
-      if (existing.state === "in_flight") {
-        sendError(res, "Duplicate request — this withdrawal is already being processed.", 409);
-        return;
+    const claimResult = await walletClaimIdempotencyKey(withdrawCacheKey);
+    if (!claimResult.claimed) {
+      if (claimResult.cached === null) {
+        sendError(res, "Duplicate request — this withdrawal is already being processed.", 409); return;
       }
-      if (existing.state === "success") {
-        res.status(existing.statusCode).json(existing.body);
-        return;
-      }
+      res.status(claimResult.cached.statusCode).json(claimResult.cached.body); return;
     }
-    idempotencyCache.set(withdrawCacheKey, { state: "in_flight", ts: Date.now() });
   }
 
-  const clearKey = () => { if (withdrawCacheKey) idempotencyCache.delete(withdrawCacheKey); };
+  const clearKey = () => { if (withdrawCacheKey) void walletReleaseIdempotencyKey(withdrawCacheKey!).catch(() => {}); };
 
   let withdrawUser: { blockedServices: string; walletBalance: string } | undefined;
   try {
@@ -977,7 +998,7 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
   }).catch(e => logger.error("withdrawal notif insert failed:", e));
 
   const responseBody = { txId, status: "pending", amount: amt };
-  if (withdrawCacheKey) idempotencyCache.set(withdrawCacheKey, { state: "success", ts: Date.now(), statusCode: 200, body: responseBody });
+  if (withdrawCacheKey) void walletSetIdempotencyRecord(withdrawCacheKey, 200, responseBody);
   sendSuccess(res, responseBody);
 });
 

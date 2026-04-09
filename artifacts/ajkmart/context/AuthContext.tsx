@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Alert } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   setAuthTokenGetter,
@@ -369,7 +370,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   return;
                 }
               }
-            } catch {}
+            } catch (refreshErr) {
+              console.warn("[AuthContext] token refresh failed:", refreshErr);
+            }
             await AsyncStorage.multiRemove([USER_KEY]);
             await secureDelete(TOKEN_KEY);
             await secureDelete(REFRESH_TOKEN_KEY);
@@ -385,7 +388,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             syncToServer(storedToken).catch(() => {});
           }
         }
-      } catch {}
+      } catch (err) {
+        console.warn("[AuthContext] loadAuth failed:", err);
+        captureError(err instanceof Error ? err : new Error(String(err)));
+        await AsyncStorage.multiRemove([USER_KEY, BIOMETRIC_KEY]).catch(() => {});
+        Alert.alert("Session Error", "Could not restore your session. Please sign in again.");
+      }
       setIsLoading(false);
     };
     loadAuth();
@@ -473,11 +481,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (refreshTok) {
           await secureSet(BIOMETRIC_TOKEN, refreshTok);
         }
-      } catch {}
+      } catch (err) {
+        console.warn("[AuthContext] failed to store biometric token:", err);
+      }
     } else if (!enabled) {
       try {
         await secureDelete(BIOMETRIC_TOKEN);
-      } catch {}
+      } catch (err) {
+        console.warn("[AuthContext] failed to clear biometric token:", err);
+      }
     }
   };
 
@@ -566,7 +578,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             const parsed = JSON.parse(stored);
             AsyncStorage.setItem(USER_KEY, JSON.stringify({ ...parsed, walletBalance: payload.balance }));
-          } catch {}
+          } catch (err) {
+            console.warn("[AuthContext] wallet balance cache update failed:", err);
+          }
         });
       }
     };

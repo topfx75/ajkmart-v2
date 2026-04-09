@@ -19,15 +19,15 @@ const REFRESH_KEY = "ajkmart_rider_refresh_token";
 let _inMemoryAccessToken   = "";
 let _inMemoryRefreshToken  = "";
 
-/* Access token helpers — localStorage (persists across tab close / mid-trip reopen) */
+/* Access token helpers — sessionStorage (cleared when the tab/session ends) */
 function sessionGet(): string {
-  try { return localStorage.getItem(TOKEN_KEY) ?? ""; } catch { return _inMemoryAccessToken; }
+  try { return sessionStorage.getItem(TOKEN_KEY) ?? ""; } catch { return _inMemoryAccessToken; }
 }
 function sessionSet(value: string): void {
-  try { localStorage.setItem(TOKEN_KEY, value); } catch { _inMemoryAccessToken = value; }
+  try { sessionStorage.setItem(TOKEN_KEY, value); } catch { _inMemoryAccessToken = value; }
 }
 function sessionRemove(): void {
-  try { localStorage.removeItem(TOKEN_KEY); } catch { _inMemoryAccessToken = ""; }
+  try { sessionStorage.removeItem(TOKEN_KEY); } catch { _inMemoryAccessToken = ""; }
 }
 
 /* Refresh token helpers — localStorage */

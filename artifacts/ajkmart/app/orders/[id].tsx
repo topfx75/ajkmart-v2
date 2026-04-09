@@ -272,7 +272,10 @@ export default function OrderDetailScreen() {
       socketActiveRef.current = false;
       if (fallbackTimeout !== null) { clearTimeout(fallbackTimeout); fallbackTimeout = null; }
       stopPolling();
-      socket?.disconnect();
+      if (socket) {
+        socket.emit("leave", room);
+        socket.disconnect();
+      }
       socketRef.current = null;
       if (interpRafRef.current !== null) {
         cancelAnimationFrame(interpRafRef.current);
@@ -343,8 +346,13 @@ export default function OrderDetailScreen() {
           if (mountedRef.current && d.status) {
             setPaymentStatus(d.status);
           }
+        } else if (mountedRef.current) {
+          showToast(T("orderLoadError"), "error");
         }
-      } catch {}
+      } catch (err) {
+        console.warn("[OrderDetail] payment status fetch failed:", err);
+        if (mountedRef.current) showToast(T("orderLoadError"), "error");
+      }
     })();
   }, [orderId, token, isParcel, isRide, isPharmacyType]);
 
@@ -363,7 +371,9 @@ export default function OrderDetailScreen() {
                 setPaymentStatus(d.status);
               }
             }
-          } catch {}
+          } catch (err) {
+            console.warn("[OrderDetail] payment status background refresh failed:", err);
+          }
         })();
       }
     });

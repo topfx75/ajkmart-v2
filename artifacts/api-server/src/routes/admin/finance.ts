@@ -293,16 +293,31 @@ router.post("/vendors/:id/credit", validateParams(idParamSchema), validateBody(p
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
   }
-  const [vendor] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
-  if (!vendor) { sendNotFound(res, "Vendor not found"); return; }
+  const vendorId = req.params["id"] as string;
   const amt = Number(amount);
-  const newBal = parseFloat(vendor.walletBalance ?? "0") + amt;
-  const [updated] = await db.update(usersTable).set({ walletBalance: String(newBal), updatedAt: new Date() }).where(eq(usersTable.id, vendor.id)).returning();
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(), userId: vendor.id, type: "credit", amount: String(amt),
-    description: description || `Admin credit: Rs. ${amt}`, reference: "admin_credit",
-  });
-  await sendUserNotification(vendor.id, "Wallet Credited 💰", `Rs. ${amt} has been credited to your vendor wallet.`, "system", "wallet-outline");
+  let updated: typeof usersTable.$inferSelect | undefined;
+  let newBal = 0;
+  try {
+    await db.transaction(async (tx) => {
+      const [existing] = await tx.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
+      if (!existing) throw new Error("NOT_FOUND");
+      const [u] = await tx.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${amt}`, updatedAt: new Date() })
+        .where(eq(usersTable.id, vendorId))
+        .returning();
+      if (!u) throw new Error("NOT_FOUND");
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(), userId: vendorId, type: "credit", amount: String(amt),
+        description: description || `Admin credit: Rs. ${amt}`, reference: "admin_credit",
+      });
+      updated = u;
+      newBal = parseFloat(u.walletBalance ?? "0");
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "NOT_FOUND") { sendNotFound(res, "Vendor not found"); return; }
+    throw err;
+  }
+  await sendUserNotification(vendorId, "Wallet Credited 💰", `Rs. ${amt} has been credited to your vendor wallet.`, "system", "wallet-outline");
   sendSuccess(res, { amount: amt, newBalance: newBal, vendor: { ...stripUser(updated!), walletBalance: newBal } });
 });
 

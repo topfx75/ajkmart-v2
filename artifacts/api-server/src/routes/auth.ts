@@ -158,16 +158,28 @@ function hashOtp(otp: string): string {
 }
 
 function normalizeVehicleTypeForStorage(raw: string): string {
-  const v = raw.trim().toLowerCase();
+  const v = (raw ?? "").trim().toLowerCase();
   if (!v) return raw;
-  if (v === "bike" || v.startsWith("bike") || v.includes("motorcycle")) return "bike";
-  if (v === "car") return "car";
-  if (v === "rickshaw" || v.includes("rickshaw") || v.includes("qingqi")) return "rickshaw";
-  if (v === "van") return "van";
-  if (v === "daba") return "daba";
-  if (v === "bicycle") return "bicycle";
-  if (v === "on_foot" || v === "on foot") return "on_foot";
-  return v;
+  const slug = v.replace(/[\s_\-]+/g, "_").replace(/[^a-z0-9_]/g, "").replace(/_+/g, "_").replace(/^_|_$/g, "");
+  const words = slug.split("_").filter(Boolean);
+  const wordSet = new Set(words);
+
+  const isMotorcycle = slug === "motorcycle" || wordSet.has("motorcycle") || wordSet.has("motorbike") ||
+    (wordSet.has("motor") && (wordSet.has("cycle") || wordSet.has("bike")));
+  const isBike = slug === "bike" || wordSet.has("bike");
+  if (isBike || isMotorcycle) return "bike";
+
+  if (slug === "car") return "car";
+
+  const isRickshaw = slug === "rickshaw" || wordSet.has("rickshaw") || wordSet.has("qingqi");
+  if (isRickshaw) return "rickshaw";
+
+  if (slug === "van") return "van";
+  if (slug === "daba") return "daba";
+  if (slug === "bicycle") return "bicycle";
+  if (slug === "on_foot" || (wordSet.has("on") && wordSet.has("foot"))) return "on_foot";
+
+  return slug || v;
 }
 
 function generateVerificationToken(): string {

@@ -438,31 +438,51 @@ router.post("/users/:id/wallet-topup", validateParams(idParamSchema), validateBo
     return;
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!));
-  if (!user) { sendNotFound(res, "User not found"); return; }
+  const userId = req.params["id"] as string;
+  const amt = Number(amount);
 
-  const currentBalance = parseFloat(user.walletBalance ?? "0");
-  const newBalance = currentBalance + Number(amount);
+  let updatedUser: typeof usersTable.$inferSelect | undefined;
+  let newBalance = 0;
 
-  const [updatedUser] = await db
-    .update(usersTable)
-    .set({ walletBalance: String(newBalance), updatedAt: new Date() })
-    .where(eq(usersTable.id, req.params["id"]!))
-    .returning();
+  try {
+    await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+      if (!existing) throw new Error("NOT_FOUND");
 
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(),
-    userId: req.params["id"]!,
-    type: "credit",
-    amount: String(amount),
-    description: description || `Admin top-up: Rs. ${amount}`,
-    reference: "admin_topup",
-  });
+      const [updated] = await tx
+        .update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${amt}`, updatedAt: new Date() })
+        .where(eq(usersTable.id, userId))
+        .returning();
+      if (!updated) throw new Error("NOT_FOUND");
+
+      await tx.insert(walletTransactionsTable).values({
+        id: generateId(),
+        userId,
+        type: "credit",
+        amount: String(amt),
+        description: description || `Admin top-up: Rs. ${amt}`,
+        reference: "admin_topup",
+      });
+
+      updatedUser = updated;
+      newBalance = parseFloat(updated.walletBalance ?? "0");
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "NOT_FOUND") {
+      sendNotFound(res, "User not found"); return;
+    }
+    throw err;
+  }
 
   await sendUserNotification(
-    req.params["id"]!,
+    userId,
     "Wallet Topped Up! 💰",
-    `Rs. ${amount} has been added to your AJKMart wallet.`,
+    `Rs. ${amt} has been added to your AJKMart wallet.`,
     "system",
     "wallet-outline"
   );

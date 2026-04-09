@@ -387,7 +387,7 @@ function SosButton({ rideId, riderPos, T }: { rideId?: string | null; riderPos?:
           if (!lat || !lng) {
             try {
               const pos = await new Promise<GeolocationPosition>((res, rej) => {
-                navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000, maximumAge: 10000 });
+                navigator.geolocation.getCurrentPosition(res, rej, { timeout: 15000, maximumAge: 10000 });
               });
               lat = pos.coords.latitude;
               lng = pos.coords.longitude;
