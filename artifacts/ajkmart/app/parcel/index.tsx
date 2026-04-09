@@ -311,24 +311,50 @@ function ParcelScreenInner() {
       let finalDropLng   = dropLng;
 
       const GEOCODE_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
-      /* Try to resolve coordinates — best-effort, NOT a hard block.
-         Coordinates are optional on the backend (only used for geofencing). */
+      /* Try to resolve coordinates for manually-typed addresses */
+      let pickupGeoFailed = false;
+      let dropGeoFailed = false;
       if (finalPickupLat === undefined || finalPickupLng === undefined) {
         try {
           const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(pickupAddress)}`);
+          if (!geoRes.ok) throw new Error(`Geocode server error: ${geoRes.status}`);
           const geo = await geoRes.json();
-          if (geo?.lat && geo?.lng) { finalPickupLat = geo.lat; finalPickupLng = geo.lng; setGeoError(null); }
-        } catch (err) { if (__DEV__) console.warn("[Parcel] Pickup geocode failed:", err instanceof Error ? err.message : String(err)); }
+          if (geo?.lat && geo?.lng) { finalPickupLat = geo.lat; finalPickupLng = geo.lng; }
+          else { pickupGeoFailed = true; }
+        } catch (err) {
+          if (__DEV__) console.warn("[Parcel] Pickup geocode failed:", err instanceof Error ? err.message : String(err));
+          pickupGeoFailed = true;
+        }
       }
       if (finalDropLat === undefined || finalDropLng === undefined) {
         try {
           const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(dropAddress)}`);
+          if (!geoRes.ok) throw new Error(`Geocode server error: ${geoRes.status}`);
           const geo = await geoRes.json();
           if (geo?.lat && geo?.lng) { finalDropLat = geo.lat; finalDropLng = geo.lng; }
-        } catch (err) { if (__DEV__) console.warn("[Parcel] Drop geocode failed:", err instanceof Error ? err.message : String(err)); }
+          else { dropGeoFailed = true; }
+        } catch (err) {
+          if (__DEV__) console.warn("[Parcel] Drop geocode failed:", err instanceof Error ? err.message : String(err));
+          dropGeoFailed = true;
+        }
       }
-      /* Clear stale geo error now that we're proceeding */
-      setGeoError(null);
+      /* Update geo error state per field — never clear a failing field with a succeeding one */
+      if (pickupGeoFailed) setGeoError("pickup");
+      else if (dropGeoFailed) setGeoError("drop");
+      else setGeoError(null);
+      /* Block submission if coordinates are still unresolved */
+      if (finalPickupLat === undefined || finalPickupLng === undefined) {
+        showToast("Pickup address could not be validated. Please correct it before booking.", "error");
+        setLoading(false);
+        parcelSubmittingRef.current = false;
+        return;
+      }
+      if (finalDropLat === undefined || finalDropLng === undefined) {
+        showToast("Drop address could not be validated. Please correct it before booking.", "error");
+        setLoading(false);
+        parcelSubmittingRef.current = false;
+        return;
+      }
 
       if (
         finalPickupLat !== undefined && finalPickupLng !== undefined &&
@@ -499,10 +525,11 @@ function ParcelScreenInner() {
                 try {
                   const GEOCODE_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
                   const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(pickupAddress)}`);
+                  if (!geoRes.ok) { setGeoError("pickup"); showToast("Could not validate pickup address. Please check it and try again.", "error"); return; }
                   const geo = await geoRes.json();
                   if (geo?.lat && geo?.lng) { setPickupLat(geo.lat); setPickupLng(geo.lng); setGeoError(null); }
-                  else setGeoError("pickup");
-                } catch { setGeoError("pickup"); }
+                  else { setGeoError("pickup"); showToast("Pickup address not found. Please enter a more specific address.", "error"); }
+                } catch { setGeoError("pickup"); showToast("Could not validate pickup address. Check your connection and try again.", "error"); }
               }}
               placeholder="e.g. Chowk Adalat, Muzaffarabad"
               placeholderTextColor={C.textMuted}
@@ -542,10 +569,11 @@ function ParcelScreenInner() {
                 try {
                   const GEOCODE_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
                   const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(dropAddress)}`);
+                  if (!geoRes.ok) { setGeoError("drop"); showToast("Could not validate drop address. Please check it and try again.", "error"); return; }
                   const geo = await geoRes.json();
                   if (geo?.lat && geo?.lng) { setDropLat(geo.lat); setDropLng(geo.lng); setGeoError(null); }
-                  else setGeoError("drop");
-                } catch { setGeoError("drop"); }
+                  else { setGeoError("drop"); showToast("Drop address not found. Please enter a more specific address.", "error"); }
+                } catch { setGeoError("drop"); showToast("Could not validate drop address. Check your connection and try again.", "error"); }
               }}
               placeholder="e.g. Commercial Area, Mirpur"
               placeholderTextColor={C.textMuted}

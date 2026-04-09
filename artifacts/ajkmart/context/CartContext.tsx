@@ -186,7 +186,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         try {
           const SS = await import("expo-secure-store");
           storedToken = await SS.getItemAsync("ajkmart_token");
-        } catch {}
+        } catch (ssErr) {
+          if (__DEV__) console.warn("[CartContext] SecureStore read failed:", ssErr instanceof Error ? ssErr.message : String(ssErr));
+        }
       }
       if (!storedToken) storedToken = await AsyncStorage.getItem("@ajkmart_token");
       const res = await fetch(`${API_BASE}/orders/validate-cart`, {
@@ -383,7 +385,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           return true;
         }
       }
-    } catch {}
+    } catch (fallbackErr) {
+      if (__DEV__) console.warn("[CartContext] HTTP fallback order check failed:", fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr));
+    }
     return false;
   };
 

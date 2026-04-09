@@ -11,6 +11,7 @@ import {
 import { useLanguage } from "./LanguageContext";
 import { io, type Socket } from "socket.io-client";
 import { API_BASE } from "../utils/api";
+import { captureError } from "../utils/sentry";
 
 export type UserRole = "customer" | "rider" | "vendor";
 
@@ -225,14 +226,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, refreshIn);
   };
 
-  const clearCustomerLocation = async (userId: string, userToken: string) => {
+  const clearCustomerLocation = async (userId: string, userToken: string, retrying = false): Promise<void> => {
     try {
-      await fetch(`${API_BASE}/locations/clear`, {
+      const res = await fetch(`${API_BASE}/locations/clear`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${userToken}` },
         body: JSON.stringify({ userId }),
       });
-    } catch {}
+      /* Only retry on server errors (5xx) — skip retry for client errors (4xx) */
+      if (!res.ok && res.status >= 500 && !retrying) {
+        await new Promise(r => setTimeout(r, 1500));
+        return clearCustomerLocation(userId, userToken, true);
+      }
+    } catch (err) {
+      /* Network/fetch error — retry once */
+      if (__DEV__) console.warn("[Auth] clearCustomerLocation failed:", err instanceof Error ? err.message : String(err));
+      captureError(err);
+      if (!retrying) {
+        await new Promise(r => setTimeout(r, 1500));
+        try { await clearCustomerLocation(userId, userToken, true); } catch {}
+      }
+    }
   };
 
   const doLogout = async () => {
@@ -377,13 +391,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadAuth();
   }, [registerAuth]);
 
-  const captureCustomerLocation = async (userId: string, userToken: string) => {
+  const captureCustomerLocation = async (userId: string, userToken: string, retrying = false): Promise<void> => {
     try {
       const Location = await import("expo-location");
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") return;
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      await fetch(`${API_BASE}/locations/update`, {
+      const res = await fetch(`${API_BASE}/locations/update`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${userToken}` },
         body: JSON.stringify({
@@ -394,7 +408,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: "customer",
         }),
       });
-    } catch {}
+      /* Only retry on server errors (5xx) — skip retry for client errors (4xx) */
+      if (!res.ok && res.status >= 500 && !retrying) {
+        await new Promise(r => setTimeout(r, 2000));
+        return captureCustomerLocation(userId, userToken, true);
+      }
+    } catch (err) {
+      /* Network/fetch error — retry once */
+      if (__DEV__) console.warn("[Auth] captureCustomerLocation failed:", err instanceof Error ? err.message : String(err));
+      captureError(err);
+      if (!retrying) {
+        await new Promise(r => setTimeout(r, 2000));
+        try { await captureCustomerLocation(userId, userToken, true); } catch {}
+      }
+    }
   };
 
   const login = async (userData: AppUser, userToken: string, refreshToken?: string) => {

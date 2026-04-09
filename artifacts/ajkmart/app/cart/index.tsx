@@ -212,6 +212,7 @@ function AddressPickerModal({
 }) {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const { showToast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [newLabel, setNewLabel] = useState("Home");
   const [newAddress, setNewAddress] = useState("");
@@ -230,6 +231,7 @@ function AddressPickerModal({
   const handleSave = async () => {
     if (!newAddress.trim()) { setFormError("Address is required"); return; }
     if (!newCity.trim()) { setFormError("City is required"); return; }
+    if (!token) { showToast("You must be logged in to save an address.", "error"); return; }
     setSaving(true);
     setFormError(null);
     try {
@@ -240,7 +242,7 @@ function AddressPickerModal({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           label: newLabel.trim() || "Home",
@@ -509,7 +511,13 @@ function CartScreenInner() {
           setDeliveryBlocked(null);
         }
       })
-      .catch(() => { if (mountedRef.current) setDeliveryBlocked(null); });
+      .catch((err) => {
+        if (__DEV__) console.warn("[Cart] Delivery eligibility precheck failed:", err instanceof Error ? err.message : String(err));
+        if (mountedRef.current) {
+          setDeliveryBlocked(null);
+          showToast("Could not check delivery eligibility. You may proceed — it will be verified at checkout.", "error");
+        }
+      });
   }, [token, items.length, cartType]);
 
   useEffect(() => {
@@ -641,10 +649,10 @@ function CartScreenInner() {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !token) return;
     addrLoaded.current = false;
     setAddrLoading(true);
-    fetch(`${API_BASE}/addresses`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    fetch(`${API_BASE}/addresses`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(unwrapApiResponse)
       .then(d => {
@@ -669,7 +677,7 @@ function CartScreenInner() {
         showToast("Could not load saved addresses. Please add one manually.", "error");
       })
       .finally(() => setAddrLoading(false));
-  }, [user?.id]);
+  }, [user?.id, token]);
 
   useEffect(() => {
     if (selectedAddrId === "" && addrLoaded.current && addresses.length > 0) {
@@ -699,13 +707,20 @@ function CartScreenInner() {
     if (promoRevalidateAbort.current) {
       promoRevalidateAbort.current.abort();
     }
+    if (!token) {
+      showToast("You must be logged in to apply a promo code.", "error");
+      setPromoCode(null);
+      setPromoDiscount(0);
+      setPromoApplied(false);
+      return;
+    }
     const controller = new AbortController();
     promoRevalidateAbort.current = controller;
     setPromoLoading(true);
     try {
       const orderType = (cartType === "mixed" || cartType === "pharmacy" || cartType === "none") ? "mart" : cartType;
       const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
       if (!mountedRef.current || seq !== promoRevalidateSeq.current) return;
@@ -734,12 +749,13 @@ function CartScreenInner() {
   const applyPromo = async () => {
     const code = promoInput.trim().toUpperCase();
     if (!code) return;
+    if (!token) { showToast("You must be logged in to apply a promo code.", "error"); return; }
     setPromoLoading(true);
     setPromoError(null);
     try {
       const orderType = (cartType === "mixed" || cartType === "pharmacy" || cartType === "none") ? "mart" : cartType;
       const res = await fetch(`${API_BASE}/orders/validate-promo?code=${encodeURIComponent(code)}&total=${total}&type=${orderType}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = unwrapApiResponse(await res.json());
       if (data.valid) {
@@ -852,13 +868,14 @@ function CartScreenInner() {
     }
 
     (async () => {
+      if (!token) return;
       try {
         const perm = await Location.getForegroundPermissionsAsync();
         if (perm.status !== "granted") return;
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         await fetch(`${API_BASE}/locations/update`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             latitude: pos.coords.latitude, longitude: pos.coords.longitude,
             accuracy: pos.coords.accuracy ?? null, role: "customer", action: "order_placed",
@@ -973,12 +990,16 @@ function CartScreenInner() {
     }
 
     if (!isPickup) {
+      if (!token) {
+        showToast("You must be logged in to place a delivery order.", "error");
+        return;
+      }
       try {
         const svcQ = cartType === "mixed" ? "mart" : cartType;
         const pidQ = items[0]?.productId;
         const eligQs = `serviceType=${svcQ}${pidQ ? `&productId=${pidQ}` : ""}`;
         const eligRes = await fetch(`${API_BASE}/delivery/eligibility?${eligQs}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: { Authorization: `Bearer ${token}` },
         });
         if (eligRes.ok) {
           const eligData = await eligRes.json();
@@ -994,7 +1015,11 @@ function CartScreenInner() {
             return;
           }
         }
-      } catch {}
+      } catch (eligErr) {
+        if (__DEV__) console.warn("[Cart] Delivery eligibility check failed:", eligErr instanceof Error ? eligErr.message : String(eligErr));
+        showToast("Could not verify delivery eligibility. Please try again.", "error");
+        return;
+      }
     }
 
     const cartResult = await validateCart();
@@ -1058,7 +1083,9 @@ function CartScreenInner() {
           result.customerLng = pos.coords.longitude;
           result.gpsAccuracy = pos.coords.accuracy ?? null;
         }
-      } catch {}
+      } catch (gpsErr) {
+        if (__DEV__) console.warn("[Cart] GPS capture for order failed:", gpsErr instanceof Error ? gpsErr.message : String(gpsErr));
+      }
     }
     if (selectedAddr?.latitude != null && selectedAddr?.longitude != null) {
       result.deliveryLat = selectedAddr.latitude;
@@ -1116,11 +1143,12 @@ function CartScreenInner() {
       const realOrderId = order?.id;
       if (!realOrderId) { throw new Error("Could not create order"); }
 
+      if (!token) throw new Error("Session expired. Please log in and try again.");
       const r = await fetch(`${API_BASE}/payments/initiate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           gateway: payMethod, amount: grandTotal,
@@ -1158,11 +1186,12 @@ function CartScreenInner() {
   };
 
   const cancelPendingOrder = async (orderId: string) => {
+    if (!token) { if (__DEV__) console.warn("[Cart] cancelPendingOrder: no token, skipping"); return; }
     const res = await fetch(`${API_BASE}/orders/${orderId}/cancel`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ reason: "payment_failed" }),
     });
@@ -1290,8 +1319,9 @@ function CartScreenInner() {
                   if (!oid) return;
                   (async () => {
                     try {
+                      if (!token) { showToast("Session expired. Please log in again.", "error"); return; }
                       const r = await fetch(`${API_BASE}/payments/${encodeURIComponent(oid)}/status`, {
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                        headers: { Authorization: `Bearer ${token}` },
                       });
                       const d = unwrapApiResponse(await r.json()) as any;
                       if (!mountedRef.current) return;

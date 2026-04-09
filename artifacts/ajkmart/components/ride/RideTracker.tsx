@@ -135,6 +135,8 @@ export function RideTracker({
     const socketUrl = `https://${domain}`;
     const socketIoPath = "/api/socket.io";
     let unmounted = false;
+    const CONNECTION_TIMEOUT_MS = 15000;
+    let connectionTimeoutId: ReturnType<typeof setTimeout> | null = null;
     import("socket.io-client").then(({ io }) => {
       if (unmounted) return;
       const socket = io(socketUrl, {
@@ -144,8 +146,18 @@ export function RideTracker({
         extraHeaders: token ? { Authorization: `Bearer ${token}` } : {},
         transports: ["polling", "websocket"],
       });
-      if (unmounted) { socket.disconnect(); return; }
+      if (unmounted) { socket.disconnect(); socketRef.current = null; return; }
       socketRef.current = socket;
+      connectionTimeoutId = setTimeout(() => {
+        if (!socket.connected) {
+          if (__DEV__) console.warn("[RideTracker] Socket connection timed out, disconnecting stale socket.");
+          socket.disconnect();
+          if (socketRef.current === socket) socketRef.current = null;
+        }
+      }, CONNECTION_TIMEOUT_MS);
+      socket.on("connect", () => {
+        if (connectionTimeoutId) { clearTimeout(connectionTimeoutId); connectionTimeoutId = null; }
+      });
       socket.on("rider:location", (payload: { latitude: number; longitude: number; rideId?: string; orderId?: string }) => {
         const payloadRideId = payload.rideId ?? payload.orderId;
         if (!payloadRideId || payloadRideId !== rideId) return;
@@ -157,6 +169,7 @@ export function RideTracker({
     });
     return () => {
       unmounted = true;
+      if (connectionTimeoutId) { clearTimeout(connectionTimeoutId); connectionTimeoutId = null; }
       if (socketRef.current) { socketRef.current.disconnect(); socketRef.current = null; }
     };
   }, [rideId, token, isSocketActive]);
