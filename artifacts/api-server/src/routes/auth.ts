@@ -50,6 +50,21 @@ import { validateBody as sharedValidateBody } from "../middleware/validate.js";
    using the admin-configurable settings (security_otp_max_per_phone,
    security_otp_max_per_ip, security_otp_window_min) via checkAndIncrOtpRateLimit(). */
 
+/* ── OTP verify IP-level rate limiter ────────────────────────────────────────
+   Limits /auth/verify-otp to 5 attempts per IP per 15 minutes, regardless of
+   which phone numbers are targeted. This prevents an attacker from cycling
+   through many accounts from a single IP.
+────────────────────────────────────────────────────────────────────────────── */
+const verifyOtpIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: (req: Request) => ({ error: t("apiErrTooManyRequests", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }),
+  validate: { xForwardedForHeader: false },
+  keyGenerator: (req) => getClientIp(req),
+});
+
 /* ── OTP TTL ─────────────────────────────────────────────────
    All auth OTPs (phone, email, forgot-password) expire in 5 minutes.
    Account-merge OTPs use a longer 10-minute window.
@@ -656,7 +671,7 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
    POST /auth/verify-otp
    Validates the OTP, checks security settings, returns token.
 ───────────────────────────────────────────────────────────── */
-router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), async (req, res) => {
+router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody(verifyOtpSchema), async (req, res) => {
   const phone = canonicalizePhone(req.body.phone);
 
   if (!isValidCanonicalPhone(phone)) {

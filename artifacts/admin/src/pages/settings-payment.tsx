@@ -343,6 +343,30 @@ function GatewayCard({
           </div>
           <p className="text-[11px] text-muted-foreground mt-1.5">{name} band karne ke liye service card tap karein</p>
         </div>
+
+        {/* ── IP Allowlist (callback security) ── */}
+        <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4 space-y-2">
+          <div className="flex items-center gap-2 mb-1">
+            <Shield className="w-4 h-4 text-orange-600 flex-shrink-0" />
+            <p className="text-sm font-semibold text-foreground">Callback IP Allowlist</p>
+            {dirtyKeys.has(`${prefix}_allowed_ips`) && <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">CHANGED</span>}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Only requests from these IPs will be accepted on the callback URL. Leave empty to allow all IPs (current behavior).
+            Enter comma-separated IPv4 addresses (e.g. <span className="font-mono text-xs">203.0.113.5, 198.51.100.12</span>).
+          </p>
+          <textarea
+            value={localValues[`${prefix}_allowed_ips`] ?? ""}
+            onChange={e => handleChange(`${prefix}_allowed_ips`, e.target.value)}
+            rows={2}
+            placeholder="e.g. 203.0.113.5, 198.51.100.12"
+            className={`w-full rounded-lg border text-xs font-mono p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-orange-400/40 ${dirtyKeys.has(`${prefix}_allowed_ips`) ? "border-amber-300 bg-amber-50/50" : "border-border bg-white"}`}
+          />
+          <p className="text-[11px] text-orange-700 font-medium">
+            ⚠ If set, requests from unlisted IPs will be rejected with 403 in both sandbox and production modes.
+          </p>
+        </div>
+
       </div>
     </div>
   );

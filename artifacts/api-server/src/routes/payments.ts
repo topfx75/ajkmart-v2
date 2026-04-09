@@ -12,7 +12,7 @@ import { ordersTable, usersTable, walletTransactionsTable } from "@workspace/db/
 import { eq } from "drizzle-orm";
 import { getPlatformSettings, adminAuth } from "./admin.js";
 import { generateId } from "../lib/id.js";
-import { customerAuth } from "../middleware/security.js";
+import { customerAuth, getClientIp } from "../middleware/security.js";
 import { z } from "zod";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 import { t, type TranslationKey } from "@workspace/i18n";
@@ -25,6 +25,17 @@ import {
 } from "../lib/payment-providers.js";
 
 const router: IRouter = Router();
+
+/**
+ * Normalize a raw IP address string for allowlist comparison.
+ * Strips the IPv6-mapped IPv4 prefix (::ffff:) so that
+ * `::ffff:203.0.113.5` and `203.0.113.5` compare as equal,
+ * preventing false 403 denials when the server sits behind a proxy
+ * that surfaces addresses in IPv6-mapped format.
+ */
+function normalizeIp(ip: string): string {
+  return ip.replace(/^::ffff:/i, "").trim();
+}
 
 const paymentInitiateSchema = z.object({
   gateway: z.string().min(1, "gateway is required"),
@@ -576,6 +587,18 @@ router.post("/callback/jazzcash", async (req, res) => {
   const mode   = s["jazzcash_mode"] ?? "sandbox";
   const params = req.body as Record<string, string>;
 
+  /* ── IP allowlist guard ──
+     If jazzcash_allowed_ips is configured, only requests from those IPs are accepted.
+     When empty/not set, all IPs are allowed (no breaking change for existing deployments). ── */
+  const allowedIpsRaw = (s["jazzcash_allowed_ips"] ?? "").trim();
+  if (allowedIpsRaw) {
+    const allowedIps = allowedIpsRaw.split(",").map((ip) => normalizeIp(ip)).filter(Boolean);
+    const clientIp   = normalizeIp(getClientIp(req));
+    if (!allowedIps.includes(clientIp)) {
+      sendForbidden(res, t("apiErrAccessDenied", "en")); return;
+    }
+  }
+
   /* ── Production-sandbox mismatch guard ── */
   if (process.env["NODE_ENV"] === "production" && mode === "sandbox") {
     console.error("CRITICAL: JazzCash is configured in sandbox mode while running in production. Rejecting callback.");
@@ -635,6 +658,18 @@ router.post("/callback/easypaisa", async (req, res) => {
   const storeId  = s["easypaisa_store_id"] ?? "";
   const mode     = s["easypaisa_mode"] ?? "sandbox";
   const body     = req.body as Record<string, string>;
+
+  /* ── IP allowlist guard ──
+     If easypaisa_allowed_ips is configured, only requests from those IPs are accepted.
+     When empty/not set, all IPs are allowed (no breaking change for existing deployments). ── */
+  const allowedIpsRaw = (s["easypaisa_allowed_ips"] ?? "").trim();
+  if (allowedIpsRaw) {
+    const allowedIps = allowedIpsRaw.split(",").map((ip) => normalizeIp(ip)).filter(Boolean);
+    const clientIp   = normalizeIp(getClientIp(req));
+    if (!allowedIps.includes(clientIp)) {
+      sendForbidden(res, t("apiErrAccessDenied", "en")); return;
+    }
+  }
 
   /* ── Production-sandbox mismatch guard ── */
   if (process.env["NODE_ENV"] === "production" && mode === "sandbox") {
