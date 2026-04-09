@@ -106,7 +106,12 @@ let _refreshPromise: Promise<RefreshResult> | null = null;
 async function attemptTokenRefresh(): Promise<RefreshResult> {
   if (_refreshPromise) return _refreshPromise;
   _refreshPromise = _doRefresh();
-  try { return await _refreshPromise; } finally { _refreshPromise = null; }
+  try {
+    const result = await _refreshPromise;
+    return result;
+  } finally {
+    _refreshPromise = null;
+  }
 }
 
 type RefreshResult = "refreshed" | "auth_failed" | "transient";
@@ -183,21 +188,22 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
     clearTimeout(timeoutId);
   }
 
-  if (res.status === 401 && _retryBudget > 0) {
+  if (res.status === 401 && token && _retryBudget > 0) {
     const refreshResult = await attemptTokenRefresh();
     if (refreshResult === "refreshed") {
       return apiFetch(path, opts, _retryBudget - 1, _returnEnvelope);
     }
     if (refreshResult === "transient" && _retryBudget > 1) {
-      /* Transient server error during refresh — wait briefly and retry once more */
       await new Promise((r) => setTimeout(r, 800));
       return apiFetch(path, opts, _retryBudget - 1, _returnEnvelope);
     }
     if (refreshResult === "transient") {
-      /* Budget exhausted but refresh was transient (network/5xx) — keep tokens, surface recoverable error */
       throw Object.assign(new Error("Connection issue. Please check your network and try again."), { status: 0, transient: true });
     }
-    /* auth_failed — refresh token confirmed invalid — session is definitely invalid */
+    const currentToken = getToken();
+    if (currentToken && currentToken !== token) {
+      return apiFetch(path, opts, _retryBudget - 1, _returnEnvelope);
+    }
     triggerLogout("session_expired");
     const err = await res.json().catch(() => ({ error: "Session expired" }));
     throw Object.assign(new Error(err.error || "Session expired. Please log in again."), { status: 401 });

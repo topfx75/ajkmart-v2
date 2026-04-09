@@ -81,14 +81,13 @@ export default function Orders() {
   const socketRef = useRef<Socket | null>(null);
 
   const BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
-  const vendorToken = () => localStorage.getItem("ajkmart_vendor_token") ?? "";
 
   const { data: availableRidersData, isLoading: ridersLoading } = useQuery({
     queryKey: ["vendor-available-riders", vendorLat, vendorLng],
     queryFn: async () => {
       if (vendorLat === null || vendorLng === null) return { riders: [] };
       const r = await fetch(`${BASE}/api/vendor/orders/available-riders?lat=${vendorLat}&lng=${vendorLng}&maxKm=10`, {
-        headers: { Authorization: `Bearer ${vendorToken()}` },
+        headers: { Authorization: `Bearer ${api.getToken()}` },
       });
       if (!r.ok) return { riders: [] };
       return r.json() as Promise<{ riders: { id: string; name: string; phone: string; distanceKm: number; walletBalance: number }[] }>;
@@ -101,7 +100,7 @@ export default function Orders() {
     mutationFn: async ({ orderId, riderId }: { orderId: string; riderId: string }) => {
       const r = await fetch(`${BASE}/api/vendor/orders/${orderId}/assign-rider`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${vendorToken()}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${api.getToken()}` },
         body: JSON.stringify({ riderId }),
       });
       if (!r.ok) { const d = await r.json(); throw new Error(d.error || "Assignment failed"); }
@@ -120,7 +119,7 @@ export default function Orders() {
       if (vendorLat === null || vendorLng === null) throw new Error("Vendor location not available");
       const r = await fetch(`${BASE}/api/vendor/orders/${orderId}/auto-assign`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${vendorToken()}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${api.getToken()}` },
         body: JSON.stringify({ vendorLat, vendorLng }),
       });
       if (!r.ok) { const d = await r.json(); throw new Error(d.error || "Auto-assign failed"); }
@@ -146,7 +145,7 @@ export default function Orders() {
     queryKey: ["vendor-live-location", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const token = localStorage.getItem("ajkmart_vendor_token") ?? "";
+      const token = api.getToken();
       const res = await fetch(`${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/api/locations/${user.id}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -161,7 +160,7 @@ export default function Orders() {
   /* Save vendor location to backend (used for rider dispatch radius checks) */
   const saveVendorLocationToBackend = async (lat: number, lng: number) => {
     try {
-      const token = localStorage.getItem("ajkmart_vendor_token") ?? "";
+      const token = api.getToken();
       if (!token) return;
       const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
       await fetch(`${base}/api/locations/update`, {
@@ -220,10 +219,9 @@ export default function Orders() {
     };
   }, [user?.id]);
 
-  /* Socket.io: subscribe to vendor:{userId} room for rider tracking */
   useEffect(() => {
     if (!user?.id) return;
-    const token = localStorage.getItem("ajkmart_vendor_token") ?? "";
+    const token = api.getToken();
     const socket = io(window.location.origin, {
       path: "/api/socket.io",
       query: { rooms: `vendor:${user.id}` },
@@ -245,7 +243,14 @@ export default function Orders() {
     socket.on("order:update", () => {
       qc.invalidateQueries({ queryKey: ["vendor-orders"] });
     });
-    return () => { socket.disconnect(); socketRef.current = null; };
+    const tokenRefreshInterval = setInterval(() => {
+      const freshToken = api.getToken();
+      if (freshToken && freshToken !== (socket.auth as { token?: string })?.token) {
+        (socket.auth as { token?: string }).token = freshToken;
+        socket.disconnect().connect();
+      }
+    }, 10_000);
+    return () => { clearInterval(tokenRefreshInterval); socket.disconnect(); socketRef.current = null; };
   }, [user?.id]);
 
   const apiStatus = tab === "new" ? "pending" : tab;

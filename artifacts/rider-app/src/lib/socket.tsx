@@ -48,6 +48,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       const freshToken = api.getToken();
       if (freshToken && freshToken !== (s.auth as { token?: string })?.token) {
         (s.auth as { token?: string }).token = freshToken;
+        s.disconnect().connect();
       }
     }, 10_000);
 
