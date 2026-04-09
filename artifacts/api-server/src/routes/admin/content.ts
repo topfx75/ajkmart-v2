@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import path from "path";
 import fs from "fs";
 import { db } from "@workspace/db";
@@ -22,9 +23,188 @@ import {
   type AdminRequest, type TranslationKey,
 } from "../admin-shared.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
+import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+
+const productsQuerySchema = z.object({
+  search: z.string().optional(),
+  category: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const createProductSchema = z.object({
+  name: z.string().min(1, "name is required"),
+  description: z.string().optional(),
+  price: z.number({ required_error: "price is required" }).positive(),
+  originalPrice: z.number().positive().optional(),
+  category: z.string().min(1, "category is required"),
+  type: z.string().optional(),
+  unit: z.string().optional(),
+  vendorName: z.string().optional(),
+  inStock: z.boolean().optional(),
+  deliveryTime: z.string().optional(),
+  image: z.string().optional(),
+}).strip();
+
+const patchProductSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  price: z.number().positive().optional(),
+  originalPrice: z.number().positive().nullable().optional(),
+  category: z.string().optional(),
+  unit: z.string().nullable().optional(),
+  inStock: z.boolean().optional(),
+  vendorName: z.string().optional(),
+  deliveryTime: z.string().optional(),
+  image: z.string().nullable().optional(),
+}).strip();
+
+const approveProductSchema = z.object({
+  note: z.string().optional(),
+}).strip();
+
+const rejectProductSchema = z.object({
+  reason: z.string().min(1, "reason is required"),
+}).strip();
+
+const broadcastSchema = z.object({
+  title: z.string().optional(),
+  body: z.string().optional(),
+  titleKey: z.string().optional(),
+  bodyKey: z.string().optional(),
+  type: z.string().optional(),
+  icon: z.string().optional(),
+}).strip().refine(d => d.title || d.titleKey, { message: "title or titleKey required" })
+  .refine(d => d.body || d.bodyKey, { message: "body or bodyKey required" });
+
+const categoriesQuerySchema = z.object({
+  type: z.string().optional(),
+}).strip();
+
+const createCategorySchema = z.object({
+  name: z.string().min(1, "name is required"),
+  type: z.string().min(1, "type is required"),
+  icon: z.string().optional(),
+  parentId: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+}).strip();
+
+const patchCategorySchema = z.object({
+  name: z.string().optional(),
+  icon: z.string().optional(),
+  type: z.string().optional(),
+  parentId: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+}).strip();
+
+const reorderItemsSchema = z.object({
+  items: z.array(z.object({ id: z.string(), sortOrder: z.number().int() }).strip()),
+}).strip();
+
+const bannersQuerySchema = z.object({
+  placement: z.string().optional(),
+  status: z.string().optional(),
+}).strip();
+
+const createBannerSchema = z.object({
+  title: z.string().min(1, "title is required"),
+  subtitle: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+  linkType: z.string().optional(),
+  linkValue: z.string().nullable().optional(),
+  targetService: z.string().nullable().optional(),
+  placement: z.string().optional(),
+  colorFrom: z.string().optional(),
+  colorTo: z.string().optional(),
+  icon: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+}).strip();
+
+const patchBannerSchema = z.object({
+  title: z.string().optional(),
+  subtitle: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+  linkType: z.string().optional(),
+  linkValue: z.string().nullable().optional(),
+  targetService: z.string().nullable().optional(),
+  placement: z.string().optional(),
+  colorFrom: z.string().optional(),
+  colorTo: z.string().optional(),
+  icon: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+}).strip();
+
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const createFlashDealSchema = z.object({
+  productId: z.string().min(1, "productId is required"),
+  startTime: z.string().min(1, "startTime is required"),
+  endTime: z.string().min(1, "endTime is required"),
+  title: z.string().nullable().optional(),
+  badge: z.string().optional(),
+  discountPct: z.number().optional(),
+  discountFlat: z.number().optional(),
+  dealStock: z.number().int().nullable().optional(),
+  isActive: z.boolean().optional(),
+}).strip();
+
+const patchFlashDealSchema = z.object({
+  title: z.string().nullable().optional(),
+  badge: z.string().optional(),
+  discountPct: z.number().nullable().optional(),
+  discountFlat: z.number().nullable().optional(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  dealStock: z.number().int().nullable().optional(),
+  isActive: z.boolean().optional(),
+}).strip();
+
+const createPromoCodeSchema = z.object({
+  code: z.string().min(1, "code is required"),
+  description: z.string().nullable().optional(),
+  discountPct: z.number().optional(),
+  discountFlat: z.number().optional(),
+  minOrderAmount: z.number().optional(),
+  maxDiscount: z.number().nullable().optional(),
+  usageLimit: z.number().int().nullable().optional(),
+  appliesTo: z.string().optional(),
+  expiresAt: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+}).strip();
+
+const patchPromoCodeSchema = z.object({
+  code: z.string().optional(),
+  description: z.string().nullable().optional(),
+  discountPct: z.number().nullable().optional(),
+  discountFlat: z.number().nullable().optional(),
+  minOrderAmount: z.number().optional(),
+  maxDiscount: z.number().nullable().optional(),
+  usageLimit: z.number().int().nullable().optional(),
+  appliesTo: z.string().optional(),
+  expiresAt: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+}).strip();
+
+const uploadSchema = z.object({
+  base64: z.string().min(1, "base64 is required"),
+  mimeType: z.string().min(1, "mimeType is required"),
+}).strip();
 
 const router = Router();
-router.get("/products", async (req, res) => {
+router.get("/products", validateQuery(productsQuerySchema), async (req, res) => {
   const search = (req.query?.search as string) ?? "";
   const category = (req.query?.category as string) ?? "";
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
@@ -57,7 +237,7 @@ router.get("/products", async (req, res) => {
   });
 });
 
-router.get("/products/pending", async (req, res) => {
+router.get("/products/pending", validateQuery(productsQuerySchema), async (req, res) => {
   const search = (req.query?.search as string) ?? "";
   const category = (req.query?.category as string) ?? "";
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
@@ -90,7 +270,7 @@ router.get("/products/pending", async (req, res) => {
   });
 });
 
-router.patch("/products/:id/approve", async (req, res) => {
+router.patch("/products/:id/approve", validateParams(idParamSchema), validateBody(approveProductSchema), async (req, res) => {
   const { note } = req.body;
   const [product] = await db
     .update(productsTable)
@@ -118,7 +298,7 @@ router.patch("/products/:id/approve", async (req, res) => {
   sendSuccess(res, { ...product, price: parseFloat(product.price) });
 });
 
-router.patch("/products/:id/reject", async (req, res) => {
+router.patch("/products/:id/reject", validateParams(idParamSchema), validateBody(rejectProductSchema), async (req, res) => {
   const { reason } = req.body;
   if (!reason) { sendValidationError(res, "reason is required"); return; }
   const [product] = await db
@@ -165,7 +345,7 @@ async function ensureSystemVendor(): Promise<void> {
   }
 }
 
-router.post("/products", async (req, res) => {
+router.post("/products", validateBody(createProductSchema), async (req, res) => {
   const { name, description, price, originalPrice, category, type, unit, vendorName, inStock, deliveryTime, image } = req.body;
   if (!name || !price || !category) {
     sendValidationError(res, "name, price, and category are required");
@@ -192,7 +372,7 @@ router.post("/products", async (req, res) => {
   sendCreated(res, { ...product!, price: parseFloat(product!.price) });
 });
 
-router.patch("/products/:id", async (req, res) => {
+router.patch("/products/:id", validateParams(idParamSchema), validateBody(patchProductSchema), async (req, res) => {
   const { name, description, price, originalPrice, category, unit, inStock, vendorName, deliveryTime, image } = req.body;
   const updates: Partial<typeof productsTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
@@ -215,13 +395,13 @@ router.patch("/products/:id", async (req, res) => {
   sendSuccess(res, { ...product, price: parseFloat(product.price) });
 });
 
-router.delete("/products/:id", async (req, res) => {
+router.delete("/products/:id", validateParams(idParamSchema), async (req, res) => {
   await db.delete(productsTable).where(eq(productsTable.id, req.params["id"]!));
   sendSuccess(res, { success: true });
 });
 
 /* ── Broadcast Notification ── */
-router.post("/broadcast", async (req, res) => {
+router.post("/broadcast", validateBody(broadcastSchema), async (req, res) => {
   const { title, body, titleKey, bodyKey, type = "system", icon = "notifications-outline" } = req.body;
   if (!title && !titleKey) { sendValidationError(res, "title or titleKey required"); return; }
   if (!body && !bodyKey) { sendValidationError(res, "body or bodyKey required"); return; }
@@ -250,7 +430,7 @@ router.post("/broadcast", async (req, res) => {
 });
 
 /* ── Wallet Transactions ── */
-router.get("/categories/tree", async (req, res) => {
+router.get("/categories/tree", validateQuery(categoriesQuerySchema), async (req, res) => {
   const type = req.query["type"] as string;
   const conditions = [];
   if (type) conditions.push(eq(categoriesTable.type, type));
@@ -279,7 +459,7 @@ router.get("/categories/tree", async (req, res) => {
   sendSuccess(res, { categories: tree });
 });
 
-router.post("/categories", async (req, res) => {
+router.post("/categories", validateBody(createCategorySchema), async (req, res) => {
   const { name, icon, type, parentId, sortOrder, isActive } = req.body;
   if (!name || !type) {
     sendValidationError(res, "name and type are required");
@@ -300,7 +480,7 @@ router.post("/categories", async (req, res) => {
   sendCreated(res, category);
 });
 
-router.patch("/categories/:id", async (req, res) => {
+router.patch("/categories/:id", validateParams(idParamSchema), validateBody(patchCategorySchema), async (req, res) => {
   const { name, icon, type, parentId, sortOrder, isActive } = req.body;
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -325,7 +505,7 @@ router.patch("/categories/:id", async (req, res) => {
   sendSuccess(res, updated);
 });
 
-router.delete("/categories/:id", async (req, res) => {
+router.delete("/categories/:id", validateParams(idParamSchema), async (req, res) => {
   const id = req.params["id"]!;
 
   await db
@@ -346,7 +526,7 @@ router.delete("/categories/:id", async (req, res) => {
   sendSuccess(res, { success: true });
 });
 
-router.post("/categories/reorder", async (req, res) => {
+router.post("/categories/reorder", validateBody(reorderItemsSchema), async (req, res) => {
   const { items } = req.body;
   if (!Array.isArray(items)) {
     sendValidationError(res, "items array required");
@@ -366,7 +546,7 @@ router.post("/categories/reorder", async (req, res) => {
 });
 
 /* ── Banners ── */
-router.get("/banners", async (req, res) => {
+router.get("/banners", validateQuery(bannersQuerySchema), async (req, res) => {
   const placement = req.query["placement"] as string | undefined;
   const status = req.query["status"] as string | undefined;
 
@@ -391,7 +571,7 @@ router.get("/banners", async (req, res) => {
   sendSuccess(res, { banners: mapped, total: mapped.length });
 });
 
-router.post("/banners", async (req, res) => {
+router.post("/banners", validateBody(createBannerSchema), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.title) {
     sendValidationError(res, "title is required"); return;
@@ -416,7 +596,7 @@ router.post("/banners", async (req, res) => {
   sendCreated(res, banner);
 });
 
-router.patch("/banners/reorder", async (req, res) => {
+router.patch("/banners/reorder", validateBody(reorderItemsSchema), async (req, res) => {
   const { items } = req.body as { items: { id: string; sortOrder: number }[] };
   if (!Array.isArray(items)) {
     sendValidationError(res, "items array required"); return;
@@ -427,6 +607,7 @@ router.patch("/banners/reorder", async (req, res) => {
   sendSuccess(res, { success: true });
 });
 
+const bannerUpdateMiddleware = [validateParams(idParamSchema), validateBody(patchBannerSchema)];
 const bannerUpdateHandler = async (req: import("express").Request, res: import("express").Response) => {
   const bannerId = req.params["id"]!;
   const body = req.body as Record<string, unknown>;
@@ -444,10 +625,10 @@ const bannerUpdateHandler = async (req: import("express").Request, res: import("
   }
   sendSuccess(res, updated);
 };
-router.patch("/banners/:id", bannerUpdateHandler);
-router.put("/banners/:id", bannerUpdateHandler);
+router.patch("/banners/:id", ...bannerUpdateMiddleware, bannerUpdateHandler);
+router.put("/banners/:id", ...bannerUpdateMiddleware, bannerUpdateHandler);
 
-router.delete("/banners/:id", async (req, res) => {
+router.delete("/banners/:id", validateParams(idParamSchema), async (req, res) => {
   const bannerId = req.params["id"]!;
   const [deleted] = await db.delete(bannersTable).where(eq(bannersTable.id, bannerId)).returning();
   if (!deleted) {
@@ -457,7 +638,7 @@ router.delete("/banners/:id", async (req, res) => {
 });
 
 /* ── Flash Deals ── */
-router.get("/flash-deals", async (req, res) => {
+router.get("/flash-deals", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -497,7 +678,7 @@ router.get("/flash-deals", async (req, res) => {
   });
 });
 
-router.post("/flash-deals", async (req, res) => {
+router.post("/flash-deals", validateBody(createFlashDealSchema), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.productId || !body.startTime || !body.endTime) {
     sendValidationError(res, "productId, startTime, endTime required"); return;
@@ -517,7 +698,7 @@ router.post("/flash-deals", async (req, res) => {
   sendCreated(res, deal);
 });
 
-router.patch("/flash-deals/:id", async (req, res) => {
+router.patch("/flash-deals/:id", validateParams(idParamSchema), validateBody(patchFlashDealSchema), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = {};
   if (body.title        !== undefined) updates.title        = body.title;
@@ -533,13 +714,13 @@ router.patch("/flash-deals/:id", async (req, res) => {
   sendSuccess(res, deal);
 });
 
-router.delete("/flash-deals/:id", async (req, res) => {
+router.delete("/flash-deals/:id", validateParams(idParamSchema), async (req, res) => {
   await db.delete(flashDealsTable).where(eq(flashDealsTable.id, req.params["id"]!));
   sendSuccess(res, { success: true });
 });
 
 /* ── Promo Codes ── */
-router.get("/promo-codes", async (req, res) => {
+router.get("/promo-codes", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -572,7 +753,7 @@ router.get("/promo-codes", async (req, res) => {
   });
 });
 
-router.post("/promo-codes", async (req, res) => {
+router.post("/promo-codes", validateBody(createPromoCodeSchema), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.code) { sendValidationError(res, "code required"); return; }
   try {
@@ -596,7 +777,7 @@ router.post("/promo-codes", async (req, res) => {
   }
 });
 
-router.patch("/promo-codes/:id", async (req, res) => {
+router.patch("/promo-codes/:id", validateParams(idParamSchema), validateBody(patchPromoCodeSchema), async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = {};
   if (body.code           !== undefined) updates.code           = String(body.code).toUpperCase().trim();
@@ -614,7 +795,7 @@ router.patch("/promo-codes/:id", async (req, res) => {
   sendSuccess(res, code);
 });
 
-router.delete("/promo-codes/:id", async (req, res) => {
+router.delete("/promo-codes/:id", validateParams(idParamSchema), async (req, res) => {
   await db.delete(promoCodesTable).where(eq(promoCodesTable.id, req.params["id"]!));
   sendSuccess(res, { success: true });
 });
@@ -624,7 +805,7 @@ router.delete("/promo-codes/:id", async (req, res) => {
 ══════════════════════════════════════ */
 
 /* ── POST /uploads/admin — base64 image upload for admin panel ── */
-router.post("/uploads/admin", async (req, res) => {
+router.post("/uploads/admin", validateBody(uploadSchema), async (req, res) => {
   try {
     const { base64, mimeType } = req.body as { base64?: string; mimeType?: string };
     if (!base64 || !mimeType) { sendError(res, "base64 and mimeType are required", 400); return; }

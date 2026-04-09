@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import {
   usersTable, vendorProfilesTable, riderProfilesTable,
@@ -23,9 +24,170 @@ import { emitRideDispatchUpdate, getIO } from "../../lib/socketio.js";
 import { emitRideUpdate } from "../../lib/rideEvents.js";
 import { RIDE_VALID_STATUSES, getSocketRoom } from "@workspace/service-constants";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
+import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+
+const rideStatusSchema = z.object({
+  status: z.enum(RIDE_VALID_STATUSES as unknown as [string, ...string[]], {
+    errorMap: () => ({ message: `status must be one of: ${RIDE_VALID_STATUSES.join(", ")}` }),
+  }),
+  riderName: z.string().optional(),
+  riderPhone: z.string().optional(),
+}).strip();
+
+const createRideServiceSchema = z.object({
+  key: z.string().min(1, "key is required"),
+  name: z.string().min(1, "name is required"),
+  nameUrdu: z.string().optional(),
+  icon: z.string().min(1, "icon is required"),
+  description: z.string().optional(),
+  color: z.string().optional(),
+  baseFare: z.number().optional(),
+  perKm: z.number().optional(),
+  minFare: z.number().optional(),
+  maxPassengers: z.number().int().optional(),
+  allowBargaining: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+}).strip();
+
+const patchRideServiceSchema = z.object({
+  name: z.string().optional(),
+  nameUrdu: z.string().optional(),
+  icon: z.string().optional(),
+  description: z.string().optional(),
+  color: z.string().optional(),
+  isEnabled: z.boolean().optional(),
+  baseFare: z.number().optional(),
+  perKm: z.number().optional(),
+  minFare: z.number().optional(),
+  maxPassengers: z.number().int().optional(),
+  allowBargaining: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+}).strip();
+
+const createLocationSchema = z.object({
+  name: z.string().min(1, "name is required"),
+  nameUrdu: z.string().optional(),
+  lat: z.number({ required_error: "lat is required" }),
+  lng: z.number({ required_error: "lng is required" }),
+  category: z.string().optional(),
+  icon: z.string().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+}).strip();
+
+const patchLocationSchema = z.object({
+  name: z.string().optional(),
+  nameUrdu: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  category: z.string().optional(),
+  icon: z.string().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+}).strip();
+
+const ridesQuerySchema = z.object({
+  status: z.string().optional(),
+  type: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const ridesEnrichedQuerySchema = z.object({
+  status: z.string().optional(),
+  type: z.string().optional(),
+  search: z.string().optional(),
+  customer: z.string().optional(),
+  rider: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  sortBy: z.string().optional(),
+  sortDir: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const cancelRideSchema = z.object({
+  reason: z.string().optional(),
+}).strip();
+
+const refundRideSchema = z.object({
+  amount: z.number().positive("amount must be positive").optional(),
+  reason: z.string().optional(),
+}).strip();
+
+const reassignRideSchema = z.object({
+  riderId: z.string().min(1, "riderId is required"),
+  riderName: z.string().optional(),
+  riderPhone: z.string().optional(),
+}).strip();
+
+const createSchoolRouteSchema = z.object({
+  routeName: z.string().min(1, "routeName is required"),
+  schoolName: z.string().min(1, "schoolName is required"),
+  schoolNameUrdu: z.string().optional(),
+  fromArea: z.string().min(1, "fromArea is required"),
+  fromAreaUrdu: z.string().optional(),
+  toAddress: z.string().min(1, "toAddress is required"),
+  fromLat: z.number().optional(),
+  fromLng: z.number().optional(),
+  toLat: z.number().optional(),
+  toLng: z.number().optional(),
+  monthlyPrice: z.number().positive("monthlyPrice must be positive"),
+  morningTime: z.string().optional(),
+  afternoonTime: z.string().nullable().optional(),
+  capacity: z.number().int().positive().optional(),
+  vehicleType: z.string().optional(),
+  notes: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+}).strip();
+
+const patchSchoolRouteSchema = z.object({
+  routeName: z.string().optional(),
+  schoolName: z.string().optional(),
+  schoolNameUrdu: z.string().nullable().optional(),
+  fromArea: z.string().optional(),
+  fromAreaUrdu: z.string().nullable().optional(),
+  toAddress: z.string().optional(),
+  fromLat: z.number().nullable().optional(),
+  fromLng: z.number().nullable().optional(),
+  toLat: z.number().nullable().optional(),
+  toLng: z.number().nullable().optional(),
+  monthlyPrice: z.number().positive().optional(),
+  morningTime: z.string().optional(),
+  afternoonTime: z.string().nullable().optional(),
+  capacity: z.number().int().positive().optional(),
+  vehicleType: z.string().optional(),
+  notes: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+}).strip();
+
+const schoolSubscriptionsQuerySchema = z.object({
+  routeId: z.string().optional(),
+}).strip();
+
+const riderIdParamSchema = z.object({ userId: z.string().min(1) }).strip();
+
+const fleetAnalyticsQuerySchema = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+}).strip();
+
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const riderOnlineSchema = z.object({
+  isOnline: z.boolean().optional(),
+}).strip();
 
 const router = Router();
-router.get("/rides", async (req, res) => {
+router.get("/rides", validateQuery(ridesQuerySchema), async (req, res) => {
   const status = req.query?.status as string | undefined;
   const type = req.query?.type as string | undefined;
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
@@ -69,7 +231,7 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   cancelled:   [],
 };
 
-router.get("/rides-enriched", async (req, res) => {
+router.get("/rides-enriched", validateQuery(ridesEnrichedQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query["page"] as string || "1", 10));
   const limit = Math.min(500, Math.max(1, parseInt(req.query["limit"] as string || "50", 10)));
   const offset = (page - 1) * limit;
@@ -157,7 +319,7 @@ router.get("/rides-enriched", async (req, res) => {
   });
 });
 
-router.patch("/rides/:id/status", async (req, res) => {
+router.patch("/rides/:id/status", validateParams(idParamSchema), validateBody(rideStatusSchema), async (req, res) => {
   const { status, riderName, riderPhone } = req.body;
 
   if (!status || !(RIDE_VALID_STATUSES as readonly string[]).includes(status)) {
@@ -347,7 +509,7 @@ router.get("/ride-services", async (_req, res) => {
 });
 
 /* POST /admin/ride-services — create custom service */
-router.post("/ride-services", async (req, res) => {
+router.post("/ride-services", validateBody(createRideServiceSchema), async (req, res) => {
   const { key, name, nameUrdu, icon, description, color, baseFare, perKm, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
   if (!key || !name || !icon) { sendValidationError(res, "key, name, icon are required"); return; }
   const existing = await db.select({ id: rideServiceTypesTable.id }).from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, String(key))).limit(1);
@@ -373,7 +535,7 @@ router.post("/ride-services", async (req, res) => {
 });
 
 /* PATCH /admin/ride-services/:id — update any field */
-router.patch("/ride-services/:id", async (req, res) => {
+router.patch("/ride-services/:id", validateParams(idParamSchema), validateBody(patchRideServiceSchema), async (req, res) => {
   const svcId = req.params["id"]!;
   const [existing] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId)).limit(1);
   if (!existing) { sendNotFound(res, "Service not found"); return; }
@@ -396,7 +558,7 @@ router.patch("/ride-services/:id", async (req, res) => {
 });
 
 /* DELETE /admin/ride-services/:id — only custom services */
-router.delete("/ride-services/:id", async (req, res) => {
+router.delete("/ride-services/:id", validateParams(idParamSchema), async (req, res) => {
   const svcId = req.params["id"]!;
   const [existing] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId)).limit(1);
   if (!existing) { sendNotFound(res, "Service not found"); return; }
@@ -460,7 +622,7 @@ router.get("/locations", async (_req, res) => {
   });
 });
 
-router.post("/locations", async (req, res) => {
+router.post("/locations", validateBody(createLocationSchema), async (req, res) => {
   const { name, nameUrdu, lat, lng, category = "general", icon = "📍", isActive = true, sortOrder = 0 } = req.body;
   if (!name || !lat || !lng) { sendValidationError(res, "name, lat, lng required"); return; }
   const [loc] = await db.insert(popularLocationsTable).values({
@@ -471,7 +633,7 @@ router.post("/locations", async (req, res) => {
   sendCreated(res, { ...loc, lat: parseFloat(String(loc!.lat)), lng: parseFloat(String(loc!.lng)) });
 });
 
-router.patch("/locations/:id", async (req, res) => {
+router.patch("/locations/:id", validateParams(idParamSchema), validateBody(patchLocationSchema), async (req, res) => {
   const { name, nameUrdu, lat, lng, category, icon, isActive, sortOrder } = req.body;
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (name      !== undefined) patch.name      = name;
@@ -487,7 +649,7 @@ router.patch("/locations/:id", async (req, res) => {
   sendSuccess(res, { ...updated, lat: parseFloat(String(updated.lat)), lng: parseFloat(String(updated.lng)) });
 });
 
-router.delete("/locations/:id", async (req, res) => {
+router.delete("/locations/:id", validateParams(idParamSchema), async (req, res) => {
   const [existing] = await db.select({ id: popularLocationsTable.id })
     .from(popularLocationsTable).where(eq(popularLocationsTable.id, req.params["id"]!)).limit(1);
   if (!existing) { sendNotFound(res, "Location not found"); return; }
@@ -523,7 +685,7 @@ router.get("/school-routes", async (_req, res) => {
   sendSuccess(res, { routes: routes.map(fmtRoute) });
 });
 
-router.post("/school-routes", async (req, res) => {
+router.post("/school-routes", validateBody(createSchoolRouteSchema), async (req, res) => {
   const {
     routeName, schoolName, schoolNameUrdu, fromArea, fromAreaUrdu, toAddress,
     fromLat, fromLng, toLat, toLng, monthlyPrice, morningTime, afternoonTime,
@@ -547,7 +709,7 @@ router.post("/school-routes", async (req, res) => {
   sendCreated(res, fmtRoute(route!));
 });
 
-router.patch("/school-routes/:id", async (req, res) => {
+router.patch("/school-routes/:id", validateParams(idParamSchema), validateBody(patchSchoolRouteSchema), async (req, res) => {
   const routeId = req.params["id"]!;
   const {
     routeName, schoolName, schoolNameUrdu, fromArea, fromAreaUrdu, toAddress,
@@ -578,7 +740,7 @@ router.patch("/school-routes/:id", async (req, res) => {
   sendSuccess(res, fmtRoute(updated));
 });
 
-router.delete("/school-routes/:id", async (req, res) => {
+router.delete("/school-routes/:id", validateParams(idParamSchema), async (req, res) => {
   const routeId = req.params["id"]!;
   /* Only delete if no active subscriptions */
   const [activeSub] = await db.select({ id: schoolSubscriptionsTable.id })
@@ -595,7 +757,7 @@ router.delete("/school-routes/:id", async (req, res) => {
   sendSuccess(res);
 });
 
-router.get("/school-subscriptions", async (req, res) => {
+router.get("/school-subscriptions", validateQuery(schoolSubscriptionsQuerySchema), async (req, res) => {
   const routeIdFilter = req.query["routeId"] as string | undefined;
   const query = routeIdFilter
     ? db.select().from(schoolSubscriptionsTable).where(eq(schoolSubscriptionsTable.routeId, routeIdFilter))
@@ -750,7 +912,7 @@ router.get("/customer-locations", async (_req, res) => {
    Global search across users, rides, orders, pharmacy, parcels
    Returns max 5 results per category, sorted by relevance (recency)
 ══════════════════════════════════════════════════════════════════════════════ */
-router.patch("/riders/:id/online", async (req, res) => {
+router.patch("/riders/:id/online", validateParams(idParamSchema), validateBody(riderOnlineSchema), async (req, res) => {
   const { isOnline } = req.body as { isOnline: boolean };
   const [rider] = await db.update(usersTable)
     .set({ isOnline, updatedAt: new Date() })
@@ -894,7 +1056,7 @@ router.get("/dashboard-export", async (_req, res) => {
    RIDE MANAGEMENT MODULE — Admin ride actions with full audit logging
 ══════════════════════════════════════════════════════════════════════════════ */
 
-router.post("/rides/:id/cancel", async (req, res) => {
+router.post("/rides/:id/cancel", validateParams(idParamSchema), validateBody(cancelRideSchema), async (req, res) => {
   const rideId = req.params["id"]!;
   const { reason } = req.body as { reason?: string };
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -982,7 +1144,7 @@ router.post("/rides/:id/cancel", async (req, res) => {
   sendSuccess(res, { rideId, refunded });
 });
 
-router.post("/rides/:id/refund", async (req, res) => {
+router.post("/rides/:id/refund", validateParams(idParamSchema), validateBody(refundRideSchema), async (req, res) => {
   const rideId = req.params["id"]!;
   const { amount, reason } = req.body as { amount?: number; reason?: string };
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -1050,7 +1212,7 @@ router.post("/rides/:id/refund", async (req, res) => {
   sendSuccess(res, { rideId, refundedAmount: refundAmt });
 });
 
-router.post("/rides/:id/reassign", async (req, res) => {
+router.post("/rides/:id/reassign", validateParams(idParamSchema), validateBody(reassignRideSchema), async (req, res) => {
   const rideId = req.params["id"]!;
   const { riderId, riderName, riderPhone } = req.body as { riderId?: string; riderName?: string; riderPhone?: string };
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -1122,7 +1284,7 @@ router.post("/rides/:id/reassign", async (req, res) => {
   sendSuccess(res, { ride: { ...updated, fare: parseFloat(updated!.fare), distance: parseFloat(updated!.distance) } });
 });
 
-router.get("/rides/:id/audit-trail", async (req, res) => {
+router.get("/rides/:id/audit-trail", validateParams(idParamSchema), async (req, res) => {
   const rideId = req.params["id"]!;
   const shortId = rideId.slice(-6).toUpperCase();
   const trail = auditLog.filter(e => e.details?.includes(rideId) || e.details?.includes(shortId)).map(e => ({
@@ -1137,7 +1299,7 @@ router.get("/rides/:id/audit-trail", async (req, res) => {
   sendSuccess(res, { trail, rideId });
 });
 
-router.get("/rides/:id/detail", async (req, res) => {
+router.get("/rides/:id/detail", validateParams(idParamSchema), async (req, res) => {
   const rideId = req.params["id"]!;
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
   if (!ride) { sendNotFound(res, "Ride not found"); return; }
@@ -1268,7 +1430,7 @@ router.get("/dispatch-monitor", async (_req, res) => {
    - peakZones: top location clusters by ping density
    - riderDistances: total estimated distance per rider (haversine over log trail)
 ══════════════════════════════════════════════════════════════════════════════ */
-router.get("/fleet-analytics", async (req, res) => {
+router.get("/fleet-analytics", validateQuery(fleetAnalyticsQuerySchema), async (req, res) => {
   const fromParam = req.query["from"] as string | undefined;
   const toParam   = req.query["to"]   as string | undefined;
 
@@ -1420,7 +1582,7 @@ router.get("/fleet-analytics", async (req, res) => {
    When sinceOnline=true (or no date), the trail is scoped to the rider's current login session:
    it uses the rider's live_locations.lastSeen timestamp as the session start boundary,
    giving "current shift to now" semantics rather than calendar midnight. */
-router.get("/riders/:userId/route", async (req, res) => {
+router.get("/riders/:userId/route", validateParams(riderIdParamSchema), async (req, res) => {
   const { userId } = req.params;
   const dateParam   = req.query["date"]        as string | undefined;
   const sinceOnline = req.query["sinceOnline"]  === "true";

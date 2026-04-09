@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -21,9 +22,84 @@ import {
   type AdminRequest, type TranslationKey, revokeAllUserSessions, serializeSosAlert,
 } from "../admin-shared.js";
 import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
+import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+
+const vendorStatusSchema = z.object({
+  isActive: z.boolean().optional(),
+  isBanned: z.boolean().optional(),
+  banReason: z.string().optional(),
+  securityNote: z.string().optional(),
+}).strip();
+
+const positiveAmountSchema = z.object({
+  amount: z.number().positive("amount must be positive"),
+  description: z.string().optional(),
+}).strip();
+
+const riderStatusSchema = z.object({
+  isActive: z.boolean().optional(),
+  isBanned: z.boolean().optional(),
+  banReason: z.string().optional(),
+}).strip();
+
+const approveWithdrawalSchema = z.object({
+  refNo: z.string().optional(),
+  note: z.string().optional(),
+}).strip();
+
+const rejectWithdrawalSchema = z.object({
+  reason: z.string().min(1, "reason is required when rejecting a withdrawal"),
+}).strip();
+
+const transactionsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const depositRequestsQuerySchema = z.object({
+  status: z.string().optional(),
+}).strip();
+
+const approveDepositSchema = z.object({
+  refNo: z.string().optional(),
+  note: z.string().optional(),
+}).strip();
+
+const rejectDepositSchema = z.object({
+  reason: z.string().optional(),
+}).strip();
+
+const batchWithdrawalSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1, "at least one id is required"),
+  refNo: z.string().optional(),
+  note: z.string().optional(),
+  reason: z.string().optional(),
+}).strip();
+
+const vendorCommissionSchema = z.object({
+  commissionPct: z.number().min(0).max(100, "commissionPct must be between 0 and 100"),
+}).strip();
+
+const riderCreditSchema = z.object({
+  amount: z.number().positive("amount must be positive"),
+  description: z.string().optional(),
+  type: z.enum(["bonus", "credit"]).optional(),
+}).strip();
+
+const overrideSuspensionSchema = z.object({
+  reason: z.string().optional(),
+}).strip();
+
+const withdrawalRequestsQuerySchema = z.object({
+  status: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
 
 const router = Router();
-router.get("/transactions", async (req, res) => {
+router.get("/transactions", validateQuery(transactionsQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -53,7 +129,7 @@ router.get("/transactions", async (req, res) => {
 });
 
 /* ── Platform Settings ── */
-router.get("/transactions-enriched", async (req, res) => {
+router.get("/transactions-enriched", validateQuery(transactionsQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -144,7 +220,7 @@ router.get("/vendors", async (_req, res) => {
   });
 });
 
-router.patch("/vendors/:id/status", async (req, res) => {
+router.patch("/vendors/:id/status", validateParams(idParamSchema), validateBody(vendorStatusSchema), async (req, res) => {
   const { isActive, isBanned, banReason, securityNote } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
   if (isActive    !== undefined) updates.isActive    = isActive;
@@ -162,7 +238,7 @@ router.patch("/vendors/:id/status", async (req, res) => {
   sendSuccess(res, { ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
 });
 
-router.post("/vendors/:id/payout", async (req, res) => {
+router.post("/vendors/:id/payout", validateParams(idParamSchema), validateBody(positiveAmountSchema), async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
@@ -202,7 +278,7 @@ router.post("/vendors/:id/payout", async (req, res) => {
   sendSuccess(res, { amount: amt, newBalance: txResult.newBal, vendor: { ...stripUser(txResult.updated), walletBalance: txResult.newBal } });
 });
 
-router.post("/vendors/:id/credit", async (req, res) => {
+router.post("/vendors/:id/credit", validateParams(idParamSchema), validateBody(positiveAmountSchema), async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
@@ -270,7 +346,7 @@ router.get("/riders", async (_req, res) => {
   });
 });
 
-router.patch("/riders/:id/status", async (req, res) => {
+router.patch("/riders/:id/status", validateParams(idParamSchema), validateBody(riderStatusSchema), async (req, res) => {
   const { isActive, isBanned, banReason } = req.body;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (isActive  !== undefined) updates.isActive  = isActive;
@@ -291,7 +367,7 @@ router.patch("/riders/:id/status", async (req, res) => {
   sendSuccess(res, { ...user, walletBalance: parseFloat(String(user.walletBalance ?? "0")) });
 });
 
-router.post("/riders/:id/payout", async (req, res) => {
+router.post("/riders/:id/payout", validateParams(idParamSchema), validateBody(positiveAmountSchema), async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
@@ -343,7 +419,7 @@ router.post("/riders/:id/payout", async (req, res) => {
   sendSuccess(res, { amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
 });
 
-router.post("/riders/:id/bonus", async (req, res) => {
+router.post("/riders/:id/bonus", validateParams(idParamSchema), validateBody(positiveAmountSchema), async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
@@ -379,7 +455,7 @@ router.post("/riders/:id/bonus", async (req, res) => {
   sendSuccess(res, { amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
 });
 
-router.get("/riders/:id/penalties", async (req, res) => {
+router.get("/riders/:id/penalties", validateParams(idParamSchema), async (req, res) => {
   const riderId = req.params["id"]!;
   const penalties = await db.select().from(riderPenaltiesTable)
     .where(eq(riderPenaltiesTable.riderId, riderId))
@@ -388,7 +464,7 @@ router.get("/riders/:id/penalties", async (req, res) => {
   sendSuccess(res, { penalties: penalties.map(p => ({ ...p, amount: parseFloat(String(p.amount)) })) });
 });
 
-router.get("/riders/:id/ratings", async (req, res) => {
+router.get("/riders/:id/ratings", validateParams(idParamSchema), async (req, res) => {
   const riderId = req.params["id"]!;
   const ratings = await db.select().from(rideRatingsTable)
     .where(eq(rideRatingsTable.riderId, riderId))
@@ -397,7 +473,7 @@ router.get("/riders/:id/ratings", async (req, res) => {
   sendSuccess(res, { ratings });
 });
 
-router.post("/riders/:id/restrict", async (req, res) => {
+router.post("/riders/:id/restrict", validateParams(idParamSchema), async (req, res) => {
   const riderId = req.params["id"]!;
   const [user] = await db.update(usersTable)
     .set({ isRestricted: true, updatedAt: new Date() })
@@ -408,7 +484,7 @@ router.post("/riders/:id/restrict", async (req, res) => {
   sendSuccess(res, { isRestricted: true });
 });
 
-router.post("/riders/:id/unrestrict", async (req, res) => {
+router.post("/riders/:id/unrestrict", validateParams(idParamSchema), async (req, res) => {
   const riderId = req.params["id"]!;
   const [user] = await db.update(usersTable)
     .set({ isRestricted: false, updatedAt: new Date() })
@@ -420,7 +496,7 @@ router.post("/riders/:id/unrestrict", async (req, res) => {
 });
 
 /* ── GET /admin/withdrawal-requests ─────────── */
-router.get("/withdrawal-requests", async (req, res) => {
+router.get("/withdrawal-requests", validateQuery(withdrawalRequestsQuerySchema), async (req, res) => {
   const statusFilter = req.query["status"] as string | undefined;
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
@@ -463,7 +539,7 @@ router.get("/withdrawal-requests", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/:id/approve ─── */
-router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
+router.patch("/withdrawal-requests/:id/approve", validateParams(idParamSchema), validateBody(approveWithdrawalSchema), async (req, res) => {
   const { refNo, note } = req.body;
   const txId = req.params["id"]!;
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
@@ -493,7 +569,7 @@ router.patch("/withdrawal-requests/:id/approve", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/:id/reject ─── */
-router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
+router.patch("/withdrawal-requests/:id/reject", validateParams(idParamSchema), validateBody(rejectWithdrawalSchema), async (req, res) => {
   const { reason } = req.body;
   const txId = req.params["id"]!;
   const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
@@ -534,7 +610,7 @@ router.patch("/withdrawal-requests/:id/reject", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/batch-approve ─── */
-router.patch("/withdrawal-requests/batch-approve", async (req, res) => {
+router.patch("/withdrawal-requests/batch-approve", validateBody(batchWithdrawalSchema), async (req, res) => {
   const { ids } = req.body as { ids: string[] };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids required"); return; }
   const results: unknown[] = [];
@@ -556,7 +632,7 @@ router.patch("/withdrawal-requests/batch-approve", async (req, res) => {
 });
 
 /* ── PATCH /admin/withdrawal-requests/batch-reject ─── */
-router.patch("/withdrawal-requests/batch-reject", async (req, res) => {
+router.patch("/withdrawal-requests/batch-reject", validateBody(batchWithdrawalSchema), async (req, res) => {
   const { ids, reason } = req.body as { ids: string[]; reason: string };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids required"); return; }
   const rejReason = (reason || "Admin batch rejected").trim();
@@ -584,7 +660,7 @@ router.patch("/withdrawal-requests/batch-reject", async (req, res) => {
 });
 
 /* ── GET /admin/deposit-requests — List all rider deposit requests ─── */
-router.get("/deposit-requests", async (req, res) => {
+router.get("/deposit-requests", validateQuery(depositRequestsQuerySchema), async (req, res) => {
   const statusFilter = req.query["status"] as string | undefined;
   const txns = await db.select().from(walletTransactionsTable)
     .where(eq(walletTransactionsTable.type, "deposit"))
@@ -604,7 +680,7 @@ router.get("/deposit-requests", async (req, res) => {
 });
 
 /* ── PATCH /admin/deposit-requests/:id/approve — Approve a rider deposit (credits wallet, atomic) ─── */
-router.patch("/deposit-requests/:id/approve", async (req, res) => {
+router.patch("/deposit-requests/:id/approve", validateParams(idParamSchema), validateBody(approveDepositSchema), async (req, res) => {
   const { refNo, note } = req.body;
   const txId = req.params["id"]!;
 
@@ -667,7 +743,7 @@ router.patch("/deposit-requests/:id/approve", async (req, res) => {
 });
 
 /* ── PATCH /admin/deposit-requests/:id/reject — Reject a rider deposit (atomic state transition) ─── */
-router.patch("/deposit-requests/:id/reject", async (req, res) => {
+router.patch("/deposit-requests/:id/reject", validateParams(idParamSchema), validateBody(rejectDepositSchema), async (req, res) => {
   const { reason } = req.body;
   const txId = req.params["id"]!;
 
@@ -701,7 +777,7 @@ router.patch("/deposit-requests/:id/reject", async (req, res) => {
 });
 
 /* ── POST /admin/deposit-requests/bulk-approve — Bulk approve customer pending deposits (all-or-nothing atomic) ─── */
-router.post("/deposit-requests/bulk-approve", async (req, res) => {
+router.post("/deposit-requests/bulk-approve", validateBody(batchWithdrawalSchema), async (req, res) => {
   const { ids, refNo } = req.body as { ids: string[]; refNo?: string };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids array is required"); return; }
   const uniqueIds = [...new Set(ids)];
@@ -760,7 +836,7 @@ router.post("/deposit-requests/bulk-approve", async (req, res) => {
 });
 
 /* ── POST /admin/deposit-requests/bulk-reject — Bulk reject customer pending deposits (all-or-nothing atomic) ─── */
-router.post("/deposit-requests/bulk-reject", async (req, res) => {
+router.post("/deposit-requests/bulk-reject", validateBody(batchWithdrawalSchema), async (req, res) => {
   const { ids, reason } = req.body as { ids: string[]; reason: string };
   if (!Array.isArray(ids) || ids.length === 0) { sendValidationError(res, "ids array is required"); return; }
   if (!reason?.trim()) { sendValidationError(res, "reason is required"); return; }
@@ -815,7 +891,7 @@ router.post("/deposit-requests/bulk-reject", async (req, res) => {
 });
 
 /* ── GET /admin/all-notifications ─────────── */
-router.post("/riders/:id/credit", async (req, res) => {
+router.post("/riders/:id/credit", validateParams(idParamSchema), validateBody(riderCreditSchema), async (req, res) => {
   const { amount, description, type } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
@@ -842,7 +918,7 @@ router.post("/riders/:id/credit", async (req, res) => {
   );
   sendSuccess(res, { amount: amt, newBalance: parseFloat(updated?.walletBalance ?? "0") });
 });
-router.patch("/vendors/:id/commission", async (req, res) => {
+router.patch("/vendors/:id/commission", validateParams(idParamSchema), validateBody(vendorCommissionSchema), async (req, res) => {
   const { commissionPct } = req.body as { commissionPct: number };
   if (commissionPct === undefined || isNaN(Number(commissionPct))) {
     sendValidationError(res, "commissionPct required"); return;
@@ -857,7 +933,7 @@ router.patch("/vendors/:id/commission", async (req, res) => {
 });
 
 /* ── POST /admin/riders/:id/override-suspension — override auto-suspension ── */
-router.post("/riders/:id/override-suspension", async (req, res) => {
+router.post("/riders/:id/override-suspension", validateParams(idParamSchema), validateBody(overrideSuspensionSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, autoSuspendedAt: usersTable.autoSuspendedAt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -883,7 +959,7 @@ router.post("/riders/:id/override-suspension", async (req, res) => {
 });
 
 /* ── POST /admin/vendors/:id/override-suspension — override auto-suspension ─ */
-router.post("/vendors/:id/override-suspension", async (req, res) => {
+router.post("/vendors/:id/override-suspension", validateParams(idParamSchema), validateBody(overrideSuspensionSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, autoSuspendedAt: usersTable.autoSuspendedAt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);

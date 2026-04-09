@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -18,6 +19,38 @@ import { getCachedSettings } from "../../middleware/security.js";
 import { getIO } from "../../lib/socketio.js";
 import { resetGpsViolationCount } from "../locations.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
+import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+const riderIdParamSchema = z.object({ riderId: z.string().min(1) }).strip();
+
+const patchGpsAlertSchema = z.object({
+  resolved: z.boolean().optional(),
+  resetViolations: z.boolean().optional(),
+}).strip();
+
+const patchCodVerificationSchema = z.object({
+  codVerified: z.enum(["verified", "flagged", "pending"], {
+    errorMap: () => ({ message: "codVerified must be 'verified', 'flagged', or 'pending'" }),
+  }),
+}).strip();
+
+const gpsAlertsQuerySchema = z.object({
+  riderId: z.string().optional(),
+  resolved: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const codVerificationsQuerySchema = z.object({
+  status: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
 
 const router = Router();
 
@@ -26,7 +59,7 @@ const router = Router();
 ═══════════════════════════════════════════════════════════════ */
 
 /* GET /admin/gps-alerts — list GPS spoofing alerts (filterable) */
-router.get("/gps-alerts", async (req, res) => {
+router.get("/gps-alerts", validateQuery(gpsAlertsQuerySchema), async (req, res) => {
   try {
     const riderId = req.query["riderId"] as string | undefined;
     const resolved = req.query["resolved"] as string | undefined;
@@ -81,7 +114,7 @@ router.get("/gps-alerts", async (req, res) => {
 });
 
 /* GET /admin/gps-alerts/rider/:riderId — alerts for a specific rider */
-router.get("/gps-alerts/rider/:riderId", async (req, res) => {
+router.get("/gps-alerts/rider/:riderId", validateParams(riderIdParamSchema), async (req, res) => {
   try {
     const { riderId } = req.params as { riderId: string };
     const alerts = await db.select()
@@ -97,7 +130,7 @@ router.get("/gps-alerts/rider/:riderId", async (req, res) => {
 });
 
 /* PATCH /admin/gps-alerts/:id — resolve an alert or reset violation count */
-router.patch("/gps-alerts/:id", async (req, res) => {
+router.patch("/gps-alerts/:id", validateParams(idParamSchema), validateBody(patchGpsAlertSchema), async (req, res) => {
   const adminReq = req as AdminRequest;
   try {
     const { id } = req.params as { id: string };
@@ -141,7 +174,7 @@ router.patch("/gps-alerts/:id", async (req, res) => {
 });
 
 /* PATCH /admin/gps-alerts/rider/:riderId/reset-violations — reset violation count for a rider */
-router.patch("/gps-alerts/rider/:riderId/reset-violations", async (req, res) => {
+router.patch("/gps-alerts/rider/:riderId/reset-violations", validateParams(riderIdParamSchema), async (req, res) => {
   const adminReq = req as AdminRequest;
   try {
     const { riderId } = req.params as { riderId: string };
@@ -263,7 +296,7 @@ router.get("/van-boarding", async (_req, res) => {
 ═══════════════════════════════════════════════════════════════ */
 
 /* GET /admin/cod-verifications — list COD orders above platform threshold with proof photos */
-router.get("/cod-verifications", async (req, res) => {
+router.get("/cod-verifications", validateQuery(codVerificationsQuerySchema), async (req, res) => {
   try {
     const status = req.query["status"] as string | undefined;
     const dateFrom = req.query["dateFrom"] as string | undefined;
@@ -342,7 +375,7 @@ router.get("/cod-verifications", async (req, res) => {
 });
 
 /* PATCH /admin/cod-verifications/:id — set verified/flagged status */
-router.patch("/cod-verifications/:id", async (req, res) => {
+router.patch("/cod-verifications/:id", validateParams(idParamSchema), validateBody(patchCodVerificationSchema), async (req, res) => {
   const adminReq = req as AdminRequest;
   try {
     const { id } = req.params as { id: string };
@@ -407,7 +440,7 @@ router.get("/riders/silence-mode", async (_req, res) => {
 });
 
 /* PATCH /admin/riders/:id/silence-mode — force-disable silence mode for a rider */
-router.patch("/riders/:id/silence-mode", async (req, res) => {
+router.patch("/riders/:id/silence-mode", validateParams(idParamSchema), async (req, res) => {
   const adminReq = req as AdminRequest;
   try {
     const { id } = req.params as { id: string };

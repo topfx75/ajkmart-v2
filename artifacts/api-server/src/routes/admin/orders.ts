@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -26,10 +27,63 @@ import {
   getSocketRoom,
 } from "@workspace/service-constants";
 import { getIO } from "../../lib/socketio.js";
+import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+
+const createOrderSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  vendorId: z.string().optional(),
+  type: z.enum(["mart", "food"]).optional(),
+  items: z.union([z.array(z.record(z.unknown())), z.string()]).optional(),
+  total: z.number().positive("total must be a positive number"),
+  deliveryAddress: z.string().optional(),
+  paymentMethod: z.enum(["cod", "wallet", "jazzcash", "easypaisa"]).optional(),
+  status: z.enum(["pending", "confirmed", "preparing", "picked_up", "delivered", "cancelled"]).optional(),
+}).strip();
+
+const orderStatusSchema = z.object({
+  status: z.enum(ORDER_VALID_STATUSES as unknown as [string, ...string[]], {
+    errorMap: () => ({ message: `status must be one of: ${ORDER_VALID_STATUSES.join(", ")}` }),
+  }),
+}).strip();
+
+const pharmacyOrderStatusSchema = z.object({
+  status: z.enum(PHARMACY_ORDER_VALID_STATUSES as unknown as [string, ...string[]], {
+    errorMap: () => ({ message: `status must be one of: ${PHARMACY_ORDER_VALID_STATUSES.join(", ")}` }),
+  }),
+}).strip();
+
+const parcelStatusSchema = z.object({
+  status: z.enum(PARCEL_VALID_STATUSES as unknown as [string, ...string[]], {
+    errorMap: () => ({ message: `status must be one of: ${PARCEL_VALID_STATUSES.join(", ")}` }),
+  }),
+}).strip();
+
+const orderRefundSchema = z.object({
+  amount: z.number().positive("amount must be a positive number"),
+  reason: z.string().optional(),
+}).strip();
+
+const assignRiderSchema = z.object({
+  riderId: z.string().optional(),
+}).strip();
+
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const ordersQuerySchema = z.object({
+  status: z.string().optional(),
+  type: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
 
 const router = Router();
 
-router.post("/orders", async (req, res) => {
+router.post("/orders", validateBody(createOrderSchema), async (req, res) => {
   const { userId, vendorId, type, items, total, deliveryAddress, paymentMethod, status } = req.body;
   if (!userId || typeof userId !== "string" || !userId.trim()) {
     sendValidationError(res, "userId is required");
@@ -89,7 +143,7 @@ router.post("/orders", async (req, res) => {
   }
 });
 
-router.get("/orders", async (req, res) => {
+router.get("/orders", validateQuery(ordersQuerySchema), async (req, res) => {
   const { status, type } = req.query;
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
@@ -139,7 +193,7 @@ router.get("/orders", async (req, res) => {
   });
 });
 
-router.patch("/orders/:id/status", async (req, res) => {
+router.patch("/orders/:id/status", validateParams(idParamSchema), validateBody(orderStatusSchema), async (req, res) => {
   const { status } = req.body;
   const orderId = req.params["id"]!;
 
@@ -284,7 +338,7 @@ router.patch("/orders/:id/status", async (req, res) => {
   sendSuccess(res, { ...order, total: parseFloat(String(order.total)) });
 });
 
-router.post("/orders/:id/refund", async (req, res) => {
+router.post("/orders/:id/refund", validateParams(idParamSchema), validateBody(orderRefundSchema), async (req, res) => {
   const { amount, reason } = req.body;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, req.params["id"]!)).limit(1);
   if (!order) { sendNotFound(res, "Order not found"); return; }
@@ -374,7 +428,7 @@ router.post("/orders/:id/refund", async (req, res) => {
 
   sendSuccess(res, { success: true, refundedAmount: refundAmt, orderId: order.id });
 });
-router.get("/pharmacy-orders", async (req, res) => {
+router.get("/pharmacy-orders", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -410,7 +464,7 @@ router.get("/pharmacy-orders", async (req, res) => {
   });
 });
 
-router.patch("/pharmacy-orders/:id/status", async (req, res) => {
+router.patch("/pharmacy-orders/:id/status", validateParams(idParamSchema), validateBody(pharmacyOrderStatusSchema), async (req, res) => {
   const { status } = req.body;
   if (!status || !(PHARMACY_ORDER_VALID_STATUSES as readonly string[]).includes(status)) {
     sendValidationError(res, `Invalid pharmacy order status "${status}". Valid statuses: ${PHARMACY_ORDER_VALID_STATUSES.join(", ")}`);
@@ -479,7 +533,7 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
 });
 
 /* ── Parcel Bookings ── */
-router.get("/parcel-bookings", async (req, res) => {
+router.get("/parcel-bookings", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -504,7 +558,7 @@ router.get("/parcel-bookings", async (req, res) => {
   });
 });
 
-router.patch("/parcel-bookings/:id/status", async (req, res) => {
+router.patch("/parcel-bookings/:id/status", validateParams(idParamSchema), validateBody(parcelStatusSchema), async (req, res) => {
   const { status } = req.body;
   if (!status || !(PARCEL_VALID_STATUSES as readonly string[]).includes(status)) {
     sendValidationError(res, `Invalid parcel status "${status}". Valid statuses: ${PARCEL_VALID_STATUSES.join(", ")}`);
@@ -553,7 +607,7 @@ router.patch("/parcel-bookings/:id/status", async (req, res) => {
 
   sendSuccess(res, { ...booking, fare: parseFloat(booking.fare) });
 });
-router.get("/pharmacy-enriched", async (req, res) => {
+router.get("/pharmacy-enriched", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -586,7 +640,7 @@ router.get("/pharmacy-enriched", async (req, res) => {
 });
 
 /* ── Parcel Bookings Enriched ── */
-router.get("/parcel-enriched", async (req, res) => {
+router.get("/parcel-enriched", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -619,7 +673,7 @@ router.get("/parcel-enriched", async (req, res) => {
 });
 
 /* ── Transactions Enriched ── */
-router.get("/transactions-enriched", async (req, res) => {
+router.get("/transactions-enriched", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -733,7 +787,7 @@ router.get("/orders-stats", async (_req, res) => {
   });
 });
 
-router.get("/orders-enriched", async (req, res) => {
+router.get("/orders-enriched", validateQuery(ordersQuerySchema), async (req, res) => {
   const query = req.query as Record<string, string | undefined>;
   const { page: pageStr, limit: limitStr, sortBy, sortDir: sortDirStr } = query;
 
@@ -803,7 +857,7 @@ router.get("/orders-enriched", async (req, res) => {
   });
 });
 
-router.get("/orders-export", async (req, res) => {
+router.get("/orders-export", validateQuery(ordersQuerySchema), async (req, res) => {
   const query = req.query as Record<string, string | undefined>;
   const { sortBy, sortDir: sortDirStr } = query;
 
@@ -858,7 +912,7 @@ router.get("/orders-export", async (req, res) => {
 
 
 /* ── User Security Management ── */
-router.patch("/orders/:id/assign-rider", async (req, res) => {
+router.patch("/orders/:id/assign-rider", validateParams(idParamSchema), validateBody(assignRiderSchema), async (req, res) => {
   const { riderId } = req.body as { riderId?: string };
   let riderName: string | null = null;
   let riderPhone: string | null = null;

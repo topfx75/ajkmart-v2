@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import {
   accountDeletionRequestsTable, usersTable, notificationsTable,
@@ -7,10 +8,27 @@ import {
 import { eq, desc, count, sql } from "drizzle-orm";
 import { sendSuccess, sendNotFound, sendValidationError } from "../../lib/response.js";
 import { generateId, addAuditEntry, getClientIp, sendUserNotification, type AdminRequest } from "../admin-shared.js";
+import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+
+const deletionRequestsQuerySchema = z.object({
+  status: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const approveRequestSchema = z.object({
+  note: z.string().optional(),
+}).strip();
+
+const denyRequestSchema = z.object({
+  note: z.string().min(1, "A note is required when denying a deletion request"),
+}).strip();
 
 const router = Router();
 
-router.get("/deletion-requests", async (req, res) => {
+router.get("/deletion-requests", validateQuery(deletionRequestsQuerySchema), async (req, res) => {
   const statusFilter = (req.query?.status as string) ?? "";
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
@@ -56,7 +74,7 @@ router.get("/deletion-requests", async (req, res) => {
   });
 });
 
-router.post("/deletion-requests/:id/approve", async (req, res) => {
+router.post("/deletion-requests/:id/approve", validateParams(idParamSchema), validateBody(approveRequestSchema), async (req, res) => {
   const requestId = req.params["id"]!;
   const { note } = req.body as { note?: string };
 
@@ -109,7 +127,7 @@ router.post("/deletion-requests/:id/approve", async (req, res) => {
   sendSuccess(res, { success: true, message: "Account deleted successfully" });
 });
 
-router.post("/deletion-requests/:id/deny", async (req, res) => {
+router.post("/deletion-requests/:id/deny", validateParams(idParamSchema), validateBody(denyRequestSchema), async (req, res) => {
   const requestId = req.params["id"]!;
   const { note } = req.body as { note?: string };
 

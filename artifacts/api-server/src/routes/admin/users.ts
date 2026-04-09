@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { getIO } from "../../lib/socketio.js";
 import { db } from "@workspace/db";
 import {
@@ -26,10 +27,94 @@ import { writeAuthAuditLog } from "../../middleware/security.js";
 import { hashPassword } from "../../services/password.js";
 import { sendSuccess, sendError, sendNotFound, sendForbidden, sendValidationError } from "../../lib/response.js";
 import { reconcileUserFlags } from "./conditions.js";
+import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+
+const createUserSchema = z.object({
+  phone: z.string().optional(),
+  name: z.string().optional(),
+  role: z.enum(["customer", "rider", "vendor"]).optional(),
+  city: z.string().optional(),
+  area: z.string().optional(),
+  email: z.string().email().optional(),
+}).strip();
+
+const patchUserSchema = z.object({
+  role: z.enum(["customer", "rider", "vendor"]).optional(),
+  isActive: z.boolean().optional(),
+  walletBalance: z.number().optional(),
+}).strip();
+
+const approveUserSchema = z.object({
+  note: z.string().optional(),
+  skipDocCheck: z.boolean().optional(),
+}).strip();
+
+const rejectUserSchema = z.object({
+  note: z.string().optional(),
+}).strip();
+
+const walletTopupSchema = z.object({
+  amount: z.number().positive("amount must be a positive number"),
+  description: z.string().optional(),
+}).strip();
+
+const userSecuritySchema = z.object({
+  isActive: z.boolean().optional(),
+  isBanned: z.boolean().optional(),
+  banReason: z.string().optional(),
+  roles: z.string().refine(
+    v => v === undefined || v.split(",").map(r => r.trim()).filter(Boolean).every(r => ["customer", "rider", "vendor"].includes(r)),
+    { message: "roles must be a comma-separated list of: customer, rider, vendor" }
+  ).optional(),
+  role: z.enum(["customer", "rider", "vendor"]).optional(),
+  blockedServices: z.string().optional(),
+  securityNote: z.string().optional(),
+  devOtpEnabled: z.boolean().optional(),
+  notify: z.boolean().optional(),
+}).strip();
+
+const userIdentitySchema = z.object({
+  username: z.string().optional(),
+  email: z.string().optional(),
+  name: z.string().optional(),
+  phone: z.string().optional(),
+}).strip();
+
+const usersQuerySchema = z.object({
+  filter: z.enum(["2fa_enabled", ""]).optional(),
+  conditionTier: z.enum(["has_conditions", "clean", "warnings", "restrictions", "suspensions", "bans", ""]).optional(),
+  search: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const searchRidersQuerySchema = z.object({
+  q: z.string().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+  onlineOnly: z.string().optional(),
+}).strip();
+
+const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().optional(),
+}).strip();
+
+const requestCorrectionSchema = z.object({
+  field: z.string().optional(),
+  note: z.string().optional(),
+}).strip();
+
+const bulkBanSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1, "at least one id is required"),
+  action: z.enum(["ban", "unban"]),
+  reason: z.string().optional(),
+}).strip();
 
 const router = Router();
 
-router.post("/users", async (req, res) => {
+router.post("/users", validateBody(createUserSchema), async (req, res) => {
   const { phone, name, role, city, area, email } = req.body;
   const trimPhone = typeof phone === "string" ? phone.trim() : "";
   const trimName = typeof name === "string" ? name.trim() : "";
@@ -73,7 +158,7 @@ router.post("/users", async (req, res) => {
    Lightweight server-side rider search used by RideDetailModal for reassignment.
    Returns only active, non-rejected riders matching the search query.
    Pass onlineOnly=true to restrict to riders currently online (matches reassign constraints). */
-router.get("/users/search-riders", async (req, res) => {
+router.get("/users/search-riders", validateQuery(searchRidersQuerySchema), async (req, res) => {
   const q = ((req.query?.q as string) ?? "").trim();
   const limitN = Math.min(50, Math.max(1, parseInt((req.query?.limit as string) ?? "20", 10)));
   const onlineOnly = (req.query?.onlineOnly as string) === "true";
@@ -101,7 +186,7 @@ router.get("/users/search-riders", async (req, res) => {
   sendSuccess(res, { riders, total: riders.length });
 });
 
-router.get("/users", async (req, res) => {
+router.get("/users", validateQuery(usersQuerySchema), async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
   const search = (req.query?.search as string) ?? "";
@@ -248,7 +333,7 @@ router.get("/users", async (req, res) => {
   });
 });
 
-router.patch("/users/:id", async (req, res) => {
+router.patch("/users/:id", validateParams(idParamSchema), validateBody(patchUserSchema), async (req, res) => {
   const { role, isActive, walletBalance } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> & { tokenVersion?: ReturnType<typeof sql> } = {};
   if (role !== undefined) { updates.role = role; updates.roles = role; }
@@ -275,7 +360,7 @@ router.patch("/users/:id", async (req, res) => {
 });
 
 /* ── Pending Approval Users ── */
-router.get("/users/pending", async (req, res) => {
+router.get("/users/pending", validateQuery(paginationQuerySchema), async (req, res) => {
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
   const offset = (page - 1) * limit;
@@ -307,7 +392,7 @@ router.get("/users/pending", async (req, res) => {
 });
 
 /* ── Approve User ── */
-router.post("/users/:id/approve", async (req, res) => {
+router.post("/users/:id/approve", validateParams(idParamSchema), validateBody(approveUserSchema), async (req, res) => {
   const { note, skipDocCheck } = req.body;
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
   if (!target) { sendNotFound(res, "User not found"); return; }
@@ -334,7 +419,7 @@ router.post("/users/:id/approve", async (req, res) => {
 });
 
 /* ── Reject User ── */
-router.post("/users/:id/reject", async (req, res) => {
+router.post("/users/:id/reject", validateParams(idParamSchema), validateBody(rejectUserSchema), async (req, res) => {
   const { note } = req.body;
   const [user] = await db.update(usersTable)
     .set({ approvalStatus: "rejected", approvalNote: note || "Rejected by admin", isActive: false, updatedAt: new Date() })
@@ -346,7 +431,7 @@ router.post("/users/:id/reject", async (req, res) => {
 });
 
 /* ── Wallet Top-up ── */
-router.post("/users/:id/wallet-topup", async (req, res) => {
+router.post("/users/:id/wallet-topup", validateParams(idParamSchema), validateBody(walletTopupSchema), async (req, res) => {
   const { amount, description } = req.body;
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount is required");
@@ -388,13 +473,13 @@ router.post("/users/:id/wallet-topup", async (req, res) => {
     user: { ...stripUser(updatedUser!), walletBalance: newBalance },
   });
 });
-router.delete("/users/:id", async (req, res) => {
+router.delete("/users/:id", validateParams(idParamSchema), async (req, res) => {
   await db.delete(usersTable).where(eq(usersTable.id, req.params["id"]!));
   sendSuccess(res, { success: true });
 });
 
 /* ── User Activity (orders + rides summary) ── */
-router.get("/users/:id/activity", async (req, res) => {
+router.get("/users/:id/activity", validateParams(idParamSchema), async (req, res) => {
   const uid = req.params["id"]!;
   const orders = await db.select().from(ordersTable).where(eq(ordersTable.userId, uid)).orderBy(desc(ordersTable.createdAt)).limit(10);
   const rides = await db.select().from(ridesTable).where(eq(ridesTable.userId, uid)).orderBy(desc(ridesTable.createdAt)).limit(10);
@@ -411,7 +496,7 @@ router.get("/users/:id/activity", async (req, res) => {
 });
 
 /* ── Overview with user enrichment (orders + user info) ── */
-router.patch("/users/:id/security", async (req, res) => {
+router.patch("/users/:id/security", validateParams(idParamSchema), validateBody(userSecuritySchema), async (req, res) => {
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -514,7 +599,7 @@ router.patch("/users/:id/security", async (req, res) => {
 });
 
 /* ── PATCH /admin/users/:id/identity — Admin update user identity (username, email, name) ── */
-router.patch("/users/:id/identity", async (req, res) => {
+router.patch("/users/:id/identity", validateParams(idParamSchema), validateBody(userIdentitySchema), async (req, res) => {
   const userId = req.params["id"]!;
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -586,13 +671,13 @@ router.patch("/users/:id/identity", async (req, res) => {
   sendSuccess(res, { ...stripUser(user), walletBalance: parseFloat(String(user.walletBalance)) });
 });
 
-router.post("/users/:id/reset-otp", async (req, res) => {
+router.post("/users/:id/reset-otp", validateParams(idParamSchema), async (req, res) => {
   await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, req.params["id"]!));
   sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });
 });
 
 /* ── Force-disable 2FA for a user (admin action) ── */
-router.post("/users/:id/2fa/disable", async (req, res) => {
+router.post("/users/:id/2fa/disable", validateParams(idParamSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
@@ -610,7 +695,7 @@ router.post("/users/:id/2fa/disable", async (req, res) => {
   sendSuccess(res, { success: true, message: `2FA disabled for user ${user.name ?? user.phone}` });
 });
 
-router.post("/users/:id/reset-wallet-pin", async (req, res) => {
+router.post("/users/:id/reset-wallet-pin", validateParams(idParamSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
@@ -627,7 +712,7 @@ router.post("/users/:id/reset-wallet-pin", async (req, res) => {
 });
 
 /* ── Admin Accounts (Sub-Admins) ── */
-router.patch("/users/:id/request-correction", async (req, res) => {
+router.patch("/users/:id/request-correction", validateParams(idParamSchema), validateBody(requestCorrectionSchema), async (req, res) => {
   const { field, note } = req.body as { field?: string; note?: string };
   const [user] = await db.update(usersTable)
     .set({ approvalStatus: "correction_needed", approvalNote: note || `Please re-upload: ${field || "document"}`, updatedAt: new Date() })
@@ -646,7 +731,7 @@ router.patch("/users/:id/request-correction", async (req, res) => {
 });
 
 /* ── PATCH /admin/users/:id/waive-debt — waive rider's cancellation debt ── */
-router.patch("/users/:id/waive-debt", async (req, res) => {
+router.patch("/users/:id/waive-debt", validateParams(idParamSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, cancellationDebt: usersTable.cancellationDebt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -666,7 +751,7 @@ router.patch("/users/:id/waive-debt", async (req, res) => {
 });
 
 /* ── PATCH /admin/users/:id/bulk-ban — ban/unban multiple users ── */
-router.patch("/users/bulk-ban", async (req, res) => {
+router.patch("/users/bulk-ban", validateBody(bulkBanSchema), async (req, res) => {
   const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
   if (!ids?.length) { sendValidationError(res, "ids required"); return; }
   const adminReq = req as AdminRequest;
@@ -700,7 +785,7 @@ router.patch("/users/bulk-ban", async (req, res) => {
 });
 
 /* ── GET /admin/users/:id/addresses — all saved addresses for a user ── */
-router.get("/users/:id/addresses", async (req, res) => {
+router.get("/users/:id/addresses", validateParams(idParamSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const addresses = await db.select().from(savedAddressesTable)
     .where(eq(savedAddressesTable.userId, userId))
@@ -714,7 +799,7 @@ router.get("/users/:id/addresses", async (req, res) => {
 });
 
 /* ── DELETE /admin/addresses/:id — remove a specific address ── */
-router.delete("/addresses/:id", async (req, res) => {
+router.delete("/addresses/:id", validateParams(idParamSchema), async (req, res) => {
   const addressId = req.params["id"]!;
   const deleted = await db.delete(savedAddressesTable)
     .where(eq(savedAddressesTable.id, addressId))
@@ -753,7 +838,7 @@ router.get("/users/2fa-stats", async (req, res) => {
 });
 
 /* ── POST /admin/users/:id/2fa/enforce — mark user as 2FA-required ── */
-router.post("/users/:id/2fa/enforce", async (req, res) => {
+router.post("/users/:id/2fa/enforce", validateParams(idParamSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
@@ -763,7 +848,7 @@ router.post("/users/:id/2fa/enforce", async (req, res) => {
 });
 
 /* ── POST /admin/users/:id/2fa/unenforce — remove 2FA enforcement ── */
-router.post("/users/:id/2fa/unenforce", async (req, res) => {
+router.post("/users/:id/2fa/unenforce", validateParams(idParamSchema), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }

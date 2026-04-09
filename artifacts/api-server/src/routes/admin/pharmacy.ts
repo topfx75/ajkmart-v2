@@ -1,13 +1,24 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { pharmacyOrdersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { sendSuccess, sendNotFound, sendValidationError } from "../../lib/response.js";
 import { prescriptionRefMap } from "../uploads.js";
+import { validateBody, validateParams } from "../../middleware/validate.js";
+
+const idParamSchema = z.object({ id: z.string().min(1) }).strip();
+
+const prescriptionReviewSchema = z.object({
+  action: z.enum(["approved", "rejected"], {
+    errorMap: () => ({ message: "action must be 'approved' or 'rejected'" }),
+  }),
+  note: z.string().optional(),
+}).strip();
 
 const router = Router();
 
-router.get("/pharmacy/:id/prescription", async (req, res) => {
+router.get("/pharmacy/:id/prescription", validateParams(idParamSchema), async (req, res) => {
   const orderId = req.params["id"]!;
   const [order] = await db.select().from(pharmacyOrdersTable).where(eq(pharmacyOrdersTable.id, orderId)).limit(1);
   if (!order) { sendNotFound(res, "Order not found"); return; }
@@ -36,7 +47,7 @@ router.get("/pharmacy/:id/prescription", async (req, res) => {
   });
 });
 
-router.post("/pharmacy/:id/prescription/review", async (req, res) => {
+router.post("/pharmacy/:id/prescription/review", validateParams(idParamSchema), validateBody(prescriptionReviewSchema), async (req, res) => {
   const orderId = req.params["id"]!;
   const { action, note } = req.body as { action?: string; note?: string };
 
