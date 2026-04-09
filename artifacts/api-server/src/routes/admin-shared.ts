@@ -448,6 +448,9 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "security_otp_max_per_phone",    value: "5",   label: "Max OTP Sends Per Phone/Email (per window)",      category: "auth" },
   { key: "security_otp_max_per_ip",       value: "10",  label: "Max OTP Sends Per IP Address (per window)",       category: "auth" },
   { key: "security_otp_window_min",       value: "60",  label: "OTP Rate Limit Window (minutes)",                 category: "auth" },
+  { key: "otp_debug_mode",               value: "off", label: "OTP Debug Mode — log OTP to server logger (non-production only)", category: "auth" },
+  { key: "primary_otp_channel",          value: "sms", label: "Primary OTP Delivery Channel (sms / whatsapp / email / all)", category: "auth" },
+  { key: "provider_credentials",         value: "{}",  label: "Provider Credentials JSON (Twilio/Msg91/SMTP overrides)", category: "auth" },
   { key: "auth_social_google",            value: "off",  label: "Google Social Login (legacy toggle)",  category: "auth" },
   { key: "auth_social_facebook",          value: "off",  label: "Facebook Social Login (legacy toggle)",category: "auth" },
   { key: "google_client_id",             value: "",     label: "Google OAuth Client ID",               category: "auth" },
@@ -644,6 +647,23 @@ export async function ensureIdempotencyTable() {
     }
   }
   _idempotencyTableMigrated = true;
+}
+
+let _otpSettingsSeeded = false;
+export async function ensureOtpSettings() {
+  if (_otpSettingsSeeded) return;
+  try {
+    await db.insert(platformSettingsTable).values([
+      { key: "otp_debug_mode",       value: "off", label: "OTP Debug Mode — log OTP to server logger (non-production only)", category: "auth" },
+      { key: "primary_otp_channel",  value: "sms", label: "Primary OTP Delivery Channel (sms / whatsapp / email / all)",    category: "auth" },
+      { key: "provider_credentials", value: "{}",  label: "Provider Credentials JSON (Twilio/Msg91/SMTP overrides)",        category: "auth" },
+    ]).onConflictDoNothing();
+    logger.debug("[migration] OTP settings seeded");
+  } catch (e: unknown) {
+    logger.error({ err: e }, "[migration] ensureOtpSettings FAILED");
+    return;
+  }
+  _otpSettingsSeeded = true;
 }
 
 /* ── Platform settings in-memory cache (10s TTL) ──────────────────────────

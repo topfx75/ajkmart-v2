@@ -118,6 +118,7 @@ export async function sendPasswordResetEmail(
   otp: string,
   name?: string,
   language?: string,
+  settings?: Record<string, string>,
 ): Promise<{ sent: boolean; reason?: string }> {
   const lang = resolveLanguage(language);
   const dir = lang === "ur" ? "rtl" : "ltr";
@@ -129,15 +130,14 @@ export async function sendPasswordResetEmail(
   const expiry  = t("emailResetExpiry", lang);
   const ignore  = t("emailResetIgnore", lang);
 
-  const tr = getEnvTransporter();
+  const tr = settings ? buildTransporterFromSettings(settings) : getEnvTransporter();
   if (!tr) {
-    console.log(`[EMAIL] Password reset OTP for ${to} — SMTP not configured.`);
     return { sent: false, reason: "SMTP not configured" };
   }
 
   try {
     await tr.sendMail({
-      from: resolveFrom(),
+      from: resolveFrom(settings),
       to,
       subject,
       html: `

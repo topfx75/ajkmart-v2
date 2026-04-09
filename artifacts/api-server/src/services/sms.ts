@@ -4,10 +4,16 @@
  *
  * Phone numbers are assumed to be Pakistani (03xxxxxxxxx format).
  * They are converted to E.164 (+92xxxxxxxxx) before sending.
+ *
+ * Security: raw message content (which may include OTP codes) is NEVER
+ * written to logs in production. The console provider is treated as a
+ * dev-only path; in production the caller must configure a real provider.
  */
 
 import { t } from "@workspace/i18n";
 import type { Language } from "@workspace/i18n";
+
+const isProd = process.env.NODE_ENV === "production";
 
 function toE164Pakistan(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -36,9 +42,14 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
   const integrationOn = settings["integration_sms"] === "on";
   const provider      = settings["sms_provider"] ?? "console";
 
+  /* Console/dev logging is allowed only in non-production AND when otp_debug_mode is enabled */
+  const otpDebugMode  = !isProd && settings["otp_debug_mode"] === "on";
+
   if (!integrationOn || provider === "console") {
-    console.log(`[SMS:console] To: ${phone} | ${message}`);
-    return { sent: true, provider: "console" };
+    if (otpDebugMode) {
+      console.log(`[SMS:console] To: ${phone} | ${message}`);
+    }
+    return { sent: !isProd, provider: "console" };
   }
 
   const e164 = toE164Pakistan(phone);
@@ -50,7 +61,9 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
     const from       = settings["sms_sender_id"]?.trim();
 
     if (!accountSid || !authToken || !from) {
-      console.log(`[SMS:twilio] Credentials not configured — logging: ${message}`);
+      if (otpDebugMode) {
+        console.log(`[SMS:twilio] Credentials not configured — logging: ${message}`);
+      }
       return { sent: false, provider: "twilio", error: "Twilio credentials not configured. Set sms_account_sid, sms_api_key, sms_sender_id in Integrations." };
     }
 
@@ -72,7 +85,9 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
     const senderId   = (settings["sms_sender_id"] ?? "AJKMAT").trim();
 
     if (!authKey) {
-      console.log(`[SMS:msg91] Auth key not configured — logging: ${message}`);
+      if (otpDebugMode) {
+        console.log(`[SMS:msg91] Auth key not configured — logging: ${message}`);
+      }
       return { sent: false, provider: "msg91", error: "MSG91 auth key not configured. Set sms_msg91_key in Integrations." };
     }
 
@@ -95,7 +110,9 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
     const senderId = (settings["sms_sender_id"] ?? "AJKMart").trim();
 
     if (!apiKey) {
-      console.log(`[SMS:zong] API key not configured — logging: ${message}`);
+      if (otpDebugMode) {
+        console.log(`[SMS:zong] API key not configured — logging: ${message}`);
+      }
       return { sent: false, provider: "zong", error: "Zong API key not configured. Set sms_api_key in Integrations." };
     }
 
@@ -130,7 +147,9 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
     }
   }
 
-  console.log(`[SMS:unknown] Unknown provider "${provider}" — logging: ${message}`);
+  if (otpDebugMode) {
+    console.log(`[SMS:unknown] Unknown provider "${provider}" — logging: ${message}`);
+  }
   return { sent: false, provider, error: `Unknown provider: ${provider}` };
 }
 

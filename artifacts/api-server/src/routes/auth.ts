@@ -33,6 +33,7 @@ import {
 } from "../middleware/security.js";
 import { sendOtpSMS } from "../services/sms.js";
 import { sendWhatsAppOTP } from "../services/whatsapp.js";
+import { sendOtp as notificationSendOtp, isOtpDebugMode, mergeProviderCredentials } from "../services/notification.js";
 import { randomBytes, createHash } from "crypto";
 import { hashPassword, verifyPassword, validatePasswordStrength, generateSecureOtp } from "../services/password.js";
 import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri, encryptTotpSecret, decryptTotpSecret } from "../services/totp.js";
@@ -357,26 +358,15 @@ router.post("/send-merge-otp", async (req, res) => {
   const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
   await db.update(usersTable).set({ mergeOtpCode: hashOtp(otp), mergeOtpExpiry: otpExpiry, pendingMergeIdentifier: normalizedIdentifier, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
+  const lang = await getUserLanguage(auth.userId);
   if (looksLikePhone) {
     const phone = canonicalizePhone(identifier);
-    const lang = await getUserLanguage(auth.userId);
-    const whatsappEnabled = settings["integration_whatsapp"] === "on";
-    let sent = false;
-    if (whatsappEnabled) {
-      const waResult = await sendWhatsAppOTP(phone, otp, settings, lang);
-      if (waResult.sent) sent = true;
-    }
-    if (!sent) {
-      const smsResult = await sendOtpSMS(phone, otp, settings, lang);
-      sent = smsResult.sent;
-    }
-    const isDev = process.env.NODE_ENV !== "production";
+    await notificationSendOtp({ phone, otp, settings, userLanguage: lang });
     res.json({ message: "OTP sent to phone" });
   } else {
     const email = identifier.trim().toLowerCase();
-    const lang = await getUserLanguage(auth.userId);
     const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
-    await sendPasswordResetEmail(email, otp, user?.name ?? undefined, lang);
+    await notificationSendOtp({ phone: undefined, otp, settings, userEmail: email, userName: user?.name ?? undefined, userLanguage: lang, preferredChannel: "email" });
     res.json({ message: "OTP sent to email" });
   }
 
@@ -594,50 +584,34 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   }
 
   writeAuthAuditLog("otp_sent", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
-  req.log.info({ phone, otp }, "OTP sent");
 
   const otpUserId = existingUser[0]?.id;
   const otpLang = otpUserId ? await getUserLanguage(otpUserId) : await getPlatformDefaultLanguage();
 
+  const emailEnabled = isAuthMethodEnabled(settings, "auth_email_otp_enabled", effectiveRole);
+  const userEmail    = existingUser[0]?.email;
+  const smsEnabled   = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveRole);
   const whatsappEnabled = settings["integration_whatsapp"] === "on";
-  const emailEnabled    = isAuthMethodEnabled(settings, "auth_email_otp_enabled", effectiveRole);
-  const userEmail       = existingUser[0]?.email;
 
-  let deliveryChannel = "none";
-  let deliverySuccess = false;
-  let deliveryProvider = "";
-  const smsEnabled = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveRole);
   const availableChannels: string[] = [];
   if (whatsappEnabled) availableChannels.push("whatsapp");
   if (smsEnabled) availableChannels.push("sms");
   if (emailEnabled && userEmail) availableChannels.push("email");
 
-  const channelOrder: string[] = [];
-  if (preferredChannel && availableChannels.includes(preferredChannel)) {
-    channelOrder.push(preferredChannel);
-    for (const ch of availableChannels) { if (ch !== preferredChannel) channelOrder.push(ch); }
-  } else {
-    if (whatsappEnabled) channelOrder.push("whatsapp");
-    if (smsEnabled) channelOrder.push("sms");
-    if (emailEnabled && userEmail) channelOrder.push("email");
-  }
+  const deliveryResult = await notificationSendOtp({
+    phone,
+    otp,
+    settings,
+    userLanguage: otpLang,
+    userEmail: emailEnabled ? userEmail ?? undefined : undefined,
+    userName: existingUser[0]?.name ?? undefined,
+    preferredChannel: preferredChannel ?? undefined,
+  });
 
-  for (const channel of channelOrder) {
-    if (channel === "whatsapp") {
-      const waResult = await sendWhatsAppOTP(phone, otp, settings, otpLang);
-      if (waResult.sent) { deliveryChannel = "whatsapp"; deliverySuccess = true; deliveryProvider = "whatsapp"; break; }
-      req.log.warn({ err: waResult.error }, "WhatsApp OTP failed, trying next channel");
-    } else if (channel === "sms") {
-      const smsResult = await sendOtpSMS(phone, otp, settings, otpLang);
-      if (smsResult.sent) { deliveryChannel = "sms"; deliverySuccess = true; deliveryProvider = smsResult.provider ?? "sms"; break; }
-      req.log.warn({ err: smsResult.error }, "SMS OTP failed, trying next channel");
-    } else if (channel === "email" && userEmail) {
-      const emailLang = otpUserId ? await getUserLanguage(otpUserId) : await getPlatformDefaultLanguage();
-      const emailResult = await sendPasswordResetEmail(userEmail, otp, existingUser[0]?.name ?? undefined, emailLang);
-      if (emailResult.sent) { deliveryChannel = "email"; deliverySuccess = true; deliveryProvider = "email"; break; }
-      req.log.warn({ err: emailResult.reason }, "Email OTP failed");
-    }
-  }
+  let deliveryChannel = deliveryResult.channel;
+  const deliverySuccess = deliveryResult.sent;
+  const deliveryProvider = deliveryResult.provider;
+  const otpDebugMode = isOtpDebugMode(settings);
 
   const isDev = process.env.NODE_ENV !== "production";
   const userDevOtp = existingUser[0]?.devOtpEnabled === true;
@@ -667,9 +641,10 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   /* Dev OTP: expose OTP in response when in non-production mode AND any of:
      - admin enabled devOtpEnabled on this specific user (per-user flag in Users page)
      - global Dev OTP Mode platform setting is "on" (Security settings in admin)
+     - otp_debug_mode is "on" (admin OTP Debug Mode setting, non-prod only)
      - delivery channel is "dev" (all real channels failed, only dev fallback available)
      - delivery was via console SMS provider (no real SMS configured — dev environment) */
-  if (isDev && (userDevOtp || globalDevOtp || deliveryChannel === "dev" || isConsoleDelivery)) {
+  if (isDev && (userDevOtp || globalDevOtp || otpDebugMode || deliveryChannel === "dev" || isConsoleDelivery)) {
     response.otp = otp;
     response.devMode = true;
   }
@@ -1486,19 +1461,19 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
     .where(eq(usersTable.id, user.id));
 
   const isDev = process.env.NODE_ENV !== "production";
-  req.log.info({ email: normalized, otp: isDev ? otp : "[hidden]" }, "Email OTP generated");
+  const emailOtpDebugMode = isOtpDebugMode(settings);
+  req.log.info({ email: normalized, otp: emailOtpDebugMode ? otp : "[hidden]" }, "Email OTP generated");
 
   /* Send OTP via email service. Falls back gracefully when SMTP is not configured.
-     In development, the OTP is also exposed in the response for easy testing. */
+     In development or debug mode, the OTP is also exposed in the response for easy testing. */
   const emailOtpLang = await getUserLanguage(user.id);
-  const emailResult = await sendPasswordResetEmail(normalized, otp, user.name ?? undefined, emailOtpLang);
+  const effectiveEmailSettings = mergeProviderCredentials(settings);
+  const emailResult = await sendPasswordResetEmail(normalized, otp, user.name ?? undefined, emailOtpLang, effectiveEmailSettings);
 
   if (!emailResult.sent) {
-    if (isDev) {
-      /* In development, log OTP to console so developers can see it */
-      console.log(`[EMAIL-OTP DEV] Email OTP for ${normalized}: ${otp} (SMTP not configured: ${emailResult.reason ?? "unknown"})`);
+    if (emailOtpDebugMode) {
+      logger.warn({ email: normalized, otp, reason: emailResult.reason ?? "SMTP not configured" }, "[EMAIL-OTP] Failed to send OTP email — debug mode active");
     } else {
-      /* In production, use structured logger so the warning is captured properly */
       logger.warn({ email: normalized, reason: emailResult.reason ?? "SMTP not configured" }, "[EMAIL-OTP] Failed to send OTP email");
     }
   }

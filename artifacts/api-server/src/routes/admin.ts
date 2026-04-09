@@ -17,6 +17,7 @@ export {
   ensureRideBidsMigration,
   ensureOrdersGpsColumns,
   ensureIdempotencyTable,
+  ensureOtpSettings,
   getPlatformSettings,
   getAdminSecret,
   adminAuth,

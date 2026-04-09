@@ -5,7 +5,7 @@ import { logger } from "./lib/logger";
 import { startDispatchEngine, dispatchScheduledRides } from "./routes/rides.js";
 import { migrateAdminSecrets } from "./services/adminSecretMigration.js";
 import { initSocketIO } from "./lib/socketio.js";
-import { ensureAuthMethodColumn, ensureRideBidsMigration, ensureOrdersGpsColumns, ensureIdempotencyTable, ensureDefaultServiceZones, ensureDefaultPaymentMethods } from "./routes/admin.js";
+import { ensureAuthMethodColumn, ensureRideBidsMigration, ensureOrdersGpsColumns, ensureIdempotencyTable, ensureDefaultServiceZones, ensureDefaultPaymentMethods, ensureOtpSettings } from "./routes/admin.js";
 import { initVapid } from "./lib/webpush.js";
 import { db } from "@workspace/db";
 import { getPlatformSettings } from "./routes/admin.js";
@@ -93,6 +93,7 @@ ensureAuthMethodColumn()
   .then(() => ensureIdempotencyTable())
   .then(() => ensureDefaultServiceZones())
   .then(() => ensureDefaultPaymentMethods())
+  .then(() => ensureOtpSettings())
   .then(() => assertSecureSettings())
   .then(() => startListening())
   .catch(e => {

@@ -30,6 +30,28 @@ import { auditLog, securityEvents, blockIP, unblockIP, isIPBlocked, getBlockedIP
 import { validateBody } from "../../middleware/validate.js";
 
 const router = Router();
+
+/**
+ * Setting keys whose values contain secrets (credentials, tokens, API keys).
+ * Values for these keys are always replaced with "[redacted]" in audit logs
+ * to prevent secret leakage into logs or the admin audit trail.
+ */
+const SENSITIVE_SETTING_KEYS = new Set([
+  "provider_credentials",
+  "sms_api_key", "sms_account_sid", "sms_msg91_key",
+  "smtp_password", "smtp_user",
+  "wa_access_token", "wa_api_key",
+  "fcm_server_key", "maps_api_key", "google_maps_api_key",
+  "mapbox_api_key", "locationiq_api_key",
+  "payment_secret_key", "payment_api_key",
+  "admin_totp_secret",
+]);
+
+function redactAuditValue(key: string, value: string | null): string | null {
+  if (value !== null && SENSITIVE_SETTING_KEYS.has(key)) return "[redacted]";
+  return value;
+}
+
 router.get("/stats", async (_req, res) => {
   const [
     [userCount],
@@ -134,7 +156,7 @@ const BOOLEAN_SETTING_KEYS = new Set([
   "ride_bargaining_enabled", "ride_surge_enabled", "rider_cash_allowed",
   "cod_enabled", "finance_gst_enabled", "jazzcash_enabled", "easypaisa_enabled",
   "security_global_dev_otp", "security_otp_bypass", "security_phone_verify",
-  "feature_weather", "user_require_approval", "integration_whatsapp",
+  "otp_debug_mode", "feature_weather", "user_require_approval", "integration_whatsapp",
   "cod_allowed_rides", "wallet_allowed_rides", "jazzcash_allowed_rides", "easypaisa_allowed_rides",
 ]);
 
@@ -172,6 +194,19 @@ function validateSettingValue(key: string, value: string): string | null {
       return `Invalid IP whitelist entr${invalid.length === 1 ? "y" : "ies"}: ${invalid.join(", ")}. Use IPv4 or CIDR notation (e.g. 192.168.1.1 or 10.0.0.0/8).`;
     }
   }
+  if (key === "primary_otp_channel") {
+    const allowed = ["sms", "whatsapp", "email", "all"] as const;
+    if (!allowed.includes(value as (typeof allowed)[number])) {
+      return `Setting "primary_otp_channel" must be one of: ${allowed.join(", ")} (got: "${value}")`;
+    }
+  }
+  if (key === "provider_credentials") {
+    if (value && value !== "{}") {
+      try { JSON.parse(value); } catch {
+        return `Setting "provider_credentials" must be valid JSON (got invalid JSON)`;
+      }
+    }
+  }
   return null;
 }
 
@@ -203,11 +238,11 @@ router.put("/platform-settings", async (req, res) => {
   invalidateSettingsCache();
   invalidatePlatformSettingsCache();
 
-  /* Build structured change list for audit */
+  /* Build structured change list for audit — redact sensitive values */
   const changes = settings.map(s => ({
     key: s.key,
-    oldValue: oldValueMap[s.key] ?? null,
-    newValue: String(s.value),
+    oldValue: redactAuditValue(s.key, oldValueMap[s.key] ?? null),
+    newValue: redactAuditValue(s.key, String(s.value)),
   }));
   addAuditEntry({
     action: "settings_update",
@@ -276,7 +311,7 @@ router.post("/platform-settings/restore", async (req, res) => {
       .returning({ key: platformSettingsTable.key });
     if (result.length > 0) {
       updated++;
-      restoreChanges.push({ key, oldValue: oldRestoreMap[key] ?? null, newValue: String(value) });
+      restoreChanges.push({ key, oldValue: redactAuditValue(key, oldRestoreMap[key] ?? null), newValue: redactAuditValue(key, String(value)) ?? String(value) });
     } else { skipped++; }
   }
   invalidateSettingsCache();
@@ -315,7 +350,7 @@ router.patch("/platform-settings/:key", validateBody(patchSettingSchema), async 
     action: "settings_update",
     ip: getClientIp(req),
     adminId: (req as AdminRequest).adminId,
-    details: JSON.stringify({ count: 1, changes: [{ key: settingKey, oldValue, newValue: String(value) }] }),
+    details: JSON.stringify({ count: 1, changes: [{ key: settingKey, oldValue: redactAuditValue(settingKey, oldValue), newValue: redactAuditValue(settingKey, String(value)) }] }),
     result: "success",
   }, true);
   sendSuccess(res, { ...row, updatedAt: row.updatedAt.toISOString() });
