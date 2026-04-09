@@ -22,6 +22,7 @@ export {
   ensureOrdersGpsColumns,
   ensureIdempotencyTable,
   ensureWalletNormalizedTxId,
+  ensureTwoFactorEnforcedAt,
   ensureOtpSettings,
   getPlatformSettings,
   getAdminSecret,

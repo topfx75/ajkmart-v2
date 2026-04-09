@@ -740,6 +740,26 @@ export async function ensureWalletNormalizedTxId() {
   _walletNormalizedTxIdMigrated = true;
 }
 
+let _twoFactorEnforcedAtMigrated = false;
+export async function ensureTwoFactorEnforcedAt() {
+  if (_twoFactorEnforcedAtMigrated) return;
+
+  try {
+    await db.execute(sql`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enforced_at TIMESTAMPTZ
+    `);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/already exists|duplicate column|42701/i.test(msg)) {
+      logger.fatal({ err: e }, "[migration] twoFactorEnforcedAt: FATAL — failed to add column");
+      throw e;
+    }
+  }
+
+  logger.info("[migration] twoFactorEnforcedAt: migration complete");
+  _twoFactorEnforcedAtMigrated = true;
+}
+
 let _otpSettingsSeeded = false;
 export async function ensureOtpSettings() {
   if (_otpSettingsSeeded) return;
