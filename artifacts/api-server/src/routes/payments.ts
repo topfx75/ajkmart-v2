@@ -42,12 +42,28 @@ async function trackPayment(txnRef: string, orderId?: string) {
 }
 
 async function resolvePayment(txnRef: string, status: "success" | "failed") {
+  const [existing] = await db
+    .select({ paymentStatus: ordersTable.paymentStatus })
+    .from(ordersTable)
+    .where(eq(ordersTable.txnRef, txnRef))
+    .limit(1);
+  if (existing && (existing.paymentStatus === "success" || existing.paymentStatus === "failed")) {
+    return;
+  }
   await db.update(ordersTable)
     .set({ paymentStatus: status, updatedAt: new Date() })
     .where(eq(ordersTable.txnRef, txnRef));
 }
 
 async function confirmOrder(orderId: string): Promise<void> {
+  const [existing] = await db
+    .select({ status: ordersTable.status })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId))
+    .limit(1);
+  if (existing && existing.status === "confirmed") {
+    return;
+  }
   await db.update(ordersTable)
     .set({ status: "confirmed", updatedAt: new Date() })
     .where(eq(ordersTable.id, orderId));
@@ -548,6 +564,12 @@ router.post("/callback/jazzcash", async (req, res) => {
   const mode   = s["jazzcash_mode"] ?? "sandbox";
   const params = req.body as Record<string, string>;
 
+  /* ── Production-sandbox mismatch guard ── */
+  if (process.env["NODE_ENV"] === "production" && mode === "sandbox") {
+    console.error("CRITICAL: JazzCash is configured in sandbox mode while running in production. Rejecting callback.");
+    sendError(res, "Payment gateway misconfigured — sandbox mode is not allowed in production", 503); return;
+  }
+
   /* ── Hash verification ──
      Live mode: salt MUST be configured and hash MUST match — no bypass allowed.
      Sandbox mode: skip hash check (sandbox credentials aren't real keys). ── */
@@ -567,6 +589,19 @@ router.post("/callback/jazzcash", async (req, res) => {
   const responseCode = params["pp_ResponseCode"];
   const txnRef       = params["pp_TxnRefNo"];
   const orderId      = params["pp_BillReference"];
+
+  /* ── Idempotency guard — skip if already in a terminal state ── */
+  if (txnRef) {
+    const [existing] = await db
+      .select({ paymentStatus: ordersTable.paymentStatus })
+      .from(ordersTable)
+      .where(eq(ordersTable.txnRef, txnRef))
+      .limit(1);
+    if (existing && (existing.paymentStatus === "success" || existing.paymentStatus === "failed")) {
+      sendSuccess(res, { txnRef, orderId }, "Already processed — no action taken");
+      return;
+    }
+  }
 
   if (responseCode === "000") {
     if (orderId) await confirmOrder(orderId);
@@ -589,6 +624,12 @@ router.post("/callback/easypaisa", async (req, res) => {
   const mode     = s["easypaisa_mode"] ?? "sandbox";
   const body     = req.body as Record<string, string>;
 
+  /* ── Production-sandbox mismatch guard ── */
+  if (process.env["NODE_ENV"] === "production" && mode === "sandbox") {
+    console.error("CRITICAL: EasyPaisa is configured in sandbox mode while running in production. Rejecting callback.");
+    sendError(res, "Payment gateway misconfigured — sandbox mode is not allowed in production", 503); return;
+  }
+
   const receivedHash = body["encryptedHashRequest"];
   const orderId      = body["orderId"];
   const responseCode = body["responseCode"];
@@ -605,6 +646,19 @@ router.post("/callback/easypaisa", async (req, res) => {
     const computedHash = buildEasyPaisaHash([storeId, orderId, amount, "PKR", ""], hashKey);
     if (receivedHash !== computedHash) {
       sendValidationError(res, "Hash mismatch — verify EasyPaisa credentials"); return;
+    }
+  }
+
+  /* ── Idempotency guard — skip if already in a terminal state ── */
+  if (orderId) {
+    const [existing] = await db
+      .select({ paymentStatus: ordersTable.paymentStatus })
+      .from(ordersTable)
+      .where(eq(ordersTable.txnRef, orderId))
+      .limit(1);
+    if (existing && (existing.paymentStatus === "success" || existing.paymentStatus === "failed")) {
+      sendSuccess(res, { txnRefNo, orderId }, "Already processed — no action taken");
+      return;
     }
   }
 
