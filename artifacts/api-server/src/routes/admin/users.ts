@@ -141,7 +141,7 @@ router.post("/users", validateBody(createUserSchema), async (req, res) => {
       phoneVerified: true,
       approvalStatus: "approved",
       isActive: true,
-      walletBalance: "1000",
+      walletBalance: String(parseFloat((await getPlatformSettings())["customer_signup_bonus"] ?? "1000") || 1000),
     }).returning();
     sendSuccess(res, { user: stripUser(user!) });
   } catch (e: unknown) {

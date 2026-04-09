@@ -822,8 +822,6 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
 
   /* ── Prefer new signed admin JWT (x-admin-token header) ── */
   const adminTokenHeader = String(req.headers["x-admin-token"] || "");
-  /* ── Backward-compat: also accept x-admin-secret (the old static secret) ── */
-  const adminSecretHeader = String(req.headers["x-admin-secret"] || "");
 
   /* Load settings for IP whitelist check */
   const settings = await getPlatformSettings();
@@ -879,74 +877,9 @@ export async function adminAuth(req: Request, res: Response, next: NextFunction)
     return;
   }
 
-  /* ── 2. Backward-compat: accept static x-admin-secret ── */
-  if (adminSecretHeader) {
-    const ADMIN_SECRET = getAdminSecret();
-
-    /* ── Super admin via master secret ── */
-    if (adminSecretHeader === ADMIN_SECRET) {
-      ((req as AdminRequest) as AdminRequest).adminRole = "super";
-      ((req as AdminRequest) as AdminRequest).adminIp   = ip;
-      addAuditEntry({ action: "admin_login", ip, details: `Super admin (legacy secret) accessed ${req.method} ${req.url}`, result: "success" });
-      next();
-      return;
-    }
-
-    /* ── Sub-admin via stored secret (bcrypt, legacy scrypt, or plaintext fallback) ── */
-    const activeSubs = await db.select().from(adminAccountsTable)
-      .where(eq(adminAccountsTable.isActive, true));
-    const sub = activeSubs.find(s => verifyAdminSecret(adminSecretHeader, s.secret));
-
-    if (sub) {
-      const tokenHrs = parseInt(settings["security_admin_token_hrs"] ?? "4", 10);
-      if (sub.lastLoginAt) {
-        const msSinceLogin = Date.now() - sub.lastLoginAt.getTime();
-        const maxMs = tokenHrs * 60 * 60 * 1000;
-        if (msSinceLogin > maxMs) {
-          addAuditEntry({ action: "admin_token_expired", ip, adminId: sub.id, details: `Admin token expired for ${sub.name} (${tokenHrs}h limit)`, result: "fail" });
-          sendUnauthorized(res, `Admin session expired after ${tokenHrs} hours. Please log in again.`);
-          return;
-        }
-      }
-
-      const mfaEnabled  = settings["security_mfa_required"] === "on";
-      const totpEnabled = sub.totpEnabled && sub.totpSecret;
-      if (mfaEnabled && totpEnabled) {
-        const totpHeader = String(req.headers["x-admin-totp"] || "");
-        const isMfaRoute = req.url.includes("/mfa/");
-        if (!isMfaRoute) {
-          if (!totpHeader) {
-            sendErrorWithData(res, "MFA required. Please provide your TOTP code in the x-admin-totp header.", { mfaRequired: true }, 401);
-            return;
-          }
-          if (!verifyTotpToken(totpHeader, sub.totpSecret!)) {
-            addAuditEntry({ action: "admin_totp_failed", ip, adminId: sub.id, details: `Invalid TOTP for ${sub.name}`, result: "fail" });
-            addSecurityEvent({ type: "invalid_admin_totp", ip, userId: sub.id, details: `Wrong TOTP code used by ${sub.name}`, severity: "high" });
-            sendUnauthorized(res, "Invalid TOTP code. Please try again with your authenticator app.");
-            return;
-          }
-        }
-      }
-
-      ((req as AdminRequest) as AdminRequest).adminRole = sub.role;
-      ((req as AdminRequest) as AdminRequest).adminId   = sub.id;
-      ((req as AdminRequest) as AdminRequest).adminName = sub.name ?? undefined;
-      ((req as AdminRequest) as AdminRequest).adminIp   = ip;
-      await db.update(adminAccountsTable).set({ lastLoginAt: new Date() }).where(eq(adminAccountsTable.id, sub.id));
-      addAuditEntry({ action: "admin_login", ip, adminId: sub.id, details: `Sub-admin ${sub.name} (${sub.role}) accessed ${req.method} ${req.url}`, result: "success" });
-      next();
-      return;
-    }
-
-    addAuditEntry({ action: "admin_auth_failed", ip, details: `Invalid admin secret for ${req.method} ${req.url}`, result: "fail" });
-    addSecurityEvent({ type: "invalid_admin_secret", ip, details: `Invalid admin secret used for ${req.url}`, severity: "high" });
-    sendUnauthorized(res, "Unauthorized. Invalid admin secret.");
-    return;
-  }
-
   /* No auth provided */
   addAuditEntry({ action: "admin_auth_missing", ip, details: `No admin credentials provided for ${req.method} ${req.url}`, result: "fail" });
-  sendUnauthorized(res, "Unauthorized. Admin authentication required (x-admin-token or x-admin-secret).");
+  sendUnauthorized(res, "Unauthorized. Admin authentication required. Please provide a valid x-admin-token.");
 }
 
 export async function sendUserNotification(userId: string, title: string, body: string, type: string, icon: string) {

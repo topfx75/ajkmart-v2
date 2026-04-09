@@ -106,6 +106,9 @@ router.post("/orders", validateBody(createOrderSchema), async (req, res) => {
       sendValidationError(res, "User not found with the given userId");
       return;
     }
+    const platformSettings = await getPlatformSettings();
+    const delivTimeMins = parseInt(platformSettings["vendor_delivery_time_default"] ?? "45", 10);
+    const estimatedTime = !isNaN(delivTimeMins) && delivTimeMins > 0 ? `${delivTimeMins} min` : "30-45 min";
     const orderId = generateId();
     const [order] = await db.insert(ordersTable).values({
       id: orderId,
@@ -117,7 +120,7 @@ router.post("/orders", validateBody(createOrderSchema), async (req, res) => {
       paymentMethod: payment,
       status: orderStatus,
       paymentStatus: "pending",
-      estimatedTime: "30-45 min",
+      estimatedTime,
     }).returning();
 
     const rawItems: Array<{ name?: string; price?: number | string; qty?: number; quantity?: number; productId?: string }> =

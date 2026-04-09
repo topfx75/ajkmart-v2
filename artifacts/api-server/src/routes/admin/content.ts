@@ -206,123 +206,143 @@ const uploadSchema = z.object({
 
 const router = Router();
 router.get("/products", validateQuery(productsQuerySchema), async (req, res) => {
-  const search = (req.query?.search as string) ?? "";
-  const category = (req.query?.category as string) ?? "";
-  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
-  const offset = (page - 1) * limit;
+  try {
+    const search = (req.query?.search as string) ?? "";
+    const category = (req.query?.category as string) ?? "";
+    const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+    const offset = (page - 1) * limit;
 
-  const whereConditions: ReturnType<typeof and>[] = [];
-  if (search) whereConditions.push(ilike(productsTable.name, `%${search}%`));
-  if (category && category !== "all") whereConditions.push(eq(productsTable.category, category));
-  const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+    const whereConditions: ReturnType<typeof and>[] = [];
+    if (search) whereConditions.push(ilike(productsTable.name, `%${search}%`));
+    if (category && category !== "all") whereConditions.push(eq(productsTable.category, category));
+    const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
 
-  const [totalResult, products] = await Promise.all([
-    db.select({ total: count() }).from(productsTable).where(whereClause),
-    db.select().from(productsTable).where(whereClause).orderBy(desc(productsTable.createdAt)).limit(limit).offset(offset),
-  ]);
+    const [totalResult, products] = await Promise.all([
+      db.select({ total: count() }).from(productsTable).where(whereClause),
+      db.select().from(productsTable).where(whereClause).orderBy(desc(productsTable.createdAt)).limit(limit).offset(offset),
+    ]);
 
-  const total = Number(totalResult[0]?.total ?? 0);
-  sendSuccess(res, {
-    products: products.map(p => ({
-      ...p,
-      price: parseFloat(p.price),
-      originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : null,
-      rating: p.rating ? parseFloat(p.rating) : null,
-      createdAt: p.createdAt.toISOString(),
-    })),
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
-  });
+    const total = Number(totalResult[0]?.total ?? 0);
+    sendSuccess(res, {
+      products: products.map(p => ({
+        ...p,
+        price: parseFloat(p.price),
+        originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : null,
+        rating: p.rating ? parseFloat(p.rating) : null,
+        createdAt: p.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] products list error");
+    sendError(res, "Failed to load products.", 500);
+  }
 });
 
 router.get("/products/pending", validateQuery(productsQuerySchema), async (req, res) => {
-  const search = (req.query?.search as string) ?? "";
-  const category = (req.query?.category as string) ?? "";
-  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
-  const offset = (page - 1) * limit;
+  try {
+    const search = (req.query?.search as string) ?? "";
+    const category = (req.query?.category as string) ?? "";
+    const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
+    const offset = (page - 1) * limit;
 
-  const whereConditions: ReturnType<typeof and>[] = [eq(productsTable.approvalStatus, "pending")];
-  if (search) whereConditions.push(ilike(productsTable.name, `%${search}%`));
-  if (category && category !== "all") whereConditions.push(eq(productsTable.category, category));
-  const whereClause = and(...whereConditions);
+    const whereConditions: ReturnType<typeof and>[] = [eq(productsTable.approvalStatus, "pending")];
+    if (search) whereConditions.push(ilike(productsTable.name, `%${search}%`));
+    if (category && category !== "all") whereConditions.push(eq(productsTable.category, category));
+    const whereClause = and(...whereConditions);
 
-  const [totalResult, products] = await Promise.all([
-    db.select({ total: count() }).from(productsTable).where(whereClause),
-    db.select().from(productsTable).where(whereClause).orderBy(desc(productsTable.createdAt)).limit(limit).offset(offset),
-  ]);
+    const [totalResult, products] = await Promise.all([
+      db.select({ total: count() }).from(productsTable).where(whereClause),
+      db.select().from(productsTable).where(whereClause).orderBy(desc(productsTable.createdAt)).limit(limit).offset(offset),
+    ]);
 
-  const total = Number(totalResult[0]?.total ?? 0);
-  sendSuccess(res, {
-    products: products.map(p => ({
-      ...p,
-      price: parseFloat(p.price),
-      originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : null,
-      rating: p.rating ? parseFloat(p.rating) : null,
-      createdAt: p.createdAt.toISOString(),
-    })),
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
-  });
+    const total = Number(totalResult[0]?.total ?? 0);
+    sendSuccess(res, {
+      products: products.map(p => ({
+        ...p,
+        price: parseFloat(p.price),
+        originalPrice: p.originalPrice ? parseFloat(p.originalPrice) : null,
+        rating: p.rating ? parseFloat(p.rating) : null,
+        createdAt: p.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] pending products error");
+    sendError(res, "Failed to load pending products.", 500);
+  }
 });
 
 router.patch("/products/:id/approve", validateParams(idParamSchema), validateBody(approveProductSchema), async (req, res) => {
-  const { note } = req.body;
-  const [product] = await db
-    .update(productsTable)
-    .set({ approvalStatus: "approved", inStock: true, updatedAt: new Date() })
-    .where(eq(productsTable.id, req.params["id"]!))
-    .returning();
-  if (!product) { sendNotFound(res, "Product not found"); return; }
-  if (product.vendorId && product.vendorId !== "ajkmart_system") {
-    const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
-    if (vendor) {
-      const vLang = await getUserLanguage(vendor.id);
-      const vBody = note
-        ? t("notifProductApprovedBodyNote", vLang).replace("{name}", product.name).replace("{note}", note)
-        : t("notifProductApprovedBody", vLang).replace("{name}", product.name);
-      await db.insert(notificationsTable).values({
-        id: generateId(),
-        userId: vendor.id,
-        title: t("notifProductApproved", vLang),
-        body: vBody,
-        type: "system",
-        icon: "checkmark-circle-outline",
-      }).catch(() => {});
+  try {
+    const { note } = req.body;
+    const [product] = await db
+      .update(productsTable)
+      .set({ approvalStatus: "approved", inStock: true, updatedAt: new Date() })
+      .where(eq(productsTable.id, req.params["id"]!))
+      .returning();
+    if (!product) { sendNotFound(res, "Product not found"); return; }
+    if (product.vendorId && product.vendorId !== "ajkmart_system") {
+      const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
+      if (vendor) {
+        const vLang = await getUserLanguage(vendor.id);
+        const vBody = note
+          ? t("notifProductApprovedBodyNote", vLang).replace("{name}", product.name).replace("{note}", note)
+          : t("notifProductApprovedBody", vLang).replace("{name}", product.name);
+        await db.insert(notificationsTable).values({
+          id: generateId(),
+          userId: vendor.id,
+          title: t("notifProductApproved", vLang),
+          body: vBody,
+          type: "system",
+          icon: "checkmark-circle-outline",
+        }).catch(() => {});
+      }
     }
+    sendSuccess(res, { ...product, price: parseFloat(product.price) });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] product approve error");
+    sendError(res, "Failed to approve product.", 500);
   }
-  sendSuccess(res, { ...product, price: parseFloat(product.price) });
 });
 
 router.patch("/products/:id/reject", validateParams(idParamSchema), validateBody(rejectProductSchema), async (req, res) => {
-  const { reason } = req.body;
-  if (!reason) { sendValidationError(res, "reason is required"); return; }
-  const [product] = await db
-    .update(productsTable)
-    .set({ approvalStatus: "rejected", inStock: false, updatedAt: new Date() })
-    .where(eq(productsTable.id, req.params["id"]!))
-    .returning();
-  if (!product) { sendNotFound(res, "Product not found"); return; }
-  if (product.vendorId && product.vendorId !== "ajkmart_system") {
-    const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
-    if (vendor) {
-      const vLang = await getUserLanguage(vendor.id);
-      await db.insert(notificationsTable).values({
-        id: generateId(),
-        userId: vendor.id,
-        title: t("notifProductRejected", vLang),
-        body: t("notifProductRejectedBody", vLang).replace("{name}", product.name).replace("{reason}", reason),
-        type: "system",
-        icon: "close-circle-outline",
-      }).catch(() => {});
+  try {
+    const { reason } = req.body;
+    if (!reason) { sendValidationError(res, "reason is required"); return; }
+    const [product] = await db
+      .update(productsTable)
+      .set({ approvalStatus: "rejected", inStock: false, updatedAt: new Date() })
+      .where(eq(productsTable.id, req.params["id"]!))
+      .returning();
+    if (!product) { sendNotFound(res, "Product not found"); return; }
+    if (product.vendorId && product.vendorId !== "ajkmart_system") {
+      const [vendor] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, product.vendorId)).limit(1);
+      if (vendor) {
+        const vLang = await getUserLanguage(vendor.id);
+        await db.insert(notificationsTable).values({
+          id: generateId(),
+          userId: vendor.id,
+          title: t("notifProductRejected", vLang),
+          body: t("notifProductRejectedBody", vLang).replace("{name}", product.name).replace("{reason}", reason),
+          type: "system",
+          icon: "close-circle-outline",
+        }).catch(() => {});
+      }
     }
+    sendSuccess(res, { ...product, price: parseFloat(product.price) });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] product reject error");
+    sendError(res, "Failed to reject product.", 500);
   }
-  sendSuccess(res, { ...product, price: parseFloat(product.price) });
 });
 
 const SYSTEM_VENDOR_ID = "ajkmart_system";
@@ -347,58 +367,73 @@ async function ensureSystemVendor(): Promise<void> {
 }
 
 router.post("/products", validateBody(createProductSchema), async (req, res) => {
-  const { name, description, price, originalPrice, category, type, unit, vendorName, inStock, deliveryTime, image } = req.body;
-  if (!name || !price || !category) {
-    sendValidationError(res, "name, price, and category are required");
-    return;
+  try {
+    const { name, description, price, originalPrice, category, type, unit, vendorName, inStock, deliveryTime, image } = req.body;
+    if (!name || !price || !category) {
+      sendValidationError(res, "name, price, and category are required");
+      return;
+    }
+    await ensureSystemVendor();
+    const [product] = await db.insert(productsTable).values({
+      id: generateId(),
+      name,
+      description: description || null,
+      price: String(price),
+      originalPrice: originalPrice ? String(originalPrice) : null,
+      category,
+      type: type || "mart",
+      vendorId: SYSTEM_VENDOR_ID,
+      vendorName: vendorName || "AJKMart Store",
+      unit: unit || null,
+      inStock: inStock !== false,
+      deliveryTime: deliveryTime || "30-45 min",
+      rating: "4.5",
+      reviewCount: 0,
+      image: image || null,
+    }).returning();
+    sendCreated(res, { ...product!, price: parseFloat(product!.price) });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] product create error");
+    sendError(res, "Failed to create product.", 500);
   }
-  await ensureSystemVendor();
-  const [product] = await db.insert(productsTable).values({
-    id: generateId(),
-    name,
-    description: description || null,
-    price: String(price),
-    originalPrice: originalPrice ? String(originalPrice) : null,
-    category,
-    type: type || "mart",
-    vendorId: SYSTEM_VENDOR_ID,
-    vendorName: vendorName || "AJKMart Store",
-    unit: unit || null,
-    inStock: inStock !== false,
-    deliveryTime: deliveryTime || "30-45 min",
-    rating: "4.5",
-    reviewCount: 0,
-    image: image || null,
-  }).returning();
-  sendCreated(res, { ...product!, price: parseFloat(product!.price) });
 });
 
 router.patch("/products/:id", validateParams(idParamSchema), validateBody(patchProductSchema), async (req, res) => {
-  const { name, description, price, originalPrice, category, unit, inStock, vendorName, deliveryTime, image } = req.body;
-  const updates: Partial<typeof productsTable.$inferInsert> = {};
-  if (name !== undefined) updates.name = name;
-  if (description !== undefined) updates.description = description;
-  if (price !== undefined) updates.price = String(price);
-  if (originalPrice !== undefined) updates.originalPrice = originalPrice ? String(originalPrice) : null;
-  if (category !== undefined) updates.category = category;
-  if (unit !== undefined) updates.unit = unit;
-  if (inStock !== undefined) updates.inStock = inStock;
-  if (vendorName !== undefined) updates.vendorName = vendorName;
-  if (deliveryTime !== undefined) updates.deliveryTime = deliveryTime;
-  if (image !== undefined) updates.image = image;
+  try {
+    const { name, description, price, originalPrice, category, unit, inStock, vendorName, deliveryTime, image } = req.body;
+    const updates: Partial<typeof productsTable.$inferInsert> = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (price !== undefined) updates.price = String(price);
+    if (originalPrice !== undefined) updates.originalPrice = originalPrice ? String(originalPrice) : null;
+    if (category !== undefined) updates.category = category;
+    if (unit !== undefined) updates.unit = unit;
+    if (inStock !== undefined) updates.inStock = inStock;
+    if (vendorName !== undefined) updates.vendorName = vendorName;
+    if (deliveryTime !== undefined) updates.deliveryTime = deliveryTime;
+    if (image !== undefined) updates.image = image;
 
-  const [product] = await db
-    .update(productsTable)
-    .set(updates)
-    .where(eq(productsTable.id, req.params["id"]!))
-    .returning();
-  if (!product) { sendNotFound(res, "Product not found"); return; }
-  sendSuccess(res, { ...product, price: parseFloat(product.price) });
+    const [product] = await db
+      .update(productsTable)
+      .set(updates)
+      .where(eq(productsTable.id, req.params["id"]!))
+      .returning();
+    if (!product) { sendNotFound(res, "Product not found"); return; }
+    sendSuccess(res, { ...product, price: parseFloat(product.price) });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] product update error");
+    sendError(res, "Failed to update product.", 500);
+  }
 });
 
 router.delete("/products/:id", validateParams(idParamSchema), async (req, res) => {
-  await db.delete(productsTable).where(eq(productsTable.id, req.params["id"]!));
-  sendSuccess(res, { success: true });
+  try {
+    await db.delete(productsTable).where(eq(productsTable.id, req.params["id"]!));
+    sendSuccess(res, { success: true });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] product delete error");
+    sendError(res, "Failed to delete product.", 500);
+  }
 });
 
 /* ── Broadcast Notification ── */
@@ -432,210 +467,260 @@ router.post("/broadcast", validateBody(broadcastSchema), async (req, res) => {
 
 /* ── Wallet Transactions ── */
 router.get("/categories/tree", validateQuery(categoriesQuerySchema), async (req, res) => {
-  const type = req.query["type"] as string;
-  const conditions = [];
-  if (type) conditions.push(eq(categoriesTable.type, type));
+  try {
+    const type = req.query["type"] as string;
+    const conditions = [];
+    if (type) conditions.push(eq(categoriesTable.type, type));
 
-  const allCats = await db
-    .select()
-    .from(categoriesTable)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(asc(categoriesTable.sortOrder));
+    const allCats = await db
+      .select()
+      .from(categoriesTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(asc(categoriesTable.sortOrder));
 
-  const topLevel = allCats.filter(c => !c.parentId);
-  const childrenMap = new Map<string, typeof allCats>();
-  for (const c of allCats) {
-    if (c.parentId) {
-      const arr = childrenMap.get(c.parentId) || [];
-      arr.push(c);
-      childrenMap.set(c.parentId, arr);
+    const topLevel = allCats.filter(c => !c.parentId);
+    const childrenMap = new Map<string, typeof allCats>();
+    for (const c of allCats) {
+      if (c.parentId) {
+        const arr = childrenMap.get(c.parentId) || [];
+        arr.push(c);
+        childrenMap.set(c.parentId, arr);
+      }
     }
+
+    const tree = topLevel.map(c => ({
+      ...c,
+      children: (childrenMap.get(c.id) || []),
+    }));
+
+    sendSuccess(res, { categories: tree });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] categories tree error");
+    sendError(res, "Failed to load category tree.", 500);
   }
-
-  const tree = topLevel.map(c => ({
-    ...c,
-    children: (childrenMap.get(c.id) || []),
-  }));
-
-  sendSuccess(res, { categories: tree });
 });
 
 router.post("/categories", validateBody(createCategorySchema), async (req, res) => {
-  const { name, icon, type, parentId, sortOrder, isActive } = req.body;
-  if (!name || !type) {
-    sendValidationError(res, "name and type are required");
-    return;
+  try {
+    const { name, icon, type, parentId, sortOrder, isActive } = req.body;
+    if (!name || !type) {
+      sendValidationError(res, "name and type are required");
+      return;
+    }
+
+    const id = generateId();
+    const [category] = await db.insert(categoriesTable).values({
+      id,
+      name,
+      icon: icon || "grid-outline",
+      type,
+      parentId: parentId || null,
+      sortOrder: sortOrder ?? 0,
+      isActive: isActive !== false,
+    }).returning();
+
+    sendCreated(res, category);
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] category create error");
+    sendError(res, "Failed to create category.", 500);
   }
-
-  const id = generateId();
-  const [category] = await db.insert(categoriesTable).values({
-    id,
-    name,
-    icon: icon || "grid-outline",
-    type,
-    parentId: parentId || null,
-    sortOrder: sortOrder ?? 0,
-    isActive: isActive !== false,
-  }).returning();
-
-  sendCreated(res, category);
 });
 
 router.patch("/categories/:id", validateParams(idParamSchema), validateBody(patchCategorySchema), async (req, res) => {
-  const { name, icon, type, parentId, sortOrder, isActive } = req.body;
+  try {
+    const { name, icon, type, parentId, sortOrder, isActive } = req.body;
 
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (name !== undefined) updates.name = name;
-  if (icon !== undefined) updates.icon = icon;
-  if (type !== undefined) updates.type = type;
-  if (parentId !== undefined) updates.parentId = parentId || null;
-  if (sortOrder !== undefined) updates.sortOrder = sortOrder;
-  if (isActive !== undefined) updates.isActive = isActive;
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (name !== undefined) updates.name = name;
+    if (icon !== undefined) updates.icon = icon;
+    if (type !== undefined) updates.type = type;
+    if (parentId !== undefined) updates.parentId = parentId || null;
+    if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+    if (isActive !== undefined) updates.isActive = isActive;
 
-  const [updated] = await db
-    .update(categoriesTable)
-    .set(updates)
-    .where(eq(categoriesTable.id, req.params["id"]!))
-    .returning();
+    const [updated] = await db
+      .update(categoriesTable)
+      .set(updates)
+      .where(eq(categoriesTable.id, req.params["id"]!))
+      .returning();
 
-  if (!updated) {
-    sendNotFound(res, "Category not found");
-    return;
+    if (!updated) {
+      sendNotFound(res, "Category not found");
+      return;
+    }
+
+    sendSuccess(res, updated);
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] category update error");
+    sendError(res, "Failed to update category.", 500);
   }
-
-  sendSuccess(res, updated);
 });
 
 router.delete("/categories/:id", validateParams(idParamSchema), async (req, res) => {
-  const id = req.params["id"]!;
+  try {
+    const id = req.params["id"]!;
 
-  await db
-    .update(categoriesTable)
-    .set({ parentId: null })
-    .where(eq(categoriesTable.parentId, id));
+    await db
+      .update(categoriesTable)
+      .set({ parentId: null })
+      .where(eq(categoriesTable.parentId, id));
 
-  const [deleted] = await db
-    .delete(categoriesTable)
-    .where(eq(categoriesTable.id, id))
-    .returning();
+    const [deleted] = await db
+      .delete(categoriesTable)
+      .where(eq(categoriesTable.id, id))
+      .returning();
 
-  if (!deleted) {
-    sendNotFound(res, "Category not found");
-    return;
+    if (!deleted) {
+      sendNotFound(res, "Category not found");
+      return;
+    }
+
+    sendSuccess(res, { success: true });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] category delete error");
+    sendError(res, "Failed to delete category.", 500);
   }
-
-  sendSuccess(res, { success: true });
 });
 
 router.post("/categories/reorder", validateBody(reorderItemsSchema), async (req, res) => {
-  const { items } = req.body;
-  if (!Array.isArray(items)) {
-    sendValidationError(res, "items array required");
-    return;
-  }
-
-  for (const item of items) {
-    if (item.id && typeof item.sortOrder === "number") {
-      await db
-        .update(categoriesTable)
-        .set({ sortOrder: item.sortOrder, updatedAt: new Date() })
-        .where(eq(categoriesTable.id, item.id));
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items)) {
+      sendValidationError(res, "items array required");
+      return;
     }
-  }
 
-  sendSuccess(res, { success: true });
+    for (const item of items) {
+      if (item.id && typeof item.sortOrder === "number") {
+        await db
+          .update(categoriesTable)
+          .set({ sortOrder: item.sortOrder, updatedAt: new Date() })
+          .where(eq(categoriesTable.id, item.id));
+      }
+    }
+
+    sendSuccess(res, { success: true });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] categories reorder error");
+    sendError(res, "Failed to reorder categories.", 500);
+  }
 });
 
 /* ── Banners ── */
 router.get("/banners", validateQuery(bannersQuerySchema), async (req, res) => {
-  const placement = req.query["placement"] as string | undefined;
-  const status = req.query["status"] as string | undefined;
+  try {
+    const placement = req.query["placement"] as string | undefined;
+    const status = req.query["status"] as string | undefined;
 
-  const banners = await db
-    .select()
-    .from(bannersTable)
-    .orderBy(asc(bannersTable.sortOrder), desc(bannersTable.createdAt));
-  const now = new Date();
-  let mapped = banners.map(b => ({
-    ...b,
-    startDate: b.startDate ? b.startDate.toISOString() : null,
-    endDate: b.endDate ? b.endDate.toISOString() : null,
-    createdAt: b.createdAt.toISOString(),
-    updatedAt: b.updatedAt.toISOString(),
-    status: (!b.isActive ? "inactive"
-          : b.startDate && now < b.startDate ? "scheduled"
-          : b.endDate && now > b.endDate ? "expired"
-          : "active") as "active" | "scheduled" | "expired" | "inactive",
-  }));
-  if (placement) mapped = mapped.filter(b => b.placement === placement);
-  if (status) mapped = mapped.filter(b => b.status === status);
-  sendSuccess(res, { banners: mapped, total: mapped.length });
+    const banners = await db
+      .select()
+      .from(bannersTable)
+      .orderBy(asc(bannersTable.sortOrder), desc(bannersTable.createdAt));
+    const now = new Date();
+    let mapped = banners.map(b => ({
+      ...b,
+      startDate: b.startDate ? b.startDate.toISOString() : null,
+      endDate: b.endDate ? b.endDate.toISOString() : null,
+      createdAt: b.createdAt.toISOString(),
+      updatedAt: b.updatedAt.toISOString(),
+      status: (!b.isActive ? "inactive"
+            : b.startDate && now < b.startDate ? "scheduled"
+            : b.endDate && now > b.endDate ? "expired"
+            : "active") as "active" | "scheduled" | "expired" | "inactive",
+    }));
+    if (placement) mapped = mapped.filter(b => b.placement === placement);
+    if (status) mapped = mapped.filter(b => b.status === status);
+    sendSuccess(res, { banners: mapped, total: mapped.length });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] banners list error");
+    sendError(res, "Failed to load banners.", 500);
+  }
 });
 
 router.post("/banners", validateBody(createBannerSchema), async (req, res) => {
-  const body = req.body as Record<string, unknown>;
-  if (!body.title) {
-    sendValidationError(res, "title is required"); return;
+  try {
+    const body = req.body as Record<string, unknown>;
+    if (!body.title) {
+      sendValidationError(res, "title is required"); return;
+    }
+    const [banner] = await db.insert(bannersTable).values({
+      id: generateId(),
+      title: body.title as string,
+      subtitle: (body.subtitle as string) || null,
+      imageUrl: (body.imageUrl as string) || null,
+      linkType: (body.linkType as string) || "none",
+      linkValue: (body.linkValue as string) || null,
+      targetService: (body.targetService as string) || null,
+      placement: (body.placement as string) || "home",
+      colorFrom: (body.colorFrom as string) || "#7C3AED",
+      colorTo: (body.colorTo as string) || "#4F46E5",
+      icon: (body.icon as string) || null,
+      sortOrder: (body.sortOrder as number) ?? 0,
+      isActive: body.isActive !== false,
+      startDate: body.startDate ? new Date(body.startDate as string) : null,
+      endDate: body.endDate ? new Date(body.endDate as string) : null,
+    }).returning();
+    sendCreated(res, banner);
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] banner create error");
+    sendError(res, "Failed to create banner.", 500);
   }
-  const [banner] = await db.insert(bannersTable).values({
-    id: generateId(),
-    title: body.title as string,
-    subtitle: (body.subtitle as string) || null,
-    imageUrl: (body.imageUrl as string) || null,
-    linkType: (body.linkType as string) || "none",
-    linkValue: (body.linkValue as string) || null,
-    targetService: (body.targetService as string) || null,
-    placement: (body.placement as string) || "home",
-    colorFrom: (body.colorFrom as string) || "#7C3AED",
-    colorTo: (body.colorTo as string) || "#4F46E5",
-    icon: (body.icon as string) || null,
-    sortOrder: (body.sortOrder as number) ?? 0,
-    isActive: body.isActive !== false,
-    startDate: body.startDate ? new Date(body.startDate as string) : null,
-    endDate: body.endDate ? new Date(body.endDate as string) : null,
-  }).returning();
-  sendCreated(res, banner);
 });
 
 router.patch("/banners/reorder", validateBody(reorderItemsSchema), async (req, res) => {
-  const { items } = req.body as { items: { id: string; sortOrder: number }[] };
-  if (!Array.isArray(items)) {
-    sendValidationError(res, "items array required"); return;
+  try {
+    const { items } = req.body as { items: { id: string; sortOrder: number }[] };
+    if (!Array.isArray(items)) {
+      sendValidationError(res, "items array required"); return;
+    }
+    for (const item of items) {
+      await db.update(bannersTable).set({ sortOrder: item.sortOrder, updatedAt: new Date() }).where(eq(bannersTable.id, item.id));
+    }
+    sendSuccess(res, { success: true });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] banners reorder error");
+    sendError(res, "Failed to reorder banners.", 500);
   }
-  for (const item of items) {
-    await db.update(bannersTable).set({ sortOrder: item.sortOrder, updatedAt: new Date() }).where(eq(bannersTable.id, item.id));
-  }
-  sendSuccess(res, { success: true });
 });
 
 const bannerUpdateMiddleware = [validateParams(idParamSchema), validateBody(patchBannerSchema)];
 const bannerUpdateHandler = async (req: import("express").Request, res: import("express").Response) => {
-  const bannerId = req.params["id"]!;
-  const body = req.body as Record<string, unknown>;
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  const fields = ["title", "subtitle", "imageUrl", "linkType", "linkValue", "targetService", "placement", "colorFrom", "colorTo", "icon", "sortOrder", "isActive"];
-  for (const f of fields) {
-    if (body[f] !== undefined) updates[f] = body[f];
-  }
-  if (body.startDate !== undefined) updates.startDate = body.startDate ? new Date(body.startDate as string) : null;
-  if (body.endDate !== undefined) updates.endDate = body.endDate ? new Date(body.endDate as string) : null;
+  try {
+    const bannerId = req.params["id"]!;
+    const body = req.body as Record<string, unknown>;
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    const fields = ["title", "subtitle", "imageUrl", "linkType", "linkValue", "targetService", "placement", "colorFrom", "colorTo", "icon", "sortOrder", "isActive"];
+    for (const f of fields) {
+      if (body[f] !== undefined) updates[f] = body[f];
+    }
+    if (body.startDate !== undefined) updates.startDate = body.startDate ? new Date(body.startDate as string) : null;
+    if (body.endDate !== undefined) updates.endDate = body.endDate ? new Date(body.endDate as string) : null;
 
-  const [updated] = await db.update(bannersTable).set(updates).where(eq(bannersTable.id, bannerId)).returning();
-  if (!updated) {
-    sendNotFound(res, "Banner not found"); return;
+    const [updated] = await db.update(bannersTable).set(updates).where(eq(bannersTable.id, bannerId)).returning();
+    if (!updated) {
+      sendNotFound(res, "Banner not found"); return;
+    }
+    sendSuccess(res, updated);
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] banner update error");
+    sendError(res, "Failed to update banner.", 500);
   }
-  sendSuccess(res, updated);
 };
 router.patch("/banners/:id", ...bannerUpdateMiddleware, bannerUpdateHandler);
 router.put("/banners/:id", ...bannerUpdateMiddleware, bannerUpdateHandler);
 
 router.delete("/banners/:id", validateParams(idParamSchema), async (req, res) => {
-  const bannerId = req.params["id"]!;
-  const [deleted] = await db.delete(bannersTable).where(eq(bannersTable.id, bannerId)).returning();
-  if (!deleted) {
-    sendNotFound(res, "Banner not found"); return;
+  try {
+    const bannerId = req.params["id"]!;
+    const [deleted] = await db.delete(bannersTable).where(eq(bannersTable.id, bannerId)).returning();
+    if (!deleted) {
+      sendNotFound(res, "Banner not found"); return;
+    }
+    sendSuccess(res, { success: true, id: bannerId });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/content] banner delete error");
+    sendError(res, "Failed to delete banner.", 500);
   }
-  sendSuccess(res, { success: true, id: bannerId });
 });
 
 /* ── Flash Deals ── */

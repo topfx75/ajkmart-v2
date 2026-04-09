@@ -100,32 +100,37 @@ const withdrawalRequestsQuerySchema = z.object({
 
 const router = Router();
 router.get("/transactions", validateQuery(transactionsQuerySchema), async (req, res) => {
-  const page = Math.max(1, parseInt(req.query?.page as string) || 1);
-  const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
-  const offset = (page - 1) * limit;
+  try {
+    const page = Math.max(1, parseInt(req.query?.page as string) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit as string) || 50));
+    const offset = (page - 1) * limit;
 
-  const [totalResult, transactions] = await Promise.all([
-    db.select({ total: count() }).from(walletTransactionsTable),
-    db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(limit).offset(offset),
-  ]);
+    const [totalResult, transactions] = await Promise.all([
+      db.select({ total: count() }).from(walletTransactionsTable),
+      db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(limit).offset(offset),
+    ]);
 
-  const total = Number(totalResult[0]?.total ?? 0);
-  const totalCredit = transactions.filter(t => t.type === "credit").reduce((s, t) => s + parseFloat(t.amount), 0);
-  const totalDebit = transactions.filter(t => t.type === "debit").reduce((s, t) => s + parseFloat(t.amount), 0);
+    const total = Number(totalResult[0]?.total ?? 0);
+    const totalCredit = transactions.filter(t => t.type === "credit").reduce((s, t) => s + parseFloat(t.amount), 0);
+    const totalDebit = transactions.filter(t => t.type === "debit").reduce((s, t) => s + parseFloat(t.amount), 0);
 
-  sendSuccess(res, {
-    transactions: transactions.map(t => ({
-      ...t,
-      amount: parseFloat(t.amount),
-      createdAt: t.createdAt.toISOString(),
-    })),
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
-    totalCredit,
-    totalDebit,
-  });
+    sendSuccess(res, {
+      transactions: transactions.map(t => ({
+        ...t,
+        amount: parseFloat(t.amount),
+        createdAt: t.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      totalCredit,
+      totalDebit,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/finance] transactions list error");
+    sendError(res, "Failed to load transactions.", 500);
+  }
 });
 
 /* ── Platform Settings ── */
@@ -162,6 +167,7 @@ router.get("/transactions-enriched", validateQuery(transactionsQuerySchema), asy
 
 /* ── Delete User ── */
 router.get("/vendors", async (_req, res) => {
+  try {
   const vendors = await db.select({
     id: usersTable.id,
     phone: usersTable.phone,
@@ -218,6 +224,10 @@ router.get("/vendors", async (_req, res) => {
     }),
     total: vendors.length,
   });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/finance] vendors list error");
+    sendError(res, "Failed to load vendors.", 500);
+  }
 });
 
 router.patch("/vendors/:id/status", validateParams(idParamSchema), validateBody(vendorStatusSchema), async (req, res) => {
@@ -300,50 +310,55 @@ router.post("/vendors/:id/credit", validateParams(idParamSchema), validateBody(p
    RIDER MANAGEMENT
 ══════════════════════════════════════ */
 router.get("/riders", async (_req, res) => {
-  const riders = await db.select().from(usersTable).where(
-    or(ilike(usersTable.roles, "%rider%"), eq(usersTable.role, "rider"))
-  ).orderBy(desc(usersTable.createdAt));
+  try {
+    const riders = await db.select().from(usersTable).where(
+      or(ilike(usersTable.roles, "%rider%"), eq(usersTable.role, "rider"))
+    ).orderBy(desc(usersTable.createdAt));
 
-  const riderIds = riders.map(r => r.id);
-  const [penaltyRows, ratingRows] = await Promise.all([
-    riderIds.length > 0
-      ? db.select({ riderId: riderPenaltiesTable.riderId, total: sum(riderPenaltiesTable.amount) })
-          .from(riderPenaltiesTable)
-          .where(sql`${riderPenaltiesTable.riderId} IN ${riderIds}`)
-          .groupBy(riderPenaltiesTable.riderId)
-      : Promise.resolve([]),
-    riderIds.length > 0
-      ? db.select({ riderId: rideRatingsTable.riderId, avgRating: sql<string>`ROUND(AVG(${rideRatingsTable.stars})::numeric, 1)`, ratingCount: count() })
-          .from(rideRatingsTable)
-          .where(sql`${rideRatingsTable.riderId} IN ${riderIds}`)
-          .groupBy(rideRatingsTable.riderId)
-      : Promise.resolve([]),
-  ]);
-  const penaltyMap = new Map(penaltyRows.map((r: Record<string, unknown>) => [r.riderId, parseFloat(String(r.total ?? "0"))]));
-  const ratingMap = new Map(ratingRows.map((r: Record<string, unknown>) => [r.riderId, { avg: parseFloat(String(r.avgRating ?? "0")), count: r.ratingCount }]));
+    const riderIds = riders.map(r => r.id);
+    const [penaltyRows, ratingRows] = await Promise.all([
+      riderIds.length > 0
+        ? db.select({ riderId: riderPenaltiesTable.riderId, total: sum(riderPenaltiesTable.amount) })
+            .from(riderPenaltiesTable)
+            .where(sql`${riderPenaltiesTable.riderId} IN ${riderIds}`)
+            .groupBy(riderPenaltiesTable.riderId)
+        : Promise.resolve([]),
+      riderIds.length > 0
+        ? db.select({ riderId: rideRatingsTable.riderId, avgRating: sql<string>`ROUND(AVG(${rideRatingsTable.stars})::numeric, 1)`, ratingCount: count() })
+            .from(rideRatingsTable)
+            .where(sql`${rideRatingsTable.riderId} IN ${riderIds}`)
+            .groupBy(rideRatingsTable.riderId)
+        : Promise.resolve([]),
+    ]);
+    const penaltyMap = new Map(penaltyRows.map((r: Record<string, unknown>) => [r.riderId, parseFloat(String(r.total ?? "0"))]));
+    const ratingMap = new Map(ratingRows.map((r: Record<string, unknown>) => [r.riderId, { avg: parseFloat(String(r.avgRating ?? "0")), count: r.ratingCount }]));
 
-  sendSuccess(res, {
-    riders: riders.map(r => ({
-      id: r.id, phone: r.phone, name: r.name, email: r.email,
-      avatar: r.avatar,
-      walletBalance: parseFloat(r.walletBalance ?? "0"),
-      isActive: r.isActive, isBanned: r.isBanned,
-      isRestricted: r.isRestricted ?? false,
-      cancelCount: r.cancelCount ?? 0,
-      ignoreCount: r.ignoreCount ?? 0,
-      penaltyTotal: penaltyMap.get(r.id) ?? 0,
-      avgRating: ratingMap.get(r.id)?.avg ?? 0,
-      ratingCount: ratingMap.get(r.id)?.count ?? 0,
-      roles: r.roles, role: r.role,
-      isOnline: (r as Record<string, unknown>)["isOnline"] as boolean ?? false,
-      silenceMode: (r as Record<string, unknown>)["silenceMode"] as boolean ?? false,
-      silenceModeUntil: (r as Record<string, unknown>)["silenceModeUntil"] ? ((r as Record<string, unknown>)["silenceModeUntil"] as Date).toISOString() : null,
-      approvalStatus: r.approvalStatus,
-      createdAt: r.createdAt.toISOString(),
-      lastLoginAt: r.lastLoginAt ? r.lastLoginAt.toISOString() : null,
-    })),
-    total: riders.length,
-  });
+    sendSuccess(res, {
+      riders: riders.map(r => ({
+        id: r.id, phone: r.phone, name: r.name, email: r.email,
+        avatar: r.avatar,
+        walletBalance: parseFloat(r.walletBalance ?? "0"),
+        isActive: r.isActive, isBanned: r.isBanned,
+        isRestricted: r.isRestricted ?? false,
+        cancelCount: r.cancelCount ?? 0,
+        ignoreCount: r.ignoreCount ?? 0,
+        penaltyTotal: penaltyMap.get(r.id) ?? 0,
+        avgRating: ratingMap.get(r.id)?.avg ?? 0,
+        ratingCount: ratingMap.get(r.id)?.count ?? 0,
+        roles: r.roles, role: r.role,
+        isOnline: (r as Record<string, unknown>)["isOnline"] as boolean ?? false,
+        silenceMode: (r as Record<string, unknown>)["silenceMode"] as boolean ?? false,
+        silenceModeUntil: (r as Record<string, unknown>)["silenceModeUntil"] ? ((r as Record<string, unknown>)["silenceModeUntil"] as Date).toISOString() : null,
+        approvalStatus: r.approvalStatus,
+        createdAt: r.createdAt.toISOString(),
+        lastLoginAt: r.lastLoginAt ? r.lastLoginAt.toISOString() : null,
+      })),
+      total: riders.length,
+    });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/finance] riders list error");
+    sendError(res, "Failed to load riders.", 500);
+  }
 });
 
 router.patch("/riders/:id/status", validateParams(idParamSchema), validateBody(riderStatusSchema), async (req, res) => {
@@ -918,7 +933,7 @@ router.post("/riders/:id/credit", validateParams(idParamSchema), validateBody(ri
   );
   sendSuccess(res, { amount: amt, newBalance: parseFloat(updated?.walletBalance ?? "0") });
 });
-router.patch("/vendors/:id/commission", validateParams(idParamSchema), validateBody(vendorCommissionSchema), async (req, res) => {
+async function handleVendorCommissionOverride(req: import("express").Request, res: import("express").Response) {
   const { commissionPct } = req.body as { commissionPct: number };
   if (commissionPct === undefined || isNaN(Number(commissionPct))) {
     sendValidationError(res, "commissionPct required"); return;
@@ -930,7 +945,9 @@ router.patch("/vendors/:id/commission", validateParams(idParamSchema), validateB
   if (!vendor) { sendNotFound(res, "Vendor not found"); return; }
   addAuditEntry({ action: "vendor_commission_override", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Commission override ${commissionPct}% for vendor ${req.params["id"]}`, result: "success" });
   sendSuccess(res, { commissionPct });
-});
+}
+router.patch("/vendors/:id/commission", validateParams(idParamSchema), validateBody(vendorCommissionSchema), handleVendorCommissionOverride);
+router.patch("/vendors/:id/commission-override", validateParams(idParamSchema), validateBody(vendorCommissionSchema), handleVendorCommissionOverride);
 
 /* ── POST /admin/riders/:id/override-suspension — override auto-suspension ── */
 router.post("/riders/:id/override-suspension", validateParams(idParamSchema), validateBody(overrideSuspensionSchema), async (req, res) => {

@@ -128,15 +128,20 @@ router.get("/stats", async (_req, res) => {
 });
 
 router.get("/platform-settings", async (_req, res) => {
-  /* Always seed new defaults (onConflictDoNothing keeps existing values intact) */
-  await db.insert(platformSettingsTable).values(DEFAULT_PLATFORM_SETTINGS).onConflictDoNothing();
-  const rows = await db.select().from(platformSettingsTable);
-  const grouped: Record<string, Array<{ key: string; value: string; label: string; updatedAt: string }>> = {};
-  for (const row of rows) {
-    if (!grouped[row.category]) grouped[row.category] = [];
-    grouped[row.category]!.push({ key: row.key, value: row.value, label: row.label, updatedAt: row.updatedAt.toISOString() });
+  try {
+    /* Always seed new defaults (onConflictDoNothing keeps existing values intact) */
+    await db.insert(platformSettingsTable).values(DEFAULT_PLATFORM_SETTINGS).onConflictDoNothing();
+    const rows = await db.select().from(platformSettingsTable);
+    const grouped: Record<string, Array<{ key: string; value: string; label: string; updatedAt: string }>> = {};
+    for (const row of rows) {
+      if (!grouped[row.category]) grouped[row.category] = [];
+      grouped[row.category]!.push({ key: row.key, value: row.value, label: row.label, updatedAt: row.updatedAt.toISOString() });
+    }
+    sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })), grouped });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/system] platform-settings list error");
+    sendError(res, "Failed to load platform settings.", 500);
   }
-  sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })), grouped });
 });
 
 const ALLOWED_SETTING_KEYS = new Set(DEFAULT_PLATFORM_SETTINGS.map(s => s.key));
@@ -282,23 +287,28 @@ router.put("/platform-settings", validateBody(bulkSettingsSchema), async (req, r
 
 /* ── Backup: download all settings as JSON ───────────────────────────────── */
 router.get("/platform-settings/backup", async (req, res) => {
-  const rows = await db.select().from(platformSettingsTable);
-  const payload = {
-    _meta: {
-      version: "1.0",
-      exportedAt: new Date().toISOString(),
-      count: rows.length,
-      source: "AJKMart Admin Panel",
-    },
-    settings: rows.map(r => ({
-      key: r.key,
-      value: r.value,
-      category: r.category,
-      label: r.label,
-    })),
-  };
-  addAuditEntry({ action: "settings_backup", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Exported ${rows.length} settings`, result: "success" });
-  sendSuccess(res, payload);
+  try {
+    const rows = await db.select().from(platformSettingsTable);
+    const payload = {
+      _meta: {
+        version: "1.0",
+        exportedAt: new Date().toISOString(),
+        count: rows.length,
+        source: "AJKMart Admin Panel",
+      },
+      settings: rows.map(r => ({
+        key: r.key,
+        value: r.value,
+        category: r.category,
+        label: r.label,
+      })),
+    };
+    addAuditEntry({ action: "settings_backup", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Exported ${rows.length} settings`, result: "success" });
+    sendSuccess(res, payload);
+  } catch (e) {
+    logger.error({ err: e }, "[admin/system] platform-settings backup error");
+    sendError(res, "Failed to export settings backup.", 500);
+  }
 });
 
 /* ── Restore: import settings from a backup JSON ─────────────────────────── */

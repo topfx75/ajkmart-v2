@@ -476,4 +476,34 @@ router.patch("/riders/:id/silence-mode", validateParams(idParamSchema), async (r
   }
 });
 
+/* POST /admin/riders/:id/toggle-online — force a rider online or offline */
+router.post("/riders/:id/toggle-online", validateParams(idParamSchema), async (req, res) => {
+  try {
+    const { id } = req.params as { id: string };
+    const [rider] = await db.select({ id: usersTable.id, isOnline: usersTable.isOnline, role: usersTable.role })
+      .from(usersTable).where(eq(usersTable.id, id)).limit(1);
+    if (!rider) { sendNotFound(res, "Rider not found"); return; }
+    const roles = (rider.role || "").split(",").map((r: string) => r.trim());
+    const isRider = roles.includes("rider") || roles.includes("riders");
+    if (!isRider) { sendValidationError(res, "User is not a rider"); return; }
+    const newOnline = !rider.isOnline;
+    await db.update(usersTable).set({ isOnline: newOnline, updatedAt: new Date() }).where(eq(usersTable.id, id));
+    addAuditEntry({
+      action: "rider_online_toggle",
+      ip: getClientIp(req),
+      adminId: (req as AdminRequest).adminId,
+      details: `Rider ${id} toggled to ${newOnline ? "online" : "offline"} by admin`,
+      result: "success",
+    });
+    const io = getIO();
+    if (io) {
+      io.to(`rider:${id}`).emit("admin:online-status", { isOnline: newOnline, updatedAt: new Date().toISOString() });
+    }
+    sendSuccess(res, { isOnline: newOnline });
+  } catch (e) {
+    logger.error({ err: e }, "[admin/riders] toggle-online error");
+    sendError(res, "Failed to toggle rider online status.", 500);
+  }
+});
+
 export default router;

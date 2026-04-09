@@ -94,6 +94,30 @@ router.get("/admin-accounts", async (_req, res) => {
   });
 });
 
+router.get("/admin-accounts/:id", async (req, res) => {
+  try {
+    const id = req.params["id"]!;
+    const [account] = await db.select({
+      id: adminAccountsTable.id,
+      name: adminAccountsTable.name,
+      role: adminAccountsTable.role,
+      permissions: adminAccountsTable.permissions,
+      isActive: adminAccountsTable.isActive,
+      totpEnabled: adminAccountsTable.totpEnabled,
+      lastLoginAt: adminAccountsTable.lastLoginAt,
+      createdAt: adminAccountsTable.createdAt,
+    }).from(adminAccountsTable).where(eq(adminAccountsTable.id, id)).limit(1);
+    if (!account) { sendNotFound(res, "Admin account not found"); return; }
+    res.json({
+      ...account,
+      lastLoginAt: account.lastLoginAt ? account.lastLoginAt.toISOString() : null,
+      createdAt: account.createdAt.toISOString(),
+    });
+  } catch (e) {
+    sendError(res, "Failed to load admin account", 500);
+  }
+});
+
 router.post("/admin-accounts", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   if (!body.name || !body.secret) { res.status(400).json({ error: "name and secret required" }); return; }
