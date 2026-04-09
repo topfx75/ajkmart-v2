@@ -337,16 +337,16 @@ export default function SosAlerts() {
     socket.on("connect_error", () => setWsConnected(false));
 
     /* New SOS alert arrives — prepend to active tab; update count regardless of current tab */
-    socket.on("sos:new", (payload: SosAlert) => {
+    const onSosNew = (payload: SosAlert) => {
       setActiveCount(c => c + 1);
       if (tab === "active") {
         setAlerts(prev => [{ ...payload, sosStatus: "pending" }, ...prev.filter(a => a.id !== payload.id)]);
         setTotal(t => t + 1);
       }
-    });
+    };
 
     /* Alert acknowledged — server emits full alert object */
-    socket.on("sos:acknowledged", (payload: SosAlert) => {
+    const onSosAcknowledged = (payload: SosAlert) => {
       if (tab === "active") {
         /* Remove from active tab */
         setAlerts(prev => prev.filter(a => a.id !== payload.id));
@@ -360,10 +360,10 @@ export default function SosAlerts() {
           return [payload, ...filtered];
         });
       }
-    });
+    };
 
     /* Alert resolved — server emits full alert object */
-    socket.on("sos:resolved", (payload: SosAlert) => {
+    const onSosResolved = (payload: SosAlert) => {
       setActiveCount(c => Math.max(0, c - 1));
 
       if (tab === "active" || tab === "acknowledged") {
@@ -382,9 +382,19 @@ export default function SosAlerts() {
           return [payload, ...filtered];
         });
       }
-    });
+    };
 
-    return () => { socket.disconnect(); socketRef.current = null; };
+    socket.on("sos:new", onSosNew);
+    socket.on("sos:acknowledged", onSosAcknowledged);
+    socket.on("sos:resolved", onSosResolved);
+
+    return () => {
+      socket.off("sos:new", onSosNew);
+      socket.off("sos:acknowledged", onSosAcknowledged);
+      socket.off("sos:resolved", onSosResolved);
+      socket.disconnect();
+      socketRef.current = null;
+    };
   }, [tab]);
 
   /* ── Acknowledge handler ── */

@@ -366,15 +366,25 @@ export default function Home() {
   const batteryRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (typeof navigator !== "undefined" && "getBattery" in navigator) {
-      (navigator as any)
+      type BatteryManager = { level: number; addEventListener: (event: string, cb: () => void) => void; removeEventListener: (event: string, cb: () => void) => void };
+      let battRef: BatteryManager | null = null;
+      let battDisposed = false;
+      const onLevelChange = () => {
+        if (battRef) batteryRef.current = Math.round(battRef.level * 100);
+      };
+      (navigator as unknown as { getBattery: () => Promise<BatteryManager> })
         .getBattery()
-        .then((batt: any) => {
+        .then((batt) => {
+          if (battDisposed) return;
+          battRef = batt;
           batteryRef.current = Math.round(batt.level * 100);
-          batt.addEventListener("levelchange", () => {
-            batteryRef.current = Math.round(batt.level * 100);
-          });
+          batt.addEventListener("levelchange", onLevelChange);
         })
         .catch(() => {});
+      return () => {
+        battDisposed = true;
+        if (battRef) battRef.removeEventListener("levelchange", onLevelChange);
+      };
     }
   }, []);
 

@@ -66,11 +66,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     if (!s || !user?.isOnline) return;
 
     let batteryLevel: number | undefined;
-    type BatteryManager = { level: number; addEventListener: (event: string, cb: () => void) => void };
+    type BatteryManager = { level: number; addEventListener: (event: string, cb: () => void) => void; removeEventListener: (event: string, cb: () => void) => void };
+    let battRef: BatteryManager | null = null;
+    let battDisposed = false;
+    const onLevelChange = () => { if (battRef) batteryLevel = battRef.level; };
     (navigator as unknown as { getBattery?: () => Promise<BatteryManager> }).getBattery?.()
       .then((batt) => {
+        if (battDisposed) return;
+        battRef = batt;
         batteryLevel = batt.level;
-        batt.addEventListener("levelchange", () => { batteryLevel = batt.level; });
+        batt.addEventListener("levelchange", onLevelChange);
       }).catch(() => {});
 
     const sendHeartbeat = () => {
@@ -83,8 +88,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const heartbeatInterval = setInterval(sendHeartbeat, 30_000);
 
     return () => {
+      battDisposed = true;
       clearInterval(heartbeatInterval);
       s.off("connect", sendHeartbeat);
+      if (battRef) battRef.removeEventListener("levelchange", onLevelChange);
     };
   }, [user?.isOnline, socket]);
 
