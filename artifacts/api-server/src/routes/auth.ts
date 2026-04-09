@@ -178,8 +178,8 @@ function hashVerificationToken(token: string): string {
 }
 
 
-function isValidCanonicalPhone(phone: string): boolean {
-  return /^3\d{9}$/.test(phone);
+function isValidCanonicalPhone(phone: string | null): phone is string {
+  return phone !== null && /^3\d{9}$/.test(phone);
 }
 
 const router: IRouter = Router();
@@ -219,6 +219,7 @@ router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(chec
 
   if (looksLikePhone) {
     const phone = canonicalizePhone(identifier);
+    if (!phone) { res.status(400).json({ error: "Invalid phone number format" }); return; }
     const rows = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
     user = rows[0];
   } else if (looksLikeEmail) {
@@ -354,6 +355,7 @@ router.post("/send-merge-otp", async (req, res) => {
 
   if (looksLikePhone) {
     const phone = canonicalizePhone(identifier);
+    if (!phone) { res.status(400).json({ error: "Invalid phone number format" }); return; }
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
     if (existing) {
       const lang = await getRequestLocale(req, auth.userId);
@@ -370,12 +372,12 @@ router.post("/send-merge-otp", async (req, res) => {
 
   const otp = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-  const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
+  const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier)! : identifier.trim().toLowerCase();
   await db.update(usersTable).set({ mergeOtpCode: hashOtp(otp), mergeOtpExpiry: otpExpiry, pendingMergeIdentifier: normalizedIdentifier, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
   const lang = await getUserLanguage(auth.userId);
   if (looksLikePhone) {
-    const phone = canonicalizePhone(identifier);
+    const phone = canonicalizePhone(identifier)!;
     await notificationSendOtp({ phone, otp, settings, userLanguage: lang });
     res.json({ message: "OTP sent to phone" });
   } else {
@@ -426,6 +428,10 @@ router.post("/merge-account", async (req, res) => {
   }
 
   const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
+  if (!normalizedIdentifier) {
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: "Invalid phone number format" }); return;
+  }
 
   if (currentUser.mergeOtpCode !== hashOtp(otp) || !currentUser.mergeOtpExpiry || currentUser.mergeOtpExpiry < new Date()) {
     const lang = await getRequestLocale(req, auth.userId);
@@ -1674,6 +1680,7 @@ async function findUserByIdentifier(identifier: string) {
 
   if (idType === "phone") {
     const phone = canonicalizePhone(clean);
+    if (!phone) return { user: null, idType, lookupKey: clean };
     const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
     return { user: user ?? null, idType, lookupKey: phone };
   }
@@ -2192,6 +2199,9 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
   }
 
   const normalizedPhone = canonicalizePhone(phone);
+  if (!normalizedPhone) {
+    res.status(400).json({ error: t("apiErrInvalidPhone", regLang) }); return;
+  }
   const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, normalizedPhone)).limit(1);
   if (existing) {
     res.status(409).json({ error: t("apiErrPhoneAlreadyExists", regLang) });
@@ -2341,6 +2351,7 @@ router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPassword
   let user;
   if (phone) {
     const canonPhone = canonicalizePhone(phone);
+    if (!canonPhone) { res.status(400).json({ error: t("apiErrInvalidPhone", forgotLang1) }); return; }
     const [found] = await db.select().from(usersTable).where(eq(usersTable.phone, canonPhone)).limit(1);
     user = found;
   } else {
@@ -2388,7 +2399,7 @@ router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPassword
       .set({ otpCode: hashOtp(otp), otpExpiry, otpUsed: false, updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
-    const targetPhone = canonicalizePhone(phone);
+    const targetPhone = canonicalizePhone(phone)!;
     await sendOtpSMS(targetPhone, otp, settings, forgotLang);
     if (settings["integration_whatsapp"] === "on") {
       sendWhatsAppOTP(targetPhone, otp, settings, forgotLang).catch(() => {});
@@ -2431,6 +2442,7 @@ router.post("/verify-reset-otp", verifyCaptcha, async (req, res) => {
   let user: (typeof usersTable.$inferSelect) | undefined;
   if (phone) {
     const canonPhone = canonicalizePhone(phone);
+    if (!canonPhone) { res.status(400).json({ error: t("apiErrInvalidPhone", verifyResetLang) }); return; }
     const [found] = await db.select().from(usersTable).where(eq(usersTable.phone, canonPhone)).limit(1);
     user = found;
   } else {
@@ -2518,6 +2530,7 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
   let user;
   if (phone) {
     const canonPhone = canonicalizePhone(phone);
+    if (!canonPhone) { res.status(400).json({ error: t("apiErrInvalidPhone", resetLang1) }); return; }
     const [found] = await db.select().from(usersTable).where(eq(usersTable.phone, canonPhone)).limit(1);
     user = found;
   } else {
@@ -3504,7 +3517,7 @@ router.post("/change-phone/request", async (req, res) => {
   }
 
   const phone = canonicalizePhone(newPhone);
-  if (!/^3\d{9}$/.test(phone)) {
+  if (!phone) {
     res.status(400).json({ error: t("apiErrInvalidPhone", chPhoneLang) }); return;
   }
 
@@ -3557,6 +3570,7 @@ router.post("/change-phone/confirm", async (req, res) => {
   }
 
   const phone = canonicalizePhone(newPhone);
+  if (!phone) { res.status(400).json({ error: t("apiErrInvalidPhone", chPhoneConfLang) }); return; }
   const ip = getClientIp(req);
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);

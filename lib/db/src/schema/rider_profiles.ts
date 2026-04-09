@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -13,7 +13,9 @@ export const riderProfilesTable = pgTable("rider_profiles", {
   documents:      text("documents"),
   createdAt:      timestamp("created_at").notNull().defaultNow(),
   updatedAt:      timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("rider_profiles_vehicle_type_idx").on(t.vehicleType),
+]);
 
 export const insertRiderProfileSchema = createInsertSchema(riderProfilesTable).omit({ createdAt: true, updatedAt: true });
 export type InsertRiderProfile = z.infer<typeof insertRiderProfileSchema>;

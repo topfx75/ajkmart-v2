@@ -41,6 +41,9 @@ export interface User {
   avatar?: string;
   walletBalance: number;
   isActive: boolean;
+  phoneVerified: boolean;
+  emailVerified: boolean;
+  provider?: string;
   createdAt: string;
 }
 
@@ -337,6 +340,8 @@ export interface WalletTransaction {
   type: WalletTransactionType;
   amount: number;
   description: string;
+  reference?: string;
+  paymentMethod?: string;
   createdAt: string;
 }
 

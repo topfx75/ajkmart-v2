@@ -1,4 +1,4 @@
-import { boolean, decimal, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, decimal, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 export const popularLocationsTable = pgTable("popular_locations", {
   id:         text("id").primaryKey(),
@@ -12,7 +12,9 @@ export const popularLocationsTable = pgTable("popular_locations", {
   sortOrder:  integer("sort_order").notNull().default(0),
   createdAt:  timestamp("created_at").notNull().defaultNow(),
   updatedAt:  timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("popular_locations_category_is_active_idx").on(t.category, t.isActive),
+]);
 
 export type PopularLocation    = typeof popularLocationsTable.$inferSelect;
 export type NewPopularLocation = typeof popularLocationsTable.$inferInsert;

@@ -251,12 +251,12 @@ export default function Login() {
       }
       if (data.action === "register") {
         const looksLikePhone = /^[\d\s\-+()]{7,15}$/.test(id);
-        if (looksLikePhone) setRegPhone(canonicalizePhone(id));
+        if (looksLikePhone) setRegPhone(canonicalizePhone(id) ?? id);
         setStep("register");
         setLoading(false); return;
       }
       if (data.action === "send_phone_otp") {
-        const normalized = canonicalizePhone(id);
+        const normalized = canonicalizePhone(id) ?? id;
         setPhone(normalized);
         setMethod("phone");
         setLoading(false);

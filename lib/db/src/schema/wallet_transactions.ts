@@ -17,6 +17,7 @@ export const walletTransactionsTable = pgTable("wallet_transactions", {
   index("wallet_txn_user_id_idx").on(t.userId),
   index("wallet_txn_created_at_idx").on(t.createdAt),
   index("wallet_txn_reference_idx").on(t.reference),
+  index("wallet_txn_type_idx").on(t.type),
   check("wallet_txn_amount_non_negative", sql`${t.amount} >= 0`),
 ]);
 

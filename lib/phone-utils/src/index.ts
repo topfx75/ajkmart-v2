@@ -17,7 +17,7 @@
  *   - +923001234567 (E.164)
  *   - 923001234567  (country code without +)
  */
-export function canonicalizePhone(raw: string): string {
+export function canonicalizePhone(raw: string): string | null {
   const cleaned = raw.replace(/[\s\-()+]/g, "");
   const e164Match = cleaned.match(/^(?:\+?92)(3\d{9})$/);
   if (e164Match) return e164Match[1]!;
@@ -25,7 +25,7 @@ export function canonicalizePhone(raw: string): string {
   if (localMatch) return localMatch[1]!;
   const bareMatch = cleaned.match(/^(3\d{9})$/);
   if (bareMatch) return bareMatch[1]!;
-  return cleaned;
+  return null;
 }
 
 /**
@@ -34,7 +34,7 @@ export function canonicalizePhone(raw: string): string {
  */
 export function formatPhoneForApi(localDigits: string): string {
   const canonical = canonicalizePhone(localDigits);
-  if (canonical.startsWith("3") && canonical.length === 10) return `0${canonical}`;
+  if (canonical && canonical.startsWith("3") && canonical.length === 10) return `0${canonical}`;
   const digits = localDigits.replace(/\D/g, "");
   if (digits.startsWith("0")) return digits;
   return `0${digits}`;
@@ -42,5 +42,6 @@ export function formatPhoneForApi(localDigits: string): string {
 
 /** Returns true iff the input normalizes to a valid 10-digit Pakistani mobile. */
 export function isValidPhone(phone: string): boolean {
-  return /^3\d{9}$/.test(canonicalizePhone(phone));
+  const canonical = canonicalizePhone(phone);
+  return canonical !== null;
 }

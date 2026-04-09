@@ -176,7 +176,7 @@ export default function Login() {
         setLoading(false); return;
       }
       if (data.action === "send_phone_otp") {
-        const normalized = canonicalizePhone(id);
+        const normalized = canonicalizePhone(id) ?? id;
         setPhone(normalized);
         setMethod("phone");
         setLoading(true);
