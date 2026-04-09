@@ -97,7 +97,7 @@ async function processLocationUpdate(opts: {
   const needsSpoofCheck = settings["security_spoof_detection"] === "on" && effectiveRole === "rider";
   const minDistanceMeters = parseInt(settings["gps_min_distance_meters"] ?? "25", 10);
   const needsDistanceCheck = effectiveRole === "rider" && minDistanceMeters > 0;
-  const MAX_SPEED_KMH = 300;
+  const MAX_SPEED_KMH = parseInt(settings["gps_max_speed_kmh"] ?? settings["security_max_speed_kmh"] ?? "120", 10);
 
   let autoOffline = false;
 
@@ -172,10 +172,9 @@ async function processLocationUpdate(opts: {
       const prevLat = parseFloat(String(prev.latitude));
       const prevLon = parseFloat(String(prev.longitude));
 
-      /* GPS Spoof Detection: speed > configurable max (default 300 km/h) */
+      /* GPS Spoof Detection: speed > configurable max (from gps_max_speed_kmh setting) */
       if (needsSpoofCheck) {
-        const configMaxSpeed = parseInt(settings["security_max_speed_kmh"] ?? "150", 10);
-        const effectiveMaxSpeed = Math.max(configMaxSpeed, MAX_SPEED_KMH);
+        const effectiveMaxSpeed = Number.isFinite(MAX_SPEED_KMH) && MAX_SPEED_KMH > 0 ? MAX_SPEED_KMH : 120;
         const { spoofed, speedKmh: detectedSpeedKmh } = detectGPSSpoof(prevLat, prevLon, prev.updatedAt, lat, lon, effectiveMaxSpeed);
 
         if (spoofed) {

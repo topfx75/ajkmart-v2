@@ -60,6 +60,7 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "delivery_free_enabled",   value: "on",   label: "Enable Free Delivery Threshold",      category: "delivery" },
   { key: "free_delivery_above",     value: "1000", label: "Free Delivery Above (Rs.)",           category: "delivery" },
   /* Rides */
+  { key: "haversine_terrain_multiplier", value: "1.4", label: "Haversine Terrain Multiplier (applied when routing API unavailable; 1.4 = 40% uplift for mountainous terrain)", category: "rides" },
   { key: "ride_bike_base_fare",      value: "15",  label: "Bike Base Fare (Rs.)",                   category: "rides" },
   { key: "ride_bike_per_km",         value: "8",   label: "Bike Per KM Rate (Rs.)",                 category: "rides" },
   { key: "ride_bike_min_fare",       value: "50",  label: "Bike Minimum Fare (Rs.)",                category: "rides" },
@@ -206,7 +207,8 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "security_gps_interval",      value: "10",     label: "GPS Update Interval (seconds)",              category: "security" },
   { key: "security_geo_fence",         value: "off",    label: "Strict Geofence Mode",                       category: "security" },
   { key: "security_spoof_detection",   value: "on",     label: "GPS Spoofing / Mock Location Detection",     category: "security" },
-  { key: "security_max_speed_kmh",     value: "150",    label: "Max Speed Allowed (km/h — flag if exceeded)",category: "security" },
+  { key: "security_max_speed_kmh",     value: "150",    label: "Max Speed Allowed (km/h — legacy, use gps_max_speed_kmh)", category: "security" },
+  { key: "gps_max_speed_kmh",          value: "120",    label: "GPS Max Speed for Spoof Detection (km/h) — overrides legacy setting", category: "security" },
   /* Service Area */
   { key: "security_service_city",       value: "Muzaffarabad, AJK", label: "Primary Service City",                   category: "security" },
   { key: "security_service_radius_km",  value: "30",     label: "Max Service Radius (km from city center)",    category: "security" },

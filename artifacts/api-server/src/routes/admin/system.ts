@@ -124,6 +124,7 @@ const NUMERIC_SETTING_KEYS = new Set([
   "security_login_max_attempts", "security_lockout_minutes", "security_otp_cooldown_sec",
   "security_otp_max_per_phone", "security_otp_max_per_ip", "security_otp_window_min",
   "auth_trusted_device_days", "order_refund_days",
+  "haversine_terrain_multiplier", "gps_max_speed_kmh",
 ]);
 
 /* Keys that must be strictly "on" or "off" */

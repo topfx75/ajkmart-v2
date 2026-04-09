@@ -85,17 +85,40 @@ setInterval(() => {
   }
 }, 5 * 60_000);
 
+/**
+ * Normalize a raw vehicle type string to a canonical slug.
+ * Case-insensitive and strips separators (spaces, underscores, hyphens) so
+ * "Motorcycle", "motor cycle", "Motor_Cycle", "motor-cycle" all resolve to "bike".
+ *
+ * Uses word-token matching (splitting on separators) rather than substring matching
+ * on the joined string, so multi-word aliases are handled correctly.
+ */
 function normalizeVehicleType(raw: string | null | undefined): string {
   const v = (raw ?? "").trim().toLowerCase();
   if (!v) return "";
-  if (v === "bike" || v.startsWith("bike") || v.includes("motorcycle")) return "bike";
-  if (v === "car") return "car";
-  if (v === "rickshaw" || v.includes("rickshaw") || v.includes("qingqi")) return "rickshaw";
-  if (v === "van") return "van";
-  if (v === "daba") return "daba";
-  if (v === "bicycle") return "bicycle";
-  if (v === "on_foot" || v === "on foot") return "on_foot";
-  return v;
+  /* slug: collapse all separator chars to a single underscore */
+  const slug = v.replace(/[\s_\-]+/g, "_").replace(/[^a-z0-9_]/g, "").replace(/_+/g, "_").replace(/^_|_$/g, "");
+  /* words: individual tokens after splitting on separators */
+  const words = slug.split("_").filter(Boolean);
+  const wordSet = new Set(words);
+
+  /* Hardcoded alias matching — check slug, individual words, and multi-word combinations */
+  const isMotorcycle = slug === "motorcycle" || wordSet.has("motorcycle") || wordSet.has("motorbike") ||
+    (wordSet.has("motor") && (wordSet.has("cycle") || wordSet.has("bike")));
+  const isBike = slug === "bike" || wordSet.has("bike");
+  if (isBike || isMotorcycle) return "bike";
+
+  if (slug === "car") return "car";
+
+  const isRickshaw = slug === "rickshaw" || wordSet.has("rickshaw") || wordSet.has("qingqi");
+  if (isRickshaw) return "rickshaw";
+
+  if (slug === "van") return "van";
+  if (slug === "daba") return "daba";
+  if (slug === "bicycle") return "bicycle";
+  if (slug === "on_foot" || (wordSet.has("on") && wordSet.has("foot"))) return "on_foot";
+
+  return slug || v;
 }
 
 const router: IRouter = Router();
@@ -2250,8 +2273,9 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
   let speedWarning: { hit: number; detectedSpeedKmh: number } | null = null;
 
   if (settings["security_spoof_detection"] === "on") {
-    const configMaxSpeed = parseInt(settings["security_max_speed_kmh"] ?? "150", 10);
-    let MAX_ALLOWED_KMH = Math.max(configMaxSpeed, 300); /* never below 300 km/h */
+    /* gps_max_speed_kmh takes precedence; fall back to security_max_speed_kmh for backward-compat */
+    const configMaxSpeed = parseInt(settings["gps_max_speed_kmh"] ?? settings["security_max_speed_kmh"] ?? "120", 10);
+    let MAX_ALLOWED_KMH = Number.isFinite(configMaxSpeed) && configMaxSpeed > 0 ? configMaxSpeed : 120;
 
     /* Accuracy-proportional speed tolerance: moderate GPS accuracy (20–50m) at
        startup can produce legitimate jumps. Apply a 1.5× multiplier so a 50m
@@ -2481,9 +2505,9 @@ router.post("/location/batch", async (req, res) => {
   /* GPS accuracy threshold — same as the single-ping endpoint */
   const minAccuracyMeters = parseInt(settings["security_gps_accuracy"] ?? "50", 10);
 
-  /* Speed-spoof threshold — same floor as single-ping endpoint */
-  const configMaxSpeed = parseInt(settings["security_max_speed_kmh"] ?? "150", 10);
-  const BASE_MAX_ALLOWED_KMH = Math.max(configMaxSpeed, 300);
+  /* Speed-spoof threshold — gps_max_speed_kmh takes precedence; fall back to security_max_speed_kmh */
+  const configMaxSpeed = parseInt(settings["gps_max_speed_kmh"] ?? settings["security_max_speed_kmh"] ?? "120", 10);
+  const BASE_MAX_ALLOWED_KMH = Number.isFinite(configMaxSpeed) && configMaxSpeed > 0 ? configMaxSpeed : 120;
 
   /* Stale grace period — configurable, same key as single-ping endpoint */
   const batchStaleGraceMinutes = parseInt(settings["security_gps_stale_grace_minutes"] ?? "30", 10);

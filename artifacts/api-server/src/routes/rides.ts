@@ -177,20 +177,56 @@ async function normalizeVehicleType(raw: string | null | undefined): Promise<str
   return normalizeVehicleTypeSync(raw, serviceKeys);
 }
 
+/**
+ * Normalize a raw vehicle/service type string to a canonical slug.
+ * Matching is case-insensitive and strips separators (spaces, underscores,
+ * hyphens) so "Motorcycle", "motor cycle", "Motor_Cycle", "motor-cycle"
+ * all correctly resolve to "bike".
+ *
+ * Strategy:
+ * 1. Lowercase the input.
+ * 2. Produce a `slug` (separators → underscores) used as the return value and
+ *    for DB key matching.
+ * 3. Produce a `words` array (split on separators) to match multi-word aliases
+ *    in a separator-agnostic way (e.g. ["motor","cycle"] → "motorcycle").
+ * 4. Match against hardcoded aliases, then DB service keys (same slug form).
+ */
 function normalizeVehicleTypeSync(raw: string | null | undefined, serviceKeys: Set<string>): string {
   const v = (raw ?? "").trim().toLowerCase();
   if (!v) return "";
-  if (v === "bike" || v.startsWith("bike") || v.includes("motorcycle")) return "bike";
-  if (v === "car") return "car";
-  if (v === "rickshaw" || v.includes("rickshaw") || v.includes("qingqi")) return "rickshaw";
-  if (v === "van") return "van";
-  if (v === "daba") return "daba";
-  if (v === "bicycle") return "bicycle";
-  if (v === "on_foot" || v === "on foot") return "on_foot";
+  /* slug: collapse all separator chars to a single underscore */
+  const slug = v.replace(/[\s_\-]+/g, "_").replace(/[^a-z0-9_]/g, "").replace(/_+/g, "_").replace(/^_|_$/g, "");
+  /* words: individual tokens after splitting on separators */
+  const words = slug.split("_").filter(Boolean);
+  const wordSet = new Set(words);
+
+  /* Hardcoded alias matching — check slug, individual words, and multi-word combinations */
+  const isMotorcycle = slug === "motorcycle" || wordSet.has("motorcycle") || wordSet.has("motorbike") ||
+    (wordSet.has("motor") && (wordSet.has("cycle") || wordSet.has("bike")));
+  const isBike = slug === "bike" || wordSet.has("bike");
+  if (isBike || isMotorcycle) return "bike";
+
+  if (slug === "car") return "car";
+
+  const isRickshaw = slug === "rickshaw" || wordSet.has("rickshaw") || wordSet.has("qingqi");
+  if (isRickshaw) return "rickshaw";
+
+  if (slug === "van") return "van";
+  if (slug === "daba") return "daba";
+  if (slug === "bicycle") return "bicycle";
+  if (slug === "on_foot" || (wordSet.has("on") && wordSet.has("foot"))) return "on_foot";
+
+  /* DB service key matching:
+     - Try exact raw lowercased form
+     - Try slug form
+     - Try normalizing each DB key to slug form and comparing */
   if (serviceKeys.has(v)) return v;
-  const slug = v.replace(/[\s-]+/g, "_");
   if (serviceKeys.has(slug)) return slug;
-  return v;
+  for (const key of serviceKeys) {
+    const keySlug = key.replace(/[\s_\-]+/g, "_").replace(/[^a-z0-9_]/g, "").replace(/_+/g, "_").replace(/^_|_$/g, "");
+    if (keySlug === slug) return key;
+  }
+  return slug || v;
 }
 
 async function broadcastRide(rideId: string) {
@@ -357,18 +393,30 @@ function generateOtp(): string {
 /**
  * Returns road distance in km using the configured routing provider.
  * Falls back to haversine if no API key is available or the call fails.
+ * When haversine is used, the admin-configurable haversine_terrain_multiplier
+ * (default 1.4×) is applied in ALL fallback paths including network exceptions,
+ * so estimated distance is more representative of actual road distance in
+ * mountainous terrain. The response source is "haversine_adjusted" when the
+ * multiplier is applied, allowing the UI to optionally warn the customer.
  */
-async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): Promise<{ distanceKm: number; durationSeconds: number; source: "google" | "mapbox" | "haversine" }> {
+async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): Promise<{ distanceKm: number; durationSeconds: number; source: "google" | "mapbox" | "haversine" | "haversine_adjusted" }> {
   const haversine = calcDistance(lat1, lng1, lat2, lng2);
-  const haversineFallback = { distanceKm: haversine, durationSeconds: Math.round((haversine / 45) * 3600), source: "haversine" as const };
+
+  /* Load settings outside the provider try/catch so they are available in the
+     exception fallback path and the multiplier is always admin-configurable. */
+  let s: Record<string, string>;
+  try {
+    s = await getPlatformSettings();
+  } catch {
+    s = {};
+  }
+
+  const routingProvider = s["routing_api_provider"] ?? "google";
 
   try {
-    const s = await getPlatformSettings();
-    const routingProvider = s["routing_api_provider"] ?? "google";
-
     if (routingProvider === "google") {
       const googleKey = s["maps_api_key"];
-      if (!googleKey) return haversineFallback;
+      if (!googleKey) return buildHaversineFallback(haversine, s);
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat1},${lng1}&destination=${lat2},${lng2}&mode=driving&key=${googleKey}`;
       const raw  = await fetch(url, { signal: AbortSignal.timeout(4000) });
       const data = await raw.json() as any;
@@ -380,11 +428,12 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
           source: "google",
         };
       }
+      return buildHaversineFallback(haversine, s);
     }
 
     if (routingProvider === "mapbox") {
       const mapboxKey = s["mapbox_api_key"];
-      if (!mapboxKey) return haversineFallback;
+      if (!mapboxKey) return buildHaversineFallback(haversine, s);
       const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lng1},${lat1};${lng2},${lat2}?access_token=${mapboxKey}&overview=false`;
       const raw  = await fetch(url, { signal: AbortSignal.timeout(4000) });
       const data = await raw.json() as any;
@@ -395,12 +444,33 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
           source: "mapbox",
         };
       }
+      return buildHaversineFallback(haversine, s);
     }
-  } catch {
-    /* Network error — fall through to haversine */
-  }
 
-  return haversineFallback;
+    return buildHaversineFallback(haversine, s);
+  } catch {
+    /* Network/API error — fall back to haversine using the admin-configured multiplier */
+    return buildHaversineFallback(haversine, s);
+  }
+}
+
+/**
+ * Build a haversine fallback result applying the terrain multiplier from settings.
+ * The multiplier (default 1.4×) compensates for mountainous terrain where road
+ * distances exceed straight-line distances. Set haversine_terrain_multiplier=1
+ * in admin settings to disable the adjustment.
+ */
+function buildHaversineFallback(
+  haversineKm: number,
+  s: Record<string, string>,
+): { distanceKm: number; durationSeconds: number; source: "haversine" | "haversine_adjusted" } {
+  const multiplier = parseFloat(s["haversine_terrain_multiplier"] ?? "1.4");
+  const safeMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1.4;
+  if (safeMultiplier === 1) {
+    return { distanceKm: haversineKm, durationSeconds: Math.round((haversineKm / 45) * 3600), source: "haversine" };
+  }
+  const adjusted = Math.round(haversineKm * safeMultiplier * 10) / 10;
+  return { distanceKm: adjusted, durationSeconds: Math.round((adjusted / 45) * 3600), source: "haversine_adjusted" };
 }
 
 async function calcFare(distance: number, type: string): Promise<{ baseFare: number; gstAmount: number; total: number; minFare: number }> {
