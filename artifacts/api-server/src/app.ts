@@ -5,6 +5,7 @@ import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { rateLimitMiddleware, securityHeadersMiddleware } from "./middleware/security.js";
+import { adminAuth } from "./routes/admin-shared.js";
 
 const app: Express = express();
 
@@ -38,12 +39,20 @@ app.use(cors());
 const UPLOAD_PATHS = ["/api/uploads", "/api/users/avatar", "/api/admin/uploads/admin"];
 app.use(UPLOAD_PATHS, express.json({ limit: "10mb" }));
 
+app.use("/api/webhooks", express.json({
+  limit: "256kb",
+  verify: (req, _res, buf) => {
+    (req as unknown as { rawBody?: Buffer }).rawBody = buf;
+  },
+}));
+
 /* Tight global JSON limit for all other API routes (mitigates oversized-body DoS). */
 app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: true, limit: "256kb" }));
 
 app.use(rateLimitMiddleware);
 
+app.use("/api/uploads/kyc", adminAuth, express.static(path.resolve(process.cwd(), "uploads/kyc")));
 app.use("/api/uploads", express.static(path.resolve(process.cwd(), "uploads")));
 app.use("/api", router);
 

@@ -14,8 +14,9 @@ import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendV
 const router: IRouter = Router();
 
 async function resolveAndPersistRxPhoto(orderId: string, refId: string): Promise<string | null> {
-  const resolvedUrl = prescriptionRefMap.get(refId);
-  if (!resolvedUrl) return null;
+  const entry = prescriptionRefMap.get(refId);
+  if (!entry) return null;
+  const resolvedUrl = entry.url;
   const currentNote = await db
     .select({ prescriptionNote: pharmacyOrdersTable.prescriptionNote })
     .from(pharmacyOrdersTable)
@@ -40,7 +41,7 @@ function mapOrder(o: typeof pharmacyOrdersTable.$inferSelect, resolvedPhotoOverr
       if (resolvedPhotoOverride) {
         prescriptionPhotoUrl = resolvedPhotoOverride;
       } else if (raw.startsWith("rx-")) {
-        prescriptionPhotoUrl = prescriptionRefMap.get(raw) ?? null;
+        prescriptionPhotoUrl = prescriptionRefMap.get(raw)?.url ?? null;
       } else {
         prescriptionPhotoUrl = raw;
       }
@@ -161,12 +162,16 @@ router.post("/", customerAuth, async (req, res) => {
   if (prescriptionPhotoUri?.trim()) {
     const rawUri = prescriptionPhotoUri.trim();
     if (rawUri.startsWith("rx-")) {
-      let resolved = prescriptionRefMap.get(rawUri);
-      if (!resolved) {
+      let resolvedEntry = prescriptionRefMap.get(rawUri);
+      if (!resolvedEntry) {
         await new Promise((r) => setTimeout(r, 1500));
-        resolved = prescriptionRefMap.get(rawUri);
+        resolvedEntry = prescriptionRefMap.get(rawUri);
       }
-      resolvedPhotoUrl = resolved ?? rawUri;
+      if (resolvedEntry && resolvedEntry.customerId !== userId) {
+        sendForbidden(res, "Access denied — prescription does not belong to you");
+        return;
+      }
+      resolvedPhotoUrl = resolvedEntry?.url ?? rawUri;
     } else {
       resolvedPhotoUrl = rawUri;
     }

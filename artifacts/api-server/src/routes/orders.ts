@@ -863,8 +863,7 @@ router.post("/", customerAuth, async (req, res) => {
         if (promoId) {
           await tx.update(promoCodesTable)
             .set({ usedCount: sql`${promoCodesTable.usedCount} + 1` })
-            .where(eq(promoCodesTable.id, promoId))
-            .catch(() => {});
+            .where(eq(promoCodesTable.id, promoId));
         }
         return newOrder!;
       });

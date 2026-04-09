@@ -10,7 +10,7 @@ const router: IRouter = Router();
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
 
-const prescriptionRefMap = new Map<string, string>();
+const prescriptionRefMap = new Map<string, { url: string; customerId: string }>();
 
 async function ensureDir() {
   await mkdir(UPLOADS_DIR, { recursive: true });
@@ -117,7 +117,8 @@ router.post("/prescription", customerAuth, async (req, res) => {
     const { buffer, mime } = validateBase64Image(file, "File");
 
     const url = await saveBuffer(buffer, "rx", mime);
-    prescriptionRefMap.set(refId, url);
+    const customerId = req.customerId!;
+    prescriptionRefMap.set(refId, { url, customerId });
 
     setTimeout(() => prescriptionRefMap.delete(refId), 60 * 60 * 1000);
 
@@ -132,13 +133,17 @@ router.post("/prescription", customerAuth, async (req, res) => {
   }
 });
 
-router.get("/prescription/resolve/:refId", (req, res) => {
-  const url = prescriptionRefMap.get(req.params.refId!);
-  if (url) {
-    sendSuccess(res, { url });
-  } else {
+router.get("/prescription/resolve/:refId", customerAuth, (req, res) => {
+  const entry = prescriptionRefMap.get(req.params.refId!);
+  if (!entry) {
     sendNotFound(res, "Reference not found or expired");
+    return;
   }
+  if (entry.customerId !== req.customerId) {
+    res.status(403).json({ success: false, error: "Access denied" });
+    return;
+  }
+  sendSuccess(res, { url: entry.url });
 });
 
 export { prescriptionRefMap };

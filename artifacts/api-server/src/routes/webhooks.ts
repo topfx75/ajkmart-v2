@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { getPlatformSettings } from "./admin.js";
 import { sendSuccess, sendError } from "../lib/response.js";
 
@@ -44,6 +45,29 @@ router.get("/whatsapp", async (req, res) => {
 });
 
 router.post("/whatsapp", async (req, res) => {
+  const appSecret = process.env["WHATSAPP_APP_SECRET"] ?? "";
+  if (!appSecret) {
+    console.error("[WhatsApp webhook] WHATSAPP_APP_SECRET not set — rejecting POST");
+    sendError(res, "Webhook signature secret not configured", 500);
+    return;
+  }
+
+  const signature = req.headers["x-hub-signature-256"] as string | undefined;
+  if (!signature || !signature.startsWith("sha256=")) {
+    res.status(403).json({ success: false, error: "Missing signature" });
+    return;
+  }
+
+  const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
+  const bodyBuf = rawBody ?? Buffer.from(JSON.stringify(req.body));
+  const expectedSig = "sha256=" + crypto.createHmac("sha256", appSecret).update(bodyBuf).digest("hex");
+  const sigBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    res.status(403).json({ success: false, error: "Invalid signature" });
+    return;
+  }
+
   interface WABody { object?: string; entry?: Array<{ changes?: Array<{ value?: { messages?: Array<{ from?: string; type?: string; text?: { body?: string } }>; statuses?: Array<{ id?: string; status?: string; timestamp?: string; recipient_id?: string }> } }> }> }
   const body = req.body as WABody;
 

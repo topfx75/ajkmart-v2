@@ -605,20 +605,18 @@ router.post("/callback/jazzcash", async (req, res) => {
     sendError(res, t("apiErrGatewayMisconfigured", "en"), 503); return;
   }
 
-  /* ── Hash verification ──
-     Live mode: salt MUST be configured and hash MUST match — no bypass allowed.
-     Sandbox mode: skip hash check (sandbox credentials aren't real keys). ── */
-  if (mode !== "sandbox") {
-    if (!salt) {
-      sendError(res, t("apiErrJazzCashSaltMissing", "en"), 500); return;
-    }
-    const receivedHash      = params["pp_SecureHash"];
-    const paramsWithoutHash = { ...params };
-    delete paramsWithoutHash["pp_SecureHash"];
-    const computedHash = buildJazzCashHash(paramsWithoutHash, salt);
-    if (receivedHash !== computedHash) {
-      sendValidationError(res, t("apiErrHashMismatch", "en")); return;
-    }
+  if (!salt) {
+    sendError(res, t("apiErrJazzCashSaltMissing", "en"), 500); return;
+  }
+  const receivedHash      = params["pp_SecureHash"];
+  if (!receivedHash) {
+    res.status(400).json({ success: false, error: "Missing signature" }); return;
+  }
+  const paramsWithoutHash = { ...params };
+  delete paramsWithoutHash["pp_SecureHash"];
+  const computedHash = buildJazzCashHash(paramsWithoutHash, salt);
+  if (receivedHash !== computedHash) {
+    res.status(400).json({ success: false, error: "Invalid signature" }); return;
   }
 
   const responseCode = params["pp_ResponseCode"];
@@ -683,17 +681,15 @@ router.post("/callback/easypaisa", async (req, res) => {
   const txnRefNo     = body["transactionReferenceNumber"];
   const amount       = body["transactionAmount"];
 
-  /* ── Hash verification ──
-     Live mode: hashKey MUST be configured and hash MUST match — no bypass allowed.
-     Sandbox mode: skip hash check (sandbox credentials aren't real keys). ── */
-  if (mode !== "sandbox") {
-    if (!hashKey) {
-      sendError(res, t("apiErrEasyPaisaHashKeyMissing", "en"), 500); return;
-    }
-    const computedHash = buildEasyPaisaHash([storeId, orderId, amount, "PKR", ""], hashKey);
-    if (receivedHash !== computedHash) {
-      sendValidationError(res, t("apiErrHashMismatchEasypaisa", "en")); return;
-    }
+  if (!hashKey) {
+    sendError(res, t("apiErrEasyPaisaHashKeyMissing", "en"), 500); return;
+  }
+  if (!receivedHash) {
+    res.status(400).json({ success: false, error: "Missing signature" }); return;
+  }
+  const computedHash = buildEasyPaisaHash([storeId, orderId, amount, "PKR", ""], hashKey);
+  if (receivedHash !== computedHash) {
+    res.status(400).json({ success: false, error: "Invalid signature" }); return;
   }
 
   /* ── Idempotency guard — skip if already in a terminal state ── */
