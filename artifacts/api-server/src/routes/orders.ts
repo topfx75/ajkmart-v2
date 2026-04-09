@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable, notificationsTable } from "@workspace/db/schema";
-import { eq, and, gte, count, desc, SQL, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, count, desc, SQL, sql, inArray, lt } from "drizzle-orm";
+import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
 import { addSecurityEvent, addAuditEntry, getClientIp, getCachedSettings, customerAuth, idorGuard } from "../middleware/security.js";
@@ -15,13 +16,49 @@ const router: IRouter = Router();
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
-const idempotencyCache = new Map<string, any>();
 const IDEMPOTENCY_TTL_MS = 5 * 60_000;
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of idempotencyCache) {
-    if (now - val._ts > IDEMPOTENCY_TTL_MS) idempotencyCache.delete(key);
+
+const idempotencyKeysTable = pgTable("idempotency_keys", {
+  key: text("key").primaryKey(),
+  responseJson: text("response_json").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+async function getIdempotencyRecord(cacheKey: string): Promise<Record<string, unknown> | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(idempotencyKeysTable)
+      .where(eq(idempotencyKeysTable.key, cacheKey))
+      .limit(1);
+    if (!row) return null;
+    if (Date.now() - row.createdAt.getTime() > IDEMPOTENCY_TTL_MS) {
+      await db.delete(idempotencyKeysTable).where(eq(idempotencyKeysTable.key, cacheKey)).catch(() => {});
+      return null;
+    }
+    return JSON.parse(row.responseJson) as Record<string, unknown>;
+  } catch {
+    return null;
   }
+}
+
+async function setIdempotencyRecord(cacheKey: string, response: Record<string, unknown>): Promise<void> {
+  try {
+    await db
+      .insert(idempotencyKeysTable)
+      .values({ key: cacheKey, responseJson: JSON.stringify(response) })
+      .onConflictDoUpdate({
+        target: idempotencyKeysTable.key,
+        set: { responseJson: JSON.stringify(response), createdAt: new Date() },
+      });
+  } catch { /* non-fatal */ }
+}
+
+setInterval(async () => {
+  try {
+    const cutoff = new Date(Date.now() - IDEMPOTENCY_TTL_MS);
+    await db.delete(idempotencyKeysTable).where(lt(idempotencyKeysTable.createdAt, cutoff));
+  } catch { /* non-fatal */ }
 }, 60_000);
 
 function broadcastNewOrder(order: ReturnType<typeof mapOrder>, vendorId?: string | null) {
@@ -388,7 +425,7 @@ router.post("/", customerAuth, async (req, res) => {
     : typeof req.body?.idempotencyKey === "string"
     ? req.body.idempotencyKey.trim() : null;
   if (idempotencyKey) {
-    const cached = idempotencyCache.get(`${userId}:${idempotencyKey}`);
+    const cached = await getIdempotencyRecord(`${userId}:${idempotencyKey}`);
     if (cached) {
       sendSuccess(res, cached);
       return;
@@ -828,7 +865,7 @@ router.post("/", customerAuth, async (req, res) => {
     if (io) io.to(`user:${userId}`).emit("order:ack", { orderId: order!.id, status: "pending", createdAt: order!.createdAt.toISOString() });
 
     if (idempotencyKey) {
-      idempotencyCache.set(`${userId}:${idempotencyKey}`, { ...mapped, _ts: Date.now() });
+      await setIdempotencyRecord(`${userId}:${idempotencyKey}`, mapped as unknown as Record<string, unknown>);
     }
     sendCreated(res, mapped);
     notifyOnlineRidersOfOrder(order!.id, type || "mart").catch(() => {});

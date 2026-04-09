@@ -13,6 +13,7 @@
 import { useRef, useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
+import DOMPurify from "dompurify";
 import "leaflet/dist/leaflet.css";
 
 /* ── Fix Leaflet's broken default icon paths in Vite ── */
@@ -70,13 +71,15 @@ interface UniversalMapProps {
 
 function makeDivIcon(m: MapMarkerData): L.DivIcon {
   const opacity = m.dimmed ? "0.5" : "1";
-  const labelHtml = m.label
-    ? `<div style="position:absolute;top:${-(m.iconSize / 2 + 18)}px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;pointer-events:none">${m.label}</div>`
+  const safeLabel = m.label ? DOMPurify.sanitize(m.label, { ALLOWED_TAGS: [] }) : "";
+  const labelHtml = safeLabel
+    ? `<div style="position:absolute;top:${-(m.iconSize / 2 + 18)}px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;pointer-events:none">${safeLabel}</div>`
     : "";
+  const safeIconHtml = DOMPurify.sanitize(m.iconHtml);
   return L.divIcon({
     html: `<div style="position:relative;opacity:${opacity}">
       ${labelHtml}
-      ${m.iconHtml}
+      ${safeIconHtml}
     </div>`,
     className: "",
     iconSize: [m.iconSize, m.iconSize],
@@ -244,7 +247,7 @@ const MapboxMapLazy = lazy(() =>
                     {m.label}
                   </div>
                 )}
-                <div dangerouslySetInnerHTML={{ __html: m.iconHtml }} />
+                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(m.iconHtml) }} />
               </div>
             </MapboxMarker>
           ))}

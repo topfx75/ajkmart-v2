@@ -616,6 +616,32 @@ export async function ensureRideBidsMigration() {
   _rideBidsMigrated = true;
 }
 
+let _idempotencyTableMigrated = false;
+export async function ensureIdempotencyTable() {
+  if (_idempotencyTableMigrated) return;
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS idempotency_keys (
+        key TEXT NOT NULL,
+        response_json TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (key)
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idempotency_keys_created_at_idx ON idempotency_keys (created_at)
+    `);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const isIdempotent = /already exists|42P07/i.test(msg);
+    if (!isIdempotent) {
+      logger.error({ err: e }, "[migration] idempotency_keys table creation FAILED — will retry on next request");
+      return;
+    }
+  }
+  _idempotencyTableMigrated = true;
+}
+
 /* ── Platform settings in-memory cache (10s TTL) ──────────────────────────
  * Prevents hammering the DB on every fare-calculation request while still
  * ensuring admin updates take effect within seconds.  Call
