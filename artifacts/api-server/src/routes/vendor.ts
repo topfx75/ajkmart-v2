@@ -11,18 +11,47 @@ import { t } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { getIO, emitRiderNewRequest } from "../lib/socketio.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
+import { stripHtml } from "../lib/sanitize.js";
 
 const router: IRouter = Router();
 
 /* ── Auth: replaced duplicated vendorAuth with the shared requireRole factory ── */
 router.use(requireRole("vendor", { vendorApprovalCheck: true }));
 
+/* ── Vendor product schemas ── */
+const createProductSchema = z.object({
+  name:          z.string().min(1, "name is required").max(500).transform(stripHtml),
+  description:   z.string().max(2000).optional().transform(v => (v ? stripHtml(v) : v)),
+  price:         z.union([z.string(), z.number()]).refine(v => isFinite(Number(v)) && Number(v) > 0, "Price must be a positive number"),
+  originalPrice: z.union([z.string(), z.number()]).optional().nullable(),
+  category:      z.string().optional(),
+  type:          z.string().optional(),
+  image:         z.string().optional().nullable(),
+  stock:         z.union([z.string(), z.number()]).optional().nullable(),
+  unit:          z.string().optional().nullable(),
+  deliveryTime:  z.string().optional().nullable(),
+});
+
+const patchProductSchema = z.object({
+  name:          z.string().min(1).max(500).transform(stripHtml).optional(),
+  description:   z.string().max(2000).optional().nullable().transform(v => (v ? stripHtml(v) : v)),
+  price:         z.union([z.string(), z.number()]).refine(v => isFinite(Number(v)) && Number(v) > 0, "Price must be a positive number").optional(),
+  originalPrice: z.union([z.string(), z.number()]).optional().nullable(),
+  category:      z.string().optional(),
+  type:          z.string().optional(),
+  image:         z.string().optional().nullable(),
+  stock:         z.union([z.string(), z.number()]).optional().nullable(),
+  unit:          z.string().optional().nullable(),
+  deliveryTime:  z.string().optional().nullable(),
+  inStock:       z.boolean().optional(),
+});
+
 /* ── Vendor PATCH schemas ── */
 const patchProfileSchema = z.object({
-  name:             z.string().min(1).max(100).optional(),
+  name:             z.string().min(1).max(100).transform(stripHtml).optional(),
   email:            z.string().email().optional(),
   cnic:             z.string().max(20).optional(),
-  address:          z.string().max(300).optional(),
+  address:          z.string().max(300).transform(stripHtml).optional(),
   city:             z.string().max(100).optional(),
   bankName:         z.string().max(100).optional(),
   bankAccount:      z.string().max(50).optional(),
@@ -31,15 +60,15 @@ const patchProfileSchema = z.object({
 }).strict();
 
 const patchStoreSchema = z.object({
-  storeName:         z.string().min(1).max(100).optional(),
+  storeName:         z.string().min(1).max(100).transform(stripHtml).optional(),
   storeCategory:     z.string().max(50).optional(),
   storeBanner:       z.string().url().optional().nullable(),
-  storeDescription:  z.string().max(1000).optional(),
+  storeDescription:  z.string().max(1000).transform(stripHtml).optional(),
   storeAnnouncement: z.string().max(500).optional(),
   storeDeliveryTime: z.string().max(50).optional(),
   storeIsOpen:       z.boolean().optional(),
   storeMinOrder:     z.number().min(0).optional(),
-  storeAddress:      z.string().max(300).optional(),
+  storeAddress:      z.string().max(300).transform(stripHtml).optional(),
   storeHours:        z.any().optional(),
   storeLat:          z.union([z.string(), z.number()]).optional().nullable(),
   storeLng:          z.union([z.string(), z.number()]).optional().nullable(),
@@ -370,14 +399,10 @@ router.get("/products", async (req, res) => {
 });
 
 /* ── POST /vendor/products ── Add single product ── */
-router.post("/products", async (req, res) => {
+router.post("/products", validateBody(createProductSchema), async (req, res) => {
   const vendorId = req.vendorId!;
   const user = req.vendorUser!;
   const body = req.body;
-  if (!body.name || !body.price) { sendValidationError(res, "name and price required"); return; }
-  if (!isFinite(Number(body.price)) || Number(body.price) <= 0) {
-    sendValidationError(res, "Price must be a positive number"); return;
-  }
 
   const s = await getPlatformSettings();
   const maxItems = parseInt(s["vendor_max_items"] ?? "100");
@@ -423,7 +448,7 @@ router.post("/products/bulk", async (req, res) => {
     inserted = await db.insert(productsTable).values(
       products.map((p: any) => ({
         id: generateId(), vendorId, vendorName: user.storeName || user.name,
-        name: p.name, description: p.description || null,
+        name: stripHtml(p.name), description: p.description ? stripHtml(p.description) : null,
         price: String(p.price), originalPrice: p.originalPrice ? String(p.originalPrice) : null,
         category: p.category || "general", type: p.type || "mart",
         image: p.image || null, inStock: false,
@@ -455,22 +480,19 @@ router.post("/products/bulk", async (req, res) => {
 });
 
 /* ── PATCH /vendor/products/:id ── Update product ── */
-router.patch("/products/:id", async (req, res) => {
+router.patch("/products/:id", validateBody(patchProductSchema), async (req, res) => {
   const vendorId = req.vendorId!;
   const body = req.body;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
-  const fields = ["name","description","category","type","unit","deliveryTime"];
-  for (const f of fields) if (body[f] !== undefined) updates[f] = body[f];
+  const textFields = ["name","description","category","type","unit","deliveryTime"];
+  for (const f of textFields) if (body[f] !== undefined) updates[f] = body[f];
   if (body.price !== undefined) {
-    if (!isFinite(Number(body.price)) || Number(body.price) <= 0) {
-      sendValidationError(res, "Price must be a positive number"); return;
-    }
     updates.price = String(body.price);
   }
   if (body.originalPrice !== undefined) updates.originalPrice = body.originalPrice ? String(body.originalPrice) : null;
-  if (body.inStock     !== undefined) updates.inStock      = body.inStock;
-  if (body.stock       !== undefined) updates.stock        = body.stock !== null ? Number(body.stock) : null;
-  if (body.image       !== undefined) updates.image        = body.image;
+  if (body.inStock !== undefined) updates.inStock = body.inStock;
+  if (body.stock   !== undefined) updates.stock   = body.stock !== null ? Number(body.stock) : null;
+  if (body.image   !== undefined) updates.image   = body.image;
   const [product] = await db.update(productsTable).set(updates).where(and(eq(productsTable.id, req.params["id"]!), eq(productsTable.vendorId, vendorId))).returning();
   if (!product) { sendNotFound(res, "Product not found"); return; }
   sendSuccess(res, { ...product, price: safeNum(product.price) });

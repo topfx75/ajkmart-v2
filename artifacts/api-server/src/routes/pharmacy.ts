@@ -10,6 +10,7 @@ import { t, type TranslationKey } from "@workspace/i18n";
 import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
 import { prescriptionRefMap } from "./uploads.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
+import { stripHtml } from "../lib/sanitize.js";
 
 const router: IRouter = Router();
 
@@ -145,8 +146,6 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     trackable: TRACKABLE.includes(order.status),
   });
 });
-
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
 router.post("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;

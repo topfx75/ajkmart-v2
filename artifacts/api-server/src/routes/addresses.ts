@@ -7,12 +7,11 @@ import { generateId } from "../lib/id.js";
 import { sendSuccess, sendCreated, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 import { validateBody } from "../middleware/validate.js";
 import { customerAuth } from "../middleware/security.js";
+import { stripHtml } from "../lib/sanitize.js";
 
 const router: IRouter = Router();
 
 router.use(customerAuth);
-
-const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
 router.get("/", async (req, res) => {
   const userId = req.customerId!;

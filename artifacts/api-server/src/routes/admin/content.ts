@@ -24,6 +24,7 @@ import {
 } from "../admin-shared.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../../lib/response.js";
 import { validateBody, validateQuery, validateParams } from "../../middleware/validate.js";
+import { stripHtml } from "../../lib/sanitize.js";
 
 const idParamSchema = z.object({ id: z.string().min(1) }).strip();
 
@@ -35,8 +36,8 @@ const productsQuerySchema = z.object({
 }).strip();
 
 const createProductSchema = z.object({
-  name: z.string().min(1, "name is required"),
-  description: z.string().optional(),
+  name: z.string().min(1, "name is required").transform(stripHtml),
+  description: z.string().optional().transform(v => (v ? stripHtml(v) : v)),
   price: z.number({ required_error: "price is required" }).positive(),
   originalPrice: z.number().positive().optional(),
   category: z.string().min(1, "category is required"),
@@ -49,8 +50,8 @@ const createProductSchema = z.object({
 }).strip();
 
 const patchProductSchema = z.object({
-  name: z.string().optional(),
-  description: z.string().optional(),
+  name: z.string().optional().transform(v => (v ? stripHtml(v) : v)),
+  description: z.string().optional().transform(v => (v ? stripHtml(v) : v)),
   price: z.number().positive().optional(),
   originalPrice: z.number().positive().nullable().optional(),
   category: z.string().optional(),

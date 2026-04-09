@@ -45,6 +45,7 @@ import { logger } from "../lib/logger.js";
 import { clearSpoofHits } from "./rider.js";
 import { canonicalizePhone } from "@workspace/phone-utils";
 import { validateBody as sharedValidateBody } from "../middleware/validate.js";
+import { stripHtml } from "../lib/sanitize.js";
 
 /* OTP rate limiting is handled per-account + per-IP inside the route handler
    using the admin-configurable settings (security_otp_max_per_phone,
@@ -129,7 +130,7 @@ const forgotPasswordSchema = z.object({
 const registerSchema = z.object({
   phone: z.string().min(7, "Phone number is required"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  name: z.string().max(80).optional(),
+  name: z.string().max(80).transform(stripHtml).optional(),
   role: z.enum(["customer", "rider", "vendor"]).optional(),
   email: z.string().email().optional().or(z.literal("")),
   username: z.string().min(3).max(20).regex(/^[a-z0-9_]+$/, "Username can only contain lowercase letters, numbers, and underscores").optional(),
@@ -138,13 +139,13 @@ const registerSchema = z.object({
   vehicleType: z.string().optional(),
   vehicleRegNo: z.string().optional(),
   drivingLicense: z.string().optional(),
-  address: z.string().max(255).optional(),
+  address: z.string().max(255).transform(stripHtml).optional(),
   city: z.string().max(80).optional(),
   emergencyContact: z.string().optional(),
   vehiclePlate: z.string().optional(),
   vehiclePhoto: z.string().optional(),
   documents: z.string().optional(),
-  businessName: z.string().max(120).optional(),
+  businessName: z.string().max(120).transform(stripHtml).optional(),
   businessType: z.string().optional(),
   storeAddress: z.string().max(255).optional(),
   ntn: z.string().optional(),
