@@ -1856,10 +1856,51 @@ router.post("/:id/retry", customerAuth, requireRideState(["no_riders", "expired"
   sendSuccess(res, undefined, "Dispatch restarted");
 });
 
+const DISPATCH_INTERVAL_MS = 10_000;
+const WATCHDOG_INTERVAL_MS = 30_000;
+const WATCHDOG_STALE_THRESHOLD_MS = 60_000;
+
 let dispatchCycleRunning = false;
+let lastCycleCompletedAt: number | null = null;
+let lastCycleDurationMs: number | null = null;
+let engineStartedAt: number | null = null;
+
+router.get("/dispatch/health", adminAuth, async (_req, res) => {
+  try {
+    const pendingCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(ridesTable)
+      .where(and(
+        or(eq(ridesTable.status, "searching"), eq(ridesTable.status, "bargaining")),
+        isNull(ridesTable.riderId),
+      ))
+      .then((rows) => Number(rows[0]?.count ?? 0));
+
+    const now = Date.now();
+    const msSinceLastCycle = lastCycleCompletedAt !== null ? now - lastCycleCompletedAt : null;
+    const referenceTime = lastCycleCompletedAt ?? engineStartedAt;
+    const msSinceLastActivity = referenceTime !== null ? now - referenceTime : null;
+    const alive = engineStartedAt !== null && msSinceLastActivity !== null && msSinceLastActivity <= WATCHDOG_STALE_THRESHOLD_MS;
+
+    return sendSuccess(res, {
+      alive,
+      cycleRunning: dispatchCycleRunning,
+      lastCycleAt: lastCycleCompletedAt !== null ? new Date(lastCycleCompletedAt).toISOString() : null,
+      msSinceLastCycle,
+      msSinceLastActivity,
+      lastCycleDurationMs,
+      pendingRides: pendingCount,
+    });
+  } catch (err) {
+    logger.error({ err }, "[dispatch-health] error");
+    return res.status(500).json({ error: "Failed to fetch dispatch health" });
+  }
+});
+
 async function runDispatchCycle() {
   if (dispatchCycleRunning) return;
   dispatchCycleRunning = true;
+  const cycleStartedAt = Date.now();
   try {
     const s = await getPlatformSettings();
     const totalTimeoutSec = parseInt(s["dispatch_broadcast_timeout_sec"] ?? s["dispatch_request_timeout_sec"] ?? "120", 10);
@@ -2001,21 +2042,53 @@ async function runDispatchCycle() {
 
         await broadcastRide(ride.id);
       } catch (rideErr) {
-        logger.error(`[dispatch-engine] Error processing ride ${ride.id}:`, rideErr);
+        const errMsg = rideErr instanceof Error ? rideErr.message : String(rideErr);
+        const errStack = rideErr instanceof Error ? rideErr.stack : undefined;
+        logger.error({ rideId: ride.id, err: errMsg, stack: errStack }, `[dispatch-engine] Error processing ride ${ride.id}`);
       }
     }
   } catch (err) {
     logger.error("[dispatch-engine] cycle error:", err);
   } finally {
+    lastCycleCompletedAt = Date.now();
+    lastCycleDurationMs = lastCycleCompletedAt - cycleStartedAt;
     dispatchCycleRunning = false;
   }
 }
 
 let dispatchInterval: ReturnType<typeof setInterval> | null = null;
+let watchdogInterval: ReturnType<typeof setInterval> | null = null;
+
+function runWatchdog() {
+  const now = Date.now();
+  const referenceTime = lastCycleCompletedAt ?? engineStartedAt;
+  if (referenceTime === null) {
+    return;
+  }
+  const msSinceLastActivity = now - referenceTime;
+  if (msSinceLastActivity > WATCHDOG_STALE_THRESHOLD_MS) {
+    logger.fatal(
+      {
+        msSinceLastActivity,
+        lastCycleCompletedAt: lastCycleCompletedAt !== null ? new Date(lastCycleCompletedAt).toISOString() : null,
+        engineStartedAt: engineStartedAt !== null ? new Date(engineStartedAt).toISOString() : null,
+        noCycleEverCompleted: lastCycleCompletedAt === null,
+      },
+      "[dispatch-engine] WATCHDOG: engine has not completed a cycle in over 60s — resetting lock and triggering emergency cycle"
+    );
+    dispatchCycleRunning = false;
+    runDispatchCycle().catch((e) =>
+      logger.error({ err: e }, "[dispatch-engine] WATCHDOG: emergency cycle failed")
+    );
+  }
+}
+
 export function startDispatchEngine() {
   if (dispatchInterval) return;
-  dispatchInterval = setInterval(runDispatchCycle, 10_000);
-  logger.info("[dispatch-engine] started (every 10s)");
+  engineStartedAt = Date.now();
+  dispatchInterval = setInterval(runDispatchCycle, DISPATCH_INTERVAL_MS);
+  watchdogInterval = setInterval(runWatchdog, WATCHDOG_INTERVAL_MS);
+  logger.info("[dispatch-engine] started (every 10s, watchdog every 30s)");
   runDispatchCycle();
 }
 
