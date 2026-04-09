@@ -37,27 +37,3 @@ VAPID_PUBLIC_KEY = "BEmlZZIGCb7ZhembOoH02qzZlnhkFrYkib27NwFgtXBFDcvtHhhWC2hfZEHU
 VAPID_PRIVATE_KEY = "b3egnGyDJYSVsOB4z-PGhf5YbGeuVKcHtNpJPQ-r-eM"
 VAPID_CONTACT_EMAIL = "mailto:admin@ajkmart.app"
 JWT_SECRET = "d44f9d41bbc11954b0d33de7336f6052cd8a365f8014aea3c0289c51413348b50b30aff2df4c9c388a48e20b1639c7ef"
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 20716
-externalPort = 3002
-
-[[ports]]
-localPort = 21463
-externalPort = 3000
-
-[[ports]]
-localPort = 22969
-externalPort = 80
-
-[[ports]]
-localPort = 23744
-externalPort = 3001
