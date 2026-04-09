@@ -222,6 +222,7 @@ export default function Home() {
     queryFn: () => api.getCancelStats(),
     refetchInterval: tabVisible ? 120000 : false,
     staleTime: 60000,
+    enabled: !!user?.id,
   });
 
   const { data: ignoreStatsData } = useQuery({
@@ -229,6 +230,7 @@ export default function Home() {
     queryFn: () => api.getIgnoreStats(),
     refetchInterval: tabVisible ? 120000 : false,
     staleTime: 60000,
+    enabled: !!user?.id,
   });
 
   const allOrders: any[] = requestsData?.orders || [];
