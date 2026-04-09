@@ -15,6 +15,7 @@ import { getUserLanguage } from "../lib/getUserLanguage.js";
 import { sendSuccess, sendCreated, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendUnauthorized, sendValidationError, sendTooManyRequests } from "../lib/response.js";
 import { isInServiceZone } from "../lib/geofence.js";
 import rateLimit from "express-rate-limit";
+import { validateBase64Image } from "../lib/upload-validator.js";
 
 /* ── Ride-action rate limiters (defined early so they can be referenced anywhere in the file) ── */
 
@@ -990,6 +991,17 @@ router.patch("/orders/:id/status", async (req, res) => {
   /* Proof photo is mandatory for delivery confirmation — prevents fraudulent delivery claims */
   if (status === "delivered" && !proofPhoto) {
     sendValidationError(res, "Proof of delivery photo is required to mark an order as delivered. Please upload a photo."); return;
+  }
+
+  /* Magic-byte verification for proof photo before writing to the database */
+  if (proofPhoto) {
+    try {
+      validateBase64Image(proofPhoto, "Proof photo");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid proof photo";
+      sendValidationError(res, msg);
+      return;
+    }
   }
 
   /* ── Rider Cancel: clear riderId + reset to preparing so another rider can pick it up ── */

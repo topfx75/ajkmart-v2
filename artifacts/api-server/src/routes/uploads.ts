@@ -2,15 +2,13 @@ import { Router, type IRouter } from "express";
 import { randomUUID } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import multer from "multer";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
 import { customerAuth, riderAuth } from "../middleware/security.js";
+import { imageUpload, validateImageBuffer, validateBase64Image, handleMulterError, isUploadValidationError } from "../lib/upload-validator.js";
 
 const router: IRouter = Router();
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
 
 const prescriptionRefMap = new Map<string, string>();
 
@@ -19,17 +17,7 @@ async function ensureDir() {
 }
 
 /* ── Multer instance for multipart/form-data (memory storage) ── */
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_TYPES.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
-    }
-  },
-});
+const upload = imageUpload;
 
 /* ── Helper: save a buffer and return the public URL ── */
 async function saveBuffer(buffer: Buffer, prefix: string, mimeType: string): Promise<string> {
@@ -43,26 +31,14 @@ async function saveBuffer(buffer: Buffer, prefix: string, mimeType: string): Pro
 /* ── POST /uploads — JSON base64 upload (customers / super-app) ── */
 router.post("/", customerAuth, async (req, res) => {
   try {
-    const { file, filename, mimeType } = req.body;
+    const { file, filename } = req.body;
 
     if (!file) {
       sendValidationError(res, "No file data provided");
       return;
     }
 
-    const mime = mimeType || "image/jpeg";
-    if (!ALLOWED_TYPES.includes(mime)) {
-      sendValidationError(res, "Only JPEG, PNG, and WebP images are allowed");
-      return;
-    }
-
-    const base64Data = file.replace(/^data:image\/\w+;base64,/, "");
-    const buffer = Buffer.from(base64Data, "base64");
-
-    if (buffer.length > MAX_FILE_SIZE) {
-      sendValidationError(res, "File too large. Maximum 5MB allowed");
-      return;
-    }
+    const { buffer, mime } = validateBase64Image(file, "File");
 
     const url = await saveBuffer(buffer, "upload", mime);
 
@@ -73,6 +49,10 @@ router.post("/", customerAuth, async (req, res) => {
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Upload failed";
+    if (isUploadValidationError(e)) {
+      sendValidationError(res, msg);
+      return;
+    }
     sendError(res, msg);
   }
 });
@@ -87,19 +67,7 @@ router.post(
   riderAuth,
   (req, res, next) => {
     upload.single("file")(req, res, (err) => {
-      if (err instanceof multer.MulterError) {
-        if (err.code === "LIMIT_FILE_SIZE") {
-          sendValidationError(res, "File too large. Maximum 5MB allowed");
-          return;
-        }
-        sendValidationError(res, err.message);
-        return;
-      }
-      if (err) {
-        sendValidationError(res, err instanceof Error ? err.message : "Upload failed");
-        return;
-      }
-      next();
+      handleMulterError(err, req, res, next);
     });
   },
   async (req, res) => {
@@ -111,10 +79,7 @@ router.post(
 
       const { mimetype, buffer, originalname } = req.file;
 
-      if (!ALLOWED_TYPES.includes(mimetype)) {
-        sendValidationError(res, "Only JPEG, PNG, and WebP images are allowed");
-        return;
-      }
+      validateImageBuffer(buffer, mimetype, "File");
 
       const url = await saveBuffer(buffer, "proof", mimetype);
 
@@ -125,6 +90,10 @@ router.post(
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Upload failed";
+      if (isUploadValidationError(e)) {
+        sendValidationError(res, msg);
+        return;
+      }
       sendError(res, msg);
     }
   },
@@ -133,7 +102,7 @@ router.post(
 /* ── POST /uploads/prescription — base64 prescription upload (customers) ── */
 router.post("/prescription", customerAuth, async (req, res) => {
   try {
-    const { file, mimeType, refId } = req.body;
+    const { file, refId } = req.body;
 
     if (!file) {
       sendValidationError(res, "No file data provided");
@@ -145,19 +114,7 @@ router.post("/prescription", customerAuth, async (req, res) => {
       return;
     }
 
-    const mime = mimeType || "image/jpeg";
-    if (!ALLOWED_TYPES.includes(mime)) {
-      sendValidationError(res, "Only JPEG, PNG, and WebP images are allowed");
-      return;
-    }
-
-    const base64Data = file.replace(/^data:image\/\w+;base64,/, "");
-    const buffer = Buffer.from(base64Data, "base64");
-
-    if (buffer.length > MAX_FILE_SIZE) {
-      sendValidationError(res, "File too large. Maximum 5MB allowed");
-      return;
-    }
+    const { buffer, mime } = validateBase64Image(file, "File");
 
     const url = await saveBuffer(buffer, "rx", mime);
     prescriptionRefMap.set(refId, url);
@@ -167,6 +124,10 @@ router.post("/prescription", customerAuth, async (req, res) => {
     sendCreated(res, { url, refId });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Upload failed";
+    if (isUploadValidationError(e)) {
+      sendValidationError(res, msg);
+      return;
+    }
     sendError(res, msg);
   }
 });

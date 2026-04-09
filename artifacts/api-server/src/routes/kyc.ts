@@ -6,42 +6,17 @@ import { randomUUID } from "crypto";
 import { customerAuth } from "../middleware/security.js";
 import { adminAuth } from "./admin.js";
 import { getPlatformSettings } from "./admin-shared.js";
-import multer from "multer";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { logger } from "../lib/logger.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
+import { imageUpload, validateImageBuffer, validateBase64Image, handleMulterError } from "../lib/upload-validator.js";
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
 const UPLOADS_DIR = path.resolve(process.cwd(), "uploads/kyc");
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
-const MAX_KYC_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB per image
 
-/* Magic byte signatures for MIME validation */
-const MIME_MAGIC: Record<string, number[][]> = {
-  "image/jpeg": [[0xFF, 0xD8, 0xFF]],
-  "image/png":  [[0x89, 0x50, 0x4E, 0x47]],
-  "image/webp": [[0x52, 0x49, 0x46, 0x46]],  // RIFF....WEBP
-};
-
-function detectMime(buf: Buffer): string | null {
-  for (const [mime, signatures] of Object.entries(MIME_MAGIC)) {
-    for (const sig of signatures) {
-      if (sig.every((byte, i) => buf[i] === byte)) return mime;
-    }
-  }
-  return null;
-}
-
-const kycUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_KYC_IMAGE_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_TYPES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Only JPEG, PNG, WebP images allowed"));
-  },
-});
+const kycUpload = imageUpload;
 
 async function saveKycPhoto(userId: string, type: string, buffer: Buffer, mime: string): Promise<string> {
   const ext = mime === "image/png" ? ".png" : mime === "image/webp" ? ".webp" : ".jpg";
@@ -123,15 +98,19 @@ router.get("/status", customerAuth, async (req, res) => {
 router.post(
   "/submit",
   customerAuth,
-  kycUpload.fields([
-    { name: "frontIdPhoto", maxCount: 1 },
-    { name: "backIdPhoto", maxCount: 1 },
-    { name: "selfiePhoto", maxCount: 1 },
-    { name: "idFront", maxCount: 1 },
-    { name: "idBack", maxCount: 1 },
-    { name: "selfie", maxCount: 1 },
-    { name: "idPhoto", maxCount: 1 },
-  ]),
+  (req, res, next) => {
+    kycUpload.fields([
+      { name: "frontIdPhoto", maxCount: 1 },
+      { name: "backIdPhoto", maxCount: 1 },
+      { name: "selfiePhoto", maxCount: 1 },
+      { name: "idFront", maxCount: 1 },
+      { name: "idBack", maxCount: 1 },
+      { name: "selfie", maxCount: 1 },
+      { name: "idPhoto", maxCount: 1 },
+    ])(req, res, (err) => {
+      handleMulterError(err, req, res, next);
+    });
+  },
   async (req, res) => {
     const userId = req.customerId!;
 
@@ -148,6 +127,16 @@ router.post(
     if (!frontFile)  { res.status(400).json({ success: false, error: "Front side of CNIC is required" }); return; }
     if (!backFile)   { res.status(400).json({ success: false, error: "Back side of CNIC is required" }); return; }
     if (!selfieFile) { res.status(400).json({ success: false, error: "Selfie photo is required" }); return; }
+
+    try {
+      validateImageBuffer(frontFile.buffer, frontFile.mimetype, "Front CNIC photo");
+      validateImageBuffer(backFile.buffer, backFile.mimetype, "Back CNIC photo");
+      validateImageBuffer(selfieFile.buffer, selfieFile.mimetype, "Selfie photo");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid image file";
+      res.status(400).json({ success: false, error: msg });
+      return;
+    }
 
     const rawBody = req.body;
     const fullName = typeof rawBody.fullName === "string" ? stripHtml(rawBody.fullName) : "";
@@ -309,40 +298,10 @@ router.post("/submit-base64", customerAuth, async (req, res) => {
 
   const cnicClean = cnic.replace(/[-\s]/g, "");
 
-  function base64ToBuffer(dataUrl: string, fieldName: string): { buffer: Buffer; mime: string } {
-    const match = dataUrl.match(/^data:(image\/[\w]+);base64,(.+)$/);
-    if (!match) throw Object.assign(new Error(`Invalid image data for ${fieldName}`), { statusCode: 400 });
-
-    const claimedMime = match[1]!;
-    if (!ALLOWED_TYPES.includes(claimedMime)) {
-      throw Object.assign(new Error(`${fieldName}: Only JPEG, PNG, or WebP images are allowed`), { statusCode: 400 });
-    }
-
-    const buffer = Buffer.from(match[2]!, "base64");
-
-    /* Size cap: 5MB per image */
-    if (buffer.length > MAX_KYC_IMAGE_SIZE) {
-      throw Object.assign(new Error(`${fieldName}: Image too large. Maximum 5MB allowed`), { statusCode: 400 });
-    }
-
-    /* Magic byte MIME verification — reject if bytes match no known format OR mismatch */
-    const actualMime = detectMime(buffer);
-    const mimeOk = actualMime === claimedMime
-      || (actualMime === "image/webp" && claimedMime === "image/jpeg");
-    if (!actualMime) {
-      throw Object.assign(new Error(`${fieldName}: File appears corrupted or is not a valid image`), { statusCode: 400 });
-    }
-    if (!mimeOk) {
-      throw Object.assign(new Error(`${fieldName}: Image content does not match its declared type`), { statusCode: 400 });
-    }
-
-    return { buffer, mime: claimedMime };
-  }
-
   try {
-    const front = base64ToBuffer(frontIdPhoto, "Front CNIC photo");
-    const back  = base64ToBuffer(backIdPhoto, "Back CNIC photo");
-    const selfie = base64ToBuffer(selfiePhoto, "Selfie photo");
+    const front = validateBase64Image(frontIdPhoto, "Front CNIC photo");
+    const back  = validateBase64Image(backIdPhoto, "Back CNIC photo");
+    const selfie = validateBase64Image(selfiePhoto, "Selfie photo");
 
     await db.transaction(async (tx) => {
       const [existing] = await tx
