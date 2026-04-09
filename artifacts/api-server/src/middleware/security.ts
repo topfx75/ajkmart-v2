@@ -232,9 +232,9 @@ export function getClientIp(req: Request): string {
 
 /* ══════════════════════════════════════════════════════════════
    AUDIT LOG (in-memory ring buffer)
+   Always writes — the security_audit_log setting controls UI visibility only.
 ══════════════════════════════════════════════════════════════ */
-export function addAuditEntry(entry: Omit<AuditEntry, "timestamp">) {
-  if (settingsCache["security_audit_log"] === "off") return;
+export function addAuditEntry(entry: Omit<AuditEntry, "timestamp">, _force = false) {
   auditLog.unshift({ ...entry, timestamp: new Date().toISOString() });
   if (auditLog.length > 2000) auditLog.splice(2000);
 }

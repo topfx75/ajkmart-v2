@@ -746,7 +746,12 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
           {/* ── Live: Audit Log ── */}
           <SecPanel title="Admin Audit Log" icon={FileText} color="text-purple-700">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-muted-foreground">Last 50 admin actions — updates automatically when refreshed</p>
+              <div>
+                <p className="text-xs text-muted-foreground">Last 50 admin actions — always logged server-side</p>
+                {localValues["security_audit_log"] === "off" && (
+                  <p className="text-[10px] text-amber-600 mt-0.5 font-medium">Audit log viewer is hidden (toggle above is OFF) — entries are still recorded</p>
+                )}
+              </div>
               <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={fetchLiveData} disabled={liveLoading}>
                 <RefreshCw className={`w-3 h-3 ${liveLoading ? "animate-spin" : ""}`} /> Refresh
               </Button>
@@ -755,21 +760,41 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
               <div className="p-3 bg-muted/40 rounded-xl text-xs text-muted-foreground text-center">No audit entries yet. Actions will appear here after admin operations.</div>
             ) : (
               <div className="space-y-1 max-h-72 overflow-y-auto">
-                {auditEntries.map((e, i) => (
-                  <div key={i} className={`flex items-start gap-2 p-2 rounded-lg text-xs ${e.result === "success" ? "bg-green-50" : e.result === "warn" ? "bg-amber-50" : "bg-red-50"}`}>
-                    <span className={`text-[9px] font-black px-1 py-0.5 rounded mt-0.5 flex-shrink-0 uppercase ${
-                      e.result === "success" ? "bg-green-600 text-white" : e.result === "warn" ? "bg-amber-500 text-white" : "bg-red-600 text-white"
-                    }`}>{e.result}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-foreground">{e.action.replace(/_/g, " ")}</span>
-                        <span className="text-[10px] text-muted-foreground flex-shrink-0">{new Date(e.timestamp).toLocaleTimeString()}</span>
+                {auditEntries.map((e: any, i: number) => {
+                  /* Try to parse structured details for settings_update / settings_restore */
+                  let parsed: { count?: number; changes?: Array<{ key: string; oldValue: string | null; newValue: string }>; restored?: number; skipped?: number } | null = null;
+                  if ((e.action === "settings_update" || e.action === "settings_restore") && typeof e.details === "string" && e.details.startsWith("{")) {
+                    try { parsed = JSON.parse(e.details); } catch { /* ignore */ }
+                  }
+                  return (
+                    <div key={i} className={`flex items-start gap-2 p-2 rounded-lg text-xs ${e.result === "success" ? "bg-green-50" : e.result === "warn" ? "bg-amber-50" : "bg-red-50"}`}>
+                      <span className={`text-[9px] font-black px-1 py-0.5 rounded mt-0.5 flex-shrink-0 uppercase ${
+                        e.result === "success" ? "bg-green-600 text-white" : e.result === "warn" ? "bg-amber-500 text-white" : "bg-red-600 text-white"
+                      }`}>{e.result}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-foreground">{e.action.replace(/_/g, " ")}</span>
+                          <span className="text-[10px] text-muted-foreground flex-shrink-0">{new Date(e.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        {parsed?.changes ? (
+                          <div className="mt-1 space-y-1">
+                            {parsed.changes.map((c, ci: number) => (
+                              <div key={ci} className="flex items-center gap-1 font-mono text-[10px]">
+                                <span className="text-slate-600 font-semibold">{c.key}</span>
+                                <span className="text-red-500 line-through">{c.oldValue ?? "—"}</span>
+                                <span className="text-slate-400">→</span>
+                                <span className="text-green-700 font-bold">{c.newValue}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground truncate">{e.details}</p>
+                        )}
+                        <p className="text-[10px] font-mono text-muted-foreground/60">{e.ip}{e.adminId ? ` · admin:${e.adminId}` : ""}</p>
                       </div>
-                      <p className="text-muted-foreground truncate">{e.details}</p>
-                      <p className="text-[10px] font-mono text-muted-foreground/60">{e.ip}</p>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </SecPanel>

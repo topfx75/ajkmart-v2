@@ -182,6 +182,14 @@ router.put("/platform-settings", async (req, res) => {
     const err = validateSettingValue(key, String(value));
     if (err) { sendError(res, err, 422); return; }
   }
+  /* Fetch old values before writing so we can record them in the audit log */
+  const keys = settings.map(s => s.key);
+  const oldRows = await db.select().from(platformSettingsTable).where(
+    keys.length === 1 ? eq(platformSettingsTable.key, keys[0]!) : sql`${platformSettingsTable.key} = ANY(${keys})`
+  );
+  const oldValueMap: Record<string, string> = {};
+  for (const r of oldRows) oldValueMap[r.key] = r.value;
+
   for (const { key, value } of settings) {
     await db
       .insert(platformSettingsTable)
@@ -194,8 +202,20 @@ router.put("/platform-settings", async (req, res) => {
   /* Bust both caches so new values apply immediately to all call sites */
   invalidateSettingsCache();
   invalidatePlatformSettingsCache();
-  const changedKeys = settings.map((s: Record<string, unknown>) => s.key).join(", ");
-  addAuditEntry({ action: "settings_update", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Updated ${settings.length} setting(s): ${changedKeys}`, result: "success" });
+
+  /* Build structured change list for audit */
+  const changes = settings.map(s => ({
+    key: s.key,
+    oldValue: oldValueMap[s.key] ?? null,
+    newValue: String(s.value),
+  }));
+  addAuditEntry({
+    action: "settings_update",
+    ip: getClientIp(req),
+    adminId: (req as AdminRequest).adminId,
+    details: JSON.stringify({ count: settings.length, changes }),
+    result: "success",
+  }, true);
   const rows = await db.select().from(platformSettingsTable);
   sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })) });
 });
@@ -237,19 +257,37 @@ router.post("/platform-settings/restore", async (req, res) => {
   }
   if (errors.length > 0) { sendError(res, `Validation failed: ${errors.slice(0, 3).join("; ")}`, 422); return; }
 
+  /* Fetch old values before writing */
+  const restoreKeys = settings.map(s => s.key);
+  const oldRestoreRows = await db.select().from(platformSettingsTable).where(
+    restoreKeys.length === 1 ? eq(platformSettingsTable.key, restoreKeys[0]!) : sql`${platformSettingsTable.key} = ANY(${restoreKeys})`
+  );
+  const oldRestoreMap: Record<string, string> = {};
+  for (const r of oldRestoreRows) oldRestoreMap[r.key] = r.value;
+
   let updated = 0;
   let skipped = 0;
+  const restoreChanges: Array<{ key: string; oldValue: string | null; newValue: string }> = [];
   for (const { key, value } of settings) {
     const result = await db
       .update(platformSettingsTable)
       .set({ value: String(value), updatedAt: new Date() })
       .where(eq(platformSettingsTable.key, key))
       .returning({ key: platformSettingsTable.key });
-    if (result.length > 0) { updated++; } else { skipped++; }
+    if (result.length > 0) {
+      updated++;
+      restoreChanges.push({ key, oldValue: oldRestoreMap[key] ?? null, newValue: String(value) });
+    } else { skipped++; }
   }
   invalidateSettingsCache();
   invalidatePlatformSettingsCache();
-  addAuditEntry({ action: "settings_restore", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Restored ${updated} settings (${skipped} unrecognised keys skipped)`, result: "success" });
+  addAuditEntry({
+    action: "settings_restore",
+    ip: getClientIp(req),
+    adminId: (req as AdminRequest).adminId,
+    details: JSON.stringify({ restored: updated, skipped, changes: restoreChanges }),
+    result: "success",
+  }, true);
   const rows = await db.select().from(platformSettingsTable);
   sendSuccess(res, { restored: updated, skipped, settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })) });
 });
@@ -261,6 +299,9 @@ router.patch("/platform-settings/:key", validateBody(patchSettingSchema), async 
   const settingKey = req.params["key"]!;
   const err = validateSettingValue(settingKey, String(value));
   if (err) { sendError(res, err, 422); return; }
+  /* Fetch old value before writing */
+  const [oldRow] = await db.select().from(platformSettingsTable).where(eq(platformSettingsTable.key, settingKey));
+  const oldValue = oldRow?.value ?? null;
   const [row] = await db
     .update(platformSettingsTable)
     .set({ value: String(value), updatedAt: new Date() })
@@ -270,7 +311,13 @@ router.patch("/platform-settings/:key", validateBody(patchSettingSchema), async 
   /* Bust both caches so new values apply immediately to all call sites */
   invalidateSettingsCache();
   invalidatePlatformSettingsCache();
-  addAuditEntry({ action: "settings_update", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Updated setting "${settingKey}" = "${value}"`, result: "success" });
+  addAuditEntry({
+    action: "settings_update",
+    ip: getClientIp(req),
+    adminId: (req as AdminRequest).adminId,
+    details: JSON.stringify({ count: 1, changes: [{ key: settingKey, oldValue, newValue: String(value) }] }),
+    result: "success",
+  }, true);
   sendSuccess(res, { ...row, updatedAt: row.updatedAt.toISOString() });
 });
 
