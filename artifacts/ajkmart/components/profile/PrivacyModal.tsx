@@ -3,6 +3,7 @@ import {
   ActivityIndicator, Alert, Image, Linking, Modal,
   ScrollView, Switch, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
+import { webFeatureSupport } from "@/utils/webFeatureSupport";
 import { Ionicons } from "@expo/vector-icons";
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -270,6 +271,14 @@ export function PrivacyModal({ visible, userId, token, onClose }: { visible: boo
             </Accordion>
             <Accordion title="🛡️ Security" icon="shield-checkmark-outline" iconColor={C.success} iconBg={C.successSoft}>
               <View style={secCard.wrap}>
+                {!webFeatureSupport.secureKeychain && (
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.accentSoft, borderRadius: 8, marginBottom: 8, marginHorizontal: 4 }}>
+                    <Ionicons name="information-circle-outline" size={15} color={C.accent} style={{ marginTop: 1 }} />
+                    <Text style={{ fontFamily: Font.regular, fontSize: 12, color: C.accent, flex: 1, lineHeight: 17 }}>
+                      On web, credentials are stored in browser storage rather than a secure keychain. For better security, use the mobile app.
+                    </Text>
+                  </View>
+                )}
                 <TouchableOpacity activeOpacity={0.7} onPress={() => { setShowChangePass(v => !v); setPassError(""); }} style={privRow.wrap} accessibilityRole="button" accessibilityLabel="Change password">
                   <View style={[privRow.icon, { backgroundColor: C.primarySoft }]}><Ionicons name="key-outline" size={17} color={C.primary} /></View>
                   <View style={{ flex: 1 }}>
@@ -301,7 +310,7 @@ export function PrivacyModal({ visible, userId, token, onClose }: { visible: boo
                     </TouchableOpacity>
                   </View>
                 )}
-                {isBioEnabled && (
+                {isBioEnabled && webFeatureSupport.biometrics && (
                   <View style={privRow.wrap}>
                     <View style={[privRow.icon, { backgroundColor: C.primarySoft }]}><Ionicons name="finger-print-outline" size={17} color={C.primary} /></View>
                     <View style={{ flex: 1 }}>
@@ -311,6 +320,16 @@ export function PrivacyModal({ visible, userId, token, onClose }: { visible: boo
                     {saving === "biometric" ? <ActivityIndicator size="small" color={C.primary} /> : (
                       <Switch value={biometricEnabled} onValueChange={handleBiometricToggle} trackColor={{ false: C.border, true: C.primary }} thumbColor={C.surface} />
                     )}
+                  </View>
+                )}
+                {isBioEnabled && !webFeatureSupport.biometrics && (
+                  <View style={[privRow.wrap, { opacity: 0.6 }]}>
+                    <View style={[privRow.icon, { backgroundColor: C.surfaceSecondary }]}><Ionicons name="finger-print-outline" size={17} color={C.textMuted} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[privRow.label, { color: C.textMuted }]}>Biometric Login</Text>
+                      <Text style={privRow.sub}>Not available on web — use the mobile app</Text>
+                    </View>
+                    <Ionicons name="lock-closed-outline" size={16} color={C.textMuted} />
                   </View>
                 )}
                 {is2FAEnabled && (

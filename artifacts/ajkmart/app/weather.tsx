@@ -18,6 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 
 import Colors, { spacing, radii, shadows, getFontFamily } from "@/constants/colors";
+import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
 import { Font } from "@/constants/typography";
 
 const C = Colors.light;
@@ -108,13 +109,11 @@ async function fetchForecast(lat: number, lng: number): Promise<Omit<ForecastDat
 }
 
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
-  try {
-    const result = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-    if (result.length > 0) {
-      const r = result[0];
-      return [r.city || r.subregion, r.region].filter(Boolean).join(", ") || "Current Location";
-    }
-  } catch {}
+  const result = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+  if (result.length > 0) {
+    const r = result[0];
+    return [r.city || r.subregion, r.region].filter(Boolean).join(", ") || "Current Location";
+  }
   return "Current Location";
 }
 
@@ -139,6 +138,7 @@ export default function WeatherDetailScreen() {
   const [forecast, setForecast] = useState<ForecastData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [geocodingNotice, setGeocodingNotice] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("hourly");
   const [showCityInput, setShowCityInput] = useState(false);
   const [cityQuery, setCityQuery] = useState("");
@@ -149,6 +149,7 @@ export default function WeatherDetailScreen() {
   const loadWeather = useCallback(async (manualCity?: { lat: number; lng: number; name: string }) => {
     setLoading(true);
     setError(null);
+    setGeocodingNotice(null);
     try {
       let lat: number;
       let lng: number;
@@ -167,7 +168,16 @@ export default function WeatherDetailScreen() {
             const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
             lat = loc.coords.latitude;
             lng = loc.coords.longitude;
-            locName = await reverseGeocode(lat, lng);
+            try {
+              locName = await reverseGeocode(lat, lng);
+            } catch (geoErr: unknown) {
+              if (isGeocodingUnsupportedOnWeb(geoErr)) {
+                locName = "Current Location";
+                setGeocodingNotice("Address lookup is not available on web. Add a city manually for a named location.");
+              } else {
+                locName = "Current Location";
+              }
+            }
             isGps = true;
           } catch {
             const saved = await AsyncStorage.getItem(SAVED_CITY_KEY).catch(() => null);
@@ -375,6 +385,12 @@ export default function WeatherDetailScreen() {
           </View>
         ) : forecast ? (
           <>
+            {geocodingNotice && (
+              <View style={{ backgroundColor: "rgba(0,0,0,0.3)", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, marginHorizontal: 20, marginTop: 8, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.7)" />
+                <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, flex: 1 }}>{geocodingNotice}</Text>
+              </View>
+            )}
             {/* Current weather hero */}
             <View style={s.heroWrap}>
               <View style={s.locationRow}>

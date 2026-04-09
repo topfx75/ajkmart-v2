@@ -30,6 +30,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { createOrder } from "@workspace/api-client-react";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
+import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
 import { AuthGateSheet, useAuthGate, useRoleGate, RoleBlockSheet } from "@/components/AuthGateSheet";
 
 const C = Colors.light;
@@ -84,6 +85,7 @@ function GpsSlotRow({ selected, onSelect, onClose }: {
 }) {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [gpsAddr, setGpsAddr] = useState<SavedAddress | null>(null);
   const isSel = selected === "__gps__";
@@ -105,7 +107,11 @@ function GpsSlotRow({ selected, onSelect, onClose }: {
             const parts = [geo.street, geo.name, geo.district].filter(Boolean);
             if (parts.length > 0) streetAddr = parts.join(", ");
           }
-        } catch {}
+        } catch (err: unknown) {
+          if (isGeocodingUnsupportedOnWeb(err)) {
+            showToast("Address lookup unavailable on web — showing your coordinates", "info");
+          }
+        }
         if (!cancelled) {
           setGpsAddr({
             id: "__gps__",
@@ -149,7 +155,11 @@ function GpsSlotRow({ selected, onSelect, onClose }: {
           const parts = [geo.street, geo.name, geo.district].filter(Boolean);
           if (parts.length > 0) streetAddr = parts.join(", ");
         }
-      } catch {}
+      } catch (err: unknown) {
+        if (isGeocodingUnsupportedOnWeb(err)) {
+          showToast("Address lookup unavailable on web — showing your coordinates", "info");
+        }
+      }
       const addr: SavedAddress = {
         id: "__gps__",
         label: "Current Location",
@@ -601,7 +611,11 @@ function CartScreenInner() {
             const parts = [geo.street, geo.name, geo.district].filter(Boolean);
             if (parts.length > 0) streetAddr = parts.join(", ");
           }
-        } catch {}
+        } catch (err: unknown) {
+          if (isGeocodingUnsupportedOnWeb(err)) {
+            showToast("Address lookup unavailable on web — showing your coordinates", "info");
+          }
+        }
         if (!cancelled) {
           const gpsAddr: SavedAddress = {
             id: "__gps__",

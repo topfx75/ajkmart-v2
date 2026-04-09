@@ -1,6 +1,8 @@
 /**
  * expo-local-authentication web shim
  * Biometric authentication is not available in browsers via this API.
+ * All capability queries return false/empty, and authenticate returns
+ * a typed failure result that callers can inspect.
  */
 
 export async function hasHardwareAsync() {
@@ -16,7 +18,7 @@ export async function supportedAuthenticationTypesAsync() {
 }
 
 export async function authenticateAsync(_options) {
-  return { success: false, error: "Not supported on web" };
+  return { success: false, error: "not_available", warning: "Biometric authentication is not supported on web. Please use the mobile app or another sign-in method." };
 }
 
 export async function cancelAuthenticate() {}

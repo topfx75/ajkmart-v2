@@ -18,6 +18,7 @@ import { spacing, radii, shadows, typography } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
+import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
 
 import {
   OtpDigitInput,
@@ -185,8 +186,12 @@ export default function RegisterScreen() {
           if (parts.length > 0) setAddress(parts.join(", "));
           setGpsStatus("Location captured successfully");
         }
-      } catch {
-        setGpsStatus("Coordinates captured (address lookup unavailable)");
+      } catch (geoErr: unknown) {
+        if (isGeocodingUnsupportedOnWeb(geoErr)) {
+          setGpsStatus("Coordinates captured — address lookup is not available on web");
+        } else {
+          setGpsStatus("Coordinates captured (address lookup unavailable)");
+        }
       }
     } catch (e: any) {
       setGpsStatus(e.message || "Could not get location");

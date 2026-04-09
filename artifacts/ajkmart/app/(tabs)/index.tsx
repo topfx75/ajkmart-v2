@@ -46,6 +46,7 @@ import { WishlistHeart } from "@/components/WishlistHeart";
 import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
 
 import { unwrapApiResponse } from "@/utils/api";
+import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
 const C = Colors.light;
@@ -890,9 +891,11 @@ function WeatherWidget({ userLat, userLng, cityLabel }: { userLat?: number; user
   const [loading, setLoading] = useState(true);
   const [locationLabel, setLocationLabel] = useState(cityLabel || "");
   const [isGps, setIsGps] = useState(false);
+  const [geocodingUnavailable, setGeocodingUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setGeocodingUnavailable(false);
     (async () => {
       try {
         let lat: number | undefined;
@@ -912,7 +915,14 @@ function WeatherWidget({ userLat, userLng, cityLabel }: { userLat?: number; user
               if (rev.length > 0) {
                 locName = [rev[0].city || rev[0].subregion, rev[0].region].filter(Boolean).join(", ") || locName;
               }
-            } catch {}
+            } catch (geoErr: unknown) {
+              if (!locName) locName = "Current Location";
+              if (isGeocodingUnsupportedOnWeb(geoErr)) {
+                if (!cancelled) setGeocodingUnavailable(true);
+              } else if (__DEV__) {
+                console.warn("[WeatherWidget] Geocoding failed:", geoErr instanceof Error ? geoErr.message : String(geoErr));
+              }
+            }
           }
         } catch {}
 
@@ -1009,6 +1019,11 @@ function WeatherWidget({ userLat, userLng, cityLabel }: { userLat?: number; user
             <Text style={wS.detail}>💨 {weather!.windSpeed} km/h</Text>
             {weather!.feelsLike != null && <Text style={wS.detail}>🌡 Feels {weather!.feelsLike}°</Text>}
           </View>
+          {geocodingUnavailable && (
+            <Text style={{ fontFamily: Font.regular, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+              Address lookup unavailable on web — add a city in the forecast view
+            </Text>
+          )}
         </View>
         <View style={{ alignItems: "flex-end", gap: 2 }}>
           <Text style={wS.temp}>{weather!.temp}°C</Text>

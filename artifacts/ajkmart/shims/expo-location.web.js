@@ -139,14 +139,22 @@ export async function hasStartedGeofencingAsync(_taskName) {
   return false;
 }
 
-export async function geocodeAsync(address) {
-  console.warn("Geocoding not available in expo-location web shim");
-  return [];
+function createGeocodingError(message) {
+  const err = new Error(message);
+  err.code = "GEOCODING_UNSUPPORTED_ON_WEB";
+  return err;
+}
+
+export async function geocodeAsync(_address) {
+  throw createGeocodingError(
+    "Address geocoding is not available on web. Please enter your location manually."
+  );
 }
 
 export async function reverseGeocodeAsync(_location) {
-  console.warn("Reverse geocoding not available in expo-location web shim");
-  return [];
+  throw createGeocodingError(
+    "Reverse geocoding is not available on web. Coordinates were captured but address lookup is unavailable."
+  );
 }
 
 export async function enableNetworkProviderAsync() {}

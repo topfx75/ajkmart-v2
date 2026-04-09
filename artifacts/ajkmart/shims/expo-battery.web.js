@@ -1,6 +1,7 @@
 /**
  * expo-battery web shim
- * Uses the Battery Status API if available.
+ * Uses the Battery Status API if available, returns sentinel values when not.
+ * Battery level of -1 indicates unavailability — callers should guard with `if (level >= 0)`.
  */
 
 async function getBattery() {

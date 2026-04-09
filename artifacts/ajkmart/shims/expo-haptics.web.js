@@ -1,6 +1,8 @@
 /**
  * expo-haptics web shim
- * Haptic feedback is not available in browsers — all functions are no-ops.
+ * Haptic feedback is not available in browsers — all functions are intentional no-ops.
+ * Haptics are an enhancement-only feature; callers must not gate user-visible
+ * content or flows on haptic feedback success.
  */
 
 export async function impactAsync(_style) {}

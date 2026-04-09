@@ -22,6 +22,7 @@ import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigCont
 import { useToast } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
+import { webFeatureSupport } from "@/utils/webFeatureSupport";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
@@ -354,7 +355,7 @@ export default function AuthScreen() {
   if (isMethodEnabled(authCfg.googleEnabled)) socialMethods.push({ key: "google", icon: "logo-google", label: "Google", color: "#EA4335" });
   if (isMethodEnabled(authCfg.facebookEnabled)) socialMethods.push({ key: "facebook", icon: "logo-facebook", label: "Facebook", color: "#1877F2" });
   const showMagicLink = isMethodEnabled(authCfg.magicLinkEnabled);
-  const showBiometric = isMethodEnabled(authCfg.biometricEnabled) && biometricEnabled;
+  const showBiometric = isMethodEnabled(authCfg.biometricEnabled) && biometricEnabled && webFeatureSupport.biometrics;
 
   const handleSendPhoneOtp = async (preferredChannel?: string) => {
     clearError();

@@ -1,6 +1,8 @@
 /**
  * expo-secure-store web shim
  * Falls back to localStorage on web (no keychain available in browsers).
+ * Data stored via this shim has the same security properties as localStorage
+ * (i.e., not hardware-protected). This is an acceptable degradation for web.
  */
 
 export async function getItemAsync(key) {
