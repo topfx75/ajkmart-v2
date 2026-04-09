@@ -194,12 +194,11 @@ export default function OrderDetailScreen() {
     let socket: Socket | null = null;
     let retryCount = 0;
     const MAX_RETRIES = 3;
-    let unmounted = false;
+    let isCancelled = false;
 
     const connect = () => {
-      if (unmounted) return;
+      if (isCancelled) return;
       import("socket.io-client").then(({ io }) => {
-        if (unmounted) return;
         socket = io(socketUrl, {
           path: "/api/socket.io",
           query: { rooms: room },
@@ -208,6 +207,13 @@ export default function OrderDetailScreen() {
           transports: ["polling", "websocket"],
           reconnection: false,
         });
+
+        if (isCancelled) {
+          socket.disconnect();
+          socket = null;
+          return;
+        }
+
         socketRef.current = socket;
 
         socket.on("connect", () => {
@@ -220,7 +226,7 @@ export default function OrderDetailScreen() {
             retryCount++;
             const delay = Math.pow(2, retryCount) * 500;
             setTimeout(() => {
-              if (!unmounted && socket) {
+              if (!isCancelled && socket) {
                 socket.disconnect();
                 socket = null;
                 connect();
@@ -249,7 +255,7 @@ export default function OrderDetailScreen() {
     connect();
 
     return () => {
-      unmounted = true;
+      isCancelled = true;
       socket?.disconnect();
       socketRef.current = null;
       if (interpRafRef.current !== null) {

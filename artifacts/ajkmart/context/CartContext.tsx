@@ -207,8 +207,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!data.valid) {
         let cartChanged = false;
         if (Array.isArray(data.items)) {
-          save(data.items);
-          cartChanged = true;
+          const oldMap = new Map(cartItems.map((item) => [item.productId, item]));
+          const hasRealChange = data.items.length !== cartItems.length || data.items.some((newItem: any) => {
+            const old = oldMap.get(newItem.productId);
+            if (!old) return true;
+            return old.price !== newItem.price
+              || old.quantity !== newItem.quantity
+              || old.available !== newItem.available;
+          });
+          if (hasRealChange) {
+            save(data.items);
+            cartChanged = true;
+          }
         }
         const messages: string[] = [];
         if (data.removed?.length > 0) {

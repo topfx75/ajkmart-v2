@@ -255,37 +255,70 @@ function ElapsedBadge({ startIso }: { startIso?: string | null }) {
   );
 }
 
-function buildMapsDeepLink(lat: number, lng: number): string {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "#";
+function getMapsUrls(lat: number, lng: number): { geoUri: string | null; httpsUrl: string } {
+  const httpsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { geoUri: null, httpsUrl: "#" };
   const ua = navigator.userAgent || "";
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  if (isIOS) {
-    return `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
-  }
   const isAndroid = /Android/i.test(ua);
   if (isAndroid) {
-    return `geo:${lat},${lng}?q=${lat},${lng}`;
+    return { geoUri: `geo:${lat},${lng}?q=${lat},${lng}`, httpsUrl };
   }
-  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  if (isIOS) {
+    return { geoUri: null, httpsUrl: `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving` };
+  }
+  return { geoUri: null, httpsUrl };
+}
+
+function openMapsLink(lat: number, lng: number) {
+  const { geoUri, httpsUrl } = getMapsUrls(lat, lng);
+  if (!geoUri) {
+    window.open(httpsUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  let handled = false;
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      handled = true;
+    }
+  };
+  document.addEventListener("visibilitychange", onVisibilityChange);
+
+  window.location.href = geoUri;
+
+  setTimeout(() => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    if (!handled) {
+      window.location.assign(httpsUrl);
+    }
+  }, 800);
 }
 
 function NavButton({ label, lat, lng, address, color = "blue" }: {
   label: string; lat?: number | null; lng?: number | null; address?: string | null; color?: "blue" | "green" | "orange";
 }) {
   const validCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
-  const href = validCoords
-    ? buildMapsDeepLink(lat!, lng!)
-    : address
+  const addressFallback = address
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
     : null;
-  if (!href || href === "#") return null;
+  const hasLink = validCoords || !!addressFallback;
+  if (!hasLink) return null;
   const styles = {
     blue:   "from-blue-500 to-indigo-600 shadow-blue-200",
     green:  "from-green-500 to-emerald-600 shadow-green-200",
     orange: "from-orange-500 to-amber-600 shadow-amber-200",
   };
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (validCoords) {
+      openMapsLink(lat!, lng!);
+    } else if (addressFallback) {
+      window.open(addressFallback, "_blank", "noopener,noreferrer");
+    }
+  };
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer"
+    <a href="#" onClick={handleClick}
       className={`flex items-center justify-center gap-2 bg-gradient-to-r ${styles[color]} text-white text-sm font-bold px-4 py-3 rounded-xl transition-all active:scale-[0.97] shadow-md`}>
       <Navigation size={14}/> {label}
     </a>
