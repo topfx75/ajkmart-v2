@@ -40,6 +40,11 @@ import {
   ShieldOff,
   BellOff,
   DollarSign,
+  Bike,
+  Package,
+  Star,
+  Megaphone,
+  Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -64,6 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navRides",         href: "/rides",           icon: Car },
       { nameKey: "navVanService",    href: "/van",             icon: Bus },
       { nameKey: "navPharmacy",      href: "/pharmacy",        icon: Pill },
+      { nameKey: "navParcels" as TranslationKey,      href: "/parcel",          icon: Package },
       { nameKey: "navLiveRidersMap", href: "/live-riders-map", icon: Navigation },
     ],
   },
@@ -75,7 +81,8 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navProducts",   href: "/products",    icon: PackageSearch },
       { nameKey: "navCategories", href: "/categories",  icon: FolderTree },
       { nameKey: "navFlashDeals", href: "/flash-deals", icon: Zap },
-      { nameKey: "navWishlists" as TranslationKey, href: "/wishlists", icon: Heart },
+      { nameKey: "navWishlists" as TranslationKey,   href: "/wishlists",    icon: Heart },
+      { nameKey: "navPromoCodes" as TranslationKey,  href: "/promo-codes",  icon: Ticket },
     ],
   },
   {
@@ -95,12 +102,14 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navSosAlerts",       href: "/sos-alerts",  icon: AlertTriangle, sosBadge: true },
       { nameKey: "navAuditLogs",       href: "/security",    icon: FileText },
       { nameKey: "navUserPermissions", href: "/users",       icon: Lock },
+      { nameKey: "navReviews" as TranslationKey,        href: "/reviews",     icon: Star },
     ],
   },
   {
     labelKey: "navRiderControls",
     color: "#F97316",
     items: [
+      { nameKey: "navRiders" as TranslationKey,          href: "/riders",            icon: Bike },
       { nameKey: "navGpsAlerts",        href: "/gps-alerts",        icon: ShieldOff },
       { nameKey: "navVanBoarding",      href: "/van-boarding",      icon: Bus },
       { nameKey: "navCodVerifications", href: "/cod-verifications", icon: DollarSign },
@@ -120,10 +129,12 @@ const NAV_GROUPS: NavGroup[] = [
     labelKey: "navConfig",
     color: "#F59E0B",
     items: [
-      { nameKey: "navSettings",        href: "/settings",       icon: Settings2 },
-      { nameKey: "navFeatureToggles",  href: "/app-management", icon: ToggleLeft },
-      { nameKey: "navDeliveryAccess", href: "/delivery-access", icon: Truck },
-      { nameKey: "navBanners",         href: "/banners",        icon: Layers },
+      { nameKey: "navSettings",        href: "/settings",        icon: Settings2 },
+      { nameKey: "navFeatureToggles",  href: "/app-management",  icon: ToggleLeft },
+      { nameKey: "navDeliveryAccess",  href: "/delivery-access", icon: Truck },
+      { nameKey: "navBanners",         href: "/banners",         icon: Layers },
+      { nameKey: "navBroadcast" as TranslationKey,       href: "/broadcast",       icon: Megaphone },
+      { nameKey: "navNotifications" as TranslationKey,   href: "/notifications",   icon: Bell },
     ],
   },
 ];

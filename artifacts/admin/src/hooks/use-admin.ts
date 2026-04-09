@@ -265,10 +265,7 @@ export const useCategories = () => {
   return useQuery({
     queryKey: ["categories"],
     queryFn: async () => {
-      const apiBase = window.location.origin;
-      const res = await fetch(`${apiBase}/api/categories`);
-      if (!res.ok) throw new Error("Failed to fetch categories");
-      const json = await res.json();
+      const json = await fetcher("/categories/tree");
       const payload = json.data ?? json;
       const list: any[] = Array.isArray(payload) ? payload : (payload.categories ?? []);
       return list.map((c: any) => ({
@@ -1393,17 +1390,6 @@ export const useUpdateConditionSettings = () => {
       fetcher("/condition-settings", { method: "PATCH", body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-condition-settings"] });
-    },
-  });
-};
-
-export const useEvaluateRules = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (userId: string) =>
-      fetcher(`/condition-rules/evaluate/${userId}`, { method: "POST" }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-conditions"] });
     },
   });
 };
