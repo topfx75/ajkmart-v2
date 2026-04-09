@@ -2,11 +2,11 @@ import { useState, useCallback, useRef } from "react";
 import {
   Star, Search, RefreshCw, Download, Upload, CheckCircle2, XCircle,
   ShieldAlert, ShieldCheck, AlertTriangle, MessageSquare, Play,
-  Filter, CalendarDays, ChevronDown, ChevronUp, Eye, EyeOff, Trash2
+  Filter, CalendarDays, ChevronDown, ChevronUp, Eye, EyeOff, Trash2, Pencil,
 } from "lucide-react";
 import {
   useAdminReviews, useModerationQueue, useApproveReview,
-  useRejectReview, useRunRatingSuspension
+  useRejectReview, useRunRatingSuspension, useEditVendorReply, useDeleteVendorReply,
 } from "@/hooks/use-admin";
 import { fetcher, getApiBase, getToken } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -80,7 +80,7 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
 }
 
-function ReviewRow({ r, selected, onToggle, onHide, onDelete, hideLoading, deleteLoading, T }: {
+function ReviewRow({ r, selected, onToggle, onHide, onDelete, hideLoading, deleteLoading, onEditReply, onDeleteReply, T }: {
   r: Review;
   selected: boolean;
   onToggle: () => void;
@@ -88,6 +88,8 @@ function ReviewRow({ r, selected, onToggle, onHide, onDelete, hideLoading, delet
   onDelete: () => void;
   hideLoading: boolean;
   deleteLoading: boolean;
+  onEditReply: (id: string, currentReply: string) => void;
+  onDeleteReply: (id: string) => void;
   T: (k: TranslationKey) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -160,7 +162,19 @@ function ReviewRow({ r, selected, onToggle, onHide, onDelete, hideLoading, delet
         {r.vendorReply && (
           <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-2 mt-2">
             <MessageSquare className="w-3 h-3 text-blue-500 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-blue-700"><strong>Vendor Reply:</strong> {r.vendorReply}</p>
+            <p className="text-[11px] text-blue-700 flex-1"><strong>Vendor Reply:</strong> {r.vendorReply}</p>
+            {!r.deletedAt && r.type === "order" && (
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={() => onEditReply(r.id, r.vendorReply!)}
+                  className="p-1 rounded hover:bg-blue-100 text-blue-600" title="Edit reply">
+                  <Pencil className="w-3 h-3" />
+                </button>
+                <button onClick={() => onDeleteReply(r.id)}
+                  className="p-1 rounded hover:bg-red-100 text-red-500" title="Delete reply">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -356,6 +370,38 @@ function ImportModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   );
 }
 
+function EditReplyModal({ reviewId, currentReply, onClose, onSave, saving }: {
+  reviewId: string; currentReply: string; onClose: () => void;
+  onSave: (id: string, reply: string) => void; saving: boolean;
+}) {
+  const [reply, setReply] = useState(currentReply);
+  return (
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="w-[95vw] max-w-md rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="w-5 h-5 text-blue-500" /> Edit Vendor Reply
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          <textarea
+            className="w-full border rounded-xl p-3 text-sm h-28 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+            value={reply}
+            onChange={e => setReply(e.target.value)}
+            placeholder="Edit vendor reply..."
+          />
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancel</Button>
+            <Button className="flex-1 rounded-xl" onClick={() => onSave(reviewId, reply)} disabled={saving || !reply.trim()}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ReviewsPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -396,6 +442,9 @@ export default function ReviewsPage() {
 
   const { data: queueData } = useModerationQueue();
   const runSuspensionM = useRunRatingSuspension();
+  const editReplyM = useEditVendorReply();
+  const deleteReplyM = useDeleteVendorReply();
+  const [editReplyModal, setEditReplyModal] = useState<{ id: string; reply: string } | null>(null);
 
   const reviews: Review[] = data?.reviews ?? [];
   const total: number = data?.total ?? 0;
@@ -699,6 +748,14 @@ export default function ReviewsPage() {
                 onDelete={() => handleDelete(r)}
                 hideLoading={hideOrder.isPending || hideRide.isPending}
                 deleteLoading={deleteOrder.isPending || deleteRide.isPending}
+                onEditReply={(id, reply) => setEditReplyModal({ id, reply })}
+                onDeleteReply={(id) => {
+                  if (!confirm("Delete this vendor reply?")) return;
+                  deleteReplyM.mutate(id, {
+                    onSuccess: () => toast({ title: "Vendor reply deleted" }),
+                    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+                  });
+                }}
                 T={T}
               />
             ))
@@ -747,6 +804,21 @@ export default function ReviewsPage() {
 
       {showModQueue && <ModerationModal onClose={() => setShowModQueue(false)} T={T} />}
       {showImport && <ImportModal onClose={() => setShowImport(false)} onSuccess={() => refetch()} />}
+
+      {editReplyModal && (
+        <EditReplyModal
+          reviewId={editReplyModal.id}
+          currentReply={editReplyModal.reply}
+          onClose={() => setEditReplyModal(null)}
+          onSave={(id, reply) => {
+            editReplyM.mutate({ id, reply }, {
+              onSuccess: () => { toast({ title: "Vendor reply updated" }); setEditReplyModal(null); },
+              onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+            });
+          }}
+          saving={editReplyM.isPending}
+        />
+      )}
     </div>
   );
 }

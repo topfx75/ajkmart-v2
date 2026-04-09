@@ -107,6 +107,8 @@ export const TEXT_KEYS = new Set([
   "bank_name","bank_account_title","bank_account_number","bank_iban","bank_branch_code","bank_swift_code","bank_instructions",
   "cod_restricted_areas","cod_notes",
   "wallet_topup_methods",
+  "vendor_delivery_time_max",
+  "vendor_delivery_time_default",
 ]);
 
 const FEATURE_ICONS: Record<string,string> = {
@@ -1947,6 +1949,16 @@ export function renderSection(
             <p className="text-xs text-muted-foreground leading-relaxed">
               Product limit is enforced server-side — vendors cannot add more items once they reach <strong>{maxItems} items</strong>. Current limit applies to single-add and bulk-add both.
             </p>
+          </div>
+        </div>
+
+        {/* ── Group 4b: Delivery Time Settings ── */}
+        <div className="space-y-3 border-t border-border/40 pt-5">
+          <SLabel icon={Truck}>Delivery Time</SLabel>
+          <p className="text-xs text-muted-foreground -mt-1">Control vendor delivery time settings platform-wide</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <VField k="vendor_delivery_time_max" label="Max Delivery Time Cap (minutes)" suffix="min" hint="Vendors cannot set delivery time above this cap" />
+            <VField k="vendor_delivery_time_default" label="Default Delivery Time (minutes)" suffix="min" hint="Used when vendor hasn't set a delivery time" />
           </div>
         </div>
 

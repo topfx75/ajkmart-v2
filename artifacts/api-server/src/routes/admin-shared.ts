@@ -148,6 +148,8 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "vendor_auto_approve",        value: "off",    label: "Auto-Approve New Vendors",               category: "vendor" },
   { key: "vendor_promo_enabled",       value: "on",     label: "Vendors Can Create Promo Codes",         category: "vendor" },
   { key: "vendor_withdrawal_enabled",  value: "on",     label: "Vendors Can Submit Withdrawal Requests", category: "vendor" },
+  { key: "vendor_delivery_time_max",   value: "120",    label: "Max Delivery Time Cap (minutes)",        category: "vendor" },
+  { key: "vendor_delivery_time_default", value: "45",   label: "Default Delivery Time (minutes)",        category: "vendor" },
   /* Auto-Suspension Settings */
   { key: "auto_suspend_rating_threshold", value: "2.5",  label: "Auto-Suspend Rating Threshold (avg below this)", category: "rider" },
   { key: "auto_suspend_min_reviews",      value: "10",   label: "Auto-Suspend Min Reviews in 30 Days",            category: "rider" },

@@ -1,16 +1,16 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
-  Download, CalendarDays, Percent, Truck, Gavel,
+  Download, CalendarDays, Percent, Truck, Gavel, Clock, Megaphone, Upload, Eye,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension, useDeliveryAccess, useAddWhitelistEntry, useDeleteWhitelistEntry, useDeliveryAccessRequests, useResolveDeliveryRequest } from "@/hooks/use-admin";
+import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension, useDeliveryAccess, useAddWhitelistEntry, useDeleteWhitelistEntry, useDeliveryAccessRequests, useResolveDeliveryRequest, useVendorHours, useUpdateVendorHours, useVendorAnnouncement, useUpdateVendorAnnouncement, useUpdateVendorDeliveryTime, useVendorBulkUploads } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { useToast } from "@/hooks/use-toast";
@@ -202,6 +202,259 @@ function CommissionModal({ vendor, defaultPct, onClose }: { vendor: any; default
   );
 }
 
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function VendorDetailModal({ vendor, onClose }: { vendor: any; onClose: () => void }) {
+  const { toast } = useToast();
+  const { data: hoursData, isLoading: hoursLoading } = useVendorHours(vendor.id);
+  const updateHoursM = useUpdateVendorHours();
+  const { data: annData, isLoading: annLoading } = useVendorAnnouncement(vendor.id);
+  const updateAnnM = useUpdateVendorAnnouncement();
+  const updateDeliveryM = useUpdateVendorDeliveryTime();
+  const { data: uploadsData, isLoading: uploadsLoading } = useVendorBulkUploads(vendor.id);
+
+  const [annText, setAnnText] = useState(vendor.storeAnnouncement || "");
+  const [deliveryTime, setDeliveryTime] = useState(vendor.storeDeliveryTime || "");
+  const [forceOpen, setForceOpen] = useState<boolean | null>(null);
+  const [editingHours, setEditingHours] = useState(false);
+  const [editHoursData, setEditHoursData] = useState<Record<string, { open: string; close: string; isOpen: boolean }>>({});
+
+  const annSyncRef = useRef(false);
+  useEffect(() => {
+    if (!annSyncRef.current && annData && !annLoading) {
+      setAnnText(annData.storeAnnouncement || "");
+      annSyncRef.current = true;
+    }
+  }, [annData, annLoading]);
+
+  const storeHours = hoursData?.storeHours;
+  const storeIsOpen = forceOpen ?? hoursData?.storeIsOpen ?? vendor.storeIsOpen;
+  const uploads: any[] = uploadsData?.uploads || [];
+
+  const startEditingHours = () => {
+    const init: Record<string, { open: string; close: string; isOpen: boolean }> = {};
+    DAYS.forEach(d => {
+      const key = d.toLowerCase();
+      const entry = storeHours && typeof storeHours === "object"
+        ? (Array.isArray(storeHours)
+          ? storeHours.find((h: any) => (h.day || "").toLowerCase() === key)
+          : storeHours[key] || storeHours[d])
+        : null;
+      init[key] = entry
+        ? { open: entry.open || "09:00", close: entry.close || "21:00", isOpen: entry.isOpen !== false }
+        : { open: "09:00", close: "21:00", isOpen: true };
+    });
+    setEditHoursData(init);
+    setEditingHours(true);
+  };
+
+  const handleSaveHours = () => {
+    const hoursObj: Record<string, { open: string; close: string; isOpen: boolean }> = {};
+    DAYS.forEach(d => {
+      const key = d.toLowerCase();
+      hoursObj[key] = editHoursData[key] || { open: "09:00", close: "21:00", isOpen: true };
+    });
+    updateHoursM.mutate({ id: vendor.id, storeHours: hoursObj }, {
+      onSuccess: () => { toast({ title: "Business hours updated" }); setEditingHours(false); },
+      onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleForceOpenClose = (open: boolean) => {
+    const prev = forceOpen;
+    setForceOpen(open);
+    updateHoursM.mutate({ id: vendor.id, storeIsOpen: open }, {
+      onSuccess: () => toast({ title: open ? "Store forced OPEN" : "Store forced CLOSED" }),
+      onError: (e: any) => { setForceOpen(prev); toast({ title: "Failed", description: e.message, variant: "destructive" }); },
+    });
+  };
+
+  const handleSaveAnnouncement = () => {
+    updateAnnM.mutate({ id: vendor.id, storeAnnouncement: annText }, {
+      onSuccess: () => toast({ title: "Announcement updated" }),
+      onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleSaveDeliveryTime = () => {
+    updateDeliveryM.mutate({ id: vendor.id, storeDeliveryTime: deliveryTime }, {
+      onSuccess: () => toast({ title: "Delivery time updated" }),
+      onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Eye className="w-5 h-5 text-orange-500" /> {vendor.storeName || vendor.name} — Details
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5 mt-2">
+
+          {/* Business Hours */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" /> Business Hours</h3>
+              <div className="flex items-center gap-2">
+                {!editingHours && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs rounded-lg"
+                    onClick={startEditingHours}>
+                    Edit Hours
+                  </Button>
+                )}
+                <Button size="sm" variant={storeIsOpen ? "default" : "outline"}
+                  className={`h-7 text-xs rounded-lg ${storeIsOpen ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
+                  onClick={() => handleForceOpenClose(true)} disabled={updateHoursM.isPending}>
+                  <ToggleRight className="w-3 h-3 mr-1" /> Open
+                </Button>
+                <Button size="sm" variant={!storeIsOpen ? "destructive" : "outline"}
+                  className="h-7 text-xs rounded-lg"
+                  onClick={() => handleForceOpenClose(false)} disabled={updateHoursM.isPending}>
+                  <ToggleLeft className="w-3 h-3 mr-1" /> Closed
+                </Button>
+              </div>
+            </div>
+            {hoursLoading ? (
+              <div className="h-16 bg-muted animate-pulse rounded-xl" />
+            ) : editingHours ? (
+              <div className="space-y-2">
+                {DAYS.map(d => {
+                  const key = d.toLowerCase();
+                  const entry = editHoursData[key] || { open: "09:00", close: "21:00", isOpen: true };
+                  return (
+                    <div key={key} className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-xs ${entry.isOpen ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+                      <label className="flex items-center gap-1.5 min-w-[100px]">
+                        <input type="checkbox" checked={entry.isOpen}
+                          onChange={e => setEditHoursData(prev => ({ ...prev, [key]: { ...prev[key], isOpen: e.target.checked } }))}
+                          className="rounded" />
+                        <span className="font-semibold">{d}</span>
+                      </label>
+                      {entry.isOpen ? (
+                        <div className="flex items-center gap-1 flex-1">
+                          <input type="time" value={entry.open}
+                            onChange={e => setEditHoursData(prev => ({ ...prev, [key]: { ...prev[key], open: e.target.value } }))}
+                            className="border rounded px-2 py-1 text-xs bg-white" />
+                          <span>–</span>
+                          <input type="time" value={entry.close}
+                            onChange={e => setEditHoursData(prev => ({ ...prev, [key]: { ...prev[key], close: e.target.value } }))}
+                            className="border rounded px-2 py-1 text-xs bg-white" />
+                        </div>
+                      ) : (
+                        <span className="text-red-500 text-xs">Closed</span>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="flex gap-2 pt-1">
+                  <Button size="sm" onClick={handleSaveHours} disabled={updateHoursM.isPending} className="h-8 rounded-lg text-xs">
+                    {updateHoursM.isPending ? "Saving..." : "Save Hours"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingHours(false)} className="h-8 rounded-lg text-xs">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : storeHours && typeof storeHours === "object" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(Array.isArray(storeHours) ? storeHours : DAYS.map(d => {
+                  const entry = storeHours[d.toLowerCase()] || storeHours[d];
+                  return entry ? { day: d, ...entry } : { day: d, open: "—", close: "—", isOpen: false };
+                })).map((h: any, i: number) => (
+                  <div key={i} className={`flex items-center justify-between border rounded-lg px-3 py-2 text-xs ${h.isOpen === false ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+                    <span className="font-semibold">{h.day || DAYS[i] || `Day ${i+1}`}</span>
+                    <span>{h.isOpen === false ? "Closed" : `${h.open || "—"} – ${h.close || "—"}`}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-3">No business hours set by vendor</p>
+            )}
+          </div>
+
+          {/* Store Announcement */}
+          <div className="space-y-2 border-t border-border/40 pt-4">
+            <h3 className="text-sm font-bold flex items-center gap-2"><Megaphone className="w-4 h-4 text-purple-500" /> Store Announcement</h3>
+            <textarea
+              className="w-full border rounded-xl p-3 text-sm h-20 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Store announcement text (leave empty to clear)..."
+              value={annText}
+              onChange={e => setAnnText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSaveAnnouncement} disabled={updateAnnM.isPending} className="h-8 rounded-lg text-xs">
+                {updateAnnM.isPending ? "Saving..." : "Save Announcement"}
+              </Button>
+              {annText && (
+                <Button size="sm" variant="outline" onClick={() => { setAnnText(""); updateAnnM.mutate({ id: vendor.id, storeAnnouncement: "" }, {
+                  onSuccess: () => toast({ title: "Announcement cleared" }),
+                  onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+                }); }} disabled={updateAnnM.isPending} className="h-8 rounded-lg text-xs border-red-200 text-red-600 hover:bg-red-50">
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Delivery Time */}
+          <div className="space-y-2 border-t border-border/40 pt-4">
+            <h3 className="text-sm font-bold flex items-center gap-2"><Truck className="w-4 h-4 text-sky-500" /> Delivery Time</h3>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="e.g. 30-45 min"
+                value={deliveryTime}
+                onChange={e => setDeliveryTime(e.target.value)}
+                className="h-10 rounded-xl flex-1"
+              />
+              <Button size="sm" onClick={handleSaveDeliveryTime} disabled={updateDeliveryM.isPending} className="h-10 rounded-lg text-xs">
+                {updateDeliveryM.isPending ? "Saving..." : "Override"}
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Current: {vendor.storeDeliveryTime || "Not set"}</p>
+          </div>
+
+          {/* Bulk Uploads History */}
+          <div className="space-y-2 border-t border-border/40 pt-4">
+            <h3 className="text-sm font-bold flex items-center gap-2"><Upload className="w-4 h-4 text-amber-500" /> Bulk Upload History</h3>
+            {uploadsLoading ? (
+              <div className="h-16 bg-muted animate-pulse rounded-xl" />
+            ) : uploads.length === 0 ? (
+              <p className="text-xs text-muted-foreground bg-muted/30 rounded-xl p-3">No bulk uploads recorded</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold">Date</th>
+                      <th className="text-left px-3 py-2 font-semibold">File</th>
+                      <th className="text-center px-3 py-2 font-semibold">Total</th>
+                      <th className="text-center px-3 py-2 font-semibold">Success</th>
+                      <th className="text-center px-3 py-2 font-semibold">Failed</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {uploads.slice(0, 20).map((u: any) => (
+                      <tr key={u.id} className="hover:bg-muted/30">
+                        <td className="px-3 py-2">{formatDate(u.createdAt)}</td>
+                        <td className="px-3 py-2 truncate max-w-[120px]">{u.fileName || "—"}</td>
+                        <td className="px-3 py-2 text-center">{u.totalRows}</td>
+                        <td className="px-3 py-2 text-center text-green-600 font-semibold">{u.successCount}</td>
+                        <td className="px-3 py-2 text-center text-red-600 font-semibold">{u.failCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function exportVendorsCSV(vendors: any[]) {
   const header = "ID,Store,Owner,Phone,Status,Orders,Revenue,Wallet,Joined";
   const rows = vendors.map((v: any) =>
@@ -238,6 +491,7 @@ export default function Vendors() {
   const [walletModal,  setWalletModal]  = useState<any>(null);
   const [suspendModal, setSuspendModal] = useState<any>(null);
   const [commModal,    setCommModal]    = useState<any>(null);
+  const [detailModal,  setDetailModal]  = useState<any>(null);
 
   const settings: any[] = settingsData?.settings || [];
   const vendorCommissionPct = parseFloat(settings.find((s: any) => s.key === "vendor_commission_pct")?.value ?? String(PLATFORM_DEFAULTS.vendorCommissionPct));
@@ -481,6 +735,10 @@ export default function Vendors() {
 
                   {/* Actions */}
                   <div className="flex gap-2 shrink-0 flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => setDetailModal(v)}
+                      className="h-9 rounded-xl gap-1.5 text-xs border-blue-200 text-blue-700 hover:bg-blue-50">
+                      <Eye className="w-3.5 h-3.5" /> Manage
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => setCommModal(v)}
                       className="h-9 rounded-xl gap-1.5 text-xs border-purple-200 text-purple-700 hover:bg-purple-50">
                       <Percent className="w-3.5 h-3.5" /> Commission
@@ -531,6 +789,7 @@ export default function Vendors() {
       {walletModal  && <WalletModal  vendor={walletModal}  onClose={() => setWalletModal(null)} />}
       {suspendModal && <SuspendModal vendor={suspendModal} onClose={() => setSuspendModal(null)} />}
       {commModal    && <CommissionModal vendor={commModal} defaultPct={vendorCommissionPct} onClose={() => setCommModal(null)} />}
+      {detailModal  && <VendorDetailModal vendor={detailModal} onClose={() => setDetailModal(null)} />}
     </PullToRefresh>
   );
 }

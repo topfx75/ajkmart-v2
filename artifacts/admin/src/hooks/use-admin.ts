@@ -1407,3 +1407,96 @@ export const useEvaluateRules = () => {
     },
   });
 };
+
+export const useVendorHours = (vendorId: string | null) => {
+  return useQuery({
+    queryKey: ["admin-vendor-hours", vendorId],
+    queryFn: () => fetcher(`/vendors/${vendorId}/hours`),
+    enabled: !!vendorId,
+  });
+};
+
+export const useUpdateVendorHours = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; storeHours?: any; storeIsOpen?: boolean }) =>
+      fetcher(`/vendors/${id}/hours`, { method: "PATCH", body: JSON.stringify(data) }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["admin-vendor-hours", vars.id] });
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+    },
+  });
+};
+
+export const useVendorAnnouncement = (vendorId: string | null) => {
+  return useQuery({
+    queryKey: ["admin-vendor-announcement", vendorId],
+    queryFn: () => fetcher(`/vendors/${vendorId}/announcement`),
+    enabled: !!vendorId,
+  });
+};
+
+export const useUpdateVendorAnnouncement = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, storeAnnouncement }: { id: string; storeAnnouncement: string }) =>
+      fetcher(`/vendors/${id}/announcement`, { method: "PATCH", body: JSON.stringify({ storeAnnouncement }) }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["admin-vendor-announcement", vars.id] });
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+    },
+  });
+};
+
+export const useUpdateVendorDeliveryTime = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, storeDeliveryTime }: { id: string; storeDeliveryTime: string }) =>
+      fetcher(`/vendors/${id}/delivery-time`, { method: "PATCH", body: JSON.stringify({ storeDeliveryTime }) }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+    },
+  });
+};
+
+export const useVendorBulkUploads = (vendorId: string | null) => {
+  return useQuery({
+    queryKey: ["admin-vendor-bulk-uploads", vendorId],
+    queryFn: () => fetcher(`/bulk-uploads/${vendorId}`),
+    enabled: !!vendorId,
+  });
+};
+
+export const useBulkUploads = (filters?: { vendorId?: string; page?: number; dateFrom?: string; dateTo?: string }) => {
+  const params = new URLSearchParams();
+  if (filters?.vendorId) params.set("vendorId", filters.vendorId);
+  if (filters?.page) params.set("page", String(filters.page));
+  if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
+  if (filters?.dateTo) params.set("dateTo", filters.dateTo);
+  return useQuery({
+    queryKey: ["admin-bulk-uploads", filters?.vendorId, filters?.page, filters?.dateFrom, filters?.dateTo],
+    queryFn: () => fetcher(`/bulk-uploads?${params.toString()}`),
+  });
+};
+
+export const useEditVendorReply = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reply }: { id: string; reply: string }) =>
+      fetcher(`/reviews/${id}/vendor-reply`, { method: "PATCH", body: JSON.stringify({ reply }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-reviews"] });
+    },
+  });
+};
+
+export const useDeleteVendorReply = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetcher(`/reviews/${id}/vendor-reply`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-reviews"] });
+    },
+  });
+};

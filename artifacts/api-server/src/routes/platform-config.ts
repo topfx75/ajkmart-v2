@@ -255,6 +255,8 @@ router.get("/", async (req, res) => {
       autoApprove:        (s["vendor_auto_approve"]                  ?? "off") === "on",
       promoEnabled:       (s["vendor_promo_enabled"]                 ?? "on")  === "on",
       withdrawalEnabled:  (s["vendor_withdrawal_enabled"]            ?? "on")  === "on",
+      deliveryTimeMax:    parseInt(s["vendor_delivery_time_max"]     ?? "120"),
+      deliveryTimeDefault: parseInt(s["vendor_delivery_time_default"] ?? "45"),
     },
     security: {
       gpsTracking:    (s["security_gps_tracking"]   ?? "on")  === "on",

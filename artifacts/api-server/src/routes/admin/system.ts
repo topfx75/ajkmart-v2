@@ -10,6 +10,7 @@ import {
   notificationsTable,
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, platformSettingsTable, adminAccountsTable, authAuditLogTable, refreshTokensTable, rideRatingsTable, riderPenaltiesTable, reviewsTable,
   vendorProfilesTable,
+  bulkUploadLogsTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, type SQL } from "drizzle-orm";
 import {
@@ -1020,6 +1021,8 @@ router.get("/reviews", adminAuth, async (req, res) => {
         subjectRiderId: reviewsTable.riderId,
         reviewerName: usersTable.name,
         reviewerPhone: usersTable.phone,
+        vendorReply: reviewsTable.vendorReply,
+        vendorRepliedAt: reviewsTable.vendorRepliedAt,
       })
       .from(reviewsTable)
       .leftJoin(usersTable, eq(reviewsTable.userId, usersTable.id))
@@ -1487,6 +1490,162 @@ router.patch("/sos/alerts/:id/resolve", async (req, res) => {
   const fullResPayload = serializeSosAlert(updatedRes) as SosAlertPayload;
   try { emitSosResolved(fullResPayload); } catch { /* non-critical */ }
   sendSuccess(res, { ok: true, alert: fullResPayload });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VENDOR ADMIN CONTROLS — Batch 2
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── GET /admin/vendors/:id/hours — view vendor business hours ── */
+router.get("/vendors/:id/hours", adminAuth, async (req, res) => {
+  const vendorId = String(req.params["id"]);
+  const [user] = await db.select({ storeHours: usersTable.storeHours, storeIsOpen: usersTable.storeIsOpen, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
+  if (!user || user.role !== "vendor") { sendNotFound(res, "Vendor not found"); return; }
+  let parsed = null;
+  try { parsed = user.storeHours ? JSON.parse(user.storeHours) : null; } catch { /* keep null */ }
+  sendSuccess(res, { vendorId, storeHours: parsed, storeIsOpen: user.storeIsOpen });
+});
+
+/* ── PATCH /admin/vendors/:id/hours — override vendor hours or force open/closed ── */
+router.patch("/vendors/:id/hours", adminAuth, async (req, res) => {
+  const vendorId = String(req.params["id"]);
+  const { storeHours, storeIsOpen } = req.body;
+  const [existing] = await db.select({ id: usersTable.id, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
+  if (!existing || existing.role !== "vendor") { sendNotFound(res, "Vendor not found"); return; }
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (storeHours !== undefined) {
+    updates.storeHours = typeof storeHours === "string" ? storeHours : JSON.stringify(storeHours);
+  }
+  if (storeIsOpen !== undefined) updates.storeIsOpen = Boolean(storeIsOpen);
+
+  await db.update(usersTable).set(updates).where(eq(usersTable.id, vendorId));
+  sendSuccess(res, { vendorId, updated: Object.keys(updates).filter(k => k !== "updatedAt") });
+});
+
+/* ── PATCH /admin/reviews/:id/vendor-reply — edit vendor reply (admin moderation) ── */
+router.patch("/reviews/:id/vendor-reply", adminAuth, async (req, res) => {
+  const reviewId = String(req.params["id"]);
+  const { reply } = req.body;
+  if (!reply || typeof reply !== "string" || reply.trim().length === 0) {
+    sendValidationError(res, "reply text is required"); return;
+  }
+  const [existing] = await db.select({ id: reviewsTable.id })
+    .from(reviewsTable).where(eq(reviewsTable.id, reviewId)).limit(1);
+  if (!existing) { sendNotFound(res, "Review not found"); return; }
+  const [updated] = await db.update(reviewsTable)
+    .set({ vendorReply: reply.trim(), vendorRepliedAt: new Date() })
+    .where(eq(reviewsTable.id, reviewId)).returning();
+  sendSuccess(res, updated);
+});
+
+/* ── DELETE /admin/reviews/:id/vendor-reply — remove vendor reply (admin moderation) ── */
+router.delete("/reviews/:id/vendor-reply", adminAuth, async (req, res) => {
+  const reviewId = String(req.params["id"]);
+  const [existing] = await db.select({ id: reviewsTable.id, vendorReply: reviewsTable.vendorReply })
+    .from(reviewsTable).where(eq(reviewsTable.id, reviewId)).limit(1);
+  if (!existing) { sendNotFound(res, "Review not found"); return; }
+  if (!existing.vendorReply) { sendNotFound(res, "No vendor reply exists"); return; }
+  await db.update(reviewsTable)
+    .set({ vendorReply: null, vendorRepliedAt: null })
+    .where(eq(reviewsTable.id, reviewId));
+  sendSuccess(res, { deleted: true });
+});
+
+/* ── GET /admin/vendors/:id/announcement — view store announcement ── */
+router.get("/vendors/:id/announcement", adminAuth, async (req, res) => {
+  const vendorId = String(req.params["id"]);
+  const [user] = await db.select({ storeAnnouncement: usersTable.storeAnnouncement, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
+  if (!user || user.role !== "vendor") { sendNotFound(res, "Vendor not found"); return; }
+  sendSuccess(res, { vendorId, storeAnnouncement: user.storeAnnouncement ?? "" });
+});
+
+/* ── PATCH /admin/vendors/:id/announcement — override/clear store announcement ── */
+router.patch("/vendors/:id/announcement", adminAuth, async (req, res) => {
+  const vendorId = String(req.params["id"]);
+  const { storeAnnouncement } = req.body;
+  const [existing] = await db.select({ id: usersTable.id, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
+  if (!existing || existing.role !== "vendor") { sendNotFound(res, "Vendor not found"); return; }
+  const newVal = (typeof storeAnnouncement === "string") ? storeAnnouncement.trim() : "";
+  await db.update(usersTable).set({ storeAnnouncement: newVal || null, updatedAt: new Date() }).where(eq(usersTable.id, vendorId));
+  sendSuccess(res, { vendorId, storeAnnouncement: newVal });
+});
+
+/* ── PATCH /admin/vendors/:id/delivery-time — override vendor delivery time ── */
+router.patch("/vendors/:id/delivery-time", adminAuth, async (req, res) => {
+  const vendorId = String(req.params["id"]);
+  const { storeDeliveryTime } = req.body;
+  const [existing] = await db.select({ id: usersTable.id, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, vendorId)).limit(1);
+  if (!existing || existing.role !== "vendor") { sendNotFound(res, "Vendor not found"); return; }
+  const newVal = storeDeliveryTime ? String(storeDeliveryTime).trim() : null;
+  await db.update(usersTable).set({ storeDeliveryTime: newVal, updatedAt: new Date() }).where(eq(usersTable.id, vendorId));
+  sendSuccess(res, { vendorId, storeDeliveryTime: newVal });
+});
+
+/* ── GET /admin/bulk-uploads — list all bulk upload logs ── */
+router.get("/bulk-uploads", adminAuth, async (req, res) => {
+  const page = Math.max(1, parseInt(String(req.query["page"] || "1")));
+  const limit = Math.min(parseInt(String(req.query["limit"] || "50")), 200);
+  const offset = (page - 1) * limit;
+  const vendorFilter = req.query["vendorId"] as string | undefined;
+  const dateFrom = req.query["dateFrom"] as string | undefined;
+  const dateTo = req.query["dateTo"] as string | undefined;
+
+  const conditions: SQL[] = [];
+  if (vendorFilter) conditions.push(eq(bulkUploadLogsTable.vendorId, vendorFilter));
+  if (dateFrom) conditions.push(gte(bulkUploadLogsTable.createdAt, new Date(dateFrom)));
+  if (dateTo) conditions.push(lte(bulkUploadLogsTable.createdAt, new Date(dateTo)));
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [rows, [totalRow]] = await Promise.all([
+    db.select({
+      log: bulkUploadLogsTable,
+      vendorName: usersTable.name,
+      storeName: vendorProfilesTable.storeName,
+    })
+      .from(bulkUploadLogsTable)
+      .leftJoin(usersTable, eq(bulkUploadLogsTable.vendorId, usersTable.id))
+      .leftJoin(vendorProfilesTable, eq(bulkUploadLogsTable.vendorId, vendorProfilesTable.userId))
+      .where(whereClause)
+      .orderBy(desc(bulkUploadLogsTable.createdAt))
+      .limit(limit).offset(offset),
+    db.select({ c: count() }).from(bulkUploadLogsTable).where(whereClause),
+  ]);
+
+  const total = totalRow?.c ?? 0;
+  sendSuccess(res, {
+    uploads: rows.map(r => ({
+      ...r.log,
+      vendorName: r.storeName || r.vendorName,
+      createdAt: r.log.createdAt instanceof Date ? r.log.createdAt.toISOString() : r.log.createdAt,
+    })),
+    total,
+    page,
+    limit,
+    pages: Math.ceil(total / limit),
+  });
+});
+
+/* ── GET /admin/bulk-uploads/:vendorId — per-vendor bulk upload history ── */
+router.get("/bulk-uploads/:vendorId", adminAuth, async (req, res) => {
+  const vendorId = String(req.params["vendorId"]);
+  const rows = await db.select()
+    .from(bulkUploadLogsTable)
+    .where(eq(bulkUploadLogsTable.vendorId, vendorId))
+    .orderBy(desc(bulkUploadLogsTable.createdAt))
+    .limit(50);
+  sendSuccess(res, {
+    uploads: rows.map(r => ({
+      ...r,
+      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+    })),
+  });
 });
 
 export default router;

@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { usersTable, vendorProfilesTable, riderProfilesTable, ordersTable, orderItemsTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable, deliveryWhitelistTable, deliveryAccessRequestsTable } from "@workspace/db/schema";
+import { usersTable, vendorProfilesTable, riderProfilesTable, ordersTable, orderItemsTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable, deliveryWhitelistTable, deliveryAccessRequestsTable, bulkUploadLogsTable } from "@workspace/db/schema";
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -123,6 +123,16 @@ router.get("/store", async (req, res) => {
 router.patch("/store", validateBody(patchStoreSchema), async (req, res) => {
   const vendorId = req.vendorId!;
   const body = req.body;
+
+  if (body.storeDeliveryTime !== undefined) {
+    const settings = await getPlatformSettings();
+    const maxMinutes = parseInt(settings["vendor_delivery_time_max"] ?? "120");
+    const numericTokens = String(body.storeDeliveryTime).match(/\d+/g);
+    const maxToken = numericTokens ? Math.max(...numericTokens.map(Number)) : NaN;
+    if (!isNaN(maxToken) && maxToken > maxMinutes) {
+      sendValidationError(res, `Delivery time cannot exceed ${maxMinutes} minutes`); return;
+    }
+  }
 
   const userUpdates: Record<string, unknown> = { updatedAt: new Date() };
   const userFields = ["storeBanner","storeDescription","storeAnnouncement","storeDeliveryTime","storeIsOpen","storeMinOrder","storeAddress"];
@@ -406,17 +416,41 @@ router.post("/products/bulk", async (req, res) => {
   }
   const invalid = products.filter(p => !p.name || !p.price || !isFinite(Number(p.price)) || Number(p.price) <= 0);
   if (invalid.length > 0) { sendValidationError(res, `${invalid.length} product(s) missing name, or have an invalid/non-positive price`); return; }
-  const inserted = await db.insert(productsTable).values(
-    products.map(p => ({
-      id: generateId(), vendorId, vendorName: user.storeName || user.name,
-      name: p.name, description: p.description || null,
-      price: String(p.price), originalPrice: p.originalPrice ? String(p.originalPrice) : null,
-      category: p.category || "general", type: p.type || "mart",
-      image: p.image || null, inStock: false,
-      stock: p.stock ? Number(p.stock) : null, unit: p.unit || null,
-      approvalStatus: "pending",
-    }))
-  ).returning();
+  let inserted: any[] = [];
+  let failCount = 0;
+  const errors: string[] = [];
+  try {
+    inserted = await db.insert(productsTable).values(
+      products.map((p: any) => ({
+        id: generateId(), vendorId, vendorName: user.storeName || user.name,
+        name: p.name, description: p.description || null,
+        price: String(p.price), originalPrice: p.originalPrice ? String(p.originalPrice) : null,
+        category: p.category || "general", type: p.type || "mart",
+        image: p.image || null, inStock: false,
+        stock: p.stock ? Number(p.stock) : null, unit: p.unit || null,
+        approvalStatus: "pending",
+      }))
+    ).returning();
+  } catch (e: any) {
+    failCount = products.length;
+    errors.push(e.message || "Insert failed");
+  }
+
+  try {
+    await db.insert(bulkUploadLogsTable).values({
+      id: generateId(),
+      vendorId,
+      fileName: req.body.fileName || null,
+      totalRows: products.length,
+      successCount: inserted.length,
+      failCount: failCount || (products.length - inserted.length),
+      errors: errors.length > 0 ? JSON.stringify(errors) : null,
+    });
+  } catch { /* non-critical logging */ }
+
+  if (failCount === products.length && inserted.length === 0) {
+    sendError(res, errors[0] || "Bulk insert failed"); return;
+  }
   sendCreated(res, { inserted: inserted.length, products: inserted.map(p => ({ ...p, price: safeNum(p.price) })) });
 });
 
