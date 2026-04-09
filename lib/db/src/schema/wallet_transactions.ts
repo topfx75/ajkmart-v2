@@ -12,6 +12,7 @@ export const walletTransactionsTable = pgTable("wallet_transactions", {
   description: text("description").notNull(),
   reference: text("reference"),
   paymentMethod: text("payment_method"),
+  normalizedTxId: text("normalized_tx_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("wallet_txn_user_id_idx").on(t.userId),

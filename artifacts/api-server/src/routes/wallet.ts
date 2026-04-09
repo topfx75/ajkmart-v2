@@ -283,7 +283,17 @@ router.post("/deposit", customerAuth, async (req, res) => {
     sendValidationError(res, `Payment method '${paymentMethod}' is not currently enabled`); return;
   }
 
+  /* ── Normalize TxID early (needed for secondary cache guard below) ── */
+  const normalizedTxId = transactionId.trim().toUpperCase().replace(/\s+/g, "");
+  if (!normalizedTxId) {
+    sendValidationError(res, "transactionId cannot be empty"); return;
+  }
+
   const cacheKey = `deposit:${userId}:${idempotencyKey}`;
+  /* Secondary in-memory guard keyed by txid — catches same TxID arriving
+     with a different idempotencyKey before it reaches the DB. */
+  const txidCacheKey = `deposit:${userId}:txid:${normalizedTxId}`;
+
   const existing = idempotencyCache.get(cacheKey);
   if (existing) {
     if (existing.state === "in_flight") {
@@ -296,38 +306,21 @@ router.post("/deposit", customerAuth, async (req, res) => {
     }
     /* state === "failed": key already removed below, allow retry with same key */
   }
-  idempotencyCache.set(cacheKey, { state: "in_flight", ts: Date.now() });
 
-  /* ── Duplicate Transaction ID check ──
-     Normalize TxID (trim + uppercase) both on check and on storage
-     to prevent bypass via whitespace/casing variations. */
-  const normalizedTxId = transactionId.trim().toUpperCase().replace(/\s+/g, "");
-  if (!normalizedTxId) {
-    idempotencyCache.delete(cacheKey);
-    sendValidationError(res, "transactionId cannot be empty"); return;
-  }
-
-  const txidSuffix = `:txid:${normalizedTxId}`;
-  try {
-    const existingDeposit = await db.select({ id: walletTransactionsTable.id })
-      .from(walletTransactionsTable)
-      .where(and(
-        eq(walletTransactionsTable.type, "deposit"),
-        sql`${walletTransactionsTable.reference} LIKE ${'%' + txidSuffix}`,
-        sql`RIGHT(${walletTransactionsTable.reference}, ${txidSuffix.length}) = ${txidSuffix}`,
-      ))
-      .limit(1);
-
-    if (existingDeposit.length > 0) {
-      idempotencyCache.delete(cacheKey);
+  const existingTxid = idempotencyCache.get(txidCacheKey);
+  if (existingTxid) {
+    if (existingTxid.state === "in_flight") {
+      sendError(res, "Duplicate request — this Transaction ID is already being processed.", 409);
+      return;
+    }
+    if (existingTxid.state === "success") {
       sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
       return;
     }
-  } catch (e: unknown) {
-    idempotencyCache.delete(cacheKey);
-    logger.error("[wallet /deposit] DB error checking duplicate TxID:", e);
-    sendError(res, "Something went wrong, please try again.", 500); return;
   }
+
+  idempotencyCache.set(cacheKey, { state: "in_flight", ts: Date.now() });
+  idempotencyCache.set(txidCacheKey, { state: "in_flight", ts: Date.now() });
 
   const s = await getPlatformSettings();
   const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
@@ -335,9 +328,14 @@ router.post("/deposit", customerAuth, async (req, res) => {
   const maxTopup      = parseFloat(s["wallet_max_topup"]   ?? "25000");
   const autoApproveThreshold = Math.max(0, parseFloat(s["wallet_deposit_auto_approve"] ?? "0"));
 
-  if (!walletEnabled) { idempotencyCache.delete(cacheKey); sendError(res, "Wallet service is currently disabled", 503); return; }
-  if (amt < minTopup) { idempotencyCache.delete(cacheKey); sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
-  if (amt > maxTopup) { idempotencyCache.delete(cacheKey); sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
+  const clearCacheKeys = () => {
+    idempotencyCache.delete(cacheKey);
+    idempotencyCache.delete(txidCacheKey);
+  };
+
+  if (!walletEnabled) { clearCacheKeys(); sendError(res, "Wallet service is currently disabled", 503); return; }
+  if (amt < minTopup) { clearCacheKeys(); sendValidationError(res, `Minimum deposit is Rs. ${minTopup}`); return; }
+  if (amt > maxTopup) { clearCacheKeys(); sendValidationError(res, `Maximum single deposit is Rs. ${maxTopup}`); return; }
 
   const txId = generateId();
   const desc = [
@@ -351,9 +349,10 @@ router.post("/deposit", customerAuth, async (req, res) => {
 
   const setIdempotencyResult = (statusCode: number, body: unknown) => {
     idempotencyCache.set(cacheKey, { state: "success", ts: Date.now(), statusCode, body });
+    idempotencyCache.set(txidCacheKey, { state: "success", ts: Date.now(), statusCode, body });
   };
   const setIdempotencyFailed = () => {
-    idempotencyCache.delete(cacheKey);
+    clearCacheKeys();
   };
 
   if (shouldAutoApprove) {
@@ -361,6 +360,25 @@ router.post("/deposit", customerAuth, async (req, res) => {
 
     try {
       await db.transaction(async (tx) => {
+        /* SERIALIZABLE isolation ensures the duplicate check + balance update + insert
+           are atomic even under concurrent snapshot reads. */
+        await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE`);
+
+        /* Lock the user row to prevent concurrent balance mutations for the same user. */
+        await tx.execute(sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`);
+
+        /* Duplicate TxID check inside the transaction — DB-level enforcement. */
+        const [dupTx] = await tx.select({ id: walletTransactionsTable.id })
+          .from(walletTransactionsTable)
+          .where(and(
+            eq(walletTransactionsTable.type, "deposit"),
+            eq(walletTransactionsTable.normalizedTxId, normalizedTxId),
+          ))
+          .limit(1);
+        if (dupTx) {
+          throw Object.assign(new Error("duplicate_txid"), { isDuplicateTxId: true });
+        }
+
         const [credited] = await tx.update(usersTable)
           .set({ walletBalance: sql`wallet_balance + ${amt.toFixed(2)}` })
           .where(and(eq(usersTable.id, userId), sql`CAST(wallet_balance AS numeric) + ${amt} <= ${maxBalance}`))
@@ -374,12 +392,27 @@ router.post("/deposit", customerAuth, async (req, res) => {
           amount: amt.toFixed(2),
           description: desc,
           reference: `approved:auto:txid:${normalizedTxId}`,
+          normalizedTxId,
           paymentMethod,
         });
       });
     } catch (e: unknown) {
+      const err = e as Error & { isDuplicateTxId?: boolean; code?: string; constraint?: string };
+      const isDupTxId = err.isDuplicateTxId ||
+        /* Postgres unique_violation (23505) on our partial unique index */
+        (err.code === "23505" && (
+          err.constraint === "wallet_txn_deposit_normalized_tx_id_uidx" ||
+          /wallet_txn_deposit_normalized_tx_id_uidx/i.test(err.message ?? "")
+        ));
+      if (isDupTxId) {
+        /* Mark txid cache as settled so subsequent same-txid requests are caught in-memory */
+        idempotencyCache.set(txidCacheKey, { state: "success", ts: Date.now(), statusCode: 409, body: null });
+        idempotencyCache.delete(cacheKey);
+        sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
+        return;
+      }
       setIdempotencyFailed();
-      const msg = (e as Error).message ?? "";
+      const msg = err.message ?? "";
       if (msg.startsWith("Wallet limit")) {
         sendValidationError(res, msg);
       } else {
@@ -405,14 +438,47 @@ router.post("/deposit", customerAuth, async (req, res) => {
     sendSuccess(res, autoBody);
   } else {
     try {
-      await db.insert(walletTransactionsTable).values({
-        id: txId, userId, type: "deposit",
-        amount: amt.toFixed(2),
-        description: desc,
-        reference: `pending:txid:${normalizedTxId}`,
-        paymentMethod,
+      await db.transaction(async (tx) => {
+        /* SERIALIZABLE isolation ensures duplicate check + insert are atomic. */
+        await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE`);
+
+        /* Lock the user row to serialize concurrent deposits for the same user. */
+        await tx.execute(sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`);
+
+        /* Duplicate TxID check inside the transaction — DB-level enforcement. */
+        const [dupTx] = await tx.select({ id: walletTransactionsTable.id })
+          .from(walletTransactionsTable)
+          .where(and(
+            eq(walletTransactionsTable.type, "deposit"),
+            eq(walletTransactionsTable.normalizedTxId, normalizedTxId),
+          ))
+          .limit(1);
+        if (dupTx) {
+          throw Object.assign(new Error("duplicate_txid"), { isDuplicateTxId: true });
+        }
+
+        await tx.insert(walletTransactionsTable).values({
+          id: txId, userId, type: "deposit",
+          amount: amt.toFixed(2),
+          description: desc,
+          reference: `pending:txid:${normalizedTxId}`,
+          normalizedTxId,
+          paymentMethod,
+        });
       });
     } catch (e: unknown) {
+      const err = e as Error & { isDuplicateTxId?: boolean; code?: string; constraint?: string };
+      const isDupTxId = err.isDuplicateTxId ||
+        (err.code === "23505" && (
+          err.constraint === "wallet_txn_deposit_normalized_tx_id_uidx" ||
+          /wallet_txn_deposit_normalized_tx_id_uidx/i.test(err.message ?? "")
+        ));
+      if (isDupTxId) {
+        idempotencyCache.set(txidCacheKey, { state: "success", ts: Date.now(), statusCode: 409, body: null });
+        idempotencyCache.delete(cacheKey);
+        sendError(res, "This Transaction ID has already been used. Please check your transaction history or use a different TxID.", 409);
+        return;
+      }
       setIdempotencyFailed();
       logger.error("[wallet /deposit pending] DB error:", e);
       sendError(res, "Something went wrong, please try again.", 500); return;

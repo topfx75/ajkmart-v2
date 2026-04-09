@@ -21,6 +21,7 @@ export {
   ensureRideBidsMigration,
   ensureOrdersGpsColumns,
   ensureIdempotencyTable,
+  ensureWalletNormalizedTxId,
   ensureOtpSettings,
   getPlatformSettings,
   getAdminSecret,

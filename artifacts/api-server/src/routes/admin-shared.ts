@@ -651,6 +651,95 @@ export async function ensureIdempotencyTable() {
   _idempotencyTableMigrated = true;
 }
 
+let _walletNormalizedTxIdMigrated = false;
+export async function ensureWalletNormalizedTxId() {
+  if (_walletNormalizedTxIdMigrated) return;
+
+  /* Step 1: Add column (idempotent). Throws on unexpected errors → startup aborts. */
+  try {
+    await db.execute(sql`
+      ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS normalized_tx_id TEXT
+    `);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/already exists|duplicate column|42701/i.test(msg)) {
+      logger.fatal({ err: e }, "[migration] wallet normalizedTxId: FATAL — failed to add column");
+      throw e;
+    }
+  }
+
+  /* Step 2: Backfill existing deposit rows from the :txid: suffix in reference.
+     NULL out any rows whose suffix is empty so they don't participate in the unique index. */
+  try {
+    /* Normalize the same way the request path does: trim + uppercase + collapse all whitespace.
+       regexp_replace(..., '\s+', '', 'g') removes all internal whitespace characters. */
+    await db.execute(sql`
+      UPDATE wallet_transactions
+      SET normalized_tx_id = UPPER(REGEXP_REPLACE(TRIM(SPLIT_PART(reference, ':txid:', 2)), '\s+', '', 'g'))
+      WHERE type = 'deposit'
+        AND reference LIKE '%:txid:%'
+        AND normalized_tx_id IS NULL
+        AND TRIM(SPLIT_PART(reference, ':txid:', 2)) <> ''
+    `);
+  } catch (e: unknown) {
+    logger.fatal({ err: e }, "[migration] wallet normalizedTxId: FATAL — backfill failed");
+    throw e;
+  }
+
+  /* Step 3: Null out backfilled values that are duplicates so the unique index can be created.
+     Pre-existing duplicates (should not exist in a clean system) are resolved by keeping the
+     oldest row and NULLing the rest so they fall outside the partial index scope.
+     Data-quality warning is logged; this is a one-time repair and then throws are used. */
+  try {
+    const dupes = await db.execute<{ normalized_tx_id: string; cnt: string }>(sql`
+      SELECT normalized_tx_id, COUNT(*) AS cnt
+      FROM wallet_transactions
+      WHERE type = 'deposit' AND normalized_tx_id IS NOT NULL
+      GROUP BY normalized_tx_id
+      HAVING COUNT(*) > 1
+    `);
+    if (dupes.rows.length > 0) {
+      logger.warn({ count: dupes.rows.length }, "[migration] wallet normalizedTxId: pre-existing duplicate TxIDs found — NULLing duplicates (keeping oldest)");
+      await db.execute(sql`
+        UPDATE wallet_transactions SET normalized_tx_id = NULL
+        WHERE id IN (
+          SELECT id FROM (
+            SELECT id,
+              ROW_NUMBER() OVER (PARTITION BY normalized_tx_id ORDER BY created_at ASC) AS rn
+            FROM wallet_transactions
+            WHERE type = 'deposit' AND normalized_tx_id IS NOT NULL
+          ) ranked
+          WHERE rn > 1
+        )
+      `);
+    }
+  } catch (e: unknown) {
+    logger.fatal({ err: e }, "[migration] wallet normalizedTxId: FATAL — duplicate-nulling step failed");
+    throw e;
+  }
+
+  /* Step 4: Create partial unique index (idempotent).
+     CRITICAL: If index creation fails for any non-idempotent reason, we throw so the
+     startup chain receives the error and process.exit(1) is called.  The service must
+     NOT start without this constraint — it is the DB-level deduplication guarantee. */
+  try {
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS wallet_txn_deposit_normalized_tx_id_uidx
+        ON wallet_transactions (normalized_tx_id)
+        WHERE type = 'deposit' AND normalized_tx_id IS NOT NULL
+    `);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/already exists|42P07/i.test(msg)) {
+      logger.fatal({ err: e }, "[migration] wallet normalizedTxId: FATAL — unique index creation failed, deposit deduplication NOT enforced — refusing to start");
+      throw e;
+    }
+  }
+
+  logger.info("[migration] wallet normalizedTxId: migration complete");
+  _walletNormalizedTxIdMigrated = true;
+}
+
 let _otpSettingsSeeded = false;
 export async function ensureOtpSettings() {
   if (_otpSettingsSeeded) return;
