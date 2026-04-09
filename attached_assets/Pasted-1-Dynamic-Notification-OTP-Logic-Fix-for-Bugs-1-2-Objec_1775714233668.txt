@@ -1,0 +1,38 @@
+1. Dynamic Notification & OTP Logic (Fix for Bugs #1, #2)
+Objective: OTP console se hata kar dynamic channels (SMS/WhatsApp/Email) par shift karna aur Admin control dena.
+Database Task: system_settings table mein ye columns add karein:
+otp_debug_mode (Boolean) - Default: false
+primary_otp_channel (Enum) - ['sms', 'whatsapp', 'email', 'all']
+provider_credentials (JSON) - Twilio/Msg91/SMTP keys store karne ke liye.
+Logic Change: auth.ts mein direct console.log khatam karein. Ek NotificationService banayein jo check kare:
+typescript
+if (settings.otp_debug_mode && process.env.NODE_ENV !== 'production') {
+   console.log("OTP:", otp); // Sirf dev mode mein dikhe
+} else {
+   // Admin preference ke mutabiq real service call karein
+   await NotificationProvider.send(user.phone, otp, settings.primary_otp_channel);
+}
+Use code with caution.
+
+2. Wallet Security & Race Conditions (Fix for Bugs #7, #10)
+Objective: Do requests ek saath balance deduct na kar sakein.
+Database Task: users table ke wallet_balance column par CHECK (balance >= 0) constraint lagayein.
+Backend Task: Wallet deduction logic ko Database Transaction mein wrap karein aur FOR UPDATE (Row-level lock) use karein.
+Step 1: Transaction start karo.
+Step 2: User row ko lock karo (SELECT ... FOR UPDATE).
+Step 3: Balance check karo.
+Step 4: Update karo aur commit karo.
+3. Data Integrity & Cleanup (Fix for Bugs #8, #9)
+Objective: Database ko clean aur future-proof banana.
+Schema Migration: orders table se items JSON blob khatam karke order_items ki alag table banayein.
+Fields: order_id, product_id, unit_price_at_purchase, quantity. (Snapshot lena zaroori hai taake product delete hone se purana record kharab na ho).
+Cleanup: users table se storeName aur vehicleType columns drop karein (kyunki ab profiles alag hain).
+4. Hardcoded Data Removal (Fix for Bugs #5, #6)
+Objective: Code change kiye baghair settings badalna.
+Task: maps.ts (Cities) aur wallet.ts (Payment Methods) ko hardcoded arrays se nikaal kar Database Config se fetch karein.
+API: Ek GET /settings/app-config endpoint banayein jo frontend ko ye saari list return kare.
+5. Frontend Validations & i18n (Fix for Bugs #11, #12, #13, #14)
+Objective: User experience aur accessibility behtar karna.
+Validation: Promo code form par Yup/Zod validation lagayein: discount_value: number().min(0).
+Localization: Hardcoded strings (e.g., "In Stock") ko i18next keys se replace karein.
+A11y: Sabhi icon-only buttons (jaise Bulk Upload ka 'X') par aria-label add karein.
