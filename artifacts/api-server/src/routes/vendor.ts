@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable, deliveryWhitelistTable, deliveryAccessRequestsTable } from "@workspace/db/schema";
+import { usersTable, vendorProfilesTable, riderProfilesTable, ordersTable, orderItemsTable, productsTable, promoCodesTable, walletTransactionsTable, notificationsTable, reviewsTable, liveLocationsTable, deliveryWhitelistTable, deliveryAccessRequestsTable } from "@workspace/db/schema";
 import { eq, desc, and, sql, count, sum, gte, or, ilike, isNull, avg } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -123,16 +123,41 @@ router.get("/store", async (req, res) => {
 router.patch("/store", validateBody(patchStoreSchema), async (req, res) => {
   const vendorId = req.vendorId!;
   const body = req.body;
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  const fields = ["storeName","storeCategory","storeBanner","storeDescription","storeAnnouncement","storeDeliveryTime","storeIsOpen","storeMinOrder","storeAddress"];
-  for (const f of fields) {
-    if (body[f] !== undefined) updates[f] = body[f];
+
+  const userUpdates: Record<string, unknown> = { updatedAt: new Date() };
+  const userFields = ["storeBanner","storeDescription","storeAnnouncement","storeDeliveryTime","storeIsOpen","storeMinOrder","storeAddress"];
+  for (const f of userFields) {
+    if (body[f] !== undefined) userUpdates[f] = body[f];
   }
-  if (body.storeHours !== undefined) updates.storeHours = typeof body.storeHours === "string" ? body.storeHours : JSON.stringify(body.storeHours);
-  if (body.storeLat !== undefined && body.storeLat !== null) updates.storeLat = String(body.storeLat);
-  if (body.storeLng !== undefined && body.storeLng !== null) updates.storeLng = String(body.storeLng);
-  const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, vendorId)).returning();
-  sendSuccess(res, formatUser(user));
+  if (body.storeHours !== undefined) userUpdates.storeHours = typeof body.storeHours === "string" ? body.storeHours : JSON.stringify(body.storeHours);
+  if (body.storeLat !== undefined && body.storeLat !== null) userUpdates.storeLat = String(body.storeLat);
+  if (body.storeLng !== undefined && body.storeLng !== null) userUpdates.storeLng = String(body.storeLng);
+
+  const [user] = await db.update(usersTable).set(userUpdates).where(eq(usersTable.id, vendorId)).returning();
+
+  const profileUpdates: Record<string, unknown> = {};
+  if (body.storeName !== undefined) profileUpdates.storeName = body.storeName;
+  if (body.storeCategory !== undefined) profileUpdates.storeCategory = body.storeCategory;
+  let storeName: string | null = null;
+  let storeCategory: string | null = null;
+  if (Object.keys(profileUpdates).length > 0) {
+    const [prof] = await db.insert(vendorProfilesTable).values({
+      userId: vendorId,
+      ...profileUpdates,
+    }).onConflictDoUpdate({
+      target: vendorProfilesTable.userId,
+      set: profileUpdates,
+    }).returning();
+    storeName = prof?.storeName ?? null;
+    storeCategory = prof?.storeCategory ?? null;
+  } else {
+    const [prof] = await db.select({ storeName: vendorProfilesTable.storeName, storeCategory: vendorProfilesTable.storeCategory })
+      .from(vendorProfilesTable).where(eq(vendorProfilesTable.userId, vendorId)).limit(1);
+    storeName = prof?.storeName ?? null;
+    storeCategory = prof?.storeCategory ?? null;
+  }
+
+  sendSuccess(res, formatUser({ ...user, storeName, storeCategory }));
 });
 
 /* ── GET /vendor/stats ── */
@@ -588,9 +613,10 @@ router.get("/analytics", async (req, res) => {
   const [revenueData, topProductsRaw, ordersByStatusRaw] = await Promise.all([
     db.select({ c: count(), s: sum(ordersTable.total), date: sql<string>`DATE(${ordersTable.createdAt})` }).from(ordersTable)
       .where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, since))).groupBy(sql`DATE(${ordersTable.createdAt})`).orderBy(sql`DATE(${ordersTable.createdAt})`),
-    db.select({ id: productsTable.id, name: productsTable.name, orderCount: count() }).from(ordersTable)
-      .innerJoin(productsTable, sql`${ordersTable.items}::text LIKE '%' || ${productsTable.id} || '%'`)
-      .where(eq(ordersTable.vendorId, vendorId)).groupBy(productsTable.id, productsTable.name).orderBy(desc(count())).limit(5).catch(() => []),
+    db.select({ id: productsTable.id, name: productsTable.name, orderCount: count() }).from(orderItemsTable)
+      .innerJoin(ordersTable, and(eq(orderItemsTable.orderId, ordersTable.id), eq(ordersTable.vendorId, vendorId)))
+      .innerJoin(productsTable, eq(orderItemsTable.productId, productsTable.id))
+      .where(gte(ordersTable.createdAt, since)).groupBy(productsTable.id, productsTable.name).orderBy(desc(count())).limit(5).catch(() => []),
     db.select({ status: ordersTable.status, c: count() }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, since))).groupBy(ordersTable.status),
   ]);
 
@@ -716,11 +742,12 @@ router.get("/orders/available-riders", requireRole("vendor"), async (req, res) =
   const riders = await db
     .select({
       id: usersTable.id, name: usersTable.name, phone: usersTable.phone,
-      vehicleType: usersTable.vehicleType, walletBalance: usersTable.walletBalance,
+      vehicleType: riderProfilesTable.vehicleType, walletBalance: usersTable.walletBalance,
       lat: liveLocationsTable.latitude, lng: liveLocationsTable.longitude,
     })
     .from(usersTable)
     .innerJoin(liveLocationsTable, eq(usersTable.id, liveLocationsTable.userId))
+    .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
     .where(and(eq(usersTable.role, "rider"), eq(usersTable.isOnline, true)));
 
   const withDist = riders
@@ -932,8 +959,9 @@ router.post("/delivery-access/request", async (req, res) => {
     });
 
     const [vendor] = await db
-      .select({ name: usersTable.name, storeName: usersTable.storeName })
+      .select({ name: usersTable.name, storeName: vendorProfilesTable.storeName })
       .from(usersTable)
+      .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
       .where(eq(usersTable.id, vendorId))
       .limit(1);
 

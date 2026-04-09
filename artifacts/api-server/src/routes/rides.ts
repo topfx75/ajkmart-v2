@@ -5,7 +5,7 @@ import { db } from "@workspace/db";
 import {
   liveLocationsTable, notificationsTable, rideBidsTable,
   rideServiceTypesTable, ridesTable, rideRatingsTable,
-  usersTable, walletTransactionsTable,
+  usersTable, riderProfilesTable, walletTransactionsTable,
   popularLocationsTable, rideEventLogsTable, rideNotifiedRidersTable,
 } from "@workspace/db/schema";
 import { and, asc, eq, ne, sql, or, isNull, gte, count } from "drizzle-orm";
@@ -253,9 +253,10 @@ async function broadcastRide(rideId: string) {
       isActive: usersTable.isActive,
       isBanned: usersTable.isBanned,
       isRestricted: usersTable.isRestricted,
-      vehicleType: usersTable.vehicleType,
+      vehicleType: riderProfilesTable.vehicleType,
     }).from(liveLocationsTable)
       .innerJoin(usersTable, eq(liveLocationsTable.userId, usersTable.id))
+      .leftJoin(riderProfilesTable, eq(liveLocationsTable.userId, riderProfilesTable.userId))
       .where(and(
         eq(liveLocationsTable.role, "rider"),
         gte(liveLocationsTable.updatedAt, new Date(Date.now() - 5 * 60 * 1000)),
@@ -1462,8 +1463,10 @@ async function buildRideSSEPayload(rideId: string): Promise<Record<string, unkno
   const formattedBids = await Promise.all(bids.map(async (b) => {
     const [riderUser] = await db.select({
       vehiclePlate: usersTable.vehiclePlate,
-      vehicleType:  usersTable.vehicleType,
-    }).from(usersTable).where(eq(usersTable.id, b.riderId)).limit(1);
+      vehicleType:  riderProfilesTable.vehicleType,
+    }).from(usersTable)
+      .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
+      .where(eq(usersTable.id, b.riderId)).limit(1);
 
     const ratingRows = await db.select({
       starsAvg: sql<string>`AVG(stars)`,
@@ -1624,8 +1627,10 @@ router.get("/:id", customerAuth, async (req, res) => {
   const formattedBids = await Promise.all(bids.map(async (b) => {
     const [riderUser] = await db.select({
       vehiclePlate: usersTable.vehiclePlate,
-      vehicleType:  usersTable.vehicleType,
-    }).from(usersTable).where(eq(usersTable.id, b.riderId)).limit(1);
+      vehicleType:  riderProfilesTable.vehicleType,
+    }).from(usersTable)
+      .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
+      .where(eq(usersTable.id, b.riderId)).limit(1);
 
     const ratingRows = await db.select({
       starsAvg: sql<string>`AVG(stars)`,

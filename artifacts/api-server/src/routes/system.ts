@@ -22,6 +22,7 @@ import {
   vendorProfilesTable,
   riderProfilesTable,
   serviceZonesTable,
+  orderItemsTable,
 } from "@workspace/db/schema";
 import { count, lt, eq } from "drizzle-orm";
 import type { Table } from "drizzle-orm";
@@ -688,11 +689,13 @@ router.post("/seed-demo", async (_req, res) => {
       const status = orderStatuses[i];
       const orderId = generateId();
       const ageInDays = Math.floor(i * 1.5);
+      const itemName = i % 3 === 0 ? "Chicken Biryani" : "Basmati Rice 5kg";
+      const itemQty = 1 + (i % 3);
+      const itemPrice = (200 + i * 30).toString();
       const row = {
         id: orderId,
         userId: `demo_cust_${cIdx + 1}`,
         type: i % 3 === 0 ? "food" : "mart",
-        items: JSON.stringify([{ name: i % 3 === 0 ? "Chicken Biryani" : "Basmati Rice 5kg", qty: 1 + (i % 3), price: (200 + i * 30).toString() }]),
         status,
         total: (200 + i * 50).toString(),
         deliveryAddress: `${DEMO_USERS[cIdx].area}, ${DEMO_USERS[cIdx].city}`,
@@ -705,6 +708,7 @@ router.post("/seed-demo", async (_req, res) => {
         createdAt: daysAgo(ageInDays),
       };
       await db.insert(ordersTable).values(row);
+      await db.insert(orderItemsTable).values({ id: generateId(), orderId, name: itemName, quantity: itemQty, unitPriceAtPurchase: itemPrice });
       demoOrders.push({ id: orderId, userId: row.userId, riderId: row.riderId, vendorId: row.vendorId, status, total: row.total, createdAt: row.createdAt });
     }
     counts.orders = 24;

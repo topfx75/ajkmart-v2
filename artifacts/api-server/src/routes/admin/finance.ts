@@ -5,6 +5,7 @@ import {
   walletTransactionsTable,
   notificationsTable,
   ordersTable, ridesTable, productsTable, riderPenaltiesTable, rideRatingsTable, reviewsTable,
+  vendorProfilesTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
@@ -85,9 +86,28 @@ router.get("/transactions-enriched", async (req, res) => {
 
 /* ── Delete User ── */
 router.get("/vendors", async (_req, res) => {
-  const vendors = await db.select().from(usersTable).where(
-    or(ilike(usersTable.roles, "%vendor%"), eq(usersTable.role, "vendor"))
-  ).orderBy(desc(usersTable.createdAt));
+  const vendors = await db.select({
+    id: usersTable.id,
+    phone: usersTable.phone,
+    name: usersTable.name,
+    email: usersTable.email,
+    storeName: vendorProfilesTable.storeName,
+    storeCategory: vendorProfilesTable.storeCategory,
+    storeIsOpen: vendorProfilesTable.storeIsOpen,
+    storeDescription: vendorProfilesTable.storeDescription,
+    walletBalance: usersTable.walletBalance,
+    isActive: usersTable.isActive,
+    isBanned: usersTable.isBanned,
+    approvalStatus: usersTable.approvalStatus,
+    approvalNote: usersTable.approvalNote,
+    roles: usersTable.roles,
+    role: usersTable.role,
+    createdAt: usersTable.createdAt,
+    lastLoginAt: usersTable.lastLoginAt,
+  }).from(usersTable)
+    .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
+    .where(or(ilike(usersTable.roles, "%vendor%"), eq(usersTable.role, "vendor")))
+    .orderBy(desc(usersTable.createdAt));
 
   const vendorIds = vendors.map(v => v.id);
   let orderStats: { vendorId: string | null; totalOrders: number; totalRevenue: string | null; pendingOrders: number }[] = [];

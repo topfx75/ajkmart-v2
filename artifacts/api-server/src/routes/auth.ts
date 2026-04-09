@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import crypto from "crypto";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable, magicLinkTokensTable, rateLimitsTable, pendingOtpsTable, userSessionsTable, loginHistoryTable } from "@workspace/db/schema";
+import { usersTable, walletTransactionsTable, notificationsTable, refreshTokensTable, magicLinkTokensTable, rateLimitsTable, pendingOtpsTable, userSessionsTable, loginHistoryTable, vendorProfilesTable, riderProfilesTable } from "@workspace/db/schema";
 import { eq, and, sql, lt, or, desc } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -1087,7 +1087,6 @@ router.post("/vendor-register", async (req, res) => {
   await db.update(usersTable).set({
     roles: newRoles.join(","),
     role: "vendor",
-    storeName,
     storeCategory: storeCategory || null,
     name: name || user.name,
     username: username ? String(username).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : user.username || null,
@@ -1101,6 +1100,15 @@ router.post("/vendor-register", async (req, res) => {
     isActive: autoApprove ? true : false,
     updatedAt: new Date(),
   }).where(eq(usersTable.id, user.id));
+
+  await db.insert(vendorProfilesTable).values({
+    userId: user.id,
+    storeName,
+    storeCategory: storeCategory || null,
+  }).onConflictDoUpdate({
+    target: vendorProfilesTable.userId,
+    set: { storeName, storeCategory: storeCategory || null },
+  });
 
   await db.insert(notificationsTable).values({
     id: generateId(),
@@ -2116,7 +2124,7 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
   const { phone, password, name, role, cnic, nationalId, email, username,
           vehicleType, vehicleRegNo, drivingLicense,
           address, city, emergencyContact, vehiclePlate, vehiclePhoto, documents,
-          businessName, businessType, storeAddress, ntn, storeName } = req.body;
+          businessName, businessType, storeAddress, ntn, storeName, storeCategory } = req.body;
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
@@ -2224,7 +2232,6 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
     approvalStatus: needsApproval ? "pending" : "approved",
     cnic: cnicValue || null,
     nationalId: cnicValue || null,
-    vehicleType: vehicleType ? normalizeVehicleTypeForStorage(vehicleType) : null,
     vehicleRegNo: vehicleRegNo || null,
     vehiclePlate: vehiclePlate || vehicleRegNo || null,
     drivingLicense: drivingLicense || null,
@@ -2234,11 +2241,30 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
     vehiclePhoto: vehiclePhoto || null,
     documents: documents || null,
     businessName: businessName || storeName || null,
-    storeName: storeName || businessName || null,
     businessType: businessType || null,
     storeAddress: storeAddress || null,
     ntn: ntn || null,
   });
+
+  if (userRole === "rider" && vehicleType) {
+    await db.insert(riderProfilesTable).values({
+      userId,
+      vehicleType: normalizeVehicleTypeForStorage(vehicleType),
+    }).onConflictDoUpdate({
+      target: riderProfilesTable.userId,
+      set: { vehicleType: normalizeVehicleTypeForStorage(vehicleType) },
+    });
+  }
+  if (userRole === "vendor" && (storeName || businessName)) {
+    await db.insert(vendorProfilesTable).values({
+      userId,
+      storeName: storeName || businessName || null,
+      storeCategory: storeCategory || null,
+    }).onConflictDoUpdate({
+      target: vendorProfilesTable.userId,
+      set: { storeName: storeName || businessName || null, storeCategory: storeCategory || null },
+    });
+  }
 
   const registerLang = await getUserLanguage(userId);
   const smsResult = await sendOtpSMS(normalizedPhone, otp, settings, registerLang);
@@ -2650,7 +2676,6 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
     emailOtpCode: tokenHash,
     emailOtpExpiry: verificationExpiry,
     ...(cnic ? { cnic: cnic.trim() } : {}),
-    ...(vehicleType ? { vehicleType: normalizeVehicleTypeForStorage(vehicleType) } : {}),
     ...(resolvedVehicleRegNo ? { vehicleRegNo: resolvedVehicleRegNo.trim() } : {}),
     ...(drivingLicense ? { drivingLicense: drivingLicense.trim() } : {}),
     ...(address ? { address: address.trim() } : {}),
@@ -2660,6 +2685,16 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
     ...(vehiclePhoto ? { vehiclePhoto } : {}),
     ...(documents ? { documents } : {}),
   });
+
+  if (userRole === "rider" && vehicleType) {
+    await db.insert(riderProfilesTable).values({
+      userId,
+      vehicleType: normalizeVehicleTypeForStorage(vehicleType),
+    }).onConflictDoUpdate({
+      target: riderProfilesTable.userId,
+      set: { vehicleType: normalizeVehicleTypeForStorage(vehicleType) },
+    });
+  }
 
   const domain = process.env["REPLIT_DEV_DOMAIN"] || process.env["APP_DOMAIN"] || "localhost";
   const verificationLink = `https://${domain}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(normalizedEmail)}`;

@@ -49,12 +49,7 @@ export const usersTable = pgTable("users", {
   bankAccount:       text("bank_account"),
   bankAccountTitle:  text("bank_account_title"),
   nationalId:        text("national_id"),
-  /* ── DEPRECATED: Vendor store fields ────────────────────────────────────────
-     These columns have been migrated to the vendor_profiles table.
-     They are kept here for backward compatibility during migration only.
-     New code should JOIN vendor_profiles. Phase 3 will DROP these columns.
-  ── */
-  storeName:         text("store_name"),
+  /* ── Vendor store fields (kept on users table — migrated subsets to vendor_profiles) ── */
   storeCategory:     text("store_category"),
   storeBanner:       text("store_banner"),
   storeDescription:  text("store_description"),
@@ -69,12 +64,7 @@ export const usersTable = pgTable("users", {
   businessType:      text("business_type"),
   businessName:      text("business_name"),
   ntn:               text("ntn"),
-  /* ── DEPRECATED: Rider vehicle fields ───────────────────────────────────────
-     These columns have been migrated to the rider_profiles table.
-     They are kept here for backward compatibility during migration only.
-     New code should JOIN rider_profiles. Phase 3 will DROP these columns.
-  ── */
-  vehicleType:       text("vehicle_type"),
+  /* ── Rider vehicle fields (kept on users table — migrated subsets to rider_profiles) ── */
   vehiclePlate:      text("vehicle_plate"),
   vehicleRegNo:      text("vehicle_reg_no"),
   drivingLicense:    text("driving_license"),

@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger.js";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, reviewsTable, rideRatingsTable, ridesTable, usersTable } from "@workspace/db/schema";
+import { ordersTable, orderItemsTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, reviewsTable, rideRatingsTable, ridesTable, usersTable, vendorProfilesTable } from "@workspace/db/schema";
 import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendUnauthorized } from "../lib/response.js";
@@ -199,8 +199,8 @@ router.get("/can-review/:productId", customerAuth, async (req, res) => {
         eq(ordersTable.userId, userId),
         sql`${ordersTable.status} IN ('delivered', 'completed')`,
         sql`EXISTS (
-          SELECT 1 FROM json_array_elements(${ordersTable.items}::json) elem
-          WHERE elem->>'productId' = ${productId}
+          SELECT 1 FROM order_items oi
+          WHERE oi.order_id = ${ordersTable.id} AND oi.product_id = ${productId}
         )`
       )
     )
@@ -375,8 +375,8 @@ router.post("/", customerAuth, async (req, res) => {
           eq(ordersTable.userId, userId),
           sql`${ordersTable.status} IN ('delivered', 'completed')`,
           sql`EXISTS (
-            SELECT 1 FROM json_array_elements(${ordersTable.items}::json) elem
-            WHERE elem->>'productId' = ${productId}
+            SELECT 1 FROM order_items oi
+            WHERE oi.order_id = ${ordersTable.id} AND oi.product_id = ${productId}
           )`
         )
       )
@@ -538,10 +538,11 @@ router.get("/my", customerAuth, async (req, res) => {
         riderRating: reviewsTable.riderRating,
         comment: reviewsTable.comment,
         createdAt: reviewsTable.createdAt,
-        vendorName: usersTable.storeName,
+        vendorName: vendorProfilesTable.storeName,
       })
       .from(reviewsTable)
       .leftJoin(usersTable, eq(reviewsTable.vendorId, usersTable.id))
+      .leftJoin(vendorProfilesTable, eq(reviewsTable.vendorId, vendorProfilesTable.userId))
       .where(and(eq(reviewsTable.userId, userId), isNull(reviewsTable.deletedAt)))
       .orderBy(desc(reviewsTable.createdAt)),
 

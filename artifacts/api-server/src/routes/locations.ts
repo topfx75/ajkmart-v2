@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { liveLocationsTable, locationLogsTable, locationHistoryTable, ridesTable, ordersTable, usersTable } from "@workspace/db/schema";
+import { liveLocationsTable, locationLogsTable, locationHistoryTable, ridesTable, ordersTable, usersTable, riderProfilesTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, asc, or, desc } from "drizzle-orm";
 import {
   getCachedSettings,
@@ -387,11 +387,11 @@ async function broadcastRiderLocation(userId: string, lat: number, lon: number, 
   let vehicleType: string | null = null;
   let currentTripId: string | null = null;
 
-  /* Fetch rider's vehicle type from users table (for map markers) */
+  /* Fetch rider's vehicle type from rider_profiles table (for map markers) */
   try {
-    const [rider] = await db.select({ vehicleType: usersTable.vehicleType })
-      .from(usersTable)
-      .where(eq(usersTable.id, userId))
+    const [rider] = await db.select({ vehicleType: riderProfilesTable.vehicleType })
+      .from(riderProfilesTable)
+      .where(eq(riderProfilesTable.userId, userId))
       .limit(1);
     vehicleType = rider?.vehicleType ?? null;
   } catch {

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { ordersTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable, notificationsTable } from "@workspace/db/schema";
+import { ordersTable, orderItemsTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable, notificationsTable } from "@workspace/db/schema";
 import { eq, and, gte, count, desc, SQL, sql, inArray, lt } from "drizzle-orm";
 import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { generateId } from "../lib/id.js";
@@ -155,12 +155,25 @@ function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function mapOrder(o: typeof ordersTable.$inferSelect, deliveryFee?: number, gstAmount?: number, codFee?: number) {
+type OrderItemRow = { id: string; orderId: string; productId: string | null; name: string | null; image: string | null; unitPriceAtPurchase: string; quantity: number };
+
+function mapOrderItems(rows: OrderItemRow[]) {
+  return rows.map(it => ({
+    id: it.id,
+    productId: it.productId ?? null,
+    name: it.name ?? null,
+    image: it.image ?? null,
+    price: parseFloat(it.unitPriceAtPurchase),
+    quantity: it.quantity,
+  }));
+}
+
+function mapOrder(o: typeof ordersTable.$inferSelect, deliveryFee?: number, gstAmount?: number, codFee?: number, items?: object[]) {
   return {
     id: o.id,
     userId: o.userId,
     type: o.type,
-    items: o.items as object[],
+    items: items ?? [],
     status: o.status,
     total: parseFloat(o.total),
     deliveryFee: deliveryFee ?? 0,
@@ -314,8 +327,19 @@ router.get("/", customerAuth, async (req, res) => {
     .limit(limit)
     .offset(offset);
 
+  const orderIds = orders.map(o => o.id);
+  const allItems = orderIds.length > 0
+    ? await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds))
+    : [];
+  const itemsByOrder = new Map<string, typeof allItems>();
+  for (const item of allItems) {
+    const list = itemsByOrder.get(item.orderId) ?? [];
+    list.push(item);
+    itemsByOrder.set(item.orderId, list);
+  }
+
   sendSuccess(res, {
-    orders: orders.map(o => mapOrder(o)),
+    orders: orders.map(o => mapOrder(o, undefined, undefined, undefined, mapOrderItems(itemsByOrder.get(o.id) ?? []))),
     total,
     page,
     limit,
@@ -333,8 +357,9 @@ router.get("/:id", customerAuth, async (req, res) => {
   }
   if (idorGuard(res, order.userId, userId)) return;
   const s = await getCachedSettings();
-  const orderItems = (order.items ?? []) as { price: number; quantity: number }[];
-  const itemsTotal = orderItems.reduce((sum, it) => sum + (Number(it.price) * Number(it.quantity)), 0);
+
+  const orderItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+  const itemsTotal = orderItems.reduce((sum, it) => sum + (Number(it.unitPriceAtPurchase) * Number(it.quantity)), 0);
   const deliveryFee = calcDeliveryFee(s, order.type, itemsTotal);
   const gstAmount   = calcGst(s, itemsTotal);
   const codFee      = calcCodFee(s, order.paymentMethod, itemsTotal + deliveryFee + gstAmount);
@@ -350,7 +375,7 @@ router.get("/:id", customerAuth, async (req, res) => {
     vendorName = vendor?.name ?? null;
   }
 
-  sendSuccess(res, { ...mapOrder(order, deliveryFee, gstAmount, codFee), vendorName });
+  sendSuccess(res, { ...mapOrder(order, deliveryFee, gstAmount, codFee, mapOrderItems(orderItems)), vendorName });
 });
 
 /* ── GET /orders/:id/track — Live rider location for active food/mart orders ── */
@@ -813,13 +838,28 @@ router.post("/", customerAuth, async (req, res) => {
           description: `Order payment (${type || "mart"}) — Rs. ${total.toFixed(0)}`,
         });
 
+        const orderId = generateId();
         const [newOrder] = await tx.insert(ordersTable).values({
-          id: generateId(), userId, type, items,
+          id: orderId, userId, type,
           status: "pending", total: total.toFixed(2),
           deliveryAddress, paymentMethod,
           estimatedTime,
           ...gpsInsert,
         }).returning();
+
+        const itemRows = (items as Array<{ productId?: string; name?: string; image?: string; price?: number; quantity?: number }>).map(it => ({
+          id: generateId(),
+          orderId,
+          productId: it.productId ?? null,
+          name: it.name ?? null,
+          image: it.image ?? null,
+          unitPriceAtPurchase: Number(it.price ?? 0).toFixed(2),
+          quantity: Number(it.quantity ?? 1),
+        }));
+        if (itemRows.length > 0) {
+          await tx.insert(orderItemsTable).values(itemRows);
+        }
+
         if (promoId) {
           await tx.update(promoCodesTable)
             .set({ usedCount: sql`${promoCodesTable.usedCount} + 1` })
@@ -828,7 +868,8 @@ router.post("/", customerAuth, async (req, res) => {
         }
         return newOrder!;
       });
-      const mapped = { ...mapOrder(order, deliveryFee, gstAmount, codFee), promoDiscount };
+      const orderItemRows = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+      const mapped = { ...mapOrder(order, deliveryFee, gstAmount, codFee, mapOrderItems(orderItemRows)), promoDiscount };
 
       /* ── Emit new-order to admin/vendor IMMEDIATELY after DB commit ── */
       broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string }).vendorId);
@@ -855,14 +896,29 @@ router.post("/", customerAuth, async (req, res) => {
 
   /* ── Cash / JazzCash / EasyPaisa / Bank — wrapped in try/catch to prevent unhandled rejections ── */
   try {
+    const orderId = generateId();
     const [order] = await db.transaction(async (tx) => {
       const [newOrder] = await tx.insert(ordersTable).values({
-        id: generateId(), userId, type, items,
+        id: orderId, userId, type,
         status: "pending", total: total.toFixed(2),
         deliveryAddress, paymentMethod,
         estimatedTime,
         ...gpsInsert,
       }).returning();
+
+      const itemRows = (items as Array<{ productId?: string; name?: string; image?: string; price?: number; quantity?: number }>).map(it => ({
+        id: generateId(),
+        orderId,
+        productId: it.productId ?? null,
+        name: it.name ?? null,
+        image: it.image ?? null,
+        unitPriceAtPurchase: Number(it.price ?? 0).toFixed(2),
+        quantity: Number(it.quantity ?? 1),
+      }));
+      if (itemRows.length > 0) {
+        await tx.insert(orderItemsTable).values(itemRows);
+      }
+
       if (promoId) {
         await tx.update(promoCodesTable)
           .set({ usedCount: sql`${promoCodesTable.usedCount} + 1` })
@@ -870,7 +926,8 @@ router.post("/", customerAuth, async (req, res) => {
       }
       return [newOrder];
     });
-    const mapped = { ...mapOrder(order!, deliveryFee, gstAmount, codFee), promoDiscount };
+    const orderItemRows = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
+    const mapped = { ...mapOrder(order!, deliveryFee, gstAmount, codFee, mapOrderItems(orderItemRows)), promoDiscount };
 
     /* ── Emit to admin IMMEDIATELY after DB commit (Task 7: <500ms latency) ── */
     broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string })?.vendorId);
@@ -955,7 +1012,9 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       if (updatedUser) broadcastWalletUpdate(userId, parseFloat(updatedUser.walletBalance ?? "0"));
     }
 
-    broadcastOrderUpdate(mapOrder(order), (order as typeof ordersTable.$inferSelect & { vendorId?: string }).vendorId);
+    const cancelItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+    const cancelMapped = mapOrder(order, undefined, undefined, undefined, mapOrderItems(cancelItems));
+    broadcastOrderUpdate(cancelMapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string }).vendorId);
 
     addAuditEntry({
       action: "order_cancel",
@@ -969,7 +1028,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
     }
 
     sendSuccess(res, {
-      ...mapOrder(order),
+      ...cancelMapped,
       refundAmount,
       refundMethod: isWallet ? "wallet" : null,
       cancelReason: reason,
@@ -1015,7 +1074,8 @@ router.post("/:id/refund-request", customerAuth, async (req, res) => {
       .where(eq(ordersTable.id, orderId));
 
     const updatedOrder = { ...order, paymentStatus: "refund_requested" as typeof order.paymentStatus };
-    broadcastOrderUpdate(mapOrder(updatedOrder), order.vendorId);
+    const refundItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, String(orderId)));
+    broadcastOrderUpdate(mapOrder(updatedOrder, undefined, undefined, undefined, mapOrderItems(refundItems)), order.vendorId);
 
     sendSuccess(res, { refundStatus: "requested" }, t("apiMsgRefundSubmitted", lang));
   } catch (e: unknown) {

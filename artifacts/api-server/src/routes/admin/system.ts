@@ -9,6 +9,7 @@ import {
   walletTransactionsTable,
   notificationsTable,
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, platformSettingsTable, adminAccountsTable, authAuditLogTable, refreshTokensTable, rideRatingsTable, riderPenaltiesTable, reviewsTable,
+  vendorProfilesTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, type SQL } from "drizzle-orm";
 import {
@@ -928,15 +929,16 @@ router.get("/search", async (req, res) => {
 router.get("/leaderboard", async (_req, res) => {
   const vendors = await db.select({
     id:     usersTable.id,
-    name:   usersTable.storeName,
+    name:   vendorProfilesTable.storeName,
     phone:  usersTable.phone,
     totalOrders: sql<number>`count(${ordersTable.id})`,
     totalRevenue: sql<number>`coalesce(sum(${ordersTable.total}),0)`,
   })
   .from(usersTable)
+  .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
   .leftJoin(ordersTable, and(eq(ordersTable.vendorId, usersTable.id), eq(ordersTable.status, "delivered")))
   .where(eq(usersTable.role, "vendor"))
-  .groupBy(usersTable.id)
+  .groupBy(usersTable.id, vendorProfilesTable.storeName)
   .orderBy(sql`coalesce(sum(${ordersTable.total}),0) desc`)
   .limit(5);
 
@@ -1057,8 +1059,10 @@ router.get("/reviews", adminAuth, async (req, res) => {
   /* Enrich with subject names */
   const subjectIds = [...new Set(paginated.map(r => r.subjectId).filter(Boolean))];
   const subjectUsers = subjectIds.length > 0
-    ? await db.select({ id: usersTable.id, name: usersTable.name, storeName: usersTable.storeName, phone: usersTable.phone })
-        .from(usersTable).where(sql`${usersTable.id} = ANY(${subjectIds})`)
+    ? await db.select({ id: usersTable.id, name: usersTable.name, storeName: vendorProfilesTable.storeName, phone: usersTable.phone })
+        .from(usersTable)
+        .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
+        .where(sql`${usersTable.id} = ANY(${subjectIds})`)
     : [];
   const subjectMap = new Map(subjectUsers.map(u => [u.id, u]));
 

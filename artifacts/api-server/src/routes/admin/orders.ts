@@ -4,7 +4,7 @@ import {
   usersTable,
   walletTransactionsTable,
   notificationsTable,
-  ordersTable, pharmacyOrdersTable, parcelBookingsTable, ridesTable, rideBidsTable,
+  ordersTable, orderItemsTable, pharmacyOrdersTable, parcelBookingsTable, ridesTable, rideBidsTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
@@ -51,12 +51,12 @@ router.post("/orders", async (req, res) => {
       sendValidationError(res, "User not found with the given userId");
       return;
     }
+    const orderId = generateId();
     const [order] = await db.insert(ordersTable).values({
-      id: generateId(),
+      id: orderId,
       userId: userId.trim(),
       vendorId: (vendorId || userId).trim(),
       type: orderType,
-      items: items ? (typeof items === "string" ? items : JSON.stringify(items)) : JSON.stringify([{ name: "Custom item", qty: 1, price: numTotal.toString() }]),
       total: numTotal.toString(),
       deliveryAddress: (deliveryAddress || "Admin-created order").trim(),
       paymentMethod: payment,
@@ -64,6 +64,24 @@ router.post("/orders", async (req, res) => {
       paymentStatus: "pending",
       estimatedTime: "30-45 min",
     }).returning();
+
+    const rawItems: Array<{ name?: string; price?: number | string; qty?: number; quantity?: number; productId?: string }> =
+      items
+        ? (typeof items === "string" ? JSON.parse(items) : items)
+        : [{ name: "Custom item", qty: 1, price: numTotal }];
+
+    const itemRows = rawItems.map((it) => ({
+      id: generateId(),
+      orderId,
+      productId: it.productId ?? null,
+      name: it.name ?? null,
+      unitPriceAtPurchase: Number(it.price ?? 0).toFixed(2),
+      quantity: Number(it.quantity ?? it.qty ?? 1),
+    }));
+    if (itemRows.length > 0) {
+      await db.insert(orderItemsTable).values(itemRows);
+    }
+
     sendSuccess(res, { order });
   } catch (e: unknown) {
     sendError(res, (e instanceof Error ? e.message : String(e)), 500);
@@ -86,10 +104,29 @@ router.get("/orders", async (req, res) => {
     db.select().from(ordersTable).where(whereClause).orderBy(desc(ordersTable.createdAt)).limit(limit).offset(offset),
   ]);
 
+  const orderIds = orders.map(o => o.id);
+  const allItems = orderIds.length > 0
+    ? await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds))
+    : [];
+  const itemsByOrder = new Map<string, typeof allItems>();
+  for (const item of allItems) {
+    const list = itemsByOrder.get(item.orderId) ?? [];
+    list.push(item);
+    itemsByOrder.set(item.orderId, list);
+  }
+
   const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
     orders: orders.map(o => ({
       ...o,
+      items: (itemsByOrder.get(o.id) ?? []).map(it => ({
+        id: it.id,
+        productId: it.productId ?? null,
+        name: it.name ?? null,
+        image: it.image ?? null,
+        price: parseFloat(it.unitPriceAtPurchase),
+        quantity: it.quantity,
+      })),
       total: parseFloat(String(o.total)),
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
@@ -702,6 +739,17 @@ router.get("/orders-enriched", async (req, res) => {
     countQuery,
   ]);
 
+  const enrichedOrderIds = rows.map(r => r.order.id);
+  const enrichedItems = enrichedOrderIds.length > 0
+    ? await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, enrichedOrderIds))
+    : [];
+  const enrichedItemsByOrder = new Map<string, typeof enrichedItems>();
+  for (const item of enrichedItems) {
+    const list = enrichedItemsByOrder.get(item.orderId) ?? [];
+    list.push(item);
+    enrichedItemsByOrder.set(item.orderId, list);
+  }
+
   sendSuccess(res, {
     orders: rows.map(r => ({
       ...r.order,
@@ -710,6 +758,14 @@ router.get("/orders-enriched", async (req, res) => {
       updatedAt: r.order.updatedAt.toISOString(),
       userName: r.userName || null,
       userPhone: r.userPhone || null,
+      items: (enrichedItemsByOrder.get(r.order.id) ?? []).map(it => ({
+        id: it.id,
+        productId: it.productId ?? null,
+        name: it.name ?? null,
+        image: it.image ?? null,
+        price: parseFloat(it.unitPriceAtPurchase),
+        quantity: it.quantity,
+      })),
     })),
     total: totalCount,
     page: pageNum,
@@ -737,6 +793,17 @@ router.get("/orders-export", async (req, res) => {
 
   const rows = await baseQuery.orderBy(orderByClause).limit(5000);
 
+  const exportOrderIds = rows.map(r => r.order.id);
+  const exportItems = exportOrderIds.length > 0
+    ? await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, exportOrderIds))
+    : [];
+  const exportItemsByOrder = new Map<string, typeof exportItems>();
+  for (const item of exportItems) {
+    const list = exportItemsByOrder.get(item.orderId) ?? [];
+    list.push(item);
+    exportItemsByOrder.set(item.orderId, list);
+  }
+
   sendSuccess(res, {
     orders: rows.map(r => ({
       ...r.order,
@@ -745,6 +812,14 @@ router.get("/orders-export", async (req, res) => {
       updatedAt: r.order.updatedAt.toISOString(),
       userName: r.userName || null,
       userPhone: r.userPhone || null,
+      items: (exportItemsByOrder.get(r.order.id) ?? []).map(it => ({
+        id: it.id,
+        productId: it.productId ?? null,
+        name: it.name ?? null,
+        image: it.image ?? null,
+        price: parseFloat(it.unitPriceAtPurchase),
+        quantity: it.quantity,
+      })),
     })),
     total: rows.length,
   });

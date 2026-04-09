@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger.js";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, rideBidsTable, ridesTable, riderPenaltiesTable, walletTransactionsTable, notificationsTable, liveLocationsTable, reviewsTable, rideRatingsTable, locationLogsTable, rideServiceTypesTable } from "@workspace/db/schema";
+import { usersTable, riderProfilesTable, vendorProfilesTable, ordersTable, rideBidsTable, ridesTable, riderPenaltiesTable, walletTransactionsTable, notificationsTable, liveLocationsTable, reviewsTable, rideRatingsTable, locationLogsTable, rideServiceTypesTable } from "@workspace/db/schema";
 import { eq, desc, and, or, sql, count, sum, avg, gte, isNull, type InferSelectModel } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings } from "./admin.js";
@@ -478,13 +478,14 @@ router.patch("/profile", async (req, res) => {
   const currentUser = req.riderUser!;
   const { name, email, cnic, address, city, emergencyContact, vehicleType, vehiclePlate, vehicleRegNo, drivingLicense, bankName, bankAccount, bankAccountTitle, avatar, cnicDocUrl, licenseDocUrl, regDocUrl, vehiclePhoto } = parsed.data;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const profileUpdates: Record<string, unknown> = { updatedAt: new Date() };
   if (name             !== undefined) updates.name             = name;
   if (email            !== undefined) updates.email            = email;
   if (cnic             !== undefined) updates.cnic             = cnic;
   if (address          !== undefined) updates.address          = address;
   if (city             !== undefined) updates.city             = city;
   if (emergencyContact !== undefined) updates.emergencyContact = emergencyContact;
-  if (vehicleType      !== undefined) updates.vehicleType      = normalizeVehicleType(vehicleType) || vehicleType;
+  if (vehicleType      !== undefined) profileUpdates.vehicleType = normalizeVehicleType(vehicleType) || vehicleType;
   if (vehiclePlate     !== undefined) updates.vehiclePlate     = vehiclePlate;
   if (vehicleRegNo     !== undefined) updates.vehicleRegNo     = vehicleRegNo;
   if (drivingLicense   !== undefined) updates.drivingLicense   = drivingLicense;
@@ -536,10 +537,22 @@ router.patch("/profile", async (req, res) => {
     updates.isOnline = false;
   }
 
-  let user: typeof usersTable.$inferSelect;
+  let user: typeof usersTable.$inferSelect & { vehicleType?: string | null };
   try {
     const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, riderId)).returning();
     user = updated;
+    if (Object.keys(profileUpdates).length > 1) {
+      await db.insert(riderProfilesTable)
+        .values({ userId: riderId, ...profileUpdates })
+        .onConflictDoUpdate({ target: riderProfilesTable.userId, set: profileUpdates });
+      const [rp] = await db.select({ vehicleType: riderProfilesTable.vehicleType })
+        .from(riderProfilesTable).where(eq(riderProfilesTable.userId, riderId)).limit(1);
+      user = { ...user, vehicleType: rp?.vehicleType ?? null };
+    } else {
+      const [rp] = await db.select({ vehicleType: riderProfilesTable.vehicleType })
+        .from(riderProfilesTable).where(eq(riderProfilesTable.userId, riderId)).limit(1);
+      user = { ...user, vehicleType: rp?.vehicleType ?? null };
+    }
   } catch (dbErr: unknown) {
     const msg = (dbErr as Error)?.message || "";
     const lang = await getRequestLocale(req, req.riderId!);
@@ -726,8 +739,10 @@ router.get("/active", async (req, res) => {
       db.select({ name: usersTable.name, phone: usersTable.phone })
         .from(usersTable).where(eq(usersTable.id, order[0].userId)).limit(1),
       order[0].vendorId
-        ? db.select({ storeName: usersTable.storeName, phone: usersTable.phone })
-            .from(usersTable).where(eq(usersTable.id, order[0].vendorId)).limit(1)
+        ? db.select({ storeName: vendorProfilesTable.storeName, phone: usersTable.phone })
+            .from(usersTable)
+            .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
+            .where(eq(usersTable.id, order[0].vendorId)).limit(1)
         : Promise.resolve([] as Array<{ storeName: string | null; phone: string | null }>),
     ];
     const [customerRows, vendorRows] = await Promise.all(promises);

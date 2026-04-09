@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, refreshTokensTable, authAuditLogTable, rateLimitsTable } from "@workspace/db/schema";
+import { usersTable, riderProfilesTable, vendorProfilesTable, refreshTokensTable, authAuditLogTable, rateLimitsTable } from "@workspace/db/schema";
 import { eq, and, lt, gt, like, sql } from "drizzle-orm";
 import { getPlatformSettings } from "../routes/admin.js";
 import { generateId } from "../lib/id.js";
@@ -856,7 +856,9 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
   }
 
   req.riderId = user.id;
-  req.riderUser = user;
+  const [riderProfile] = await db.select({ vehicleType: riderProfilesTable.vehicleType })
+    .from(riderProfilesTable).where(eq(riderProfilesTable.userId, user.id)).limit(1);
+  req.riderUser = { ...user, vehicleType: riderProfile?.vehicleType ?? null };
   next();
 }
 
@@ -952,12 +954,16 @@ export function requireRole(
 
     const dbRoles = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
     if (dbRoles.includes("rider")) {
-      req.riderId   = user.id;
-      req.riderUser = user;
+      req.riderId = user.id;
+      const [riderProfile] = await db.select({ vehicleType: riderProfilesTable.vehicleType })
+        .from(riderProfilesTable).where(eq(riderProfilesTable.userId, user.id)).limit(1);
+      req.riderUser = { ...user, vehicleType: riderProfile?.vehicleType ?? null };
     }
     if (dbRoles.includes("vendor")) {
-      req.vendorId   = user.id;
-      req.vendorUser = user;
+      req.vendorId = user.id;
+      const [vendorProfile] = await db.select({ storeName: vendorProfilesTable.storeName })
+        .from(vendorProfilesTable).where(eq(vendorProfilesTable.userId, user.id)).limit(1);
+      req.vendorUser = { ...user, storeName: vendorProfile?.storeName ?? null };
     }
 
     next();

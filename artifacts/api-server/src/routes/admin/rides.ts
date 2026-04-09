@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import {
-  usersTable,
+  usersTable, vendorProfilesTable, riderProfilesTable,
   walletTransactionsTable,
   notificationsTable,
   ordersTable, ridesTable, rideBidsTable, rideServiceTypesTable, popularLocationsTable, schoolRoutesTable, schoolSubscriptionsTable, liveLocationsTable, rideEventLogsTable, rideNotifiedRidersTable, locationLogsTable, locationHistoryTable,
@@ -648,13 +648,14 @@ router.get("/live-riders", async (_req, res) => {
       name:         usersTable.name,
       phone:        usersTable.phone,
       isOnline:     usersTable.isOnline,
-      vehicleType:  usersTable.vehicleType,
+      vehicleType:  riderProfilesTable.vehicleType,
       city:         usersTable.city,
       role:         usersTable.role,
       lastActive:   usersTable.lastActive,
     })
     .from(liveLocationsTable)
     .leftJoin(usersTable, eq(liveLocationsTable.userId, usersTable.id))
+    .leftJoin(riderProfilesTable, eq(liveLocationsTable.userId, riderProfilesTable.userId))
     .where(or(eq(liveLocationsTable.role, "rider"), eq(liveLocationsTable.role, "service_provider")));
 
   const enriched = locs.map(loc => {
@@ -803,15 +804,16 @@ router.get("/revenue-trend", async (_req, res) => {
 router.get("/leaderboard", async (_req, res) => {
   const vendors = await db.select({
     id:     usersTable.id,
-    name:   usersTable.storeName,
+    name:   vendorProfilesTable.storeName,
     phone:  usersTable.phone,
     totalOrders: sql<number>`count(${ordersTable.id})`,
     totalRevenue: sql<number>`coalesce(sum(${ordersTable.total}),0)`,
   })
   .from(usersTable)
+  .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
   .leftJoin(ordersTable, and(eq(ordersTable.vendorId, usersTable.id), eq(ordersTable.status, "delivered")))
   .where(eq(usersTable.role, "vendor"))
-  .groupBy(usersTable.id)
+  .groupBy(usersTable.id, vendorProfilesTable.storeName)
   .orderBy(sql`coalesce(sum(${ordersTable.total}),0) desc`)
   .limit(5);
 

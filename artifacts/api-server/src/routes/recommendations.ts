@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { productsTable, ordersTable, userInteractionsTable } from "@workspace/db/schema";
+import { productsTable, ordersTable, orderItemsTable, userInteractionsTable } from "@workspace/db/schema";
 import { eq, and, desc, sql, ilike, inArray, gte } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
@@ -236,8 +236,8 @@ router.get("/frequently-bought", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const limit = Math.min(20, parseInt(String(req.query["limit"] || "10")));
 
-  const recentOrders = await db
-    .select({ items: ordersTable.items })
+  const recentOrderIds = await db
+    .select({ id: ordersTable.id })
     .from(ordersTable)
     .where(and(
       eq(ordersTable.userId, userId),
@@ -246,17 +246,19 @@ router.get("/frequently-bought", customerAuth, async (req, res) => {
     .orderBy(desc(ordersTable.createdAt))
     .limit(20);
 
+  const orderIds = recentOrderIds.map(o => o.id);
+  const recentItems = orderIds.length > 0
+    ? await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds))
+    : [];
+
   const productFreq = new Map<string, { count: number; name: string; price: number; image?: string }>();
-  for (const order of recentOrders) {
-    const items = (order.items ?? []) as Array<{ productId?: string; name?: string; price?: number; image?: string }>;
-    for (const item of items) {
-      if (!item.productId) continue;
-      const existing = productFreq.get(item.productId);
-      if (existing) {
-        existing.count++;
-      } else {
-        productFreq.set(item.productId, { count: 1, name: item.name ?? "", price: item.price ?? 0, image: item.image });
-      }
+  for (const item of recentItems) {
+    if (!item.productId) continue;
+    const existing = productFreq.get(item.productId);
+    if (existing) {
+      existing.count++;
+    } else {
+      productFreq.set(item.productId, { count: 1, name: item.name ?? "", price: parseFloat(item.unitPriceAtPurchase), image: item.image ?? undefined });
     }
   }
 

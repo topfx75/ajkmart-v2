@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable, pharmacyOrdersTable, parcelBookingsTable } from "@workspace/db/schema";
-import { eq, desc, and, count, sql, isNull, ne } from "drizzle-orm";
+import { usersTable, ordersTable, orderItemsTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable, pharmacyOrdersTable, parcelBookingsTable } from "@workspace/db/schema";
+import { eq, desc, and, count, sql, isNull, ne, inArray } from "drizzle-orm";
 import { customerAuth, getClientIp, writeAuthAuditLog, checkLockout, recordFailedAttempt, resetAttempts } from "../middleware/security.js";
 import { randomUUID, createHash } from "crypto";
 import { writeFile, mkdir } from "fs/promises";
@@ -128,6 +128,7 @@ router.post("/export-data", async (req, res) => {
   }
 
   let orders: typeof ordersTable.$inferSelect[], rides: typeof ridesTable.$inferSelect[], walletHistory: typeof walletTransactionsTable.$inferSelect[], addresses: typeof savedAddressesTable.$inferSelect[], pharmacyOrders: typeof pharmacyOrdersTable.$inferSelect[], parcelBookings: typeof parcelBookingsTable.$inferSelect[];
+  let allOrderItems: typeof orderItemsTable.$inferSelect[] = [];
   try {
     [orders, rides, walletHistory, addresses, pharmacyOrders, parcelBookings] = await Promise.all([
       db.select().from(ordersTable).where(eq(ordersTable.userId, userId)).orderBy(desc(ordersTable.createdAt)),
@@ -137,6 +138,10 @@ router.post("/export-data", async (req, res) => {
       db.select().from(pharmacyOrdersTable).where(eq(pharmacyOrdersTable.userId, userId)).orderBy(desc(pharmacyOrdersTable.createdAt)),
       db.select().from(parcelBookingsTable).where(eq(parcelBookingsTable.userId, userId)).orderBy(desc(parcelBookingsTable.createdAt)),
     ]);
+    if (orders.length > 0) {
+      allOrderItems = await db.select().from(orderItemsTable)
+        .where(inArray(orderItemsTable.orderId, orders.map(o => o.id)));
+    }
   } catch (err) {
     const lang = await getRequestLocale(req, userId);
     sendError(res, t("apiErrDataRetrieveFailed", lang));
@@ -163,7 +168,12 @@ router.post("/export-data", async (req, res) => {
       total: parseFloat(o.total),
       paymentMethod: o.paymentMethod,
       deliveryAddress: o.deliveryAddress,
-      items: o.items,
+      items: allOrderItems.filter(i => i.orderId === o.id).map(i => ({
+        productId: i.productId,
+        name: i.name,
+        price: parseFloat(i.unitPriceAtPurchase),
+        quantity: i.quantity,
+      })),
       createdAt: o.createdAt.toISOString(),
     })),
     rides: rides.map((r) => ({

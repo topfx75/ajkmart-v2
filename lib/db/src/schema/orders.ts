@@ -1,15 +1,13 @@
-import { boolean, check, decimal, doublePrecision, index, json, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, check, decimal, doublePrecision, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
-import { productsTable } from "./products";
 
 export const ordersTable = pgTable("orders", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   type: text("type").notNull(),
-  items: json("items").notNull(),
   status: text("status").notNull().default("pending"),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   deliveryAddress: text("delivery_address"),
