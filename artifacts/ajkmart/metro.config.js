@@ -19,6 +19,11 @@ const escapeRegex = (str) => str.replace(/[/\-\\^$*+?.()|[\]{}]/g, "\\$&");
 const blockPaths = [
   path.resolve(monorepoRoot, ".local"),
   path.resolve(monorepoRoot, ".git"),
+  path.resolve(monorepoRoot, "artifacts/admin"),
+  path.resolve(monorepoRoot, "artifacts/vendor-app"),
+  path.resolve(monorepoRoot, "artifacts/rider-app"),
+  path.resolve(monorepoRoot, "artifacts/mockup-sandbox"),
+  path.resolve(monorepoRoot, "artifacts/api-server"),
 ];
 const blockListRegex = new RegExp(
   blockPaths.map((p) => `^${escapeRegex(p)}(\\/|\\\\|$)`).join("|")
@@ -49,6 +54,7 @@ const WEB_SHIMS = {
   "expo-battery":               path.resolve(projectRoot, "shims/expo-battery.web.js"),
   "expo-glass-effect":          path.resolve(projectRoot, "shims/expo-glass-effect.web.js"),
   "expo-symbols":               path.resolve(projectRoot, "shims/expo-symbols.web.js"),
+  "react-native-webview":       path.resolve(projectRoot, "shims/react-native-webview.web.js"),
 };
 
 const originalResolveRequest = config.resolver.resolveRequest;
@@ -61,5 +67,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   }
   return context.resolveRequest(context, moduleName, platform);
 };
+
+config.maxWorkers = 2;
 
 module.exports = config;

@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";

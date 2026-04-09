@@ -3,7 +3,7 @@ import {
   ActivityIndicator, Image, Modal, ScrollView,
   Text, TextInput, TouchableOpacity, View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import { useAuth } from "@/context/AuthContext";

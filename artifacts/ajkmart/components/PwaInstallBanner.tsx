@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const DISMISSED_KEY = "ajkmart_pwa_dismissed";

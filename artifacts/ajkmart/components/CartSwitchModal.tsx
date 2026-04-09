@@ -1,6 +1,6 @@
 import React from "react";
 import { Modal, TouchableOpacity, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import Colors, { spacing, radii, typography } from "@/constants/colors";
 
 const C = Colors.light;

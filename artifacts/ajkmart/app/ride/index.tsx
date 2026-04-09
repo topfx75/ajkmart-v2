@@ -11,7 +11,7 @@ import { withServiceGuard } from "@/components/ServiceGuard";
 import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { RideBookingForm } from "@/components/ride/RideBookingForm";
 import { RideTracker } from "@/components/ride/RideTracker";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { TouchableOpacity, Text, Platform } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

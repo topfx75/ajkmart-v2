@@ -4,7 +4,7 @@ import {
   ScrollView, Switch, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
 import { webFeatureSupport } from "@/utils/webFeatureSupport";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { useAuth } from "@/context/AuthContext";

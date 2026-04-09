@@ -1,5 +1,5 @@
 import { type Href } from "expo-router";
-import type { Ionicons } from "@expo/vector-icons";
+import type Ionicons from "@expo/vector-icons/Ionicons";
 import Colors from "./colors";
 export { type ServiceKey, SERVICE_KEYS as SERVICE_KEY_LIST, SERVICE_METADATA } from "@workspace/service-constants";
 import { type ServiceKey, SERVICE_KEYS } from "@workspace/service-constants";

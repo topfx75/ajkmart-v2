@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { withErrorBoundary } from "@/utils/withErrorBoundary";
 import { router } from "expo-router";
 import * as Location from "expo-location";

@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { WebView } from "react-native-webview";
 import Colors from "@/constants/colors";
 import { Font } from "@/constants/typography";
