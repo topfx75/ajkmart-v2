@@ -6,6 +6,7 @@ import {
   notificationsTable,
   ordersTable, orderItemsTable, pharmacyOrdersTable, parcelBookingsTable, ridesTable, rideBidsTable,
 } from "@workspace/db/schema";
+import { prescriptionRefMap } from "../uploads.js";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
@@ -385,12 +386,23 @@ router.get("/pharmacy-orders", async (req, res) => {
 
   const total = Number(totalResult[0]?.total ?? 0);
   sendSuccess(res, {
-    orders: orders.map(o => ({
-      ...o,
-      total: parseFloat(o.total),
-      createdAt: o.createdAt.toISOString(),
-      updatedAt: o.updatedAt.toISOString(),
-    })),
+    orders: orders.map(o => {
+      let prescriptionPhotoUri: string | null = null;
+      if (o.prescriptionNote) {
+        const photoMatch = o.prescriptionNote.match(/\[photo:\s*([^\]]+)\]/);
+        if (photoMatch) {
+          const raw = photoMatch[1]!.trim();
+          prescriptionPhotoUri = raw.startsWith("rx-") ? (prescriptionRefMap.get(raw)?.url ?? null) : raw;
+        }
+      }
+      return {
+        ...o,
+        total: parseFloat(o.total),
+        prescriptionPhotoUri,
+        createdAt: o.createdAt.toISOString(),
+        updatedAt: o.updatedAt.toISOString(),
+      };
+    }),
     total,
     page,
     limit,
@@ -404,6 +416,24 @@ router.patch("/pharmacy-orders/:id/status", async (req, res) => {
     sendValidationError(res, `Invalid pharmacy order status "${status}". Valid statuses: ${PHARMACY_ORDER_VALID_STATUSES.join(", ")}`);
     return;
   }
+
+  if (status === "confirmed") {
+    const [existing] = await db.select({
+      prescriptionStatus: pharmacyOrdersTable.prescriptionStatus,
+      prescriptionNote: pharmacyOrdersTable.prescriptionNote,
+      items: pharmacyOrdersTable.items,
+    }).from(pharmacyOrdersTable).where(eq(pharmacyOrdersTable.id, req.params["id"]!)).limit(1);
+    if (existing) {
+      const hasRxNote = !!existing.prescriptionNote?.trim();
+      const itemsArr = Array.isArray(existing.items) ? existing.items : [];
+      const hasRxItem = itemsArr.some((it: any) => it.requires_prescription || it.requiresPrescription);
+      if ((hasRxNote || hasRxItem) && existing.prescriptionStatus !== "approved") {
+        sendValidationError(res, "Cannot confirm order: prescription must be approved first");
+        return;
+      }
+    }
+  }
+
   const [order] = await db
     .update(pharmacyOrdersTable)
     .set({ status, updatedAt: new Date() })

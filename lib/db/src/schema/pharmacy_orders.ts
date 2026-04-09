@@ -14,6 +14,7 @@ export const pharmacyOrdersTable = pgTable("pharmacy_orders", {
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: text("payment_method").notNull(),
   status: text("status").notNull().default("pending"),
+  prescriptionStatus: text("prescription_status").default("none"),
   estimatedTime: text("estimated_time").default("25-40 min"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

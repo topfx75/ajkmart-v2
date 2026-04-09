@@ -12,7 +12,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useUserAddresses, useDeleteAddress, useEnforce2fa, useUnenforce2fa, use2faStats } from "@/hooks/use-admin";
 import { fetcher } from "@/lib/api";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +49,9 @@ function SkeletonRow() {
 
 function UserActivityModal({ userId, userName, user: userData, onClose }: { userId: string; userName: string; user: any; onClose: () => void }) {
   const { data, isLoading, isError } = useUserActivity(userId);
+  const { data: addressData } = useUserAddresses(userId);
+  const deleteAddress = useDeleteAddress();
+  const { toast } = useToast();
   const userRoles = (userData.roles || userData.role || "customer").split(",").filter(Boolean);
   const isRider  = userRoles.includes("rider");
   const isVendor = userRoles.includes("vendor");
@@ -141,6 +144,48 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
           </div>
         </div>
 
+        <div className="bg-gradient-to-r from-indigo-50 to-violet-50 rounded-xl p-3 space-y-2 border border-indigo-100">
+          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Two-Factor Authentication</p>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+              <span className="text-muted-foreground text-xs">TOTP:</span>
+              {userData.totpEnabled ? (
+                <Badge variant="outline" className="text-[10px] bg-emerald-100 text-emerald-700 border-emerald-300">Enabled</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] bg-gray-100 text-gray-600 border-gray-300">Disabled</Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <KeyRound className="w-3.5 h-3.5 text-violet-600 flex-shrink-0" />
+              <span className="text-muted-foreground text-xs">Enforcement:</span>
+              {userData.twoFactorEnforcedAt ? (
+                <Badge variant="outline" className="text-[10px] bg-blue-100 text-blue-700 border-blue-300">Enforced</Badge>
+              ) : (
+                <Badge variant="outline" className="text-[10px] bg-gray-100 text-gray-600 border-gray-300">Not Enforced</Badge>
+              )}
+            </div>
+            {userData.twoFactorEnforcedAt && (
+              <div className="flex items-center gap-2 col-span-2">
+                <span className="text-muted-foreground text-[10px]">Enforced since:</span>
+                <span className="text-[10px] font-medium">{new Date(userData.twoFactorEnforcedAt).toLocaleDateString()}</span>
+              </div>
+            )}
+            {(userData.trustedDeviceCount ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-[10px]">Trusted Devices:</span>
+                <span className="text-[10px] font-bold">{userData.trustedDeviceCount}</span>
+              </div>
+            )}
+            {(userData.backupCodesRemaining ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-[10px]">Backup Codes:</span>
+                <span className="text-[10px] font-bold">{userData.backupCodesRemaining} remaining</span>
+              </div>
+            )}
+          </div>
+        </div>
+
         {isLoading ? (
           <div className="h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
             <Loader2 className="w-6 h-6 animate-spin text-[#1A56DB]" />
@@ -230,9 +275,89 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                 </div>
               )}
             </div>
+
+            {addressData?.addresses && (
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><MapPin className="w-4 h-4 text-rose-600" /> Saved Addresses ({addressData.addresses.length})</h3>
+                {addressData.addresses.length === 0 ? <p className="text-xs text-muted-foreground italic">No saved addresses.</p> : (
+                  <div className="space-y-2">
+                    {addressData.addresses.map((a: any) => (
+                      <div key={a.id} className="flex justify-between items-start text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs">{a.label || "Address"}</span>
+                            {a.isDefault && <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-200">Default</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">{a.address || a.streetAddress || a.fullAddress || "—"}</p>
+                          {a.city && <p className="text-[10px] text-muted-foreground">{a.city}{a.area ? `, ${a.area}` : ""}</p>}
+                        </div>
+                        <button
+                          onClick={() => {
+                            if (confirm("Delete this address?")) {
+                              deleteAddress.mutate(a.id, {
+                                onSuccess: () => toast({ title: "Address deleted" }),
+                                onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+                              });
+                            }
+                          }}
+                          className="text-red-400 hover:text-red-600 p-1 ml-2 shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
     </MobileDrawer>
+  );
+}
+
+function TwoFAToggle({ user }: { user: any }) {
+  const enforce = useEnforce2fa();
+  const unenforce = useUnenforce2fa();
+  const { toast } = useToast();
+  const isEnforced = !!user.twoFactorEnforcedAt;
+  const isEnabled = !!user.totpEnabled;
+  const isPending = enforce.isPending || unenforce.isPending;
+
+  const trustedDeviceCount = user.trustedDeviceCount ?? 0;
+  const backupCodesRemaining = user.backupCodesRemaining ?? 0;
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {isEnabled ? (
+        <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 px-1">
+          Enabled
+        </Badge>
+      ) : (
+        <Badge variant="outline" className="text-[9px] bg-gray-50 text-gray-500 border-gray-200 px-1">
+          Off
+        </Badge>
+      )}
+      <div className="flex items-center gap-1" title={isEnforced ? "Unenforce 2FA" : "Enforce 2FA"}>
+        <Switch
+          checked={isEnforced}
+          disabled={isPending}
+          onCheckedChange={(val) => {
+            const mutation = val ? enforce : unenforce;
+            mutation.mutate(user.id, {
+              onSuccess: () => toast({ title: val ? "2FA enforced" : "2FA unenforced" }),
+              onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+            });
+          }}
+        />
+      </div>
+      {isEnforced && (
+        <span className="text-[8px] text-blue-600 font-bold">Enforced</span>
+      )}
+      {isEnabled && trustedDeviceCount > 0 && (
+        <span className="text-[8px] text-muted-foreground">{trustedDeviceCount} device{trustedDeviceCount > 1 ? "s" : ""}</span>
+      )}
+    </div>
   );
 }
 
@@ -894,6 +1019,7 @@ export default function Users() {
   const [conditionTier, setConditionTier] = useState("all");
   const { data, isLoading, refetch, isFetching, isError } = useUsers(conditionTier !== "all" ? conditionTier : undefined);
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
+  const { data: twoFaStats } = use2faStats();
   const updateMutation   = useUpdateUser();
   const topupMutation    = useWalletTopup();
   const deleteMutation   = useDeleteUser();
@@ -1066,6 +1192,34 @@ export default function Users() {
           </Button>
         </div>
       </div>
+
+      {twoFaStats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card className="p-3 rounded-2xl border-border/50 shadow-sm text-center">
+            <KeyRound className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
+            <p className="text-2xl font-bold">{twoFaStats.totalUsers ?? 0}</p>
+            <p className="text-[10px] text-muted-foreground">Total Users</p>
+          </Card>
+          <Card className="p-3 rounded-2xl border-border/50 shadow-sm text-center">
+            <Shield className="w-4 h-4 text-blue-500 mx-auto mb-1" />
+            <p className="text-2xl font-bold">{twoFaStats.twoFactorEnforced ?? 0}</p>
+            <p className="text-[10px] text-muted-foreground">2FA Enforced</p>
+          </Card>
+          <Card className="p-3 rounded-2xl border-border/50 shadow-sm text-center">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
+            <p className="text-2xl font-bold">{twoFaStats.twoFactorEnabled ?? 0}</p>
+            <p className="text-[10px] text-muted-foreground">2FA Enabled</p>
+          </Card>
+          <Card className="p-3 rounded-2xl border-border/50 shadow-sm text-center">
+            <AlertCircle className="w-4 h-4 text-amber-500 mx-auto mb-1" />
+            <p className="text-2xl font-bold">{(twoFaStats.totalUsers ?? 0) - (twoFaStats.twoFactorEnabled ?? 0)}</p>
+            <p className="text-[10px] text-muted-foreground">Without 2FA</p>
+            {twoFaStats.adoptionRate != null && (
+              <p className="text-[9px] text-emerald-600 font-bold mt-0.5">{twoFaStats.adoptionRate}% adoption</p>
+            )}
+          </Card>
+        </div>
+      )}
 
       {pendingUsers.length > 0 && (
         <Card className="p-4 rounded-2xl border-amber-200 bg-amber-50/60 shadow-sm">
@@ -1330,6 +1484,7 @@ export default function Users() {
                   <TableHead className="font-semibold text-[#1A56DB]/80">Roles</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Wallet</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-center">Status</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-center">2FA</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Joined</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Actions</TableHead>
                 </TableRow>
@@ -1345,7 +1500,7 @@ export default function Users() {
                   </>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-40">
+                    <TableCell colSpan={9} className="h-40">
                       <div className="flex flex-col items-center justify-center gap-2 text-center">
                         <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
                           <UsersIcon className="w-6 h-6 text-muted-foreground" />
@@ -1430,6 +1585,9 @@ export default function Users() {
                               </Badge>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <TwoFAToggle user={user} />
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
                         <TableCell className="text-right">

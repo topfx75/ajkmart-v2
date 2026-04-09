@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, ordersTable, orderItemsTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable, pharmacyOrdersTable, parcelBookingsTable } from "@workspace/db/schema";
+import { usersTable, ordersTable, orderItemsTable, walletTransactionsTable, ridesTable, savedAddressesTable, userSessionsTable, loginHistoryTable, refreshTokensTable, pharmacyOrdersTable, parcelBookingsTable, accountDeletionRequestsTable } from "@workspace/db/schema";
 import { eq, desc, and, count, sql, isNull, ne, inArray } from "drizzle-orm";
 import { customerAuth, getClientIp, writeAuthAuditLog, checkLockout, recordFailedAttempt, resetAttempts } from "../middleware/security.js";
 import { randomUUID, createHash } from "crypto";
@@ -443,47 +443,29 @@ router.delete("/delete-account", async (req, res) => {
       return;
     }
 
-    const now = new Date();
-    /* Scramble phone in a format that is NOT classified as banned — prefix with GDEL_
-       so the original phone number is free for re-registration */
-    const scrambledPhone = `GDEL_${userId.slice(-8)}_${Date.now()}`;
-    await db.update(usersTable)
-      .set({
-        isActive: false,
-        isBanned: false,          /* don't ban — the original phone is free to re-register */
-        name: "Deleted User",
-        phone: scrambledPhone,
-        email: null,
-        username: null,
-        avatar: null,
-        cnic: null,
-        address: null,
-        area: null,
-        city: null,
-        latitude: null,
-        longitude: null,
-        totpSecret: null,
-        totpEnabled: false,
-        backupCodes: null,
-        trustedDevices: null,
-        passwordHash: null,
-        tokenVersion: sql`${usersTable.tokenVersion} + 1`,  /* invalidate all access tokens immediately */
-        updatedAt: now,
-      })
-      .where(eq(usersTable.id, userId));
+    const reason = (req.body as Record<string, unknown>).reason ?? "User requested deletion";
 
-    await db.update(refreshTokensTable)
-      .set({ revokedAt: now })
-      .where(eq(refreshTokensTable.userId, userId));
+    const [existing] = await db.select({ id: accountDeletionRequestsTable.id })
+      .from(accountDeletionRequestsTable)
+      .where(and(eq(accountDeletionRequestsTable.userId, userId), eq(accountDeletionRequestsTable.status, "pending")))
+      .limit(1);
 
-    await db.update(userSessionsTable)
-      .set({ revokedAt: now })
-      .where(eq(userSessionsTable.userId, userId));
+    if (existing) {
+      sendSuccess(res, null, t("apiMsgAccountDeletionPending" as TranslationKey, deleteAcctLangTop) || "Your account deletion request is already pending review.");
+      return;
+    }
+
+    await db.insert(accountDeletionRequestsTable).values({
+      id: generateId(),
+      userId,
+      reason: typeof reason === "string" ? reason : "User requested deletion",
+      status: "pending",
+    });
 
     const ip = getClientIp(req);
-    writeAuthAuditLog("account_deleted", { userId, ip, userAgent: req.headers["user-agent"] as string });
+    writeAuthAuditLog("account_deletion_requested", { userId, ip, userAgent: req.headers["user-agent"] as string });
 
-    sendSuccess(res, null, t("apiMsgAccountDeleted", deleteAcctLangTop));
+    sendSuccess(res, null, t("apiMsgAccountDeletionPending" as TranslationKey, deleteAcctLangTop) || "Your account deletion request has been submitted and is pending admin review.");
   } catch (e: unknown) {
     sendError(res, (e as Error).message || t("apiErrCouldNotDeleteAccount", deleteAcctLangTop));
   }

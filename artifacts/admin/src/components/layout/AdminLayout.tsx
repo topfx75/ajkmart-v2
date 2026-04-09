@@ -35,6 +35,8 @@ import {
   User,
   Bus,
   Truck,
+  Heart,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -70,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navProducts",   href: "/products",    icon: PackageSearch },
       { nameKey: "navCategories", href: "/categories",  icon: FolderTree },
       { nameKey: "navFlashDeals", href: "/flash-deals", icon: Zap },
+      { nameKey: "navWishlists" as TranslationKey, href: "/wishlists", icon: Heart },
     ],
   },
   {
@@ -97,6 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { nameKey: "navConditionsHub",   href: "/account-conditions", icon: Shield },
       { nameKey: "navConditionRules",  href: "/condition-rules",    icon: Settings2 },
+      { nameKey: "navDeletionRequests" as TranslationKey, href: "/deletion-requests", icon: Trash2 },
     ],
   },
   {

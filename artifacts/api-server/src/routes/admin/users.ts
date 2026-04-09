@@ -7,6 +7,7 @@ import {
   notificationsTable,
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable,
   accountConditionsTable,
+  savedAddressesTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
@@ -221,14 +222,22 @@ router.get("/users", async (req, res) => {
 
   const condMap = new Map(condCounts.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
 
-  const enrichedUsers = users.map((u) => ({
-    ...stripUser(u),
-    walletBalance: parseFloat(u.walletBalance ?? "0"),
-    createdAt: u.createdAt.toISOString(),
-    updatedAt: u.updatedAt.toISOString(),
-    conditionCount: condMap.get(u.id)?.count || 0,
-    maxConditionSeverity: condMap.get(u.id)?.maxSeverity || null,
-  }));
+  const enrichedUsers = users.map((u) => {
+    let trustedDeviceCount = 0;
+    try { trustedDeviceCount = u.trustedDevices ? JSON.parse(u.trustedDevices).length : 0; } catch {}
+    let backupCodesRemaining = 0;
+    try { backupCodesRemaining = u.backupCodes ? JSON.parse(u.backupCodes).filter((c: any) => !c.used).length : 0; } catch {}
+    return {
+      ...stripUser(u),
+      walletBalance: parseFloat(u.walletBalance ?? "0"),
+      createdAt: u.createdAt.toISOString(),
+      updatedAt: u.updatedAt.toISOString(),
+      conditionCount: condMap.get(u.id)?.count || 0,
+      maxConditionSeverity: condMap.get(u.id)?.maxSeverity || null,
+      trustedDeviceCount,
+      backupCodesRemaining,
+    };
+  });
 
   sendSuccess(res, {
     users: enrichedUsers,
@@ -690,6 +699,77 @@ router.patch("/users/bulk-ban", async (req, res) => {
   sendSuccess(res, { success: true, affected: ids.length, action });
 });
 
-/* ── PATCH /admin/orders/:id/assign-rider — manually assign a rider to an order ── */
+/* ── GET /admin/users/:id/addresses — all saved addresses for a user ── */
+router.get("/users/:id/addresses", async (req, res) => {
+  const userId = req.params["id"]!;
+  const addresses = await db.select().from(savedAddressesTable)
+    .where(eq(savedAddressesTable.userId, userId))
+    .orderBy(desc(savedAddressesTable.createdAt));
+  sendSuccess(res, {
+    addresses: addresses.map(a => ({
+      ...a,
+      createdAt: a.createdAt.toISOString(),
+    })),
+  });
+});
+
+/* ── DELETE /admin/addresses/:id — remove a specific address ── */
+router.delete("/addresses/:id", async (req, res) => {
+  const addressId = req.params["id"]!;
+  const deleted = await db.delete(savedAddressesTable)
+    .where(eq(savedAddressesTable.id, addressId))
+    .returning({ id: savedAddressesTable.id });
+  if (deleted.length === 0) { sendNotFound(res, "Address not found"); return; }
+  sendSuccess(res, { success: true });
+});
+
+/* ── GET /admin/users/2fa-stats — aggregate 2FA adoption stats ── */
+router.get("/users/2fa-stats", async (req, res) => {
+  const [totalUsers] = await db.select({ total: count() }).from(usersTable);
+  const [enabledUsers] = await db.select({ total: count() }).from(usersTable).where(eq(usersTable.totpEnabled, true));
+  const [enforcedUsers] = await db.select({ total: count() }).from(usersTable).where(isNotNull(usersTable.twoFactorEnforcedAt));
+
+  const byRole = await db.select({
+    role: usersTable.role,
+    total: count(),
+    enabled: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.totpEnabled} = true)`,
+    enforced: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.twoFactorEnforcedAt} IS NOT NULL)`,
+  }).from(usersTable).groupBy(usersTable.role);
+
+  sendSuccess(res, {
+    totalUsers: Number(totalUsers?.total ?? 0),
+    twoFactorEnabled: Number(enabledUsers?.total ?? 0),
+    twoFactorEnforced: Number(enforcedUsers?.total ?? 0),
+    adoptionRate: Number(totalUsers?.total ?? 0) > 0
+      ? Math.round((Number(enabledUsers?.total ?? 0) / Number(totalUsers?.total ?? 1)) * 100)
+      : 0,
+    byRole: byRole.map(r => ({
+      role: r.role,
+      total: Number(r.total),
+      enabled: Number(r.enabled),
+      enforced: Number(r.enforced),
+    })),
+  });
+});
+
+/* ── POST /admin/users/:id/2fa/enforce — mark user as 2FA-required ── */
+router.post("/users/:id/2fa/enforce", async (req, res) => {
+  const userId = req.params["id"]!;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { sendNotFound(res, "User not found"); return; }
+  await db.update(usersTable).set({ twoFactorEnforcedAt: new Date(), updatedAt: new Date() }).where(eq(usersTable.id, userId));
+  addAuditEntry({ action: "admin_2fa_enforce", ip: getClientIp(req), details: `Admin enforced 2FA for user ${userId} (${user.phone})`, result: "success" });
+  sendSuccess(res, { success: true, message: `2FA enforcement enabled for ${user.name ?? user.phone}` });
+});
+
+/* ── POST /admin/users/:id/2fa/unenforce — remove 2FA enforcement ── */
+router.post("/users/:id/2fa/unenforce", async (req, res) => {
+  const userId = req.params["id"]!;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { sendNotFound(res, "User not found"); return; }
+  await db.update(usersTable).set({ twoFactorEnforcedAt: null, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+  addAuditEntry({ action: "admin_2fa_unenforce", ip: getClientIp(req), details: `Admin removed 2FA enforcement for user ${userId} (${user.phone})`, result: "success" });
+  sendSuccess(res, { success: true, message: `2FA enforcement removed for ${user.name ?? user.phone}` });
+});
 
 export default router;

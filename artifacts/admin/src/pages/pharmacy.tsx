@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { usePharmacyOrders, useUpdatePharmacyOrder } from "@/hooks/use-admin";
+import { usePharmacyOrders, useUpdatePharmacyOrder, usePrescriptionReview } from "@/hooks/use-admin";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pill, Search, FileText, User, ShoppingCart, Phone, TrendingUp, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Pill, Search, FileText, User, ShoppingCart, Phone, TrendingUp, CheckCircle2, AlertTriangle, XCircle, Loader2, Eye } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -46,6 +48,9 @@ export default function Pharmacy() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelling, setCancelling]               = useState(false);
+  const [rxNote, setRxNote]               = useState("");
+  const [showLightbox, setShowLightbox]   = useState(false);
+  const reviewMutation = usePrescriptionReview();
 
   const handleUpdateStatus = (id: string, status: string, currentStatus?: string) => {
     if (currentStatus && !ALLOWED_TRANSITIONS[currentStatus]?.includes(status)) {
@@ -249,10 +254,21 @@ export default function Pharmacy() {
                       )}
                     </TableCell>
                     <TableCell className="max-w-[200px]">
-                      {order.prescriptionNote ? (
-                        <div className="flex items-start gap-2 bg-amber-50 text-amber-900 p-2 rounded-lg text-xs">
-                          <FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                          <p className="truncate">{order.prescriptionNote}</p>
+                      {order.prescriptionNote || order.prescriptionPhotoUri ? (
+                        <div className="space-y-1">
+                          <div className="flex items-start gap-2 bg-amber-50 text-amber-900 p-2 rounded-lg text-xs">
+                            <FileText className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <p className="truncate">{order.prescriptionNote || "Photo attached"}</p>
+                          </div>
+                          {order.prescriptionStatus && order.prescriptionStatus !== "none" && (
+                            <Badge variant="outline" className={`text-[9px] ${
+                              order.prescriptionStatus === "approved" ? "bg-green-50 text-green-700 border-green-200" :
+                              order.prescriptionStatus === "rejected" ? "bg-red-50 text-red-700 border-red-200" :
+                              "bg-yellow-50 text-yellow-700 border-yellow-200"
+                            }`}>
+                              Rx: {order.prescriptionStatus}
+                            </Badge>
+                          )}
                         </div>
                       ) : (
                         <span className="text-muted-foreground text-xs">No note</span>
@@ -385,25 +401,92 @@ export default function Pharmacy() {
                 )}
               </div>
 
-              {/* Prescription Note + Photo */}
+              {/* Prescription Note + Photo + Review */}
               {(selectedOrder.prescriptionNote || selectedOrder.prescriptionPhotoUri) && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                  <p className="text-xs font-bold text-amber-700 flex items-center gap-1">
-                    <FileText className="w-3.5 h-3.5" /> Prescription
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-amber-700 flex items-center gap-1">
+                      <FileText className="w-3.5 h-3.5" /> Prescription
+                    </p>
+                    {selectedOrder.prescriptionStatus && selectedOrder.prescriptionStatus !== "none" && (
+                      <Badge variant="outline" className={`text-[10px] font-bold uppercase ${
+                        selectedOrder.prescriptionStatus === "approved" ? "bg-green-100 text-green-700 border-green-300" :
+                        selectedOrder.prescriptionStatus === "rejected" ? "bg-red-100 text-red-700 border-red-300" :
+                        "bg-yellow-100 text-yellow-700 border-yellow-300"
+                      }`}>
+                        {selectedOrder.prescriptionStatus}
+                      </Badge>
+                    )}
+                  </div>
                   {selectedOrder.prescriptionNote && (
                     <p className="text-sm text-amber-900">{selectedOrder.prescriptionNote}</p>
                   )}
                   {selectedOrder.prescriptionPhotoUri && (
                     <div className="mt-2">
-                      <a href={selectedOrder.prescriptionPhotoUri} target="_blank" rel="noopener noreferrer">
+                      <div
+                        onClick={() => setShowLightbox(true)}
+                        className="cursor-pointer"
+                      >
                         <img
                           src={selectedOrder.prescriptionPhotoUri}
                           alt="Prescription"
-                          className="w-full max-h-56 object-contain rounded-lg border border-amber-200 cursor-pointer hover:opacity-90 transition-opacity bg-white"
+                          className="w-full max-h-56 object-contain rounded-lg border border-amber-200 hover:opacity-90 transition-opacity bg-white"
                         />
-                      </a>
-                      <p className="text-[10px] text-amber-600 mt-1">Click to open full image</p>
+                      </div>
+                      <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                        <Eye className="w-3 h-3" /> Click to enlarge
+                      </p>
+                    </div>
+                  )}
+
+                  {(!selectedOrder.prescriptionStatus || selectedOrder.prescriptionStatus === "none" || selectedOrder.prescriptionStatus === "pending") && (
+                    <div className="border-t border-amber-200 pt-3 space-y-2">
+                      <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Review Prescription</p>
+                      <Textarea
+                        placeholder="Add review note (optional)..."
+                        value={rxNote}
+                        onChange={e => setRxNote(e.target.value)}
+                        rows={2}
+                        className="text-xs rounded-lg bg-white border-amber-200"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs"
+                          onClick={() => {
+                            reviewMutation.mutate({ id: selectedOrder.id, action: "approved", note: rxNote || undefined }, {
+                              onSuccess: () => {
+                                setSelectedOrder({ ...selectedOrder, prescriptionStatus: "approved" });
+                                setRxNote("");
+                                toast({ title: "Prescription approved" });
+                              },
+                              onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+                            });
+                          }}
+                          disabled={reviewMutation.isPending}
+                        >
+                          {reviewMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="flex-1 h-8 text-xs"
+                          onClick={() => {
+                            reviewMutation.mutate({ id: selectedOrder.id, action: "rejected", note: rxNote || undefined }, {
+                              onSuccess: () => {
+                                setSelectedOrder({ ...selectedOrder, prescriptionStatus: "rejected" });
+                                setRxNote("");
+                                toast({ title: "Prescription rejected" });
+                              },
+                              onError: (e: Error) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+                            });
+                          }}
+                          disabled={reviewMutation.isPending}
+                        >
+                          <XCircle className="w-3 h-3 mr-1" /> Reject
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -471,6 +554,17 @@ export default function Pharmacy() {
           )}
         </DialogContent>
       </Dialog>
+      {showLightbox && selectedOrder?.prescriptionPhotoUri && (
+        <Dialog open={showLightbox} onOpenChange={setShowLightbox}>
+          <DialogContent className="max-w-[95vw] max-h-[95dvh] p-2 bg-black/95 border-none">
+            <img
+              src={selectedOrder.prescriptionPhotoUri}
+              alt="Prescription full view"
+              className="w-full h-full object-contain max-h-[90dvh] rounded"
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

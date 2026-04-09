@@ -1490,6 +1490,27 @@ export const useEditVendorReply = () => {
   });
 };
 
+export const useWishlistAnalytics = () =>
+  useQuery({ queryKey: ["admin-wishlist-analytics"], queryFn: () => fetcher("/wishlists/analytics"), refetchInterval: REFETCH_INTERVAL });
+
+export const useUserWishlist = (userId: string | null) =>
+  useQuery({
+    queryKey: ["admin-user-wishlist", userId],
+    queryFn: () => fetcher(`/wishlists/user/${userId}`),
+    enabled: !!userId,
+  });
+
+export const useClearUserWishlist = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => fetcher(`/wishlists/user/${userId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-wishlist-analytics"] });
+      qc.invalidateQueries({ queryKey: ["admin-user-wishlist"] });
+    },
+  });
+};
+
 export const useDeleteVendorReply = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -1497,6 +1518,84 @@ export const useDeleteVendorReply = () => {
       fetcher(`/reviews/${id}/vendor-reply`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-reviews"] });
+    },
+  });
+};
+
+export const useUserAddresses = (userId: string | null) =>
+  useQuery({
+    queryKey: ["admin-user-addresses", userId],
+    queryFn: () => fetcher(`/users/${userId}/addresses`),
+    enabled: !!userId,
+  });
+
+export const useDeleteAddress = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => fetcher(`/addresses/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-user-addresses"] }),
+  });
+};
+
+export const usePrescriptionReview = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, note }: { id: string; action: "approved" | "rejected"; note?: string }) =>
+      fetcher(`/pharmacy/${id}/prescription/review`, { method: "POST", body: JSON.stringify({ action, note }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-pharmacy"] }),
+  });
+};
+
+export const useDeletionRequests = (status?: string) =>
+  useQuery({
+    queryKey: ["admin-deletion-requests", status],
+    queryFn: () => fetcher(`/deletion-requests${status && status !== "all" ? `?status=${status}` : ""}`),
+    refetchInterval: REFETCH_INTERVAL,
+  });
+
+export const useApproveDeletion = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      fetcher(`/deletion-requests/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-deletion-requests"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
+  });
+};
+
+export const useDenyDeletion = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      fetcher(`/deletion-requests/${id}/deny`, { method: "POST", body: JSON.stringify({ note }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-deletion-requests"] }),
+  });
+};
+
+export const use2faStats = () =>
+  useQuery({ queryKey: ["admin-2fa-stats"], queryFn: () => fetcher("/users/2fa-stats"), refetchInterval: REFETCH_INTERVAL });
+
+export const useEnforce2fa = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => fetcher(`/users/${userId}/2fa/enforce`, { method: "POST", body: "{}" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-2fa-stats"] });
+    },
+  });
+};
+
+export const useUnenforce2fa = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => fetcher(`/users/${userId}/2fa/unenforce`, { method: "POST", body: "{}" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-2fa-stats"] });
     },
   });
 };

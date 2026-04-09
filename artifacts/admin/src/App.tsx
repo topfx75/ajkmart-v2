@@ -42,6 +42,8 @@ import VanService from "@/pages/van";
 import DeliveryAccess from "@/pages/delivery-access";
 import AccountConditions from "@/pages/account-conditions";
 import ConditionRules from "@/pages/condition-rules";
+import Wishlists from "@/pages/wishlists";
+import DeletionRequests from "@/pages/deletion-requests";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -139,6 +141,8 @@ function Router() {
       <Route path="/delivery-access"><ProtectedRoute component={DeliveryAccess} /></Route>
       <Route path="/account-conditions"><ProtectedRoute component={AccountConditions} /></Route>
       <Route path="/condition-rules"><ProtectedRoute component={ConditionRules} /></Route>
+      <Route path="/wishlists"><ProtectedRoute component={Wishlists} /></Route>
+      <Route path="/deletion-requests"><ProtectedRoute component={DeletionRequests} /></Route>
 
       <Route component={NotFound} />
     </Switch>

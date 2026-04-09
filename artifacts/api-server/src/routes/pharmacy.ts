@@ -383,6 +383,7 @@ router.post("/", customerAuth, async (req, res) => {
         const [newOrder] = await tx.insert(pharmacyOrdersTable).values({
           id: generateId(), userId, items,
           prescriptionNote: mergedPrescriptionNote,
+          prescriptionStatus: (hasRxItem || mergedPrescriptionNote) ? "pending" : "none",
           deliveryAddress, contactPhone,
           total: total.toFixed(2), paymentMethod,
           status: "pending", estimatedTime,
@@ -408,6 +409,7 @@ router.post("/", customerAuth, async (req, res) => {
   const [order] = await db.insert(pharmacyOrdersTable).values({
     id: generateId(), userId, items,
     prescriptionNote: mergedPrescriptionNote,
+    prescriptionStatus: (hasRxItem || mergedPrescriptionNote) ? "pending" : "none",
     deliveryAddress, contactPhone,
     total: total.toFixed(2), paymentMethod,
     status: "pending", estimatedTime,

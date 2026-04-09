@@ -10,6 +10,9 @@ import systemRoutes from "./admin/system.js";
 import serviceZonesRoutes from "./admin/service-zones.js";
 import deliveryAccessRoutes from "./admin/delivery-access.js";
 import conditionsRoutes from "./admin/conditions.js";
+import wishlistsRoutes from "./admin/wishlists.js";
+import pharmacyAdminRoutes from "./admin/pharmacy.js";
+import deletionRequestsRoutes from "./admin/deletion-requests.js";
 
 export {
   DEFAULT_PLATFORM_SETTINGS,
@@ -44,5 +47,8 @@ router.use(systemRoutes);
 router.use("/service-zones", serviceZonesRoutes);
 router.use(deliveryAccessRoutes);
 router.use(conditionsRoutes);
+router.use(wishlistsRoutes);
+router.use(pharmacyAdminRoutes);
+router.use(deletionRequestsRoutes);
 
 export default router;
