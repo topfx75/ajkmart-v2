@@ -500,7 +500,9 @@ router.get("/services", async (_req, res) => {
 });
 
 router.get("/stops", async (_req, res) => {
-  try { await ensureDefaultLocations(); } catch {}
+  try { await ensureDefaultLocations(); } catch (err) {
+    logger.warn("[rides] ensureDefaultLocations() failed — stops endpoint will serve whatever is currently in the DB:", (err as Error)?.message ?? err);
+  }
   const locs = await db.select().from(popularLocationsTable)
     .where(eq(popularLocationsTable.isActive, true))
     .orderBy(asc(popularLocationsTable.sortOrder));
@@ -1312,7 +1314,9 @@ router.get("/", customerAuth, async (req, res) => {
       try {
         const computed = await calcFare(parseFloat(String(r.distance)), r.type);
         fareBreakdown = { baseFare: computed.baseFare, gstAmount: computed.gstAmount };
-      } catch {}
+      } catch {
+        /* Non-critical: fare breakdown enrichment on list view — omitted if calc fails */
+      }
     }
     return { ...base, fareBreakdown };
   }));
@@ -1437,7 +1441,9 @@ async function buildRideSSEPayload(rideId: string): Promise<Record<string, unkno
     try {
       const computed = await calcFare(parseFloat(String(ride.distance)), ride.type);
       fareBreakdown = { baseFare: computed.baseFare, gstAmount: computed.gstAmount };
-    } catch {}
+    } catch {
+      /* Non-critical: fare breakdown enrichment on ride detail — omitted if calc fails */
+    }
   }
 
   return { ...formatRide(ride as Record<string, unknown>), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge, riderAvgRating, fareBreakdown };
@@ -1509,7 +1515,7 @@ router.get("/:id/stream", customerAuth, async (req, res) => {
   if (cleaned) return;
   unsubscribeFn  = onRideUpdate(rideId, () => { pushUpdate().catch(() => {}); });
   heartbeatTimer = setInterval(() => {
-    try { res.write(": heartbeat\n\n"); } catch {}
+    try { res.write(": heartbeat\n\n"); } catch { /* intentionally ignored — client may have disconnected before cleanup fires */ }
   }, SSE_HEARTBEAT_MS);
 });
 
@@ -1601,7 +1607,9 @@ router.get("/:id", customerAuth, async (req, res) => {
     try {
       const computed = await calcFare(parseFloat(String(ride.distance)), ride.type);
       fareBreakdown = { baseFare: computed.baseFare, gstAmount: computed.gstAmount };
-    } catch {}
+    } catch {
+      /* Non-critical: fare breakdown enrichment on rider ride detail — omitted if calc fails */
+    }
   }
 
   sendSuccess(res, { ...formatRide(ride), riderName, riderPhone, bids: formattedBids, riderLat, riderLng, riderLocAge, riderAvgRating, fareBreakdown });

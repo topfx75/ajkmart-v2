@@ -152,7 +152,9 @@ async function processLocationUpdate(opts: {
               userId, reason, autoOffline: true, sentAt: now.toISOString(),
             });
           }
-        } catch {}
+        } catch (err) {
+          console.warn(`[locations] GPS spoof auto-offline side-effect failed for rider ${userId} (mock/emulator):`, (err as Error)?.message ?? err);
+        }
       }
 
       return { skip: true, spoofed: true, autoOffline };
@@ -211,7 +213,9 @@ async function processLocationUpdate(opts: {
                   sentAt: now.toISOString(),
                 });
               }
-            } catch {}
+            } catch (err) {
+              console.warn(`[locations] GPS spoof auto-offline side-effect failed for rider ${userId} (speed-based):`, (err as Error)?.message ?? err);
+            }
           }
 
           return { skip: true, spoofed: true, autoOffline };
@@ -314,7 +318,10 @@ async function processLocationUpdate(opts: {
               ))
               .limit(1);
             histRideId = activeRide?.id ?? null;
-          } catch {}
+          } catch (err) {
+            /* Non-critical: rideId context on history row is optional; log and continue */
+            console.warn(`[locations] Failed to resolve active ride for history row (rider ${userId}):`, (err as Error)?.message ?? err);
+          }
 
           if (!histRideId) {
             try {
@@ -330,7 +337,10 @@ async function processLocationUpdate(opts: {
                 ))
                 .limit(1);
               histOrderId = activeOrder?.id ?? null;
-            } catch {}
+            } catch (err) {
+              /* Non-critical: orderId context on history row is optional; log and continue */
+              console.warn(`[locations] Failed to resolve active order for history row (rider ${userId}):`, (err as Error)?.message ?? err);
+            }
           }
 
           await db.insert(locationHistoryTable).values({
@@ -342,14 +352,21 @@ async function processLocationUpdate(opts: {
             speed:   opts.speed   !== undefined && opts.speed   !== null ? String(opts.speed)   : null,
           });
         }
-      } catch {}
+      } catch (err) {
+        /* Fire-and-forget: history insert failure is non-fatal for the rider's location update.
+           Log so DB write errors are visible in server logs without blocking the response. */
+        console.warn(`[locations] Location history insert failed (rider ${userId}):`, (err as Error)?.message ?? err);
+      }
 
       /* Always update lastActive — regardless of whether a history point was saved */
       try {
         await db.update(usersTable)
           .set({ lastActive: now, updatedAt: now })
           .where(eq(usersTable.id, userId));
-      } catch {}
+      } catch (err) {
+        /* Fire-and-forget: lastActive update failure is non-fatal; log for diagnostics */
+        console.warn(`[locations] Failed to update lastActive for rider ${userId}:`, (err as Error)?.message ?? err);
+      }
     })();
   }
 
@@ -378,7 +395,9 @@ async function broadcastRiderLocation(userId: string, lat: number, lon: number, 
       .where(eq(usersTable.id, userId))
       .limit(1);
     vehicleType = rider?.vehicleType ?? null;
-  } catch {}
+  } catch {
+    /* Non-critical: vehicleType enrichment for map markers — socket emission proceeds without it */
+  }
 
   /* Find active ride (for currentTripId) */
   try {
@@ -398,7 +417,9 @@ async function broadcastRiderLocation(userId: string, lat: number, lon: number, 
       .limit(1);
     serverRideId = activeRide?.id ?? null;
     currentTripId = serverRideId;
-  } catch {}
+  } catch {
+    /* Non-critical: rideId context for location broadcast — socket emission proceeds without it */
+  }
 
   /* Find active order if no ride trip */
   try {
@@ -412,7 +433,9 @@ async function broadcastRiderLocation(userId: string, lat: number, lon: number, 
     serverVendorId = activeOrder?.vendorId ?? null;
     serverOrderId = activeOrder?.id ?? null;
     if (!currentTripId && serverOrderId) currentTripId = serverOrderId;
-  } catch {}
+  } catch {
+    /* Non-critical: orderId/vendorId context for location broadcast — socket emission proceeds without it */
+  }
 
   emitRiderLocation({
     userId,

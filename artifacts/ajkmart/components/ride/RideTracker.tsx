@@ -103,6 +103,7 @@ export function RideTracker({
   const elapsedInitialized = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [dispatchInfo, setDispatchInfo] = useState<any>(null);
+  const [dispatchPollError, setDispatchPollError] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const prevStatus = useRef<string>("");
   const [cancelResult, setCancelResult] = useState<{ cancellationFee?: number; cancelReason?: string } | null>(null);
@@ -254,8 +255,20 @@ export function RideTracker({
   useEffect(() => {
     const status = ride?.status;
     if (status !== "searching" && status !== "no_riders") return;
+    let consecutiveErrors = 0;
     const poll = async () => {
-      try { const d = await getDispatchStatus(rideId); setDispatchInfo(d); } catch {}
+      try {
+        const d = await getDispatchStatus(rideId);
+        setDispatchInfo(d);
+        consecutiveErrors = 0;
+        setDispatchPollError(false);
+      } catch (err) {
+        consecutiveErrors++;
+        console.error("[RideTracker] getDispatchStatus failed:", err);
+        if (consecutiveErrors >= 3) {
+          setDispatchPollError(true);
+        }
+      }
     };
     poll();
     const iv = setInterval(poll, 5000);
@@ -418,6 +431,12 @@ export function RideTracker({
               <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
                 Round {(dispatchInfo.dispatchLoopCount ?? 0) + 1}/{dispatchInfo.maxLoops || "?"} · {dispatchInfo.attemptCount || 0} contacted
               </Text>
+            </View>
+          )}
+          {dispatchPollError && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12, backgroundColor: "rgba(239,68,68,0.12)", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: "rgba(239,68,68,0.25)" }}>
+              <Ionicons name="warning-outline" size={14} color="#EF4444" />
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#EF4444" }}>Unable to fetch dispatch info</Text>
             </View>
           )}
         </View>

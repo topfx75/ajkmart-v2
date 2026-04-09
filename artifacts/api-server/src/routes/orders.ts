@@ -81,10 +81,28 @@ async function notifyOnlineRidersOfOrder(orderId: string, orderType: string): Pr
         gte(liveLocationsTable.updatedAt, tenMinAgo),
       ));
     for (const { userId } of onlineRiders) {
-      emitRiderNewRequest(userId, { type: "order", requestId: orderId, summary: orderType });
+      /* Retry up to 3 times with exponential backoff (200 ms, 400 ms, 800 ms).
+         Socket emissions are best-effort — we log and give up after all retries. */
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          emitRiderNewRequest(userId, { type: "order", requestId: orderId, summary: orderType });
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          console.error(`[notifyRiders] Attempt ${attempt}/3 failed for rider ${userId}, order ${orderId}:`, err);
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 200 * attempt));
+          }
+        }
+      }
+      if (lastErr) {
+        console.error(`[notifyRiders] All 3 attempts exhausted for rider ${userId}, order ${orderId}. Rider will not receive real-time notification.`);
+      }
     }
-  } catch {
-    /* intentionally ignored — socket push is best-effort */
+  } catch (err) {
+    console.error(`[notifyRiders] Failed to query online riders for order ${orderId}:`, err);
   }
 }
 
@@ -491,7 +509,9 @@ router.post("/", customerAuth, async (req, res) => {
           .limit(1);
         resolvedVendorId = prod?.vendorId ?? null;
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`[orders] Failed to resolve vendorId from product for user ${userId}:`, err);
+    }
   }
 
   /* ── Delivery access eligibility ── */
@@ -647,7 +667,9 @@ router.post("/", customerAuth, async (req, res) => {
           resolvedDeliveryLng = gLng;
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`[orders] Geocoding delivery address failed (user ${userId}); coordinates will be omitted from order:`, err);
+    }
   }
 
   const hasResolvedDelivery = Number.isFinite(resolvedDeliveryLat) && Number.isFinite(resolvedDeliveryLng)
