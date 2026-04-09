@@ -43,6 +43,13 @@
       "when": 1775421000000,
       "tag": "0005_wallet_balance_non_negative",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1744214400000,
+      "tag": "0006_supported_payment_methods",
+      "breakpoints": true
     }
   ]
 }

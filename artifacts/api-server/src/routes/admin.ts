@@ -23,6 +23,8 @@ export {
   DEFAULT_RIDE_SERVICES,
   ensureDefaultRideServices,
   ensureDefaultLocations,
+  ensureDefaultServiceZones,
+  ensureDefaultPaymentMethods,
   type AdminRequest,
 } from "./admin-shared.js";
 

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { popularLocationsTable, mapApiUsageLogTable, platformSettingsTable } from "@workspace/db/schema";
+import { popularLocationsTable, mapApiUsageLogTable, platformSettingsTable, serviceZonesTable } from "@workspace/db/schema";
 import { eq, asc, and, sql } from "drizzle-orm";
 import { getPlatformSettings, adminAuth } from "./admin.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
@@ -167,7 +167,7 @@ async function getKey(): Promise<{
   };
 }
 
-/* ─── AJK Fallback locations (used when Maps key not configured) ─── */
+/* ─── Minimal hardcoded bootstrap fallback (only used when DB unavailable) ─── */
 const AJK_FALLBACK = [
   { placeId: "ajk_muzaffarabad",  description: "Muzaffarabad Chowk, Muzaffarabad, AJK",  mainText: "Muzaffarabad Chowk",  lat: 34.3697, lng: 73.4716 },
   { placeId: "ajk_mirpur",        description: "Mirpur City Centre, Mirpur, AJK",         mainText: "Mirpur City Centre",  lat: 33.1413, lng: 73.7508 },
@@ -186,6 +186,28 @@ const AJK_FALLBACK = [
   { placeId: "ajk_pallandri",     description: "Pallandri, Sudhnoti, AJK",                mainText: "Pallandri",           lat: 33.7124, lng: 73.9294 },
 ];
 
+/* ─── Load service_zones from DB as map-search locations ───────────────────
+   Returns zone records shaped like AJK_FALLBACK entries.
+   Falls back to empty array if DB is unavailable.                          ── */
+async function getServiceZoneFallbacks(): Promise<typeof AJK_FALLBACK> {
+  try {
+    const rows = await db
+      .select({ id: serviceZonesTable.id, name: serviceZonesTable.name, city: serviceZonesTable.city, lat: serviceZonesTable.lat, lng: serviceZonesTable.lng })
+      .from(serviceZonesTable)
+      .where(eq(serviceZonesTable.isActive, true))
+      .orderBy(asc(serviceZonesTable.city), asc(serviceZonesTable.name));
+    return rows.map(r => ({
+      placeId:     `zone_${r.id}`,
+      description: `${r.name}, ${r.city}`,
+      mainText:    r.name,
+      lat:         parseFloat(String(r.lat)),
+      lng:         parseFloat(String(r.lng)),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -199,29 +221,37 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
    Returns place suggestions for a search query.
    Falls back to AJK city list if Maps not configured.
 ══════════════════════════════════════════════════════════ */
-/* ── Build combined fallback list: hardcoded AJK + admin-managed popular locations ── */
+/* ── Build combined fallback list:
+     Priority: popular_locations (admin-curated) → service_zones (DB) → hardcoded AJK_FALLBACK
+   This ensures the list is driven by the DB — admin edits take effect without code changes. ── */
 async function getFallbackPredictions(input: string) {
   const query = input.toLowerCase();
 
-  /* Admin-managed popular locations from DB */
-  let dbLocs: typeof AJK_FALLBACK = [];
+  /* 1. Admin-managed popular locations from DB */
+  let popLocs: typeof AJK_FALLBACK = [];
   try {
     const rows = await db.select().from(popularLocationsTable)
       .where(eq(popularLocationsTable.isActive, true))
       .orderBy(asc(popularLocationsTable.sortOrder));
-    dbLocs = rows.map(l => ({
+    popLocs = rows.map(l => ({
       placeId:     `pop_${l.id}`,
       description: l.nameUrdu ? `${l.name} — ${l.nameUrdu}` : l.name,
       mainText:    l.name,
       lat:         parseFloat(String(l.lat)),
       lng:         parseFloat(String(l.lng)),
     }));
-  } catch { /* DB unavailable — use hardcoded only */ }
+  } catch { /* DB unavailable */ }
 
-  /* Merge: DB locations first (admin-curated), then hardcoded as backup */
-  const dbIds = new Set(dbLocs.map(l => l.description.toLowerCase()));
-  const hardcoded = AJK_FALLBACK.filter(l => !dbIds.has(l.description.toLowerCase()));
-  const combined = [...dbLocs, ...hardcoded];
+  /* 2. Service zones from DB (city-level) */
+  const zoneLocs = await getServiceZoneFallbacks();
+
+  /* 3. Merge: popular_locations first, then zone fallbacks, then hardcoded as last resort */
+  const popIds  = new Set(popLocs.map(l => l.description.toLowerCase()));
+  const zoneIds = new Set(zoneLocs.map(l => l.description.toLowerCase()));
+
+  const filteredZones    = zoneLocs.filter(l => !popIds.has(l.description.toLowerCase()));
+  const filteredHardcode = AJK_FALLBACK.filter(l => !popIds.has(l.description.toLowerCase()) && !zoneIds.has(l.description.toLowerCase()));
+  const combined = [...popLocs, ...filteredZones, ...filteredHardcode];
 
   if (!input) return combined;
   return combined.filter(l =>

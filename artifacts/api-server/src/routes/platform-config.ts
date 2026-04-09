@@ -1,4 +1,7 @@
 import { Router, type IRouter } from "express";
+import { db } from "@workspace/db";
+import { serviceZonesTable, supportedPaymentMethodsTable } from "@workspace/db/schema";
+import { eq, asc } from "drizzle-orm";
 import { getPlatformSettings } from "./admin.js";
 import { sendSuccess } from "../lib/response.js";
 
@@ -6,54 +9,79 @@ const router: IRouter = Router();
 
 // Public endpoint — all client apps fetch this for config + feature flags
 router.get("/", async (req, res) => {
-  const s = await getPlatformSettings();
+  const [s, zoneRows, pmRows] = await Promise.all([
+    getPlatformSettings(),
+    db.select({ city: serviceZonesTable.city })
+      .from(serviceZonesTable)
+      .where(eq(serviceZonesTable.isActive, true))
+      .orderBy(asc(serviceZonesTable.city))
+      .catch(() => [] as Array<{ city: string }>),
+    db.select()
+      .from(supportedPaymentMethodsTable)
+      .where(eq(supportedPaymentMethodsTable.isActive, true))
+      .orderBy(asc(supportedPaymentMethodsTable.sortOrder))
+      .catch(() => [] as typeof supportedPaymentMethodsTable.$inferSelect[]),
+  ]);
+
+  /* Derive unique sorted city list from service_zones */
+  const citySet = new Set<string>();
+  for (const row of zoneRows) {
+    if (row.city) citySet.add(row.city);
+  }
+  let dbCities = Array.from(citySet).sort();
+
+  /* Fallback chain: service_zones → service_cities setting → built-in default */
+  if (dbCities.length === 0) {
+    const raw = s["service_cities"] ?? "";
+    if (raw.trim()) {
+      dbCities = raw.split(",").map((c: string) => c.trim()).filter(Boolean);
+    }
+  }
 
   const jazzcashEnabled  = (s["jazzcash_enabled"]  ?? "off") === "on";
   const easypaisaEnabled = (s["easypaisa_enabled"] ?? "off") === "on";
+  const bankEnabled      = (s["bank_enabled"]      ?? "off") === "on";
   const walletEnabled    = (s["feature_wallet"]    ?? "on")  === "on";
+  const appName          = s["app_name"] ?? "AJKMart";
 
-  // Build available payment methods list for client apps
-  const paymentMethods: Array<{
-    id: string;
-    label: string;
-    logo: string;
-    available: boolean;
-    mode: string;
-    description: string;
-  }> = [
-    {
-      id:          "cash",
-      label:       "Cash on Delivery",
-      logo:        "💵",
-      available:   true,
-      mode:        "live",
-      description: "Delivery par payment karein",
-    },
-    {
-      id:          "wallet",
-      label:       `${s["app_name"] ?? "AJKMart"} Wallet`,
-      logo:        "💰",
-      available:   walletEnabled,
-      mode:        "live",
-      description: "Apni wallet se instant pay karein",
-    },
-    {
-      id:          "jazzcash",
-      label:       "JazzCash",
-      logo:        "🔴",
-      available:   jazzcashEnabled,
-      mode:        s["jazzcash_mode"] ?? "sandbox",
-      description: "JazzCash mobile wallet",
-    },
-    {
-      id:          "easypaisa",
-      label:       "EasyPaisa",
-      logo:        "🟢",
-      available:   easypaisaEnabled,
-      mode:        s["easypaisa_mode"] ?? "sandbox",
-      description: "EasyPaisa mobile wallet",
-    },
-  ];
+  /* Platform-settings availability overlay keyed by method id */
+  const availabilityMap: Record<string, boolean> = {
+    cash:      true,
+    wallet:    walletEnabled,
+    jazzcash:  jazzcashEnabled,
+    easypaisa: easypaisaEnabled,
+    bank:      bankEnabled,
+  };
+
+  /* Mode overlay for gateway methods */
+  const modeMap: Record<string, string> = {
+    jazzcash:  s["jazzcash_mode"]  ?? "sandbox",
+    easypaisa: s["easypaisa_mode"] ?? "sandbox",
+  };
+
+  /* Logo map */
+  const logoMap: Record<string, string> = {
+    cash: "💵", wallet: "💰", jazzcash: "🔴", easypaisa: "🟢", bank: "🏦",
+  };
+
+  /* Build payment methods list from DB rows, applying availability overlay */
+  const paymentMethods = pmRows.length > 0
+    ? pmRows.map(m => ({
+        id:          m.id,
+        label:       m.id === "wallet" ? `${appName} Wallet` : m.label,
+        logo:        logoMap[m.id] ?? "💳",
+        available:   availabilityMap[m.id] ?? true,
+        mode:        modeMap[m.id] ?? "live",
+        description: m.description,
+      }))
+    : /* Fallback if DB table not yet populated */
+      [
+        { id: "cash",      label: "Cash on Delivery",    logo: "💵", available: true,             mode: "live",                        description: "Delivery par payment karein" },
+        { id: "wallet",    label: `${appName} Wallet`,   logo: "💰", available: walletEnabled,     mode: "live",                        description: "Apni wallet se instant pay karein" },
+        { id: "jazzcash",  label: "JazzCash",            logo: "🔴", available: jazzcashEnabled,   mode: modeMap["jazzcash"]  ?? "sandbox", description: "JazzCash mobile wallet" },
+        { id: "easypaisa", label: "EasyPaisa",           logo: "🟢", available: easypaisaEnabled,  mode: modeMap["easypaisa"] ?? "sandbox", description: "EasyPaisa mobile wallet" },
+        { id: "bank",      label: "Bank Transfer",       logo: "🏦", available: bankEnabled,       mode: "live",                        description: "Direct bank account transfer" },
+      ];
 
   sendSuccess(res, {
     deliveryFee: {
@@ -297,14 +325,7 @@ router.get("/", async (req, res) => {
         facebookAppId:          s["facebook_app_id"] ?? "",
       };
     })(),
-    cities: (() => {
-      const raw = s["service_cities"] ?? "";
-      if (raw.trim()) {
-        const parsed = raw.split(",").map((c: string) => c.trim()).filter(Boolean);
-        if (parsed.length > 0) return parsed;
-      }
-      return ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Poonch","Neelum Valley","Rawalpindi","Islamabad","Other"];
-    })(),
+    cities: dbCities.length > 0 ? dbCities : ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Poonch","Neelum Valley","Rawalpindi","Islamabad"],
     payment: {
       methods:              paymentMethods,
       currency:             "PKR",

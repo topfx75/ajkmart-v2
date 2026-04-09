@@ -276,13 +276,7 @@ const DEFAULT: PlatformConfig = {
     defaultLanguage: "en",
     enabledLanguages: ["en", "ur", "roman", "en_roman", "en_ur"],
   },
-  cities: [
-    "Muzaffarabad", "Mirpur", "Rawalakot", "Kotli", "Bagh", "Bhimber",
-    "Islamabad", "Rawalpindi", "Lahore", "Karachi", "Peshawar", "Quetta",
-    "Faisalabad", "Multan", "Sialkot", "Gujranwala", "Hyderabad",
-    "Abbottabad", "Bahawalpur", "Sargodha", "Sukkur", "Mardan",
-    "Mansehra", "Gilgit", "Skardu",
-  ],
+  cities: [],
 };
 
 function isMethodEnabled(val: boolean | Record<string, boolean> | undefined | null, role = "customer"): boolean {

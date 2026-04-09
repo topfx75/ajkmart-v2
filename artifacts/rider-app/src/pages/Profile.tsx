@@ -18,7 +18,6 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 
 const fc = (n: number, currencySymbol = "Rs.") => `${currencySymbol} ${Math.round(n).toLocaleString()}`;
 
-const CITIES   = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Other"];
 const BANKS    = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
 const VEHICLES = ["bike","car","rickshaw","bicycle","on_foot"];
 const VEHICLE_LABELS: Record<string, string> = { bike: "Bike / Motorcycle", car: "Car", rickshaw: "Rickshaw / QingQi", bicycle: "Bicycle", on_foot: "On Foot", van: "Van" };
@@ -646,7 +645,7 @@ export default function Profile() {
                       <label className={LABEL}>{T("cityLabel")}</label>
                       <select value={city} onChange={e => setCity(e.target.value)} className={SELECT}>
                         <option value="">{T("selectCity")}</option>
-                        {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        {(config.cities ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>

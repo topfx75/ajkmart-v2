@@ -8,6 +8,8 @@ import {
   rideServiceTypesTable,
   popularLocationsTable,
   refreshTokensTable,
+  serviceZonesTable,
+  supportedPaymentMethodsTable,
 } from "@workspace/db/schema";
 import { eq, count, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
@@ -945,6 +947,91 @@ export async function ensureDefaultLocations() {
         sortOrder: l.sortOrder,
       }))
     ).onConflictDoNothing();
+  }
+}
+
+/* ── Default AJK service zones — seeded once so /settings/app-config can
+   serve city list from the DB without code hardcoding.
+   Admins can add, edit, or deactivate zones via the admin panel.        ── */
+const DEFAULT_SERVICE_ZONES = [
+  { name: "Muzaffarabad City", city: "Muzaffarabad", lat: 34.3697, lng: 73.4716, radiusKm: 20 },
+  { name: "Mirpur City",       city: "Mirpur",       lat: 33.1413, lng: 73.7508, radiusKm: 20 },
+  { name: "Rawalakot City",    city: "Rawalakot",    lat: 33.8572, lng: 73.7613, radiusKm: 15 },
+  { name: "Bagh City",         city: "Bagh",         lat: 33.9732, lng: 73.7729, radiusKm: 15 },
+  { name: "Kotli City",        city: "Kotli",        lat: 33.5152, lng: 73.9019, radiusKm: 15 },
+  { name: "Bhimber City",      city: "Bhimber",      lat: 32.9755, lng: 74.0727, radiusKm: 10 },
+  { name: "Poonch City",       city: "Poonch",       lat: 33.7700, lng: 74.0954, radiusKm: 15 },
+  { name: "Neelum Valley",     city: "Neelum Valley",lat: 34.5689, lng: 73.8765, radiusKm: 30 },
+  { name: "Hattian Bala",      city: "Hattian",      lat: 34.0523, lng: 73.8265, radiusKm: 10 },
+  { name: "Sudhnoti City",     city: "Sudhnoti",     lat: 33.7457, lng: 73.6920, radiusKm: 10 },
+  { name: "Haveli City",       city: "Haveli",       lat: 33.6667, lng: 73.9500, radiusKm: 10 },
+  { name: "Pallandri City",    city: "Pallandri",    lat: 33.7124, lng: 73.9294, radiusKm: 10 },
+  { name: "Rawalpindi City",   city: "Rawalpindi",   lat: 33.6007, lng: 73.0679, radiusKm: 30 },
+  { name: "Islamabad City",    city: "Islamabad",    lat: 33.7294, lng: 73.0931, radiusKm: 30 },
+];
+
+/* ── Default payment methods — seeded once so /settings/app-config can
+   serve the list from DB. Admins toggle isActive via platform_settings.
+   To add a new method: INSERT a row here OR via admin panel.             ── */
+const DEFAULT_PAYMENT_METHODS = [
+  { id: "cash",      label: "Cash on Delivery", description: "Pay at delivery",              sortOrder: 1 },
+  { id: "wallet",    label: "AJKMart Wallet",    description: "Pay from your in-app wallet",  sortOrder: 2 },
+  { id: "jazzcash",  label: "JazzCash",          description: "JazzCash mobile wallet",       sortOrder: 3 },
+  { id: "easypaisa", label: "EasyPaisa",         description: "EasyPaisa mobile wallet",      sortOrder: 4 },
+  { id: "bank",      label: "Bank Transfer",     description: "Direct bank account transfer", sortOrder: 5 },
+];
+
+export async function ensureDefaultPaymentMethods() {
+  try {
+    /* Ensure table exists before querying (safe to re-run) */
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "supported_payment_methods" (
+        "id"          text      PRIMARY KEY,
+        "label"       text      NOT NULL,
+        "description" text      NOT NULL DEFAULT '',
+        "is_active"   boolean   NOT NULL DEFAULT true,
+        "sort_order"  integer   NOT NULL DEFAULT 0,
+        "created_at"  timestamp NOT NULL DEFAULT now(),
+        "updated_at"  timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    const existing = await db.select({ c: count() }).from(supportedPaymentMethodsTable);
+    if ((existing[0]?.c ?? 0) === 0) {
+      await db.insert(supportedPaymentMethodsTable).values(
+        DEFAULT_PAYMENT_METHODS.map(m => ({
+          id:          m.id,
+          label:       m.label,
+          description: m.description,
+          isActive:    true,
+          sortOrder:   m.sortOrder,
+        }))
+      ).onConflictDoNothing();
+    }
+  } catch (err) {
+    console.error("[ensureDefaultPaymentMethods] failed:", err);
+  }
+}
+
+export async function ensureDefaultServiceZones() {
+  try {
+    const existing = await db.select({ c: count() }).from(serviceZonesTable);
+    if ((existing[0]?.c ?? 0) === 0) {
+      await db.insert(serviceZonesTable).values(
+        DEFAULT_SERVICE_ZONES.map(z => ({
+          name:            z.name,
+          city:            z.city,
+          lat:             z.lat.toFixed(6),
+          lng:             z.lng.toFixed(6),
+          radiusKm:        z.radiusKm.toFixed(2),
+          isActive:        true,
+          appliesToRides:  true,
+          appliesToOrders: true,
+          appliesToParcel: true,
+        }))
+      ).onConflictDoNothing();
+    }
+  } catch {
+    /* Non-fatal: table may not exist yet on first boot */
   }
 }
 

@@ -12,7 +12,6 @@ import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
 } from "../components/ui/accordion";
 
-const CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Lahore","Karachi","Other"];
 const BANKS  = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
 const BIZ_TYPES = ["Sole Proprietorship","Partnership","Private Limited","Trust / NGO","Individual / Freelancer"];
 
@@ -329,7 +328,7 @@ export default function Profile() {
                           <label className={LABEL}>City</label>
                           <select value={city} onChange={e => setCity(e.target.value)} className={SELECT}>
                             <option value="">Select city</option>
-                            {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            {(config.cities ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}
                           </select>
                         </div>
                         <div>

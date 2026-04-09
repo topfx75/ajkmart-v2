@@ -36,13 +36,6 @@ const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
 
 type RegStep = 1 | 2 | 3 | 4 | 5;
 
-const PAKISTAN_CITIES = [
-  "Muzaffarabad", "Mirpur", "Rawalakot", "Kotli", "Bagh", "Bhimber",
-  "Islamabad", "Rawalpindi", "Lahore", "Karachi", "Peshawar", "Quetta",
-  "Faisalabad", "Multan", "Sialkot", "Gujranwala", "Hyderabad",
-  "Abbottabad", "Bahawalpur", "Sargodha", "Sukkur", "Mardan",
-  "Mansehra", "Gilgit", "Skardu",
-];
 
 function formatCnic(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 13);
@@ -147,8 +140,7 @@ export default function RegisterScreen() {
   };
 
   const cityList: string[] = React.useMemo(() => {
-    if (config.cities && config.cities.length > 0) return config.cities;
-    return PAKISTAN_CITIES;
+    return config.cities && config.cities.length > 0 ? config.cities : [];
   }, [config]);
 
   const filteredCities = cityList.filter(c =>

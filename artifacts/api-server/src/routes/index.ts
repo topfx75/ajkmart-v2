@@ -34,6 +34,7 @@ import wishlistRouter from "./wishlist.js";
 import vanRouter from "./van.js";
 import webhooksRouter from "./webhooks.js";
 import deliveryEligibilityRouter from "./delivery-eligibility.js";
+import appConfigRouter from "./app-config.js";
 
 const router: IRouter = Router();
 
@@ -50,6 +51,7 @@ router.use("/pharmacy-orders", pharmacyRouter);
 router.use("/parcel-bookings", parcelRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/addresses", addressesRouter);
+router.use("/settings/app-config", appConfigRouter);
 router.use("/settings", settingsRouter);
 router.use("/seed", seedRouter);
 router.use("/admin/system", systemRouter);

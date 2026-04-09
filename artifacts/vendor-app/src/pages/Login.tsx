@@ -28,7 +28,6 @@ function getDeviceFingerprint(): string {
 }
 
 const STORE_CATS = ["Grocery","Restaurant","Bakery","Pharmacy","Electronics","Clothing","General Store","Fast Food","Fruits & Vegetables","Dairy","Meat & Poultry","Other"];
-const CITIES = ["Muzaffarabad","Mirpur","Rawalakot","Bagh","Kotli","Bhimber","Jhelum","Rawalpindi","Islamabad","Lahore","Other"];
 const BANKS = ["EasyPaisa","JazzCash","MCB","HBL","UBL","Meezan Bank","Bank Alfalah","NBP","Allied Bank","Other"];
 
 export default function Login() {
@@ -792,7 +791,7 @@ export default function Login() {
                         <label className={LABEL_CLS}>City</label>
                         <select value={regForm.city} onChange={e => rf("city", e.target.value)} className={SELECT_CLS}>
                           <option value="">Select...</option>
-                          {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          {(config.cities ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     </div>

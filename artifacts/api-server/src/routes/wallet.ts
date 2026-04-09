@@ -1,7 +1,7 @@
 import { logger } from "../lib/logger.js";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { usersTable, walletTransactionsTable, notificationsTable } from "@workspace/db/schema";
+import { usersTable, walletTransactionsTable, notificationsTable, supportedPaymentMethodsTable } from "@workspace/db/schema";
 import { eq, and, gte, sum, desc, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { getPlatformSettings, adminAuth } from "./admin.js";
@@ -80,13 +80,40 @@ const withdrawSchema = z.object({
   note: z.string().max(200).optional(),
 });
 
+/* External transfer rails only — these are valid methods for wallet top-up/deposit.
+   'cash' and 'wallet' are order payment methods and must never appear here. */
+const WALLET_TRANSFER_RAILS = new Set(["jazzcash", "easypaisa", "bank"]);
+
 async function getEnabledPaymentMethods(): Promise<string[]> {
-  const s = await getPlatformSettings();
-  const methods: string[] = [];
-  if ((s["jazzcash_enabled"] ?? "off") === "on") methods.push("jazzcash");
-  if ((s["easypaisa_enabled"] ?? "off") === "on") methods.push("easypaisa");
-  if ((s["bank_enabled"] ?? "off") === "on") methods.push("bank");
-  return methods;
+  /* Fetch active methods from DB (source of truth), filter to transfer rails only,
+     then apply platform-setting availability toggles */
+  const [s, dbMethods] = await Promise.all([
+    getPlatformSettings(),
+    db.select({ id: supportedPaymentMethodsTable.id })
+      .from(supportedPaymentMethodsTable)
+      .where(eq(supportedPaymentMethodsTable.isActive, true))
+      .catch(() => [] as Array<{ id: string }>),
+  ]);
+
+  /* Platform-settings availability overlay (transfer rails only) */
+  const availabilityMap: Record<string, boolean> = {
+    jazzcash:  (s["jazzcash_enabled"]  ?? "off") === "on",
+    easypaisa: (s["easypaisa_enabled"] ?? "off") === "on",
+    bank:      (s["bank_enabled"]      ?? "off") === "on",
+  };
+
+  if (dbMethods.length > 0) {
+    return dbMethods
+      .map(m => m.id)
+      .filter(id => WALLET_TRANSFER_RAILS.has(id) && (availabilityMap[id] ?? true));
+  }
+
+  /* Fallback if DB table not yet populated */
+  const fallback: string[] = [];
+  if ((s["jazzcash_enabled"]  ?? "off") === "on") fallback.push("jazzcash");
+  if ((s["easypaisa_enabled"] ?? "off") === "on") fallback.push("easypaisa");
+  if ((s["bank_enabled"]      ?? "off") === "on") fallback.push("bank");
+  return fallback;
 }
 
 function broadcastWalletUpdate(userId: string, newBalance: number) {

@@ -122,6 +122,7 @@ export interface PlatformConfig {
     sms: boolean;
     email: boolean;
   };
+  cities?: string[];
 }
 
 const DEFAULT_CONFIG: PlatformConfig = {

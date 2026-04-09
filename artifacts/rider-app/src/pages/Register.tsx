@@ -46,11 +46,6 @@ const VEHICLE_TYPES = [
   { value: "van", labelKey: "vanVehicle" as TranslationKey },
 ];
 
-const AJK_CITIES = [
-  "Muzaffarabad", "Mirpur", "Rawalakot", "Bagh", "Kotli",
-  "Bhimber", "Pallandri", "Hajira", "Athmuqam", "Hattian Bala",
-  "Neelum", "Haveli", "Jhelum Valley", "Other",
-];
 
 const INPUT = "w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:bg-white transition-all";
 const SELECT = "w-full h-12 px-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 appearance-none transition-all";
@@ -527,7 +522,7 @@ export default function Register() {
                 </label>
                 <select value={city} onChange={e => setCity(e.target.value)} className={SELECT}>
                   <option value="">Select your city</option>
-                  {AJK_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  {(config.cities ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 {city === "Other" && (
                   <input value={customCity} onChange={e => setCustomCity(e.target.value)}
