@@ -80,6 +80,10 @@ export default function Orders() {
   const [assignModal, setAssignModal] = useState<{ orderId: string } | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
+  /* Vendor's own lat/lng — prefer backend-persisted location, fall back to browser */
+  const [vendorLat, setVendorLat] = useState<number | null>(null);
+  const [vendorLng, setVendorLng] = useState<number | null>(null);
+
   const BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
 
   const { data: availableRidersData, isLoading: ridersLoading } = useQuery({
@@ -135,10 +139,6 @@ export default function Orders() {
     },
   });
   const [riderPositions, setRiderPositions] = useState<Record<string, { lat: number; lng: number; updatedAt: string }>>({});
-
-  /* Vendor's own lat/lng — prefer backend-persisted location, fall back to browser */
-  const [vendorLat, setVendorLat] = useState<number | null>(null);
-  const [vendorLng, setVendorLng] = useState<number | null>(null);
 
   /* Fetch vendor's persisted location from the backend live_locations store */
   const { data: vendorLocData } = useQuery({

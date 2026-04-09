@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bus, Users, CheckCircle, MapPin, Clock, Calendar, ChevronRight, AlertCircle } from "lucide-react";
 import { apiFetch } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { useState } from "react";
 
 interface VanSchedule {

@@ -102,6 +102,9 @@ export interface PlatformConfig {
     captchaEnabled?: boolean;
     googleClientId?: string;
     facebookAppId?: string;
+    lockoutEnabled?: boolean;
+    lockoutMaxAttempts?: number;
+    lockoutDurationSec?: number;
   };
   integrations?: {
     pushNotif: boolean;
@@ -166,11 +169,14 @@ export interface VendorAuthConfig {
   google: boolean;
   facebook: boolean;
   magicLink: boolean;
+  lockoutEnabled: boolean;
+  lockoutMaxAttempts: number;
+  lockoutDurationSec: number;
 }
 
 export function getVendorAuthConfig(config: PlatformConfig): VendorAuthConfig {
   const a = config.auth;
-  if (!a) return { phoneOtp: false, emailOtp: false, usernamePassword: false, google: false, facebook: false, magicLink: false };
+  if (!a) return { phoneOtp: false, emailOtp: false, usernamePassword: false, google: false, facebook: false, magicLink: false, lockoutEnabled: true, lockoutMaxAttempts: 5, lockoutDurationSec: 300 };
   return {
     phoneOtp: resolveVendorFlag(a.phoneOtpEnabled),
     emailOtp: resolveVendorFlag(a.emailOtpEnabled),
@@ -178,6 +184,9 @@ export function getVendorAuthConfig(config: PlatformConfig): VendorAuthConfig {
     google: resolveVendorFlag(a.googleEnabled),
     facebook: resolveVendorFlag(a.facebookEnabled),
     magicLink: resolveVendorFlag(a.magicLinkEnabled),
+    lockoutEnabled: a.lockoutEnabled ?? true,
+    lockoutMaxAttempts: a.lockoutMaxAttempts ?? 5,
+    lockoutDurationSec: a.lockoutDurationSec ?? 300,
   };
 }
 
