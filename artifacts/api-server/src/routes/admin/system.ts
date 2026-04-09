@@ -139,6 +139,29 @@ router.get("/platform-settings", async (_req, res) => {
   sendSuccess(res, { settings: rows.map(r => ({ ...r, updatedAt: r.updatedAt.toISOString() })), grouped });
 });
 
+const ALLOWED_SETTING_KEYS = new Set(DEFAULT_PLATFORM_SETTINGS.map(s => s.key));
+
+const bulkSettingsSchema = z.object({
+  settings: z
+    .array(
+      z.object({
+        key: z.string().min(1, "key must be non-empty").max(100, "key must be at most 100 characters"),
+        value: z.string().max(5000, "value must be at most 5000 characters"),
+      }),
+    )
+    .min(1, "settings array must not be empty")
+    .max(500, "settings array must not exceed 500 items"),
+});
+
+function rejectUnknownKeys(settings: Array<{ key: string }>, res: import("express").Response): boolean {
+  const unknown = settings.filter(s => !ALLOWED_SETTING_KEYS.has(s.key)).map(s => s.key);
+  if (unknown.length > 0) {
+    sendError(res, `Unknown setting key(s): ${unknown.join(", ")}`, 422);
+    return true;
+  }
+  return false;
+}
+
 /* Keys that must be valid finite numbers */
 const NUMERIC_SETTING_KEYS = new Set([
   "dispatch_min_radius_km", "dispatch_max_radius_km", "dispatch_avg_speed_kmh",
@@ -212,9 +235,9 @@ function validateSettingValue(key: string, value: string): string | null {
   return null;
 }
 
-router.put("/platform-settings", async (req, res) => {
-  const { settings } = req.body as { settings: Array<{ key: string; value: string }> };
-  if (!Array.isArray(settings)) { sendValidationError(res, "settings array required"); return; }
+router.put("/platform-settings", validateBody(bulkSettingsSchema), async (req, res) => {
+  const { settings } = req.body as z.infer<typeof bulkSettingsSchema>;
+  if (rejectUnknownKeys(settings, res)) return;
   for (const { key, value } of settings) {
     const err = validateSettingValue(key, String(value));
     if (err) { sendError(res, err, 422); return; }
@@ -279,16 +302,11 @@ router.get("/platform-settings/backup", async (req, res) => {
 });
 
 /* ── Restore: import settings from a backup JSON ─────────────────────────── */
-router.post("/platform-settings/restore", async (req, res) => {
-  const { settings } = req.body as { settings: Array<{ key: string; value: string }> };
-  if (!Array.isArray(settings) || settings.length === 0) {
-    sendValidationError(res, "settings array required"); return;
-  }
+router.post("/platform-settings/restore", validateBody(bulkSettingsSchema), async (req, res) => {
+  const { settings } = req.body as z.infer<typeof bulkSettingsSchema>;
+  if (rejectUnknownKeys(settings, res)) return;
   const errors: string[] = [];
   for (const { key, value } of settings) {
-    if (typeof key !== "string" || typeof value !== "string") {
-      errors.push(`Invalid entry: ${JSON.stringify({ key, value })}`); continue;
-    }
     const err = validateSettingValue(key, value);
     if (err) errors.push(err);
   }
