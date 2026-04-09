@@ -23,6 +23,7 @@ export {
   ensureIdempotencyTable,
   ensureWalletNormalizedTxId,
   ensureTwoFactorEnforcedAt,
+  ensureSilenceModeColumns,
   ensureOtpSettings,
   getPlatformSettings,
   getAdminSecret,

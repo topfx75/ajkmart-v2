@@ -760,6 +760,33 @@ export async function ensureTwoFactorEnforcedAt() {
   _twoFactorEnforcedAtMigrated = true;
 }
 
+let _silenceModeMigrated = false;
+export async function ensureSilenceModeColumns() {
+  if (_silenceModeMigrated) return;
+
+  const alterations = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS silence_mode BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS silence_mode_until TIMESTAMPTZ`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active TIMESTAMPTZ`,
+  ];
+
+  for (const stmt of alterations) {
+    try {
+      await db.execute(sql.raw(stmt));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/already exists|duplicate column|42701/i.test(msg)) {
+        logger.fatal({ err: e }, `[migration] silenceMode: FATAL — ${stmt}`);
+        throw e;
+      }
+    }
+  }
+
+  logger.info("[migration] silenceMode: migration complete");
+  _silenceModeMigrated = true;
+}
+
 let _otpSettingsSeeded = false;
 export async function ensureOtpSettings() {
   if (_otpSettingsSeeded) return;
