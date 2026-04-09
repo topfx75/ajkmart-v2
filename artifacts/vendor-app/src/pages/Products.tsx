@@ -8,6 +8,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ImageUploader } from "../components/ImageUploader";
+import { PageError, SkeletonList } from "../components/PageStates";
 import { fc, CARD, INPUT, SELECT, TEXTAREA, BTN_PRIMARY, BTN_SECONDARY, LABEL, errMsg } from "../lib/ui";
 
 const EMPTY = { name:"", description:"", price:"", originalPrice:"", category:"", unit:"", stock:"", image:"", type:"mart" };
@@ -36,7 +37,7 @@ export default function Products() {
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
   const f = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["vendor-products", search, filterCat],
     queryFn: () => api.getProducts(search || undefined, filterCat !== "all" ? filterCat : undefined),
     refetchInterval: 60000,
@@ -493,10 +494,16 @@ export default function Products() {
           </div>
         )}
 
+        {isError && (
+          <PageError
+            message={T("somethingWentWrong")}
+            onRetry={() => refetch()}
+            retryLabel={T("tryAgain")}
+          />
+        )}
+
         {isLoading ? (
-          <div className="md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 space-y-3 md:space-y-0">
-            {[1,2,3,4].map(i => <div key={i} className="h-24 skeleton rounded-2xl"/>)}
-          </div>
+          <SkeletonList count={4} className="md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 space-y-3 md:space-y-0" />
         ) : products.length === 0 ? (
           <div className={`${CARD} px-4 py-16 text-center`}>
             <p className="text-5xl mb-4">{search || filterCat !== "all" ? "🔍" : "🍽️"}</p>
@@ -550,6 +557,8 @@ export default function Products() {
                     </div>
                     <div className="flex items-center gap-2 mt-2.5">
                       <button onClick={() => toggleMut.mutate({ id: p.id, inStock: !p.inStock })}
+                        role="switch" aria-checked={p.inStock}
+                        aria-label={`${p.name} ${T("stock")}`}
                         className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 ${p.inStock ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                         {p.inStock ? "✓ In Stock" : "✗ Out"}
                       </button>
@@ -557,7 +566,7 @@ export default function Products() {
                       <button onClick={() => {
                         if (!window.confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
                         deleteMut.mutate(p.id);
-                      }} className="h-8 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0">🗑️</button>
+                      }} className="h-8 px-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl android-press min-h-0" aria-label={`${T("deleteLabel")} ${p.name}`}>🗑️</button>
                     </div>
                   </div>
                 </div>

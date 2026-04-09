@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
+import { PageError } from "../components/PageStates";
 
 function StarBar({ starValue, count, total }: { starValue: number; count: number; total: number }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -53,7 +54,7 @@ export default function Reviews() {
 
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["vendor-reviews", page, stars, sort],
     queryFn: () => api.getVendorReviews({ page, limit: 15, stars: stars || undefined, sort }),
     staleTime: 30_000,
@@ -126,6 +127,13 @@ export default function Reviews() {
         subtitle={avgRating !== null ? `${avgRating.toFixed(1)} ★ · ${total} ${T("reviews")}` : T("customerFeedback")}
       />
       <div className="px-4 py-4 md:px-0 md:py-4 max-w-2xl mx-auto md:max-w-none">
+      {isError && (
+        <PageError
+          message={T("somethingWentWrong")}
+          onRetry={() => refetch()}
+          retryLabel={T("tryAgain")}
+        />
+      )}
 
       {/* Rating summary card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-5">

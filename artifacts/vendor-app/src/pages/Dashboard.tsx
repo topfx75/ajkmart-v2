@@ -8,6 +8,7 @@ import { tDual } from "@workspace/i18n";
 import { useState, useRef, useCallback } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { PullToRefresh } from "../components/PullToRefresh";
+import { PageError } from "../components/PageStates";
 import { fc, CARD, STAT_VAL, STAT_LBL, DEFAULT_COMMISSION_PCT, errMsg } from "../lib/ui";
 import { Truck } from "lucide-react";
 
@@ -53,7 +54,7 @@ export default function Dashboard() {
   const [acceptDialog, setAcceptDialog] = useState<{ orderId: string; total: number } | null>(null);
   const cancelReasonRef = useRef("");
 
-  const { data: stats, isLoading } = useQuery({ queryKey: ["vendor-stats"], queryFn: () => api.getStats(), refetchInterval: 30000 });
+  const { data: stats, isLoading, isError: statsError } = useQuery({ queryKey: ["vendor-stats"], queryFn: () => api.getStats(), refetchInterval: 30000 });
   const { data: ordersData } = useQuery({ queryKey: ["vendor-orders", "all"], queryFn: () => api.getOrders(), refetchInterval: 20000 });
   const { data: daStatus } = useQuery({ queryKey: ["vendor-delivery-access"], queryFn: () => api.getDeliveryAccessStatus(), refetchInterval: 60000 });
   const requestDeliveryMut = useMutation({
@@ -186,8 +187,16 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {statsError && (
+          <PageError
+            message={T("somethingWentWrong")}
+            onRetry={() => window.location.reload()}
+            retryLabel={T("tryAgain")}
+          />
+        )}
+
         {/* ── Stats ── */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:mb-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:mb-6" role="list" aria-label={T("yourStats")}>
           {statItems.map(s => (
             <div key={s.label} className={`${CARD} p-4 md:p-5`}>
               <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center text-xl mb-3`}>{s.icon}</div>

@@ -1,11 +1,13 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
+import { PullToRefresh } from "../components/PullToRefresh";
+import { PageError } from "../components/PageStates";
 import { fc, CARD, CARD_HEADER, BADGE_GREEN, BADGE_ORANGE, BADGE_RED, BADGE_GRAY } from "../lib/ui";
 
 const RANGES = [
@@ -28,12 +30,17 @@ export default function Analytics() {
   const { config } = usePlatformConfig();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["vendor-analytics", days],
     queryFn: () => api.getAnalytics(days),
     staleTime: 60000,
   });
+
+  const handlePullRefresh = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: ["vendor-analytics"] });
+  }, [qc]);
 
   const summary     = data?.summary     || {};
   const dailyData   = data?.daily       || [];
@@ -64,14 +71,15 @@ export default function Analytics() {
   ];
 
   return (
-    <div className="bg-gray-50 md:bg-transparent">
+    <PullToRefresh onRefresh={handlePullRefresh} className="bg-gray-50 md:bg-transparent">
       <PageHeader
         title={T("analytics")}
         subtitle={T("storePerformance")}
         actions={
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5" role="group" aria-label="Time range">
             {RANGES.map(r => (
               <button key={r.value} onClick={() => setDays(r.value)}
+                aria-pressed={days === r.value}
                 className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 transition-all
                   ${days === r.value ? "bg-white text-orange-500 md:bg-orange-500 md:text-white" : "bg-white/20 text-white md:bg-gray-100 md:text-gray-600"}`}>
                 {r.value} {T("daysLabel")}
@@ -82,8 +90,15 @@ export default function Analytics() {
       />
 
       <div className="px-4 py-4 space-y-4 md:px-0 md:py-4">
+        {isError && (
+          <PageError
+            message={T("somethingWentWrong")}
+            onRetry={() => refetch()}
+            retryLabel={T("tryAgain")}
+          />
+        )}
         {/* ── KPI Cards ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3" role="list" aria-label={T("analytics")}>
           {[
             { label: T("revenue"),       value: fc(totalRevenue),             icon: "💰", sub: `${days} ${T("dayTrend")}`, bg: "bg-orange-50", val: "text-orange-600" },
             { label: T("orders"),        value: String(totalOrders),          icon: "📦", sub: `${days} ${T("dayTrend")}`, bg: "bg-blue-50",   val: "text-blue-600"   },
@@ -259,6 +274,6 @@ export default function Analytics() {
           </div>
         </div>
       </div>
-    </div>
+    </PullToRefresh>
   );
 }

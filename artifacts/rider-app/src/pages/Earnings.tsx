@@ -8,8 +8,9 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
-import { tDual } from "@workspace/i18n";
+import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "../components/PullToRefresh";
+import { PageError } from "../components/PageStates";
 import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
 } from "../components/ui/accordion";
@@ -116,16 +117,11 @@ export default function Earnings() {
             </div>
           </>
         ) : isError ? (
-          <div className="bg-red-50 border border-red-100 rounded-3xl p-5 text-center">
-            <p className="text-sm font-bold text-red-700">Could not load earnings data.</p>
-            <p className="text-xs text-red-500 mt-1">Please check your connection and try again.</p>
-            <button
-              onClick={() => qc.invalidateQueries({ queryKey: ["rider-earnings"] })}
-              className="mt-3 flex items-center gap-1.5 mx-auto px-4 py-2 bg-red-100 text-red-700 text-xs font-bold rounded-xl active:bg-red-200 transition-colors"
-            >
-              <RefreshCw size={12} /> Retry
-            </button>
-          </div>
+          <PageError
+            message={T("somethingWentWrong")}
+            onRetry={() => qc.invalidateQueries({ queryKey: ["rider-earnings"] })}
+            retryLabel={T("tryAgain")}
+          />
         ) : (
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-gray-900 rounded-3xl p-5 text-white shadow-sm">
