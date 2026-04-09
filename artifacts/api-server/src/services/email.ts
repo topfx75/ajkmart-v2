@@ -106,9 +106,10 @@ export async function sendVerificationEmail(
       text: `${heading}\n\n${body}\n${verificationLink}\n\n${expiry}\n${ignore}`,
     });
     return { sent: true };
-  } catch (err: any) {
-    console.error(`[EMAIL] Failed to send verification email to ${to}:`, err?.message);
-    return { sent: false, reason: err?.message };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[EMAIL] Failed to send verification email to ${to}:`, msg);
+    return { sent: false, reason: msg };
   }
 }
 
@@ -151,9 +152,10 @@ export async function sendPasswordResetEmail(
       text: `${heading}\n\n${body} ${otp}\n\n${expiry}\n${ignore}`,
     });
     return { sent: true };
-  } catch (err: any) {
-    console.error(`[EMAIL] Failed to send reset email to ${to}:`, err?.message);
-    return { sent: false, reason: err?.message };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[EMAIL] Failed to send reset email to ${to}:`, msg);
+    return { sent: false, reason: msg };
   }
 }
 
@@ -203,9 +205,9 @@ export async function sendMagicLinkEmail(
   try {
     await tr.sendMail({ from: resolveFrom(), to: email, subject, html });
     return { sent: true };
-  } catch (err: any) {
-    console.error(`[EMAIL] Failed to send magic link to ${email}:`, err.message);
-    return { sent: false, error: err.message };
+  } catch (err: unknown) {
+    console.error(`[EMAIL] Failed to send magic link to ${email}:`, (err instanceof Error ? err.message : String(err)));
+    return { sent: false, error: (err instanceof Error ? err.message : String(err)) };
   }
 }
 
@@ -271,9 +273,9 @@ export async function sendAdminAlert(
     await tr.sendMail({ from, to, subject: `[${appName}] ${subject}`, html: fullHtml });
     console.log(`[EMAIL:admin-alert] Sent "${alertType}" alert to ${to}`);
     return { sent: true };
-  } catch (err: any) {
-    console.error(`[EMAIL:admin-alert] Failed to send "${alertType}" alert:`, err.message);
-    return { sent: false, error: err.message };
+  } catch (err: unknown) {
+    console.error(`[EMAIL:admin-alert] Failed to send "${alertType}" alert:`, (err instanceof Error ? err.message : String(err)));
+    return { sent: false, error: (err instanceof Error ? err.message : String(err)) };
   }
 }
 

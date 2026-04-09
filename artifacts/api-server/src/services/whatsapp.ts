@@ -66,15 +66,15 @@ async function sendTemplate(
       }
     );
 
-    const body = await resp.json() as any;
+    const body = await resp.json() as { messages?: Array<{ id?: string }>; error?: { message?: string } };
 
     if (!resp.ok) {
       return { sent: false, error: body?.error?.message ?? `HTTP ${resp.status}` };
     }
 
     return { sent: true, messageId: body?.messages?.[0]?.id };
-  } catch (err: any) {
-    return { sent: false, error: err.message };
+  } catch (err: unknown) {
+    return { sent: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

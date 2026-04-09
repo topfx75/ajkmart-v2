@@ -372,7 +372,7 @@ router.patch("/ride-services/:id", async (req, res) => {
   if (maxPassengers !== undefined) patch["maxPassengers"]  = Number(maxPassengers);
   if (allowBargaining !== undefined) patch["allowBargaining"] = Boolean(allowBargaining);
   if (sortOrder     !== undefined) patch["sortOrder"]      = Number(sortOrder);
-  const [updated] = await db.update(rideServiceTypesTable).set(patch as any).where(eq(rideServiceTypesTable.id, svcId)).returning();
+  const [updated] = await db.update(rideServiceTypesTable).set(patch as Partial<typeof rideServiceTypesTable.$inferInsert>).where(eq(rideServiceTypesTable.id, svcId)).returning();
   sendSuccess(res, { service: formatSvc(updated) });
 });
 
@@ -733,7 +733,7 @@ router.get("/customer-locations", async (_req, res) => {
 router.patch("/riders/:id/online", async (req, res) => {
   const { isOnline } = req.body as { isOnline: boolean };
   const [rider] = await db.update(usersTable)
-    .set({ isOnline, updatedAt: new Date() } as any)
+    .set({ isOnline, updatedAt: new Date() })
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
   if (!rider) { sendNotFound(res, "Rider not found"); return; }
@@ -1051,7 +1051,7 @@ router.post("/rides/:id/reassign", async (req, res) => {
   const oldRiderId = ride.riderId;
   const resolvedName = riderName || riderUser.name;
   const resolvedPhone = riderPhone || riderUser.phone;
-  const updateData: Record<string, any> = {
+  const updateData: Partial<typeof ridesTable.$inferInsert> & { riderId: string; updatedAt: Date } = {
     riderId,
     riderName: resolvedName,
     riderPhone: resolvedPhone,

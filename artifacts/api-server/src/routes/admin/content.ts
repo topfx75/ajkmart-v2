@@ -269,7 +269,7 @@ router.post("/categories", async (req, res) => {
 router.patch("/categories/:id", async (req, res) => {
   const { name, icon, type, parentId, sortOrder, isActive } = req.body;
 
-  const updates: Record<string, any> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (name !== undefined) updates.name = name;
   if (icon !== undefined) updates.icon = icon;
   if (type !== undefined) updates.type = type;
@@ -468,7 +468,7 @@ router.post("/flash-deals", async (req, res) => {
 
 router.patch("/flash-deals/:id", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const updates: Record<string, any> = {};
+  const updates: Record<string, unknown> = {};
   if (body.title        !== undefined) updates.title        = body.title;
   if (body.badge        !== undefined) updates.badge        = body.badge;
   if (body.discountPct  !== undefined) updates.discountPct  = body.discountPct  ? String(body.discountPct)  : null;
@@ -534,7 +534,7 @@ router.post("/promo-codes", async (req, res) => {
 
 router.patch("/promo-codes/:id", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const updates: Record<string, any> = {};
+  const updates: Record<string, unknown> = {};
   if (body.code           !== undefined) updates.code           = String(body.code).toUpperCase().trim();
   if (body.description    !== undefined) updates.description    = body.description;
   if (body.discountPct    !== undefined) updates.discountPct    = body.discountPct    ? String(body.discountPct)    : null;
@@ -575,8 +575,8 @@ router.post("/uploads/admin", async (req, res) => {
     fs.writeFileSync(path.join(uploadsDir, uniqueName), buffer);
     const url = `/api/uploads/${uniqueName}`;
     sendSuccess(res, { url });
-  } catch (e: any) {
-    sendError(res, e.message || "Upload failed", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Upload failed", 500);
   }
 });
 

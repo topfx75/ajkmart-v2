@@ -116,7 +116,7 @@ router.post("/admin-accounts", async (req, res) => {
 
 router.patch("/admin-accounts/:id", async (req, res) => {
   const body = req.body as Record<string, unknown>;
-  const updates: Record<string, any> = {};
+  const updates: Record<string, unknown> = {};
   if (body.name        !== undefined) updates.name        = body.name;
   if (body.role        !== undefined) updates.role        = body.role;
   if (body.permissions !== undefined) updates.permissions = body.permissions;

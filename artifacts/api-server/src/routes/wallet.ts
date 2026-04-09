@@ -634,12 +634,12 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
     sendSuccess(res, responseData);
   } catch (e: unknown) {
     if (sendCacheKey) idempotencyCache.delete(sendCacheKey);
-    const err = e as any;
+    const err = e as { walletFrozen?: string; message?: string };
     if (err.walletFrozen === "sender") {
       sendForbidden(res, "wallet_frozen", err.message); return;
     }
     if (err.walletFrozen === "receiver") {
-      sendErrorWithData(res, err.message, { walletFrozen: true }, 403); return;
+      sendErrorWithData(res, err.message ?? "Wallet is frozen", { walletFrozen: true }, 403); return;
     }
     const knownErrors = [
       "Insufficient", "Daily", "Sender not found", "Receiver not found",
@@ -647,7 +647,7 @@ router.post("/send", customerAuth, requireWalletPin, async (req, res) => {
     ];
     const isKnown = knownErrors.some(k => (err.message ?? "").includes(k));
     if (isKnown) {
-      sendValidationError(res, err.message);
+      sendValidationError(res, err.message ?? "Transaction failed");
     } else {
       logger.error("[wallet /send] Unexpected error:", e);
       sendError(res, "Something went wrong, please try again.", 500);

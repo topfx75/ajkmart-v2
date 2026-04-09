@@ -44,22 +44,23 @@ router.get("/whatsapp", async (req, res) => {
 });
 
 router.post("/whatsapp", async (req, res) => {
-  const body = req.body as any;
+  interface WABody { object?: string; entry?: Array<{ changes?: Array<{ value?: { messages?: Array<{ from?: string; type?: string; text?: { body?: string } }>; statuses?: Array<{ id?: string; status?: string; timestamp?: string; recipient_id?: string }> } }> }> }
+  const body = req.body as WABody;
 
   if (body?.object !== "whatsapp_business_account") {
     res.status(400).send("Not a WhatsApp event");
     return;
   }
 
-  const entries: any[] = body?.entry ?? [];
+  const entries = body?.entry ?? [];
 
   for (const entry of entries) {
     for (const change of entry?.changes ?? []) {
       const value = change?.value;
       if (!value) continue;
 
-      const messages: any[] = value?.messages ?? [];
-      const statuses: any[] = value?.statuses ?? [];
+      const messages = value?.messages ?? [];
+      const statuses = value?.statuses ?? [];
 
       for (const msg of messages) {
         const from = msg?.from;

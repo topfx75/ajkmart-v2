@@ -45,8 +45,8 @@ const patchStoreSchema = z.object({
   storeLng:          z.union([z.string(), z.number()]).optional().nullable(),
 });
 
-function safeNum(v: any, def = 0) { return parseFloat(String(v ?? def)) || def; }
-function formatUser(user: any) {
+function safeNum(v: unknown, def = 0) { return parseFloat(String(v ?? def)) || def; }
+function formatUser(user: Record<string, unknown>) {
   return {
     id: user.id, phone: user.phone, name: user.name, email: user.email,
     username: user.username,
@@ -165,7 +165,7 @@ router.get("/stats", async (req, res) => {
 router.get("/orders", async (req, res) => {
   const vendorId = req.vendorId!;
   const status = req.query["status"] as string | undefined;
-  const conditions: any[] = [eq(ordersTable.vendorId, vendorId)];
+  const conditions: ReturnType<typeof and>[] = [eq(ordersTable.vendorId, vendorId)];
   if (status && status !== "all") {
     if (status === "new") conditions.push(or(eq(ordersTable.status, "pending"), eq(ordersTable.status, "confirmed")));
     else if (status === "active") conditions.push(or(eq(ordersTable.status, "preparing"), eq(ordersTable.status, "ready"), eq(ordersTable.status, "picked_up"), eq(ordersTable.status, "out_for_delivery")));
@@ -292,7 +292,7 @@ router.get("/products", async (req, res) => {
   const vendorId = req.vendorId!;
   const q = req.query["q"] as string | undefined;
   const cat = req.query["category"] as string | undefined;
-  const conditions: any[] = [eq(productsTable.vendorId, vendorId)];
+  const conditions: ReturnType<typeof and>[] = [eq(productsTable.vendorId, vendorId)];
   if (q) conditions.push(ilike(productsTable.name, `%${q}%`));
   if (cat && cat !== "all") conditions.push(eq(productsTable.category, cat));
   const products = await db.select().from(productsTable).where(and(...conditions)).orderBy(desc(productsTable.createdAt));
@@ -598,7 +598,7 @@ router.get("/reviews", async (req, res) => {
   const starsFilter = req.query["stars"] as string | undefined;
   const sort = req.query["sort"] as string || "newest";
 
-  const conditions: any[] = [eq(reviewsTable.vendorId, vendorId), eq(reviewsTable.hidden, false), isNull(reviewsTable.deletedAt)];
+  const conditions: ReturnType<typeof and>[] = [eq(reviewsTable.vendorId, vendorId), eq(reviewsTable.hidden, false), isNull(reviewsTable.deletedAt)];
   if (starsFilter) conditions.push(eq(reviewsTable.rating, parseInt(starsFilter)));
 
   const [statsRow] = await db
@@ -856,8 +856,8 @@ router.get("/delivery-access/status", async (req, res) => {
       );
 
     sendSuccess(res, { mode, statuses, pendingRequests });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch delivery status", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch delivery status", 500);
   }
 });
 
@@ -913,8 +913,8 @@ router.post("/delivery-access/request", async (req, res) => {
     } catch {}
 
     sendCreated(res, { id, status: "pending" });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to submit request", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to submit request", 500);
   }
 });
 

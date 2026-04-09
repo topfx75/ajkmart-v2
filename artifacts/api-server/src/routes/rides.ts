@@ -419,9 +419,9 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
       if (!googleKey) return buildHaversineFallback(haversine, s);
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat1},${lng1}&destination=${lat2},${lng2}&mode=driving&key=${googleKey}`;
       const raw  = await fetch(url, { signal: AbortSignal.timeout(4000) });
-      const data = await raw.json() as any;
+      const data = await raw.json() as { status?: string; routes?: Array<{ legs: Array<{ distance: { value: number }; duration: { value: number } }> }> };
       if (data.status === "OK" && data.routes?.length) {
-        const leg = data.routes[0].legs[0];
+        const leg = data.routes[0]!.legs[0]!;
         return {
           distanceKm:      Math.round(leg.distance.value / 100) / 10,
           durationSeconds: leg.duration.value,
@@ -436,7 +436,7 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
       if (!mapboxKey) return buildHaversineFallback(haversine, s);
       const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lng1},${lat1};${lng2},${lat2}?access_token=${mapboxKey}&overview=false`;
       const raw  = await fetch(url, { signal: AbortSignal.timeout(4000) });
-      const data = await raw.json() as any;
+      const data = await raw.json() as { routes?: Array<{ distance: number; duration: number }> };
       if (data.routes?.length) {
         return {
           distanceKm:      Math.round(data.routes[0].distance / 100) / 10,
@@ -1169,7 +1169,7 @@ router.patch("/:id/accept-bid", customerAuth, async (req, res) => {
     return;
   }
 
-  let updated: any;
+  let updated: { rideUpdate: typeof ridesTable.$inferSelect; bid: typeof rideBidsTable.$inferSelect };
   try {
     updated = await db.transaction(async (tx) => {
       const [ride] = await tx.select().from(ridesTable)

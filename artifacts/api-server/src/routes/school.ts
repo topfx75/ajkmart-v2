@@ -13,7 +13,7 @@ import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendV
 
 const router: IRouter = Router();
 
-const safeNum = (v: any, def = 0) => { const n = parseFloat(String(v ?? def)); return isNaN(n) ? def : n; };
+const safeNum = (v: unknown, def = 0) => { const n = parseFloat(String(v ?? def)); return isNaN(n) ? def : n; };
 
 function formatRoute(r: Record<string, unknown>) {
   return {

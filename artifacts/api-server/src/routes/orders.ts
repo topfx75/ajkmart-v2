@@ -466,14 +466,14 @@ router.post("/", customerAuth, async (req, res) => {
     const unavailable: string[] = [];
     const priceChanges: string[] = [];
 
-    for (const item of items as any[]) {
-      const dbProduct = productMap.get(item.productId);
+    for (const item of items as Array<{ productId?: string; name?: string; price?: number; quantity?: number; weightKg?: string }>) {
+      const dbProduct = productMap.get(item.productId ?? "");
       if (!dbProduct) {
-        unavailable.push(item.name || item.productId);
+        unavailable.push(item.name || item.productId || "");
         continue;
       }
       if (dbProduct.inStock === false) {
-        unavailable.push(dbProduct.name || item.productId);
+        unavailable.push(dbProduct.name || item.productId || "");
         continue;
       }
       const dbPrice = parseFloat(dbProduct.price);
@@ -591,7 +591,7 @@ router.post("/", customerAuth, async (req, res) => {
 
   /* ── Delivery fee, GST, COD fee — via shared utility (see lib/fees.ts) ── */
   const itemWeight  = type === "parcel"
-    ? items.reduce((sum: number, it: any) => sum + parseFloat(it.weightKg ?? "0"), 0)
+    ? (items as Array<{ weightKg?: string }>).reduce((sum: number, it) => sum + parseFloat(it.weightKg ?? "0"), 0)
     : 0;
   const deliveryFee = calcDeliveryFee(s, type, itemsTotal, itemWeight);
   const gstAmount   = calcGst(s, itemsTotal);
@@ -816,7 +816,7 @@ router.post("/", customerAuth, async (req, res) => {
       const mapped = { ...mapOrder(order, deliveryFee, gstAmount, codFee), promoDiscount };
 
       /* ── Emit new-order to admin/vendor IMMEDIATELY after DB commit ── */
-      broadcastNewOrder(mapped, (order as any).vendorId);
+      broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string }).vendorId);
 
       /* ── Two-Way ACK: confirm order receipt back to the customer ── */
       const io = getIO();
@@ -858,7 +858,7 @@ router.post("/", customerAuth, async (req, res) => {
     const mapped = { ...mapOrder(order!, deliveryFee, gstAmount, codFee), promoDiscount };
 
     /* ── Emit to admin IMMEDIATELY after DB commit (Task 7: <500ms latency) ── */
-    broadcastNewOrder(mapped, (order as any)?.vendorId);
+    broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string })?.vendorId);
 
     /* ── Two-Way ACK for non-wallet orders ── */
     const io = getIO();
@@ -936,7 +936,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       if (updatedUser) broadcastWalletUpdate(userId, parseFloat(updatedUser.walletBalance ?? "0"));
     }
 
-    broadcastOrderUpdate(mapOrder(order), (order as any).vendorId);
+    broadcastOrderUpdate(mapOrder(order), (order as typeof ordersTable.$inferSelect & { vendorId?: string }).vendorId);
 
     addAuditEntry({
       action: "order_cancel",

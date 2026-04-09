@@ -697,13 +697,16 @@ router.get("/active", async (req, res) => {
 
   let enrichedOrder = null;
   if (order[0]) {
-    const promises: [Promise<any>, Promise<any>] = [
+    const promises: [
+      Promise<Array<{ name: string | null; phone: string | null }>>,
+      Promise<Array<{ storeName: string | null; phone: string | null }>>,
+    ] = [
       db.select({ name: usersTable.name, phone: usersTable.phone })
         .from(usersTable).where(eq(usersTable.id, order[0].userId)).limit(1),
       order[0].vendorId
         ? db.select({ storeName: usersTable.storeName, phone: usersTable.phone })
             .from(usersTable).where(eq(usersTable.id, order[0].vendorId)).limit(1)
-        : Promise.resolve([]),
+        : Promise.resolve([] as Array<{ storeName: string | null; phone: string | null }>),
     ];
     const [customerRows, vendorRows] = await Promise.all(promises);
     const customer = customerRows[0];
@@ -1021,7 +1024,7 @@ router.patch("/orders/:id/status", async (req, res) => {
     sendValidationError(res, `Cannot change order from "${order.status}" to "${status}". Allowed: ${allowedNext.join(", ") || "none"}.`); return;
   }
 
-  const updateData: Record<string, any> = { status, updatedAt: new Date() };
+  const updateData: Partial<typeof ordersTable.$inferInsert> & { status: string; updatedAt: Date } = { status, updatedAt: new Date() };
   if (status === "delivered" && proofPhoto) {
     updateData.proofPhotoUrl = proofPhoto;
   }
@@ -2065,8 +2068,8 @@ router.post("/cod/remit", async (req, res) => {
     }
 
     res.json({ success: true, transactionId: txId, message: "Remittance submitted for admin verification" });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message || "Failed to submit remittance" });
+  } catch (e: unknown) {
+    res.status(500).json({ error: (e instanceof Error ? e.message : null) || "Failed to submit remittance" });
   }
 });
 

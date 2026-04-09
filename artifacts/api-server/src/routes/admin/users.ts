@@ -58,11 +58,12 @@ router.post("/users", async (req, res) => {
       walletBalance: "1000",
     }).returning();
     sendSuccess(res, { user: stripUser(user!) });
-  } catch (e: any) {
-    if (e.message?.includes("duplicate")) {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg?.includes("duplicate")) {
       sendError(res, "A user with this phone or email already exists", 409);
     } else {
-      sendError(res, e.message, 500);
+      sendError(res, msg, 500);
     }
   }
 });
@@ -104,7 +105,7 @@ router.get("/users", async (req, res) => {
   const conditionTier = (req.query?.conditionTier as string) ?? "";
   let query = db.select().from(usersTable);
   if (filter === "2fa_enabled") {
-    query = query.where(eq(usersTable.totpEnabled, true)) as any;
+    query = query.where(eq(usersTable.totpEnabled, true)) as typeof query;
   }
   const users = await query.orderBy(desc(usersTable.createdAt));
 
@@ -370,8 +371,10 @@ router.patch("/users/:id/security", async (req, res) => {
 
   if (willBeBanned !== alreadyBanned) {
     delete updates.isBanned;
-    delete (updates as any).isActive;
-    delete (updates as any).banReason;
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete (updates as Partial<typeof usersTable.$inferInsert>).isActive;
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete (updates as Partial<typeof usersTable.$inferInsert>).banReason;
   }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id!)).returning();
   if (!user) { sendNotFound(res, "User not found"); return; }

@@ -156,7 +156,7 @@ router.post("/", adminAuth, validateBody(createCategorySchema), async (req, res)
 router.patch("/:id", adminAuth, async (req, res) => {
   const { name, icon, type, parentId, sortOrder, isActive } = req.body;
 
-  const updates: Record<string, any> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (name !== undefined) updates.name = name;
   if (icon !== undefined) updates.icon = icon;
   if (type !== undefined) updates.type = type;

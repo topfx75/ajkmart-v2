@@ -47,7 +47,7 @@ router.put("/", async (req, res) => {
   const userId = req.customerId!;
   const raw = req.body;
 
-  const updates: Record<string, any> = {};
+  const updates: Record<string, unknown> = {};
   for (const key of Object.keys(raw)) {
     if (!ALLOWED_FIELDS.has(key)) continue;
     if (BOOLEAN_FIELDS.has(key)) {

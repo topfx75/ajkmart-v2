@@ -107,7 +107,7 @@ router.get("/platform-settings", async (_req, res) => {
   /* Always seed new defaults (onConflictDoNothing keeps existing values intact) */
   await db.insert(platformSettingsTable).values(DEFAULT_PLATFORM_SETTINGS).onConflictDoNothing();
   const rows = await db.select().from(platformSettingsTable);
-  const grouped: Record<string, any[]> = {};
+  const grouped: Record<string, Array<{ key: string; value: string; label: string; updatedAt: string }>> = {};
   for (const row of rows) {
     if (!grouped[row.category]) grouped[row.category] = [];
     grouped[row.category]!.push({ key: row.key, value: row.value, label: row.label, updatedAt: row.updatedAt.toISOString() });
@@ -348,8 +348,8 @@ router.post("/test-integration/email", async (_req, res) => {
     } else {
       sendError(res, result.reason ?? result.error ?? "Email test failed", 400);
     }
-  } catch (err: any) {
-    sendError(res, err.message ?? "Email test failed unexpectedly", 502);
+  } catch (err: unknown) {
+    sendError(res, (err instanceof Error ? err.message : null) ?? "Email test failed unexpectedly", 502);
   }
 });
 
@@ -365,8 +365,8 @@ router.post("/test-integration/sms", async (req, res) => {
     } else {
       sendError(res, result.error ?? "SMS test failed", 400);
     }
-  } catch (err: any) {
-    sendError(res, err.message ?? "SMS test failed unexpectedly", 502);
+  } catch (err: unknown) {
+    sendError(res, (err instanceof Error ? err.message : null) ?? "SMS test failed unexpectedly", 502);
   }
 });
 
@@ -386,8 +386,8 @@ router.post("/test-integration/whatsapp", async (req, res) => {
     } else {
       sendError(res, result.error ?? "WhatsApp test failed", 400);
     }
-  } catch (err: any) {
-    sendError(res, err.message ?? "WhatsApp test failed unexpectedly", 502);
+  } catch (err: unknown) {
+    sendError(res, (err instanceof Error ? err.message : null) ?? "WhatsApp test failed unexpectedly", 502);
   }
 });
 
@@ -425,21 +425,21 @@ router.post("/test-integration/fcm", async (req, res) => {
       }),
     });
 
-    const body = await resp.json() as any;
+    const body = await resp.json() as { error?: string; failure?: number; results?: Array<{ error?: string; message_id?: string }> };
 
     if (!resp.ok) {
       sendError(res, body?.error ?? `FCM HTTP ${resp.status}`, 400);
       return;
     }
-    if (body?.failure > 0) {
+    if (body?.failure && body.failure > 0) {
       const errDetail = body?.results?.[0]?.error ?? "Unknown FCM error";
       sendError(res, `FCM rejected the message: ${errDetail}`, 400);
       return;
     }
 
     sendSuccess(res, { sent: true, message: `Test push notification sent to device token successfully`, fcmMessageId: body?.results?.[0]?.message_id });
-  } catch (err: any) {
-    sendError(res, err.message ?? "FCM test failed unexpectedly", 502);
+  } catch (err: unknown) {
+    sendError(res, (err instanceof Error ? err.message : null) ?? "FCM test failed unexpectedly", 502);
   }
 });
 
@@ -464,7 +464,7 @@ router.post("/test-integration/maps", async (req, res) => {
       provider = "google";
       const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(testQuery)}&key=${googleKey}`;
       const resp = await fetch(url);
-      const body = await resp.json() as any;
+      const body = await resp.json() as { status?: string; error_message?: string; results?: Array<{ geometry?: { location?: unknown } }> };
       if (body?.status !== "OK") {
         sendError(res, `Google Maps geocoding failed: ${body?.status} — ${body?.error_message ?? ""}`, 400);
         return;
@@ -478,7 +478,7 @@ router.post("/test-integration/maps", async (req, res) => {
       provider = "mapbox";
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(testQuery)}.json?access_token=${mapboxKey}`;
       const resp = await fetch(url);
-      const body = await resp.json() as any;
+      const body = await resp.json() as { message?: string; features?: Array<{ center?: unknown }> };
       if (!resp.ok || !body?.features?.length) {
         sendError(res, `Mapbox geocoding failed: ${body?.message ?? `HTTP ${resp.status}`}`, 400);
         return;
@@ -492,12 +492,14 @@ router.post("/test-integration/maps", async (req, res) => {
       provider = "locationiq";
       const url = `https://us1.locationiq.com/v1/search.php?key=${locationIqKey}&q=${encodeURIComponent(testQuery)}&format=json&limit=1`;
       const resp = await fetch(url);
-      const body = await resp.json() as any;
+      const body = await resp.json() as Array<{ lat?: unknown; lon?: unknown; error?: string }> | { error?: string };
       if (!resp.ok || (Array.isArray(body) && body.length === 0)) {
-        sendError(res, `LocationIQ geocoding failed: ${body?.error ?? `HTTP ${resp.status}`}`, 400);
+        const errMsg = Array.isArray(body) ? undefined : body?.error;
+        sendError(res, `LocationIQ geocoding failed: ${errMsg ?? `HTTP ${resp.status}`}`, 400);
         return;
       }
-      result = { lat: body?.[0]?.lat, lon: body?.[0]?.lon };
+      const bodyArr = Array.isArray(body) ? body : [];
+      result = { lat: bodyArr[0]?.lat, lon: bodyArr[0]?.lon };
     } else {
       sendError(res, "No maps provider is configured. Set up an API key in Integrations → Maps.", 400);
       return;
@@ -505,8 +507,8 @@ router.post("/test-integration/maps", async (req, res) => {
 
     const latencyMs = Date.now() - start;
     sendSuccess(res, { sent: true, provider, latencyMs, result, query: testQuery });
-  } catch (err: any) {
-    sendError(res, err.message ?? "Maps test failed unexpectedly", 502);
+  } catch (err: unknown) {
+    sendError(res, (err instanceof Error ? err.message : null) ?? "Maps test failed unexpectedly", 502);
   }
 });
 
@@ -558,7 +560,7 @@ router.get("/all-notifications", async (req, res) => {
   const limit = Math.min(parseInt(String(req.query["limit"] || "100")), 300);
   let userIds: string[] = [];
   if (role) {
-    const users = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role as any, role));
+    const users = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, role));
     userIds = users.map(u => u.id);
     if (userIds.length === 0) { sendSuccess(res, { notifications: [] }); return; }
   }

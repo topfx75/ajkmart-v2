@@ -107,7 +107,7 @@ router.get("/vendors", async (_req, res) => {
 
 router.patch("/vendors/:id/status", async (req, res) => {
   const { isActive, isBanned, banReason, securityNote } = req.body;
-  const updates: Record<string, any> = { updatedAt: new Date() };
+  const updates: Partial<typeof usersTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
   if (isActive    !== undefined) updates.isActive    = isActive;
   if (isBanned    !== undefined) updates.isBanned    = isBanned;
   if (banReason   !== undefined) updates.banReason   = banReason || null;
@@ -220,7 +220,7 @@ router.get("/riders", async (_req, res) => {
       avgRating: ratingMap.get(r.id)?.avg ?? 0,
       ratingCount: ratingMap.get(r.id)?.count ?? 0,
       roles: r.roles, role: r.role,
-      isOnline: (r as any).isOnline ?? false,
+      isOnline: (r as Record<string, unknown>)["isOnline"] as boolean ?? false,
       createdAt: r.createdAt.toISOString(),
       lastLoginAt: r.lastLoginAt ? r.lastLoginAt.toISOString() : null,
     })),
@@ -230,7 +230,7 @@ router.get("/riders", async (_req, res) => {
 
 router.patch("/riders/:id/status", async (req, res) => {
   const { isActive, isBanned, banReason } = req.body;
-  const updates: Record<string, any> = { updatedAt: new Date() };
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (isActive  !== undefined) updates.isActive  = isActive;
   if (isBanned  !== undefined) updates.isBanned  = isBanned;
   if (banReason !== undefined) updates.banReason = banReason || null;
@@ -782,7 +782,7 @@ router.patch("/vendors/:id/commission", async (req, res) => {
     sendValidationError(res, "commissionPct required"); return;
   }
   const [vendor] = await db.update(usersTable)
-    .set({ commissionOverride: String(commissionPct), updatedAt: new Date() } as any)
+    .set({ commissionOverride: String(commissionPct), updatedAt: new Date() } as Partial<typeof usersTable.$inferInsert>)
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
   if (!vendor) { sendNotFound(res, "Vendor not found"); return; }
@@ -813,7 +813,7 @@ router.post("/riders/:id/override-suspension", async (req, res) => {
     icon: "shield-checkmark-outline",
   }).catch(() => {});
 
-  sendSuccess(res, { user: stripUser(updated as any) });
+  sendSuccess(res, { user: stripUser(updated) });
 });
 
 /* ── POST /admin/vendors/:id/override-suspension — override auto-suspension ─ */
@@ -839,7 +839,7 @@ router.post("/vendors/:id/override-suspension", async (req, res) => {
     icon: "shield-checkmark-outline",
   }).catch(() => {});
 
-  sendSuccess(res, { user: stripUser(updated as any) });
+  sendSuccess(res, { user: stripUser(updated) });
 });
 
 export default router;

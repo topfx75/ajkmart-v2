@@ -60,9 +60,9 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
       await client.messages.create({ body: message, from, to: e164 });
       console.log(`[SMS:twilio] Sent to ${e164}`);
       return { sent: true, provider: "twilio" };
-    } catch (err: any) {
-      console.error(`[SMS:twilio] Error:`, err.message);
-      return { sent: false, provider: "twilio", error: err.message };
+    } catch (err: unknown) {
+      console.error(`[SMS:twilio] Error:`, (err instanceof Error ? err.message : String(err)));
+      return { sent: false, provider: "twilio", error: (err instanceof Error ? err.message : String(err)) };
     }
   }
 
@@ -83,9 +83,9 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
         return { sent: true, provider: "msg91" };
       }
       return { sent: false, provider: "msg91", error: body };
-    } catch (err: any) {
-      console.error(`[SMS:msg91] Error:`, err.message);
-      return { sent: false, provider: "msg91", error: err.message };
+    } catch (err: unknown) {
+      console.error(`[SMS:msg91] Error:`, (err instanceof Error ? err.message : String(err)));
+      return { sent: false, provider: "msg91", error: (err instanceof Error ? err.message : String(err)) };
     }
   }
 
@@ -124,9 +124,9 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
       }
       const errText = await resp.text().catch(() => `HTTP ${resp.status}`);
       return { sent: false, provider: "zong", error: errText };
-    } catch (err: any) {
-      console.error(`[SMS:zong] Error:`, err.message);
-      return { sent: false, provider: "zong", error: err.message };
+    } catch (err: unknown) {
+      console.error(`[SMS:zong] Error:`, (err instanceof Error ? err.message : String(err)));
+      return { sent: false, provider: "zong", error: (err instanceof Error ? err.message : String(err)) };
     }
   }
 

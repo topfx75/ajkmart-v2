@@ -258,9 +258,9 @@ router.post(
       });
 
       res.json({ success: true, message: "KYC submitted successfully. Our team will review within 24 hours." });
-    } catch (err: any) {
-      if (err?.statusCode === 400) { res.status(400).json({ error: err.message }); return; }
-      if (err?.statusCode === 409) { res.status(409).json({ error: err.message }); return; }
+    } catch (err: unknown) {
+      if ((err as {statusCode?:number})?.statusCode === 400) { res.status(400).json({ error: (err instanceof Error ? err.message : String(err)) }); return; }
+      if ((err as {statusCode?:number})?.statusCode === 409) { res.status(409).json({ error: (err instanceof Error ? err.message : String(err)) }); return; }
       logger.error({ err }, "KYC submit error");
       res.status(500).json({ error: "Failed to submit KYC. Please try again." });
     }
@@ -423,9 +423,9 @@ router.post("/submit-base64", customerAuth, async (req, res) => {
     });
 
     res.json({ success: true, message: "KYC submitted successfully. Our team will review within 24 hours." });
-  } catch (err: any) {
-    if (err?.statusCode === 400) { res.status(400).json({ error: err.message }); return; }
-    if (err?.statusCode === 409) { res.status(409).json({ error: err.message }); return; }
+  } catch (err: unknown) {
+    if ((err as {statusCode?:number})?.statusCode === 400) { res.status(400).json({ error: (err instanceof Error ? err.message : String(err)) }); return; }
+    if ((err as {statusCode?:number})?.statusCode === 409) { res.status(409).json({ error: (err instanceof Error ? err.message : String(err)) }); return; }
     logger.error({ err }, "KYC submit-base64 error");
     res.status(500).json({ error: "Failed to submit KYC. Please try again." });
   }

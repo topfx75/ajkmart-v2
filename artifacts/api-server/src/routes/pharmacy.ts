@@ -252,7 +252,8 @@ router.post("/", customerAuth, async (req, res) => {
   }
 
   /* Per-item validation — prevents negative-price injection */
-  const badItem = (items as any[]).find(
+  const typedItems = items as Array<{ id?: string; price?: number; quantity?: number; requires_prescription?: boolean; requiresPrescription?: boolean }>;
+  const badItem = typedItems.find(
     (it) => !Number.isFinite(Number(it.price)) || Number(it.price) <= 0 ||
             !Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0,
   );
@@ -269,7 +270,7 @@ router.post("/", customerAuth, async (req, res) => {
   let hasRxItem = alwaysRx;
 
   if (!hasRxItem) {
-    const itemIds = (items as any[]).map((it: any) => it.id).filter(Boolean);
+    const itemIds = typedItems.map((it) => it.id).filter((id): id is string => Boolean(id));
     if (itemIds.length > 0) {
       try {
         const dbProducts = await db
@@ -279,13 +280,13 @@ router.post("/", customerAuth, async (req, res) => {
         const RX_KEYWORDS = /\b(antibiotic|amoxicillin|azithromycin|ciprofloxacin|metformin|insulin|steroid|cortisone|opioid|codeine|tramadol|diazepam|alprazolam|morphine|fentanyl|prescription|rx only)\b/i;
         hasRxItem = dbProducts.some(p => RX_KEYWORDS.test(p.name ?? "") || p.category === "prescription");
         if (!hasRxItem) {
-          const unlistedRx = (items as any[]).some((it: any) => it.requires_prescription || it.requiresPrescription);
+          const unlistedRx = typedItems.some((it) => it.requires_prescription || it.requiresPrescription);
           hasRxItem = unlistedRx;
         }
       } catch { /* non-fatal: fall back to client flag on DB error */ }
     }
     if (!hasRxItem) {
-      hasRxItem = (items as any[]).some((it: any) => it.requires_prescription || it.requiresPrescription);
+      hasRxItem = typedItems.some((it) => it.requires_prescription || it.requiresPrescription);
     }
   }
 
@@ -470,8 +471,8 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       });
       return updated;
     }).catch((err: unknown) => {
-      const e = err as any;
-      if (e?.httpStatus) { sendError(res, e.message, e.httpStatus); }
+      const e = err as { httpStatus?: number; message?: string };
+      if (e?.httpStatus) { sendError(res, e.message ?? "Cancel failed", e.httpStatus); }
       else { sendError(res, "Cancel failed", 500); }
       return undefined;
     });

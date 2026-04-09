@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import crypto from "crypto";
 import { z } from "zod";
@@ -1148,7 +1148,7 @@ router.post("/validate-token", async (req, res) => {
    On success: returns { token, expiresAt }
    Refresh tokens are rotated on use (old one revoked, new one issued).
 ───────────────────────────────────────────────────────────── */
-async function handleRefreshToken(req: Request, res: any) {
+async function handleRefreshToken(req: Request, res: Response) {
   const { refreshToken } = req.body;
   const ip = getClientIp(req);
 
@@ -1584,7 +1584,7 @@ async function findUserByIdentifier(identifier: string) {
   return { user: user ?? null, idType, lookupKey: clean };
 }
 
-async function handleUnifiedLogin(req: Request, res: any) {
+async function handleUnifiedLogin(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     const first = parsed.error.issues[0];
@@ -1726,7 +1726,7 @@ router.post("/complete-profile", async (req, res) => {
     res.status(403).json({ error: "Account inactive. Contact support." }); return;
   }
 
-  const updates: Record<string, any> = { updatedAt: new Date() };
+  const updates: Partial<typeof usersTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
 
   if (name && name.trim().length > 1) {
     updates.name = name.trim();
@@ -2633,7 +2633,7 @@ function parseUserAgent(ua?: string): { deviceName: string; browser: string; os:
   return { deviceName, browser, os };
 }
 
-async function issueTokensForUser(user: any, ip: string, method: string, userAgent?: string) {
+async function issueTokensForUser(user: typeof usersTable.$inferSelect, ip: string, method: string, userAgent?: string) {
   const accessToken = signAccessToken(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? user.role ?? "customer", user.tokenVersion ?? 0);
   const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
   const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -2692,7 +2692,7 @@ async function issueTokensForUser(user: any, ip: string, method: string, userAge
 /* ══════════════════════════════════════════════════════════════
    HELPER: Check trusted device
 ══════════════════════════════════════════════════════════════ */
-function isDeviceTrusted(user: any, deviceFingerprint: string, trustedDays: number): boolean {
+function isDeviceTrusted(user: Pick<typeof usersTable.$inferSelect, "trustedDevices">, deviceFingerprint: string, trustedDays: number): boolean {
   if (!user.trustedDevices || !deviceFingerprint) return false;
   try {
     const devices: Array<{ fp: string; expiresAt: number }> = JSON.parse(user.trustedDevices);
@@ -2719,11 +2719,11 @@ router.post("/social/google", async (req, res) => {
     res.status(403).json({ error: "Google login is currently disabled" }); return;
   }
 
-  let googlePayload: any;
+  let googlePayload: { sub?: string; email?: string; name?: string; picture?: string };
   try {
     const resp = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, { signal: AbortSignal.timeout(10_000) });
     if (!resp.ok) throw new Error("Invalid token");
-    googlePayload = await resp.json();
+    googlePayload = await resp.json() as typeof googlePayload;
   } catch {
     addSecurityEvent({ type: "social_google_invalid_token", ip, details: "Invalid Google ID token", severity: "medium" });
     res.status(401).json({ error: "Invalid Google token" }); return;
@@ -2816,11 +2816,11 @@ router.post("/social/facebook", async (req, res) => {
     res.status(403).json({ error: "Facebook login is currently disabled" }); return;
   }
 
-  let fbPayload: any;
+  let fbPayload: { id?: string; name?: string; email?: string; picture?: { data?: { url?: string } } };
   try {
     const resp = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${encodeURIComponent(fbToken)}`, { signal: AbortSignal.timeout(10_000) });
     if (!resp.ok) throw new Error("Invalid token");
-    fbPayload = await resp.json();
+    fbPayload = await resp.json() as typeof fbPayload;
   } catch {
     addSecurityEvent({ type: "social_facebook_invalid_token", ip, details: "Invalid Facebook access token", severity: "medium" });
     res.status(401).json({ error: "Invalid Facebook token" }); return;

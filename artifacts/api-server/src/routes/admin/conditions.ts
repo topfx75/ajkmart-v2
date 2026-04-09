@@ -15,7 +15,7 @@ import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../..
 const router = Router();
 
 export async function reconcileUserFlags(userId: string, excludeConditionId?: string) {
-  const filters: any[] = [
+  const filters: ReturnType<typeof eq>[] = [
     eq(accountConditionsTable.userId, userId),
     eq(accountConditionsTable.isActive, true),
   ];
@@ -41,7 +41,7 @@ export async function reconcileUserFlags(userId: string, excludeConditionId?: st
   }
   const uniqueBlocked = [...new Set(blockedServices)];
 
-  const updateSet: Record<string, any> = {
+  const updateSet: Partial<typeof usersTable.$inferInsert> = {
     isBanned: hasBan,
     isActive: !(hasBan || hasSuspension),
     banReason: hasBan ? (banCondition?.reason || "Banned via conditions") : null,
@@ -85,12 +85,12 @@ const DEFAULT_RULES = [
 router.get("/conditions", async (req, res) => {
   try {
     const { role, type, severity, status, userId, dateFrom, dateTo, search, limit: limitStr, offset: offsetStr } = req.query as Record<string, string>;
-    const conditions: any[] = [];
-    const filters: any[] = [];
+    const conditions: ReturnType<typeof eq>[] = [];
+    const filters: ReturnType<typeof eq>[] = [];
 
     if (role) filters.push(eq(accountConditionsTable.userRole, role));
-    if (type) filters.push(eq(accountConditionsTable.conditionType, type as any));
-    if (severity) filters.push(eq(accountConditionsTable.severity, severity as any));
+    if (type) filters.push(eq(accountConditionsTable.conditionType, type as typeof accountConditionsTable.$inferInsert["conditionType"]));
+    if (severity) filters.push(eq(accountConditionsTable.severity, severity as typeof accountConditionsTable.$inferInsert["severity"]));
     if (status === "active") filters.push(eq(accountConditionsTable.isActive, true));
     if (status === "lifted") filters.push(eq(accountConditionsTable.isActive, false));
     if (userId) filters.push(eq(accountConditionsTable.userId, userId));
@@ -113,7 +113,7 @@ router.get("/conditions", async (req, res) => {
     .offset(offset);
 
     if (filters.length > 0) {
-      query = query.where(and(...filters)) as any;
+      query = query.where(and(...filters)) as typeof query;
     }
 
     if (search) {
@@ -126,7 +126,7 @@ router.get("/conditions", async (req, res) => {
             ilike(accountConditionsTable.reason, `%${search}%`),
           ),
         ),
-      ) as any;
+      ) as typeof query;
     }
 
     const rows = await query;
@@ -134,7 +134,7 @@ router.get("/conditions", async (req, res) => {
     const [totalResult] = await db.select({ count: count() }).from(accountConditionsTable)
       .where(filters.length > 0 ? and(...filters) : undefined);
 
-    const statsFilters: any[] = [eq(accountConditionsTable.isActive, true)];
+    const statsFilters: ReturnType<typeof eq>[] = [eq(accountConditionsTable.isActive, true)];
     if (role) statsFilters.push(eq(accountConditionsTable.userRole, role));
     if (userId) statsFilters.push(eq(accountConditionsTable.userId, userId));
     if (dateFrom) statsFilters.push(gte(accountConditionsTable.appliedAt, new Date(dateFrom)));
@@ -174,14 +174,14 @@ router.get("/conditions", async (req, res) => {
       severityCounts: Object.fromEntries(severityCounts.map(s => [s.severity, s.count])),
       roleCounts: Object.fromEntries(roleCounts.map(r => [r.role, r.count])),
     });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch conditions", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch conditions", 500);
   }
 });
 
 router.post("/conditions", async (req, res) => {
   try {
-    const body = req.body as Record<string, any>;
+    const body = req.body as { userId?: string; conditionType?: string; severity?: string; category?: string; reason?: string; notes?: string; expiresAt?: string; metadata?: unknown };
     const { userId, conditionType, severity, category, reason, notes, expiresAt, metadata } = body;
 
     if (!userId || !conditionType || !severity || !category || !reason) {
@@ -227,21 +227,21 @@ router.post("/conditions", async (req, res) => {
       createdAt: condition.createdAt.toISOString(),
       updatedAt: condition.updatedAt.toISOString(),
     });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to apply condition", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to apply condition", 500);
   }
 });
 
 router.patch("/conditions/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const body = req.body as Record<string, any>;
+    const body = req.body as Record<string, unknown>;
     const adminReq = req as AdminRequest;
 
     const [existing] = await db.select().from(accountConditionsTable).where(eq(accountConditionsTable.id, id!)).limit(1);
     if (!existing) { sendNotFound(res, "Condition not found"); return; }
 
-    const updates: Record<string, any> = { updatedAt: new Date() };
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
 
     if (body.action === "lift") {
       updates.isActive = false;
@@ -275,8 +275,8 @@ router.patch("/conditions/:id", async (req, res) => {
           id: newId,
           userId: existing.userId,
           userRole: existing.userRole,
-          conditionType: next.type as any,
-          severity: next.severity as any,
+          conditionType: next.type as typeof accountConditionsTable.$inferInsert["conditionType"],
+          severity: next.severity as typeof accountConditionsTable.$inferInsert["severity"],
           category: existing.category,
           reason: body.reason || `Escalated from ${existing.conditionType}`,
           notes: body.notes || null,
@@ -308,8 +308,8 @@ router.patch("/conditions/:id", async (req, res) => {
       createdAt: updated.createdAt.toISOString(),
       updatedAt: updated.updatedAt.toISOString(),
     });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to update condition", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to update condition", 500);
   }
 });
 
@@ -333,8 +333,8 @@ router.delete("/conditions/:id", async (req, res) => {
     });
 
     sendSuccess(res, { success: true });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to delete condition", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to delete condition", 500);
   }
 });
 
@@ -375,8 +375,8 @@ router.post("/conditions/bulk", async (req, res) => {
     });
 
     sendSuccess(res, { success: true, affected, action });
-  } catch (e: any) {
-    sendError(res, e.message || "Bulk action failed", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Bulk action failed", 500);
   }
 });
 
@@ -401,8 +401,8 @@ router.get("/conditions/user/:userId", async (req, res) => {
       activeCount,
       total: conditions.length,
     });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch user conditions", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch user conditions", 500);
   }
 });
 
@@ -416,8 +416,8 @@ router.get("/condition-rules", async (_req, res) => {
         updatedAt: r.updatedAt.toISOString(),
       })),
     });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch rules", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch rules", 500);
   }
 });
 
@@ -456,8 +456,8 @@ router.post("/condition-rules", async (req, res) => {
     });
 
     sendSuccess(res, { ...rule, createdAt: rule.createdAt.toISOString(), updatedAt: rule.updatedAt.toISOString() });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to create rule", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to create rule", 500);
   }
 });
 
@@ -465,7 +465,7 @@ router.patch("/condition-rules/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const body = req.body;
-    const updates: Record<string, any> = { updatedAt: new Date() };
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
 
     if (body.name !== undefined) updates.name = body.name;
     if (body.description !== undefined) updates.description = body.description;
@@ -492,8 +492,8 @@ router.patch("/condition-rules/:id", async (req, res) => {
     });
 
     sendSuccess(res, { ...rule, createdAt: rule.createdAt.toISOString(), updatedAt: rule.updatedAt.toISOString() });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to update rule", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to update rule", 500);
   }
 });
 
@@ -513,8 +513,8 @@ router.delete("/condition-rules/:id", async (req, res) => {
     });
 
     sendSuccess(res, { success: true });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to delete rule", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to delete rule", 500);
   }
 });
 
@@ -536,8 +536,8 @@ router.post("/condition-rules/seed-defaults", async (req, res) => {
     }
 
     sendSuccess(res, { message: "Default rules seeded", seeded: DEFAULT_RULES.length });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to seed rules", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to seed rules", 500);
   }
 });
 
@@ -556,8 +556,8 @@ router.get("/condition-settings", async (_req, res) => {
       ...settings,
       updatedAt: settings.updatedAt.toISOString(),
     });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch settings", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch settings", 500);
   }
 });
 
@@ -574,7 +574,7 @@ router.patch("/condition-settings", async (req, res) => {
       }).returning();
     }
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       updatedAt: new Date(),
       updatedBy: adminReq.adminId || adminReq.adminName || "admin",
     };
@@ -597,8 +597,8 @@ router.patch("/condition-settings", async (req, res) => {
       ...updated,
       updatedAt: updated.updatedAt.toISOString(),
     });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to update settings", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to update settings", 500);
   }
 });
 
@@ -617,7 +617,7 @@ router.post("/condition-rules/evaluate/:userId", async (req, res) => {
       .where(eq(conditionRulesTable.isActive, true));
 
     const applicableRules = rules.filter(r => {
-      const modeList = (r.modeApplicability || "default").split(",").map(s => s.trim());
+      const modeList = (r.modeApplicability || "default").split(",").map((s: string) => s.trim());
       return modeList.includes(currentMode) && r.targetRole === (user.role || "customer");
     });
 
@@ -635,17 +635,17 @@ router.post("/condition-rules/evaluate/:userId", async (req, res) => {
 
       let metricValue: number | null = null;
       if (rule.metric === "cancellation_rate") {
-        metricValue = parseFloat(String((user as any).cancellationRate || 0));
+        metricValue = parseFloat(String((user as Record<string, unknown>)["cancellationRate"] || 0));
       } else if (rule.metric === "fraud_incidents") {
-        metricValue = parseInt(String((user as any).fraudIncidents || 0), 10);
+        metricValue = parseInt(String((user as Record<string, unknown>)["fraudIncidents"] || 0), 10);
       } else if (rule.metric === "abuse_reports") {
-        metricValue = parseInt(String((user as any).abuseReports || 0), 10);
+        metricValue = parseInt(String((user as Record<string, unknown>)["abuseReports"] || 0), 10);
       } else if (rule.metric === "avg_rating_30d") {
-        metricValue = parseFloat(String((user as any).avgRating || 5));
+        metricValue = parseFloat(String((user as Record<string, unknown>)["avgRating"] || 5));
       } else if (rule.metric === "miss_ignore_rate") {
-        metricValue = parseFloat(String((user as any).missIgnoreRate || 0));
+        metricValue = parseFloat(String((user as Record<string, unknown>)["missIgnoreRate"] || 0));
       } else if (rule.metric === "order_completion_rate") {
-        metricValue = parseFloat(String((user as any).orderCompletionRate || 100));
+        metricValue = parseFloat(String((user as Record<string, unknown>)["orderCompletionRate"] || 100));
       }
 
       if (metricValue === null) continue;
@@ -668,8 +668,8 @@ router.post("/condition-rules/evaluate/:userId", async (req, res) => {
           id: condId,
           userId: userId!,
           userRole: user.role || "customer",
-          conditionType: rule.conditionType as any,
-          severity: rule.severity as any,
+          conditionType: rule.conditionType as typeof accountConditionsTable.$inferInsert["conditionType"],
+          severity: rule.severity as typeof accountConditionsTable.$inferInsert["severity"],
           category,
           reason: `Auto-triggered: ${rule.name} (${rule.metric} ${rule.operator} ${rule.threshold})`,
           appliedBy: "rule_engine",
@@ -693,8 +693,8 @@ router.post("/condition-rules/evaluate/:userId", async (req, res) => {
     });
 
     sendSuccess(res, { userId, mode: currentMode, rulesEvaluated: applicableRules.length, triggered });
-  } catch (e: any) {
-    sendError(res, e.message || "Rule evaluation failed", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Rule evaluation failed", 500);
   }
 });
 

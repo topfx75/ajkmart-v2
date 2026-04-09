@@ -121,7 +121,7 @@ router.post("/export-data", async (req, res) => {
     return;
   }
 
-  let orders: any[], rides: any[], walletHistory: any[], addresses: any[], pharmacyOrders: any[], parcelBookings: any[];
+  let orders: typeof ordersTable.$inferSelect[], rides: typeof ridesTable.$inferSelect[], walletHistory: typeof walletTransactionsTable.$inferSelect[], addresses: typeof savedAddressesTable.$inferSelect[], pharmacyOrders: typeof pharmacyOrdersTable.$inferSelect[], parcelBookings: typeof parcelBookingsTable.$inferSelect[];
   try {
     [orders, rides, walletHistory, addresses, pharmacyOrders, parcelBookings] = await Promise.all([
       db.select().from(ordersTable).where(eq(ordersTable.userId, userId)).orderBy(desc(ordersTable.createdAt)),
@@ -149,7 +149,7 @@ router.post("/export-data", async (req, res) => {
       walletBalance: parseFloat(user.walletBalance ?? "0"),
       createdAt: user.createdAt.toISOString(),
     },
-    orders: orders.map((o: any) => ({
+    orders: orders.map((o) => ({
       id: o.id,
       type: o.type,
       status: o.status,
@@ -159,7 +159,7 @@ router.post("/export-data", async (req, res) => {
       items: o.items,
       createdAt: o.createdAt.toISOString(),
     })),
-    rides: rides.map((r: any) => ({
+    rides: rides.map((r) => ({
       id: r.id,
       type: r.type,
       status: r.status,
@@ -169,7 +169,7 @@ router.post("/export-data", async (req, res) => {
       paymentMethod: r.paymentMethod,
       createdAt: r.createdAt.toISOString(),
     })),
-    pharmacyOrders: pharmacyOrders.map((o: any) => ({
+    pharmacyOrders: pharmacyOrders.map((o) => ({
       id: o.id,
       status: o.status,
       total: parseFloat(o.total ?? "0"),
@@ -177,7 +177,7 @@ router.post("/export-data", async (req, res) => {
       prescriptionNote: o.prescriptionNote,
       createdAt: o.createdAt.toISOString(),
     })),
-    parcelBookings: parcelBookings.map((b: any) => ({
+    parcelBookings: parcelBookings.map((b) => ({
       id: b.id,
       status: b.status,
       parcelType: b.parcelType,
@@ -186,14 +186,14 @@ router.post("/export-data", async (req, res) => {
       fare: parseFloat(b.fare ?? "0"),
       createdAt: b.createdAt.toISOString(),
     })),
-    walletHistory: walletHistory.map((t: any) => ({
+    walletHistory: walletHistory.map((t) => ({
       id: t.id,
       type: t.type,
       amount: parseFloat(t.amount),
       description: t.description,
       createdAt: t.createdAt.toISOString(),
     })),
-    addresses: addresses.map((a: any) => ({
+    addresses: addresses.map((a) => ({
       id: a.id,
       label: a.label,
       address: a.address,

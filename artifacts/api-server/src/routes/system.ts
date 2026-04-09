@@ -24,6 +24,7 @@ import {
   serviceZonesTable,
 } from "@workspace/db/schema";
 import { count, lt, eq } from "drizzle-orm";
+import type { Table } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { invalidateSettingsCache } from "../middleware/security.js";
 import { adminAuth } from "./admin.js";
@@ -34,7 +35,7 @@ const DEMO_WALLET_BALANCE = "1000";
 const UNDO_WINDOW_MS      = 30 * 60 * 1000; // 30 minutes
 
 /* ── Table registry — maps snapshot key → drizzle table ref ── */
-const TABLE_MAP: Record<string, any> = {
+const TABLE_MAP: Record<string, Table> = {
   users:                usersTable,
   orders:               ordersTable,
   rides:                ridesTable,
@@ -71,7 +72,7 @@ router.use(async (_req, _res, next) => {
    SNAPSHOT HELPER — serializes specified table rows to a DB snapshot row
 ───────────────────────────────────────────────────────────────────────────── */
 async function snapshotBefore(label: string, actionId: string, tableKeys: string[]) {
-  const tables: Record<string, any[]> = {};
+  const tables: Record<string, unknown[]> = {};
   for (const key of tableKeys) {
     const ref = TABLE_MAP[key];
     if (ref) tables[key] = await db.select().from(ref);
@@ -110,7 +111,7 @@ const RESTORE_INSERT_ORDER = [
   "wallet_transactions", "reviews", "notifications",
 ];
 
-async function restoreTables(tables: Record<string, any[]>) {
+async function restoreTables(tables: Record<string, unknown[]>) {
   const restored: Record<string, number> = {};
   const errors: string[] = [];
 
@@ -517,8 +518,8 @@ router.post("/remove-all", async (_req, res) => {
       preserved: ["admin_accounts", "platform_settings"],
       ...snap,
     });
-  } catch (e: any) {
-    sendError(res, `Remove all failed: ${e.message}`, 500);
+  } catch (e: unknown) {
+    sendError(res, `Remove all failed: ${e instanceof Error ? e.message : String(e)}`, 500);
   }
 });
 
@@ -974,7 +975,7 @@ router.post("/undo/:id", async (req, res) => {
     return;
   }
 
-  let tables: Record<string, any[]>;
+  let tables: Record<string, unknown[]>;
   try {
     tables = JSON.parse(snapshot.tablesJson);
   } catch {
@@ -1071,14 +1072,14 @@ router.get("/backup", async (_req, res) => {
 
 /* POST /admin/system/restore */
 router.post("/restore", async (req, res) => {
-  const body = req.body as any;
+  const body = req.body as Record<string, unknown>;
   if (!body?.tables) {
     res.status(400).json({ error: "Invalid backup format. Expected { tables: { ... } }." });
     return;
   }
 
   const snap = await snapshotBefore("Import Restore", "restore", Object.keys(TABLE_MAP));
-  const { restored, errors } = await restoreTables(body.tables);
+  const { restored, errors } = await restoreTables(body.tables as Record<string, unknown[]>);
 
   res.json({
     success: errors.length === 0,

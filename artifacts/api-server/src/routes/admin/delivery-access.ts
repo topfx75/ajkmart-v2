@@ -79,8 +79,8 @@ router.get("/delivery-access", async (req, res) => {
       .offset(offset);
 
     sendSuccess(res, { mode, whitelist: rows, total, page, limit });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch delivery access data", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch delivery access data", 500);
   }
 });
 
@@ -119,8 +119,8 @@ router.put("/delivery-access/mode", async (req, res) => {
     });
 
     sendSuccess(res, { mode });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to update mode", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to update mode", 500);
   }
 });
 
@@ -174,8 +174,8 @@ router.post("/delivery-access/whitelist", async (req, res) => {
     });
 
     sendCreated(res, { id, type, targetId, serviceType: serviceType || "all" });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to add whitelist entry", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to add whitelist entry", 500);
   }
 });
 
@@ -226,8 +226,8 @@ router.post("/delivery-access/whitelist/bulk", async (req, res) => {
     });
 
     sendSuccess(res, { results });
-  } catch (e: any) {
-    sendError(res, e.message || "Bulk import failed", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Bulk import failed", 500);
   }
 });
 
@@ -242,7 +242,7 @@ router.patch("/delivery-access/whitelist/:id", async (req, res) => {
       return;
     }
 
-    const updates: Record<string, any> = { updatedAt: new Date() };
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (deliveryLabel !== undefined) updates.deliveryLabel = deliveryLabel || null;
     if (notes !== undefined) updates.notes = notes || null;
     if (validUntil !== undefined) updates.validUntil = validUntil ? new Date(validUntil) : null;
@@ -263,8 +263,8 @@ router.patch("/delivery-access/whitelist/:id", async (req, res) => {
     });
 
     sendSuccess(res, { id, updated: true });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to update", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to update", 500);
   }
 });
 
@@ -291,8 +291,8 @@ router.delete("/delivery-access/whitelist/:id", async (req, res) => {
     });
 
     sendSuccess(res, { deleted: true });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to delete", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to delete", 500);
   }
 });
 
@@ -322,8 +322,8 @@ router.get("/delivery-access/requests", async (req, res) => {
       .orderBy(desc(deliveryAccessRequestsTable.requestedAt));
 
     sendSuccess(res, { requests: rows });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch requests", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch requests", 500);
   }
 });
 
@@ -401,8 +401,8 @@ router.patch("/delivery-access/requests/:id", async (req, res) => {
     });
 
     sendSuccess(res, { id: id!, status });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to resolve request", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to resolve request", 500);
   }
 });
 
@@ -427,8 +427,8 @@ router.get("/delivery-access/audit", async (req, res) => {
       .limit(limit);
 
     sendSuccess(res, { logs: rows });
-  } catch (e: any) {
-    sendError(res, e.message || "Failed to fetch audit log", 500);
+  } catch (e: unknown) {
+    sendError(res, (e instanceof Error ? e.message : undefined) || "Failed to fetch audit log", 500);
   }
 });
 
