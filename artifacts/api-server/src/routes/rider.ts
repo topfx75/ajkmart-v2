@@ -3106,4 +3106,25 @@ router.get("/osrm-route", async (req, res) => {
   }
 });
 
+/* ── PUT /rider/silence-mode — sync silence mode state to server ── */
+router.put("/silence-mode", async (req, res) => {
+  const riderId = req.riderId!;
+  const { silenceMode, minutes } = req.body as { silenceMode?: boolean; minutes?: number };
+
+  if (typeof silenceMode !== "boolean") {
+    sendValidationError(res, "silenceMode (boolean) is required");
+    return;
+  }
+
+  const silenceModeUntil = silenceMode && typeof minutes === "number" && minutes > 0
+    ? new Date(Date.now() + minutes * 60 * 1000)
+    : null;
+
+  await db.update(usersTable)
+    .set({ silenceMode, silenceModeUntil, updatedAt: new Date() })
+    .where(eq(usersTable.id, riderId));
+
+  sendSuccess(res, { silenceMode, silenceModeUntil });
+});
+
 export default router;

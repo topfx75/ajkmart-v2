@@ -15,6 +15,8 @@ import {
   getSilenceRemaining,
   getSilenceMode,
   setSilenceMode,
+  unsilence,
+  syncSilenceModeToServer,
 } from "../lib/notificationSound";
 import { logRideEvent } from "../lib/rideUtils";
 import {
@@ -112,6 +114,8 @@ export default function Home() {
       if (rem <= 0) {
         setSilenced(false);
         setShowSilenceMenu(false);
+        /* Sync expiry to server so admin "active silence mode" view stays accurate */
+        syncSilenceModeToServer(false);
       }
     }, 1000);
     return () => clearInterval(t);
@@ -385,17 +389,26 @@ export default function Home() {
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
       qc.invalidateQueries({ queryKey: ["rider-active"] });
     };
+    const handleForceSilenceOff = () => {
+      unsilence();
+      setSilenceMode(false);
+      setSilenceOn(false);
+      setToastMsg("Admin has disabled your silence mode.");
+      setToastType("error");
+    };
     sharedSocket.on("rider:new-request", handleNewRequest);
     sharedSocket.on("new:request", handleNewRequest);
     sharedSocket.on("rider:request-cancelled", handleStateChange);
     sharedSocket.on("rider:ride-updated", handleStateChange);
     sharedSocket.on("rider:order-updated", handleStateChange);
+    sharedSocket.on("admin:force-silence-off", handleForceSilenceOff);
     return () => {
       sharedSocket.off("rider:new-request", handleNewRequest);
       sharedSocket.off("new:request", handleNewRequest);
       sharedSocket.off("rider:request-cancelled", handleStateChange);
       sharedSocket.off("rider:ride-updated", handleStateChange);
       sharedSocket.off("rider:order-updated", handleStateChange);
+      sharedSocket.off("admin:force-silence-off", handleForceSilenceOff);
     };
   }, [sharedSocket, qc]);
 

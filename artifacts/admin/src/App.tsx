@@ -44,6 +44,10 @@ import AccountConditions from "@/pages/account-conditions";
 import ConditionRules from "@/pages/condition-rules";
 import Wishlists from "@/pages/wishlists";
 import DeletionRequests from "@/pages/deletion-requests";
+import GpsAlerts from "@/pages/gps-alerts";
+import VanBoardingMonitor from "@/pages/van-boarding";
+import CodVerifications from "@/pages/cod-verifications";
+import SilenceModeAdmin from "@/pages/silence-mode";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -143,6 +147,10 @@ function Router() {
       <Route path="/condition-rules"><ProtectedRoute component={ConditionRules} /></Route>
       <Route path="/wishlists"><ProtectedRoute component={Wishlists} /></Route>
       <Route path="/deletion-requests"><ProtectedRoute component={DeletionRequests} /></Route>
+      <Route path="/gps-alerts"><ProtectedRoute component={GpsAlerts} /></Route>
+      <Route path="/van-boarding"><ProtectedRoute component={VanBoardingMonitor} /></Route>
+      <Route path="/cod-verifications"><ProtectedRoute component={CodVerifications} /></Route>
+      <Route path="/silence-mode"><ProtectedRoute component={SilenceModeAdmin} /></Route>
 
       <Route component={NotFound} />
     </Switch>

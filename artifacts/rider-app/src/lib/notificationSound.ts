@@ -5,6 +5,25 @@ let silenceMode = false;
 
 const SILENCE_KEY = "ajkmart_rider_silence_mode";
 
+/* ── Server sync helper ─────────────────────────────────────────────────────
+   Called after silence mode state changes so the server tracks it.
+   Fire-and-forget: never blocks the UI, failures are silently swallowed. */
+export function syncSilenceModeToServer(enabled: boolean, minutes?: number) {
+  try {
+    const token = localStorage.getItem("ajkmart_rider_token");
+    if (!token) return;
+    const BASE = typeof window !== "undefined" ? `/api` : "";
+    fetch(`${BASE}/rider/silence-mode`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ silenceMode: enabled, minutes }),
+    }).catch(() => {});
+  } catch {}
+}
+
 export function getSilenceMode(): boolean {
   if (typeof window === "undefined") return false;
   const stored = localStorage.getItem(SILENCE_KEY);

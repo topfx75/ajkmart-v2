@@ -2,6 +2,7 @@ import { VolumeX, Volume2 } from "lucide-react";
 import {
   silenceFor,
   unsilence,
+  syncSilenceModeToServer,
 } from "../../lib/notificationSound";
 
 interface SilenceControlsProps {
@@ -42,6 +43,7 @@ export function SilenceControls({
             <button
               onClick={() => {
                 unsilence();
+                syncSilenceModeToServer(false);
                 onSetSilenced(false);
                 onSetShowSilenceMenu(false);
                 showToast("Sound unmuted", "success");
@@ -57,6 +59,7 @@ export function SilenceControls({
                   key={m}
                   onClick={() => {
                     silenceFor(m);
+                    syncSilenceModeToServer(true, m);
                     onSetSilenced(true);
                     onSetSilenceRemaining(m);
                     onSetShowSilenceMenu(false);

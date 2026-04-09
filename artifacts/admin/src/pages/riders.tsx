@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Bike, Search, RefreshCw, Wallet, CircleDollarSign, Gift,
   CheckCircle2, Ban, AlertTriangle, Star, Phone, Download, CalendarDays,
-  WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward, Gavel,
+  WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward, Gavel, BellOff,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -457,6 +457,11 @@ export default function Riders() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-bold text-sm text-foreground">{r.name || "Unknown Rider"}</p>
                         {getStatusBadge(r)}
+                        {r.silenceMode && (
+                          <Badge className="bg-orange-100 text-orange-700 border border-orange-200 text-[10px] gap-0.5 py-0">
+                            <BellOff className="w-2.5 h-2.5" /> Silenced
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <a href={`tel:${r.phone}`} className="flex items-center gap-1 text-xs text-blue-600 font-medium hover:underline">

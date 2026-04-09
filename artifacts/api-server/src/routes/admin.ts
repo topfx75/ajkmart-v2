@@ -13,6 +13,7 @@ import conditionsRoutes from "./admin/conditions.js";
 import wishlistsRoutes from "./admin/wishlists.js";
 import pharmacyAdminRoutes from "./admin/pharmacy.js";
 import deletionRequestsRoutes from "./admin/deletion-requests.js";
+import ridersAdminRoutes from "./admin/riders.js";
 
 export {
   DEFAULT_PLATFORM_SETTINGS,
@@ -50,5 +51,6 @@ router.use(conditionsRoutes);
 router.use(wishlistsRoutes);
 router.use(pharmacyAdminRoutes);
 router.use(deletionRequestsRoutes);
+router.use(ridersAdminRoutes);
 
 export default router;

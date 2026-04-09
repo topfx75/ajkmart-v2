@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { liveLocationsTable, locationLogsTable, locationHistoryTable, ridesTable, ordersTable, usersTable, riderProfilesTable } from "@workspace/db/schema";
+import { liveLocationsTable, locationLogsTable, locationHistoryTable, ridesTable, ordersTable, usersTable, riderProfilesTable, gpsSpoofAlertsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, asc, or, desc } from "drizzle-orm";
 import {
   getCachedSettings,
@@ -18,6 +18,14 @@ const router: IRouter = Router();
 
 /* Per-rider GPS violation counter (in-memory, resets on server restart) */
 const gpsViolationCounts = new Map<string, { count: number; lastAt: number }>();
+
+/**
+ * Reset the in-memory GPS violation counter for a rider.
+ * Called by the admin panel when an admin manually resolves/clears violations.
+ */
+export function resetGpsViolationCount(riderId: string): void {
+  gpsViolationCounts.delete(riderId);
+}
 
 /* Per-rider last-known location cache — used to diff against tracking_distance_threshold
    without an extra DB read. Cleared on server restart (harmless: next ping will always insert). */
@@ -126,6 +134,7 @@ async function processLocationUpdate(opts: {
       const reason = emulatorFlagged
         ? "Emulator signature detected — known fake GPS coordinates"
         : "Mock GPS provider detected";
+      const violationType = emulatorFlagged ? "emulator" : "mock_provider";
 
       addSecurityEvent({
         type: "gps_spoof_detected",
@@ -156,6 +165,20 @@ async function processLocationUpdate(opts: {
           console.warn(`[locations] GPS spoof auto-offline side-effect failed for rider ${userId} (mock/emulator):`, (err as Error)?.message ?? err);
         }
       }
+
+      /* Persist spoof alert to DB (fire-and-forget) */
+      db.insert(gpsSpoofAlertsTable).values({
+        id: generateId(),
+        riderId: userId,
+        latitude: lat.toString(),
+        longitude: lon.toString(),
+        violationType,
+        reason,
+        violationCount: newCount,
+        autoOffline,
+        resolved: false,
+        createdAt: now,
+      }).catch(err => console.warn("[locations] Failed to persist GPS spoof alert:", (err as Error)?.message ?? err));
 
       return { skip: true, spoofed: true, autoOffline };
     }
@@ -216,6 +239,20 @@ async function processLocationUpdate(opts: {
               console.warn(`[locations] GPS spoof auto-offline side-effect failed for rider ${userId} (speed-based):`, (err as Error)?.message ?? err);
             }
           }
+
+          /* Persist spoof alert to DB (fire-and-forget) */
+          db.insert(gpsSpoofAlertsTable).values({
+            id: generateId(),
+            riderId: userId,
+            latitude: lat.toString(),
+            longitude: lon.toString(),
+            violationType: "speed",
+            reason,
+            violationCount: newCount,
+            autoOffline,
+            resolved: false,
+            createdAt: now,
+          }).catch(err => console.warn("[locations] Failed to persist GPS spoof alert:", (err as Error)?.message ?? err));
 
           return { skip: true, spoofed: true, autoOffline };
         }

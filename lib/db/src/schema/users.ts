@@ -105,6 +105,9 @@ export const usersTable = pgTable("users", {
   autoSuspendedAt: timestamp("auto_suspended_at"),
   autoSuspendReason: text("auto_suspend_reason"),
   adminOverrideSuspension: boolean("admin_override_suspension").notNull().default(false),
+  /* ── Rider silence mode — synced from rider app ── */
+  silenceMode:       boolean("silence_mode").notNull().default(false),
+  silenceModeUntil:  timestamp("silence_mode_until"),
   lastLoginAt:       timestamp("last_login_at"),
   lastActive:        timestamp("last_active"),
   createdAt:       timestamp("created_at").notNull().defaultNow(),

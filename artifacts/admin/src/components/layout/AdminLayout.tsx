@@ -37,6 +37,9 @@ import {
   Truck,
   Heart,
   Trash2,
+  ShieldOff,
+  BellOff,
+  DollarSign,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -92,6 +95,16 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navSosAlerts",       href: "/sos-alerts",  icon: AlertTriangle, sosBadge: true },
       { nameKey: "navAuditLogs",       href: "/security",    icon: FileText },
       { nameKey: "navUserPermissions", href: "/users",       icon: Lock },
+    ],
+  },
+  {
+    labelKey: "navRiderControls",
+    color: "#F97316",
+    items: [
+      { nameKey: "navGpsAlerts",        href: "/gps-alerts",        icon: ShieldOff },
+      { nameKey: "navVanBoarding",      href: "/van-boarding",      icon: Bus },
+      { nameKey: "navCodVerifications", href: "/cod-verifications", icon: DollarSign },
+      { nameKey: "navSilenceMode",      href: "/silence-mode",      icon: BellOff },
     ],
   },
   {

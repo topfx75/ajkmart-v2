@@ -30,6 +30,9 @@ export const ordersTable = pgTable("orders", {
   gpsMismatch: boolean("gps_mismatch").default(false),
   deliveryLat: decimal("delivery_lat", { precision: 10, scale: 7 }),
   deliveryLng: decimal("delivery_lng", { precision: 10, scale: 7 }),
+  /* ── COD verification fields ── */
+  codPhotoUrl: text("cod_photo_url"),
+  codVerified: text("cod_verified"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [
