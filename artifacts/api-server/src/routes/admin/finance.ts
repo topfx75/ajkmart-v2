@@ -132,6 +132,13 @@ router.post("/vendors/:id/payout", async (req, res) => {
   if (!vendor) { sendNotFound(res, "Vendor not found"); return; }
   const amt = Number(amount);
   const txResult = await db.transaction(async (tx) => {
+    /* Lock vendor row (SELECT FOR UPDATE) — serializes concurrent payout requests
+       so the balance check is performed on the committed balance, not a stale snapshot. */
+    const [locked] = await tx.select({ walletBalance: usersTable.walletBalance })
+      .from(usersTable).where(eq(usersTable.id, vendor.id)).limit(1).for("update");
+    if (!locked) throw new Error("NOT_FOUND");
+    if (parseFloat(locked.walletBalance ?? "0") < amt) throw new Error("INSUFFICIENT_BALANCE");
+
     const [updated] = await tx.update(usersTable)
       .set({ walletBalance: sql`GREATEST(wallet_balance - ${amt}, 0)`, updatedAt: new Date() })
       .where(and(eq(usersTable.id, vendor.id), gte(usersTable.walletBalance, String(amt))))
@@ -143,10 +150,13 @@ router.post("/vendors/:id/payout", async (req, res) => {
     });
     return { updated, newBal: parseFloat(updated.walletBalance ?? "0") };
   }).catch((err: Error) => {
-    if (err.message === "INSUFFICIENT_BALANCE") return null;
+    if (err.message === "INSUFFICIENT_BALANCE" || err.message === "NOT_FOUND") return err.message;
     throw err;
   });
-  if (!txResult) {
+  if (txResult === "NOT_FOUND") {
+    sendNotFound(res, "Vendor not found"); return;
+  }
+  if (txResult === "INSUFFICIENT_BALANCE" || !txResult) {
     sendValidationError(res, `Insufficient wallet balance`); return;
   }
   await sendUserNotification(vendor.id, "Payout Processed 💰", `Rs. ${amt} has been paid out from your vendor wallet.`, "system", "cash-outline");
@@ -244,28 +254,50 @@ router.post("/riders/:id/payout", async (req, res) => {
   if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
     sendValidationError(res, "Valid amount required"); return;
   }
-  const [rider] = await db.select().from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
-  if (!rider) { sendNotFound(res, "Rider not found"); return; }
+  const [riderPre] = await db.select({ id: usersTable.id, walletBalance: usersTable.walletBalance })
+    .from(usersTable).where(eq(usersTable.id, req.params["id"]!)).limit(1);
+  if (!riderPre) { sendNotFound(res, "Rider not found"); return; }
   const amt = Number(amount);
-  const currentBal = parseFloat(rider.walletBalance ?? "0");
-  if (currentBal < amt) {
-    sendValidationError(res, `Insufficient wallet balance (Rs. ${currentBal.toFixed(0)})`); return;
+  /* Fast-fail shortcut (not authoritative — the locked balance inside the transaction is). */
+  const preBal = parseFloat(riderPre.walletBalance ?? "0");
+  if (preBal < amt) {
+    sendValidationError(res, `Insufficient wallet balance (Rs. ${preBal.toFixed(0)})`); return;
   }
-  /* Atomic deduction: WHERE wallet_balance >= amt prevents race condition where
-     two concurrent payout requests both read the same balance and double-deduct. */
-  const [updated] = await db.update(usersTable)
-    .set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() })
-    .where(and(eq(usersTable.id, rider.id), sql`CAST(wallet_balance AS NUMERIC) >= ${amt}`))
-    .returning();
-  if (!updated) {
+
+  let updated: typeof usersTable.$inferSelect | undefined;
+  const txResult = await db.transaction(async (tx) => {
+    /* Lock rider row (SELECT FOR UPDATE) — serializes concurrent payout requests so the
+       balance check uses the committed balance, preventing double-deduction race conditions. */
+    const [locked] = await tx.select({ walletBalance: usersTable.walletBalance })
+      .from(usersTable).where(eq(usersTable.id, riderPre.id)).limit(1).for("update");
+    if (!locked) throw new Error("NOT_FOUND");
+    if (parseFloat(locked.walletBalance ?? "0") < amt) throw new Error("INSUFFICIENT_BALANCE");
+
+    const [deducted] = await tx.update(usersTable)
+      .set({ walletBalance: sql`wallet_balance - ${amt}`, updatedAt: new Date() })
+      .where(and(eq(usersTable.id, riderPre.id), sql`CAST(wallet_balance AS NUMERIC) >= ${amt}`))
+      .returning();
+    if (!deducted) throw new Error("INSUFFICIENT_BALANCE");
+
+    await tx.insert(walletTransactionsTable).values({
+      id: generateId(), userId: riderPre.id, type: "debit", amount: String(amt),
+      description: description || `Rider payout: Rs. ${amt}`, reference: "rider_payout",
+    });
+    updated = deducted;
+    return deducted;
+  }).catch((err: Error) => {
+    if (err.message === "INSUFFICIENT_BALANCE" || err.message === "NOT_FOUND") return err.message;
+    throw err;
+  });
+
+  if (txResult === "NOT_FOUND") {
+    sendNotFound(res, "Rider not found"); return;
+  }
+  if (txResult === "INSUFFICIENT_BALANCE" || !txResult) {
     sendValidationError(res, "Payout failed: insufficient balance at time of processing (possible concurrent request)."); return;
   }
-  const newBal = parseFloat(updated.walletBalance ?? "0");
-  await db.insert(walletTransactionsTable).values({
-    id: generateId(), userId: rider.id, type: "debit", amount: String(amt),
-    description: description || `Rider payout: Rs. ${amt}`, reference: "rider_payout",
-  });
-  await sendUserNotification(rider.id, "Earnings Paid Out 💵", `Rs. ${amt} has been paid out to your account.`, "system", "cash-outline");
+  const newBal = parseFloat(updated!.walletBalance ?? "0");
+  await sendUserNotification(riderPre.id, "Earnings Paid Out 💵", `Rs. ${amt} has been paid out to your account.`, "system", "cash-outline");
   sendSuccess(res, { amount: amt, newBalance: newBal, rider: { ...updated, walletBalance: newBal } });
 });
 

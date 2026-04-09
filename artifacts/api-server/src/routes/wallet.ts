@@ -838,11 +838,23 @@ router.post("/withdraw", customerAuth, requireWalletPin, async (req, res) => {
 
   try {
     await db.transaction(async (tx) => {
+      /* Lock user row first (SELECT FOR UPDATE) — prevents two concurrent withdrawal
+         requests from both entering the deduction step simultaneously.
+         The pre-transaction balance check above is a fast-fail UX shortcut only;
+         this locked row is the authoritative balance check. */
+      const [lockedUser] = await tx.select({ walletBalance: usersTable.walletBalance, blockedServices: usersTable.blockedServices })
+        .from(usersTable).where(eq(usersTable.id, userId)).limit(1).for("update");
+      if (!lockedUser) throw new Error("User not found");
+      if (isWalletFrozen(lockedUser)) throw Object.assign(new Error("Your wallet has been temporarily frozen. Contact support."), { walletFrozen: true });
+
+      const lockedBalance = parseFloat(String(lockedUser.walletBalance ?? "0"));
+      if (lockedBalance < amt) throw new Error(`Insufficient wallet balance. Available: Rs. ${lockedBalance.toFixed(0)}`);
+
       const [deducted] = await tx.update(usersTable)
         .set({ walletBalance: sql`wallet_balance - ${amt.toFixed(2)}`, updatedAt: new Date() })
         .where(and(eq(usersTable.id, userId), gte(usersTable.walletBalance, amt.toFixed(2))))
         .returning({ id: usersTable.id });
-      if (!deducted) throw new Error(`Insufficient wallet balance. Available: Rs. ${balance.toFixed(0)}`);
+      if (!deducted) throw new Error(`Insufficient wallet balance. Available: Rs. ${lockedBalance.toFixed(0)}`);
       await tx.insert(walletTransactionsTable).values({
         id: txId, userId, type: "withdrawal",
         amount: amt.toFixed(2),
