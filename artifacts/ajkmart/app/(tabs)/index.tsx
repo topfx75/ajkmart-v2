@@ -29,6 +29,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useToast } from "@/context/ToastContext";
 import { tDual } from "@workspace/i18n";
 import {
   SERVICE_REGISTRY,
@@ -53,23 +54,20 @@ const C = Colors.light;
 const W = Dimensions.get("window").width;
 const H_PAD = spacing.lg;
 
-function safeNavigate(route: string) {
-  const knownRoutes = new Set<string>([
-    ...Object.values(SERVICE_REGISTRY).map(s => String(s.route)),
-    "/(tabs)", "/(tabs)/orders", "/(tabs)/wallet", "/(tabs)/profile",
-    "/cart", "/search", "/categories", "/wishlist",
-    "/order", "/ride",
-    "/van", "/van/bookings",
-    "/mart", "/food", "/pharmacy", "/parcel",
-    "/my-reviews",
-    "/auth",
-  ]);
-  if (!route || (!knownRoutes.has(route) && !route.startsWith("/(tabs)") && !route.startsWith("/product/"))) {
-    if (__DEV__) console.warn("[Home] safeNavigate: unknown route blocked:", route);
-    router.push("/(tabs)" as Href);
+function safeNavigate(route: string, showToast?: (msg: string, type?: "success" | "error" | "info" | "warning") => void) {
+  if (!route) return;
+  if (!route.startsWith("/") && !route.startsWith("./") && !route.startsWith("../")) {
+    if (__DEV__) console.warn("[Home] safeNavigate: invalid route format:", route);
+    if (showToast) showToast("Page not found", "info");
     return;
   }
-  router.push(route as Href);
+  try {
+    router.push(route as Href);
+  } catch (err) {
+    if (__DEV__) console.warn("[Home] safeNavigate: route not found:", route, err);
+    if (showToast) showToast("Page not found", "info");
+    else router.push("/(tabs)" as Href);
+  }
 }
 
 type ViewMode = "grid" | "list";
@@ -138,7 +136,7 @@ function ServiceListView({ services, isGuest }: { services: ServiceDefinition[];
   );
 }
 
-function ServiceSection({ services, isGuest, viewMode, onToggle }: {
+const ServiceSection = React.memo(function ServiceSection({ services, isGuest, viewMode, onToggle }: {
   services: ServiceDefinition[];
   isGuest: boolean;
   viewMode: ViewMode;
@@ -173,7 +171,7 @@ function ServiceSection({ services, isGuest, viewMode, onToggle }: {
       }
     </View>
   );
-}
+});
 
 const sg = StyleSheet.create({
   wrap: { paddingHorizontal: H_PAD, paddingTop: 12, paddingBottom: 4 },
@@ -251,7 +249,7 @@ const gi = StyleSheet.create({
   sub: { fontFamily: Font.regular, fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 1 },
 });
 
-function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabBarHeight?: number }) {
+const ActiveTrackerStrip = React.memo(function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabBarHeight?: number }) {
   const { token } = useAuth();
   const { config: pCfg } = usePlatformConfig();
   const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -330,7 +328,7 @@ function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabB
       ))}
     </View>
   );
-}
+});
 
 const tr = StyleSheet.create({
   wrap: { marginHorizontal: H_PAD, marginTop: 10, gap: 8 },
@@ -343,7 +341,7 @@ const tr = StyleSheet.create({
 });
 
 
-function DynamicBannerCarousel() {
+const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
   const { data: banners, isLoading: bannersLoading, isError: bannersError, refetch: refetchBanners } = useQuery({
     queryKey: ["dynamic-banners", "home"],
     queryFn: () => getBanners({ placement: "home" }),
@@ -354,6 +352,7 @@ function DynamicBannerCarousel() {
   const { width: windowWidth } = useWindowDimensions();
   const BANNER_W = windowWidth - H_PAD * 2;
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { showToast } = useToast();
 
   const items = banners ?? [];
 
@@ -388,22 +387,47 @@ function DynamicBannerCarousel() {
     }
     bannerThrottleRef.current = now;
 
-    if (b.linkType === "product" && b.linkValue) {
-      router.push({ pathname: "/product/[id]", params: { id: b.linkValue } } as Href);
-    } else if (b.linkType === "category" && b.linkValue) {
-      router.push({ pathname: "/search", params: { category: b.linkValue } } as Href);
-    } else if (b.linkType === "service" && b.linkValue) {
-      const svc = Object.values(SERVICE_REGISTRY).find((s) => s.key === b.linkValue);
-      if (svc) safeNavigate(String(svc.route));
-    } else if (b.linkType === "route" && b.linkValue) {
-      safeNavigate(b.linkValue);
-    } else if (b.linkType === "url" && b.linkValue) {
-      /* Only https:// URLs are opened externally. All other schemes are discarded. */
-      if (b.linkValue.startsWith("https://")) {
-        Linking.openURL(b.linkValue);
-      } else if (b.linkValue.startsWith("/") || b.linkValue.startsWith("/(")) {
-        router.push(b.linkValue as Href);
+    if (b.linkType === "product") {
+      if (b.linkValue) {
+        router.push({ pathname: "/product/[id]", params: { id: b.linkValue } } as Href);
+      } else {
+        showToast("This link isn't available", "info");
       }
+    } else if (b.linkType === "category") {
+      if (b.linkValue) {
+        router.push({ pathname: "/search", params: { category: b.linkValue } } as Href);
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else if (b.linkType === "service") {
+      if (b.linkValue) {
+        const svc = Object.values(SERVICE_REGISTRY).find((s) => s.key === b.linkValue);
+        if (svc) safeNavigate(String(svc.route), showToast);
+        else showToast("This link isn't available", "info");
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else if (b.linkType === "route") {
+      if (b.linkValue) {
+        safeNavigate(b.linkValue, showToast);
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else if (b.linkType === "url") {
+      if (b.linkValue) {
+        /* Only https:// URLs are opened externally. All other schemes are discarded. */
+        if (b.linkValue.startsWith("https://")) {
+          Linking.openURL(b.linkValue);
+        } else if (b.linkValue.startsWith("/") || b.linkValue.startsWith("/(")) {
+          router.push(b.linkValue as Href);
+        } else {
+          showToast("This link isn't available", "info");
+        }
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else {
+      showToast("This link isn't supported", "info");
     }
   };
 
@@ -532,7 +556,7 @@ function DynamicBannerCarousel() {
       </View>
     </View>
   );
-}
+});
 
 const ban = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: H_PAD, marginBottom: 10 },
@@ -614,7 +638,7 @@ const fct = StyleSheet.create({
   sep: { fontFamily: Font.bold, fontSize: 12, color: "#1F2937", marginTop: -4 },
 });
 
-function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => string }) {
+const FlashDealsSection = React.memo(function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => string }) {
   const { data: deals, isLoading, isError, refetch } = useQuery({
     queryKey: ["flash-deals"],
     queryFn: () => getFlashDeals({ limit: 10 }),
@@ -745,7 +769,7 @@ function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => str
       />
     </View>
   );
-}
+});
 
 const fd = StyleSheet.create({
   section: { marginHorizontal: H_PAD, marginTop: 16, backgroundColor: C.surface, borderRadius: 16, overflow: "hidden", ...shadows.sm },
@@ -774,7 +798,7 @@ const fd = StyleSheet.create({
   errorTxt: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
 });
 
-function TrendingSection() {
+const TrendingSection = React.memo(function TrendingSection() {
   const { data: trending, isError, refetch } = useQuery({
     queryKey: ["trending-products"],
     queryFn: () => getTrending({ limit: 8 }),
@@ -842,7 +866,7 @@ function TrendingSection() {
       />
     </View>
   );
-}
+});
 
 const tr2 = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: H_PAD, marginBottom: 10 },
@@ -886,7 +910,8 @@ const WMO_ICONS: Record<number, { icon: string; label: string }> = {
 const WEATHER_CACHE_TTL = 30 * 60_000;
 const SAVED_CITY_KEY = "weather_manual_city";
 
-function WeatherWidget({ userLat, userLng, cityLabel }: { userLat?: number; userLng?: number; cityLabel?: string }) {
+interface WeatherWidgetProps { userLat?: number; userLng?: number; cityLabel?: string }
+const WeatherWidget = React.memo(function WeatherWidget({ userLat, userLng, cityLabel }: WeatherWidgetProps) {
   const [weather, setWeather] = useState<{ temp: number; code: number; windSpeed: number; humidity: number; feelsLike?: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [locationLabel, setLocationLabel] = useState(cityLabel || "");
@@ -1035,7 +1060,7 @@ function WeatherWidget({ userLat, userLng, cityLabel }: { userLat?: number; user
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const wS = StyleSheet.create({
   wrap: {
@@ -1133,14 +1158,14 @@ export default function HomeScreen() {
     }).catch(() => {});
   }, []);
 
-  const handleToggleView = async (mode: ViewMode) => {
+  const handleToggleView = useCallback(async (mode: ViewMode) => {
     setViewMode(mode);
     try {
       await AsyncStorage.setItem(SVC_VIEW_KEY, mode);
     } catch (err) {
       if (__DEV__) console.warn("[HomeScreen] Failed to persist view mode:", err);
     }
-  };
+  }, []);
 
   const activeServices = getActiveServices(features);
   const noServicesActive = activeServices.length === 0;

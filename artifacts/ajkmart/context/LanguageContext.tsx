@@ -3,8 +3,9 @@ import React, { createContext, useContext, useEffect, useCallback, useState, use
 import { I18nManager } from "react-native";
 import type { Language } from "@workspace/i18n";
 import { LANGUAGE_OPTIONS } from "@workspace/i18n";
-import { unwrapApiResponse } from "../utils/api";
 import { loadUrduFonts } from "../utils/fonts";
+import { usePlatformConfig } from "./PlatformConfigContext";
+import { unwrapApiResponse } from "../utils/api";
 
 const LANG_STORAGE_KEY = "@ajkmart_language";
 const VALID_LANGS = new Set<string>(LANGUAGE_OPTIONS.map(o => o.value));
@@ -26,17 +27,6 @@ const LanguageContext = createContext<LanguageContextValue>({
   syncToServer: async () => {},
   setAuthToken: () => {},
 });
-
-async function fetchPlatformDefaultLanguage(): Promise<Language | null> {
-  try {
-    const res = await fetch(`https://${API_DOMAIN}/api/platform-config`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const data = unwrapApiResponse(await res.json());
-    const lang = data?.language?.defaultLanguage;
-    if (lang && VALID_LANGS.has(lang)) return lang as Language;
-  } catch (err) { if (__DEV__) console.warn("[Language] Platform default language fetch failed:", err instanceof Error ? err.message : String(err)); }
-  return null;
-}
 
 async function fetchUserLanguage(token: string): Promise<Language | null> {
   try {
@@ -66,8 +56,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
   const [loading, setLoading] = useState(true);
   const tokenRef = useRef<string | null>(null);
+  const { config: platformConfig, loading: configLoading } = usePlatformConfig();
 
   useEffect(() => {
+    if (configLoading) return;
     (async () => {
       try {
         const stored = await AsyncStorage.getItem(LANG_STORAGE_KEY);
@@ -75,16 +67,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
           setLanguageState(stored as Language);
           applyRTL(stored as Language);
         } else {
-          const platformLang = await fetchPlatformDefaultLanguage();
-          if (platformLang) {
-            setLanguageState(platformLang);
-            applyRTL(platformLang);
+          const platformLang = platformConfig.language.defaultLanguage;
+          if (platformLang && VALID_LANGS.has(platformLang)) {
+            setLanguageState(platformLang as Language);
+            applyRTL(platformLang as Language);
           }
         }
       } catch (err) { if (__DEV__) console.warn("[Language] Bootstrap language load failed:", err instanceof Error ? err.message : String(err)); }
       setLoading(false);
     })();
-  }, []);
+  }, [configLoading]);
 
   function applyRTL(lang: Language) {
     const isRtl = lang === "ur" || lang === "en_ur";
@@ -103,8 +95,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     try {
       await AsyncStorage.setItem(LANG_STORAGE_KEY, lang);
     } catch (err) { if (__DEV__) console.warn("[Language] Failed to persist language preference:", err instanceof Error ? err.message : String(err)); }
-    // Load Noto Nastaliq Urdu fonts the moment user switches to Urdu so
-    // all text is rendered in the correct script without needing a restart.
     if (lang === "ur" || lang === "en_ur") {
       loadUrduFonts().catch(() => {});
     }
@@ -125,7 +115,6 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         setLanguageState(serverLang);
         applyRTL(serverLang);
         await AsyncStorage.setItem(LANG_STORAGE_KEY, serverLang);
-        // If server says Urdu, load the fonts immediately (no restart needed).
         if (serverLang === "ur" || serverLang === "en_ur") {
           loadUrduFonts().catch(() => {});
         }

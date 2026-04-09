@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { Alert } from "react-native";
 import { useAuth } from "@/context/AuthContext";
 import { API_BASE, unwrapApiResponse } from "../utils/api";
@@ -52,6 +52,12 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | null>(null);
 
+const CartCountContext = createContext<number>(0);
+
+export function useCartCount(): number {
+  return useContext(CartCountContext);
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { token, socket } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
@@ -66,6 +72,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const pendingOrderDataRef = useRef<AckSuccessData | null>(null);
   const ackStuckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ackFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ackFallbackIvRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ackResolvedRef = useRef(false);
 
   useEffect(() => {
     authTokenRef.current = token;
@@ -159,6 +167,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       setHasLoaded(true);
     });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (ackStuckTimerRef.current) { clearTimeout(ackStuckTimerRef.current); ackStuckTimerRef.current = null; }
+      if (ackFallbackTimerRef.current) { clearTimeout(ackFallbackTimerRef.current); ackFallbackTimerRef.current = null; }
+      if (ackFallbackIvRef.current) { clearInterval(ackFallbackIvRef.current); ackFallbackIvRef.current = null; }
+    };
   }, []);
 
   const prevTokenRef = useRef<string | null | undefined>(token);
@@ -257,7 +273,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const MAX_ITEM_QTY = 99;
 
-  const addItem = (item: CartItem) => {
+  const addItem = useCallback((item: CartItem) => {
     save(prev => {
       const existing = prev.find(i => i.productId === item.productId);
       if (existing) {
@@ -295,33 +311,33 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       return [...prev, item];
     });
-  };
+  }, []);
 
-  const removeItem = (productId: string) => save(prev => prev.filter(i => i.productId !== productId));
+  const removeItem = useCallback((productId: string) => save(prev => prev.filter(i => i.productId !== productId)), []);
 
-  const updateQuantity = (productId: string, qty: number) => {
-    if (qty <= 0) return removeItem(productId);
+  const updateQuantity = useCallback((productId: string, qty: number) => {
+    if (qty <= 0) { save(prev => prev.filter(i => i.productId !== productId)); return; }
     if (qty > MAX_ITEM_QTY) {
       Alert.alert("Limit Reached", `Maximum quantity per item is ${MAX_ITEM_QTY}.`);
       return;
     }
     save(prev => prev.map(i => i.productId === productId ? { ...i, quantity: qty } : i));
-  };
+  }, []);
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     resetAckState();
     save([]);
-  };
+  }, [resetAckState]);
 
-  const clearCartAndAdd = (item: CartItem) => {
+  const clearCartAndAdd = useCallback((item: CartItem) => {
     resetAckState();
     save([item]);
-  };
+  }, [resetAckState]);
 
-  const restoreCart = (snapshot: CartItem[]) => {
+  const restoreCart = useCallback((snapshot: CartItem[]) => {
     resetAckState();
     save([...snapshot]);
-  };
+  }, [resetAckState]);
 
   const dismissAck = useCallback(() => {
     resetAckState();
@@ -336,20 +352,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     types.length === 1 ? (types[0] as "mart" | "food" | "pharmacy") :
     "mixed";
 
-  const setPharmacyPendingOrderId = (id: string | null) => {
+  const setPharmacyPendingOrderId = useCallback((id: string | null) => {
     pharmacyPendingOrderIdRef.current = id;
-  };
+  }, []);
 
-  const setPendingOrderId = (id: string | null, data?: AckSuccessData | null) => {
+  const setPendingOrderId = useCallback((id: string | null, data?: AckSuccessData | null) => {
     pendingOrderIdRef.current = id;
     pendingOrderDataRef.current = data ?? null;
     if (id) ackResolvedRef.current = false;
-  };
+  }, []);
 
-  const ackFallbackIvRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ackResolvedRef = useRef(false);
-
-  const resolveOrderAck = (oid: string) => {
+  const resolveOrderAck = useCallback((oid: string) => {
     if (ackResolvedRef.current) return;
     ackResolvedRef.current = true;
     const data = pendingOrderDataRef.current;
@@ -361,9 +374,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setAckStuck(false);
     clearCartOnAck();
     if (data) setOrderSuccess(data);
-  };
+  }, [clearCartOnAck]);
 
-  const tryHttpFallback = async (): Promise<boolean> => {
+  const tryHttpFallback = useCallback(async (): Promise<boolean> => {
     const oid = pendingOrderIdRef.current;
     if (!oid) return false;
     try {
@@ -389,9 +402,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (__DEV__) console.warn("[CartContext] HTTP fallback order check failed:", fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr));
     }
     return false;
-  };
+  }, [resolveOrderAck]);
 
-  const startAckStuckTimer = (delayMs: number) => {
+  const startAckStuckTimer = useCallback((delayMs: number) => {
     if (ackStuckTimerRef.current) clearTimeout(ackStuckTimerRef.current);
     if (ackFallbackTimerRef.current) clearTimeout(ackFallbackTimerRef.current);
     if (ackFallbackIvRef.current) clearInterval(ackFallbackIvRef.current);
@@ -413,30 +426,44 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const resolved = await tryHttpFallback();
       if (!resolved && pendingOrderIdRef.current) setAckStuck(true);
     }, delayMs);
-  };
+  }, [tryHttpFallback]);
 
-  const cancelAckStuckTimer = () => {
+  const cancelAckStuckTimer = useCallback(() => {
     if (ackStuckTimerRef.current) { clearTimeout(ackStuckTimerRef.current); ackStuckTimerRef.current = null; }
     if (ackFallbackTimerRef.current) { clearTimeout(ackFallbackTimerRef.current); ackFallbackTimerRef.current = null; }
     if (ackFallbackIvRef.current) { clearInterval(ackFallbackIvRef.current); ackFallbackIvRef.current = null; }
-  };
+  }, []);
 
-  const clearOrderSuccess = () => setOrderSuccess(null);
+  const clearOrderSuccess = useCallback(() => setOrderSuccess(null), []);
+
+  const ctxValue = useMemo(() => ({
+    items, itemCount, total, cartType,
+    addItem, removeItem, updateQuantity,
+    clearCart, clearCartAndAdd, clearCartOnAck, restoreCart, validateCart, isValidating,
+    pendingAck, setPendingAck,
+    ackStuck,
+    orderSuccess, clearOrderSuccess,
+    setPendingOrderId, startAckStuckTimer, cancelAckStuckTimer,
+    dismissAck,
+    setPharmacyPendingOrderId,
+  }), [
+    items, itemCount, total, cartType,
+    addItem, removeItem, updateQuantity,
+    clearCart, clearCartAndAdd, clearCartOnAck, restoreCart, validateCart, isValidating,
+    pendingAck, setPendingAck,
+    ackStuck,
+    orderSuccess, clearOrderSuccess,
+    setPendingOrderId, startAckStuckTimer, cancelAckStuckTimer,
+    dismissAck,
+    setPharmacyPendingOrderId,
+  ]);
 
   return (
-    <CartContext.Provider value={{
-      items, itemCount, total, cartType,
-      addItem, removeItem, updateQuantity,
-      clearCart, clearCartAndAdd, clearCartOnAck, restoreCart, validateCart, isValidating,
-      pendingAck, setPendingAck,
-      ackStuck,
-      orderSuccess, clearOrderSuccess,
-      setPendingOrderId, startAckStuckTimer, cancelAckStuckTimer,
-      dismissAck,
-      setPharmacyPendingOrderId,
-    }}>
-      {children}
-    </CartContext.Provider>
+    <CartCountContext.Provider value={itemCount}>
+      <CartContext.Provider value={ctxValue}>
+        {children}
+      </CartContext.Provider>
+    </CartCountContext.Provider>
   );
 }
 

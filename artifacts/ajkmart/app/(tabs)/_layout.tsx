@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Colors, { radii, shadows, typography } from "@/constants/colors";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
-import { useCart } from "@/context/CartContext";
+import { useCartCount } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual } from "@workspace/i18n";
 import { getActiveServices } from "@/constants/serviceRegistry";
@@ -111,7 +111,7 @@ function ClassicTabLayout() {
   const isWeb = Platform.OS === "web";
   const insets = useSafeAreaInsets();
   const tabConfig = useAdaptiveTabConfig();
-  const { itemCount } = useCart();
+  const itemCount = useCartCount();
 
   return (
     <Tabs

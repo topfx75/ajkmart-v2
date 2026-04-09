@@ -485,6 +485,7 @@ function CartScreenInner() {
       mountedRef.current = false;
       gwPollRef.current.active = false;
       if (gwPollRef.current.intervalId) clearInterval(gwPollRef.current.intervalId);
+      if (undoClearTimerRef.current) { clearTimeout(undoClearTimerRef.current); undoClearTimerRef.current = null; }
     };
   }, []);
 

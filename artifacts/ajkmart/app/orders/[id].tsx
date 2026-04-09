@@ -97,6 +97,7 @@ export default function OrderDetailScreen() {
 
   const mountedRef = useRef(true);
   const socketRef = useRef<Socket | null>(null);
+  const socketActiveRef = useRef(false);
   const isPharmacyType = type === "pharmacy";
 
   const interpFromRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -134,25 +135,43 @@ export default function OrderDetailScreen() {
     interpRafRef.current = requestAnimationFrame(tick);
   };
 
+  /* Combined socket + polling-fallback effect.
+     Socket is established first; polling only activates if the socket
+     fails to connect within SOCKET_TIMEOUT_MS, or later disconnects.
+     If the socket connects after polling has already started, polling
+     is stopped. */
   useEffect(() => {
     if (!orderId || !token || !order) return;
-    if (!LIVE_TRACKING_STATUSES.includes(order.status)) return;
+    const isTerminal = ["delivered", "cancelled", "completed"].includes(order.status ?? "");
+    if (isTerminal) return;
+
+    const isLiveTracking = LIVE_TRACKING_STATUSES.includes(order.status);
+    const SOCKET_TIMEOUT_MS = 8000;
+
+    const effectiveType = order.type ?? (isRide ? "ride" : isParcel ? "parcel" : "mart");
+    const room = getSocketRoom(orderId, effectiveType);
+    const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
+    const socketUrl = `https://${domain}`;
+
+    let socket: Socket | null = null;
+    let isCancelled = false;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
 
     let ivRef: ReturnType<typeof setInterval> | null = null;
+    let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+    let fallbackStarted = false;
+    let socketConnected = false;
 
     const fetchTrack = async () => {
+      if (!isLiveTracking) return;
       try {
-        const endpoint = isParcel
-          ? `${API_BASE}/rides/${orderId}/track`
-          : isRide
+        const endpoint = isParcel || isRide
           ? `${API_BASE}/rides/${orderId}/track`
           : isPharmacyType
           ? `${API_BASE}/pharmacy-orders/${orderId}/track`
           : `${API_BASE}/orders/${orderId}/track`;
-
-        const res = await fetch(endpoint, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
           const d = unwrapApiResponse(await res.json());
           if (mountedRef.current) {
@@ -171,57 +190,55 @@ export default function OrderDetailScreen() {
       }
     };
 
-    ivRef = setInterval(fetchTrack, 15000);
-    fetchTrack();
-    return () => { if (ivRef !== null) clearInterval(ivRef); };
-  }, [order?.status, orderId, token, isParcel, isRide, isPharmacyType]);
+    const stopPolling = () => {
+      if (ivRef !== null) { clearInterval(ivRef); ivRef = null; }
+    };
 
-  /* Socket.io: real-time updates for active orders.
-     Room is determined by the order's type field (from data), not the URL param.
-     This ensures rides use ride:{id} and mart/food use order:{id}. */
-  useEffect(() => {
-    if (!orderId || !token || !order) return;
-    const isTerminal = ["delivered", "cancelled", "completed"].includes(order.status ?? "");
-    if (isTerminal) return;
+    const startPollingFallback = () => {
+      if (fallbackStarted || !isLiveTracking) return;
+      fallbackStarted = true;
+      ivRef = setInterval(fetchTrack, 15000);
+      fetchTrack();
+    };
 
-    /* Use the order's own type field for room determination — not URL params */
-    const effectiveType = order.type ?? (isRide ? "ride" : isParcel ? "parcel" : "mart");
-    const room = getSocketRoom(orderId, effectiveType);
-
-    const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
-    const socketUrl = `https://${domain}`;
-
-    let socket: Socket | null = null;
-    let retryCount = 0;
-    const MAX_RETRIES = 3;
-    let isCancelled = false;
-
-    const connect = () => {
+    import("socket.io-client").then(({ io }) => {
       if (isCancelled) return;
-      import("socket.io-client").then(({ io }) => {
-        socket = io(socketUrl, {
-          path: "/api/socket.io",
-          query: { rooms: room },
-          auth: { token },
-          extraHeaders: { Authorization: `Bearer ${token}` },
-          transports: ["polling", "websocket"],
-          reconnection: false,
-        });
 
-        if (isCancelled) {
-          socket.disconnect();
-          socket = null;
-          return;
-        }
+      socket = io(socketUrl, {
+        path: "/api/socket.io",
+        query: { rooms: room },
+        auth: { token },
+        extraHeaders: { Authorization: `Bearer ${token}` },
+        transports: ["polling", "websocket"],
+        reconnection: false,
+      });
 
-        socketRef.current = socket;
+      if (isCancelled) { socket.disconnect(); socket = null; return; }
 
-        socket.on("connect", () => {
-          retryCount = 0;
-          socket?.emit("join", room);
-        });
+      socketRef.current = socket;
 
-        socket.on("connect_error", () => {
+      fallbackTimeout = setTimeout(() => {
+        if (!socketConnected && !isCancelled) startPollingFallback();
+      }, SOCKET_TIMEOUT_MS);
+
+      socket.on("connect", () => {
+        socketConnected = true;
+        socketActiveRef.current = true;
+        retryCount = 0;
+        socket?.emit("join", room);
+        if (fallbackTimeout !== null) { clearTimeout(fallbackTimeout); fallbackTimeout = null; }
+        stopPolling();
+        fallbackStarted = false;
+      });
+
+      socket.on("disconnect", () => {
+        socketConnected = false;
+        socketActiveRef.current = false;
+        startPollingFallback();
+      });
+
+      socket.on("connect_error", () => {
+        if (!socketConnected) {
           if (retryCount < MAX_RETRIES) {
             retryCount++;
             const delay = Math.pow(2, retryCount) * 500;
@@ -229,33 +246,32 @@ export default function OrderDetailScreen() {
               if (!isCancelled && socket) {
                 socket.disconnect();
                 socket = null;
-                connect();
+                socketRef.current = null;
               }
             }, delay);
+          } else {
+            startPollingFallback();
           }
-        });
-
-        socket.on("rider:location", (payload: { latitude: number; longitude: number; orderId?: string; rideId?: string }) => {
-          const payloadOrderId = payload.orderId ?? payload.rideId;
-          if (!payloadOrderId || payloadOrderId !== orderId) return;
-          if (mountedRef.current) {
-            animateToLocation(payload.latitude, payload.longitude);
-          }
-        });
-
-        socket.on("order:update", (updated: any) => {
-          if (!updated || updated.id !== orderId) return;
-          if (mountedRef.current) {
-            setOrder((prev: any) => prev ? { ...prev, ...updated } : updated);
-          }
-        });
+        }
       });
-    };
 
-    connect();
+      socket.on("rider:location", (payload: { latitude: number; longitude: number; orderId?: string; rideId?: string }) => {
+        const payloadOrderId = payload.orderId ?? payload.rideId;
+        if (!payloadOrderId || payloadOrderId !== orderId) return;
+        if (mountedRef.current) animateToLocation(payload.latitude, payload.longitude);
+      });
+
+      socket.on("order:update", (updated: any) => {
+        if (!updated || updated.id !== orderId) return;
+        if (mountedRef.current) setOrder((prev: any) => prev ? { ...prev, ...updated } : updated);
+      });
+    });
 
     return () => {
       isCancelled = true;
+      socketActiveRef.current = false;
+      if (fallbackTimeout !== null) { clearTimeout(fallbackTimeout); fallbackTimeout = null; }
+      stopPolling();
       socket?.disconnect();
       socketRef.current = null;
       if (interpRafRef.current !== null) {
@@ -263,7 +279,7 @@ export default function OrderDetailScreen() {
         interpRafRef.current = null;
       }
     };
-  }, [order?.status, orderId, token, isRide, isParcel]);
+  }, [order?.status, orderId, token, isRide, isParcel, isPharmacyType]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -276,14 +292,18 @@ export default function OrderDetailScreen() {
       ? `${API_BASE}/rides/${orderId}`
       : `${API_BASE}/orders/${orderId}`;
     let ivRef: ReturnType<typeof setInterval> | null = null;
-    const fetchAndMaybeClear = async () => {
+    const fetchAndMaybeClear = async (isInitial = false) => {
+      if (!isInitial && socketActiveRef.current) return;
       try {
         const res = await fetch(endpoint, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         const serverDate = res.headers.get("Date");
         if (serverDate && mountedRef.current) {
-          setServerNow(new Date(serverDate).getTime());
+          const parsed = new Date(serverDate).getTime();
+          setServerNow(Number.isFinite(parsed) ? parsed : Date.now());
+        } else if (mountedRef.current) {
+          setServerNow(Date.now());
         }
         const data = unwrapApiResponse(await res.json());
         const fetched = data.order || data.booking || data;
@@ -300,8 +320,8 @@ export default function OrderDetailScreen() {
       }
       if (mountedRef.current) setLoading(false);
     };
-    fetchAndMaybeClear();
-    ivRef = setInterval(fetchAndMaybeClear, 10000);
+    fetchAndMaybeClear(true);
+    ivRef = setInterval(() => fetchAndMaybeClear(false), 10000);
     return () => {
       mountedRef.current = false;
       if (ivRef !== null) clearInterval(ivRef);
