@@ -39,6 +39,7 @@ import { generateTotpSecret, verifyTotpToken, generateQRCodeDataURL, getTotpUri,
 import { sendVerificationEmail, sendPasswordResetEmail, sendMagicLinkEmail, alertNewVendor } from "../services/email.js";
 import { getUserLanguage, getPlatformDefaultLanguage } from "../lib/getUserLanguage.js";
 import { t, type TranslationKey } from "@workspace/i18n";
+import { getRequestLocale, parseAcceptLanguage } from "../lib/requestLocale.js";
 import { logger } from "../lib/logger.js";
 import { clearSpoofHits } from "./rider.js";
 import { canonicalizePhone } from "@workspace/phone-utils";
@@ -181,7 +182,7 @@ const checkIdentifierLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many identifier checks. Please wait a minute before trying again." },
+  message: (req: Request) => ({ error: t("apiErrTooManyIdentifierChecks", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }),
   validate: { xForwardedForHeader: false },
   keyGenerator: (req) => getClientIp(req),
 });
@@ -312,10 +313,16 @@ router.post("/check-identifier", checkIdentifierLimiter, sharedValidateBody(chec
 ───────────────────────────────────────────────────────────── */
 router.post("/send-merge-otp", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) {
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrAuthRequired", lang) }); return;
+  }
 
   const { identifier } = req.body;
-  if (!identifier) { res.status(400).json({ error: "Identifier is required" }); return; }
+  if (!identifier) {
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: t("apiErrIdentifierRequired", lang) }); return;
+  }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
@@ -324,18 +331,25 @@ router.post("/send-merge-otp", async (req, res) => {
   const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
 
   if (!looksLikePhone && !looksLikeEmail) {
-    res.status(400).json({ error: "Identifier must be a phone number or email address" });
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: t("apiErrIdentifierMustBePhoneOrEmail", lang) });
     return;
   }
 
   if (looksLikePhone) {
     const phone = canonicalizePhone(identifier);
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
-    if (existing) { res.status(409).json({ error: "This phone number is already linked to another account" }); return; }
+    if (existing) {
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(409).json({ error: t("apiErrPhoneAlreadyLinked", lang) }); return;
+    }
   } else {
     const email = identifier.trim().toLowerCase();
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
-    if (existing) { res.status(409).json({ error: "This email is already linked to another account" }); return; }
+    if (existing) {
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(409).json({ error: t("apiErrEmailAlreadyLinked", lang) }); return;
+    }
   }
 
   const otp = generateSecureOtp();
@@ -377,10 +391,16 @@ router.post("/send-merge-otp", async (req, res) => {
 ───────────────────────────────────────────────────────────── */
 router.post("/merge-account", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) {
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrAuthRequired", lang) }); return;
+  }
 
   const { identifier, otp } = req.body;
-  if (!identifier || !otp) { res.status(400).json({ error: "Identifier and OTP are required" }); return; }
+  if (!identifier || !otp) {
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: t("apiErrIdentifierAndOtpRequired", lang) }); return;
+  }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
@@ -389,47 +409,65 @@ router.post("/merge-account", async (req, res) => {
   const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
 
   if (!looksLikePhone && !looksLikeEmail) {
-    res.status(400).json({ error: "Identifier must be a phone number or email address" });
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: t("apiErrIdentifierMustBePhoneOrEmail", lang) });
     return;
   }
 
   const [currentUser] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
-  if (!currentUser) { res.status(404).json({ error: "User not found" }); return; }
+  if (!currentUser) {
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(404).json({ error: t("apiErrUserNotFound", lang) }); return;
+  }
 
   const normalizedIdentifier = looksLikePhone ? canonicalizePhone(identifier) : identifier.trim().toLowerCase();
 
   if (currentUser.mergeOtpCode !== hashOtp(otp) || !currentUser.mergeOtpExpiry || currentUser.mergeOtpExpiry < new Date()) {
-    res.status(400).json({ error: "Invalid or expired OTP" });
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: t("apiErrOtpInvalidOrExpired", lang) });
     return;
   }
 
   if (currentUser.pendingMergeIdentifier !== normalizedIdentifier) {
-    res.status(400).json({ error: "OTP was not issued for this identifier" });
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: t("apiErrOtpNotForIdentifier", lang) });
     return;
   }
 
   if (looksLikePhone) {
     const phone = normalizedIdentifier;
-    if (currentUser.phone === phone) { res.status(400).json({ error: "This phone is already linked to your account" }); return; }
+    if (currentUser.phone === phone) {
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(400).json({ error: t("apiErrPhoneAlreadyOnAccount", lang) }); return;
+    }
 
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
-    if (existing) { res.status(409).json({ error: "This phone number is already linked to another account" }); return; }
+    if (existing) {
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(409).json({ error: t("apiErrPhoneAlreadyLinked", lang) }); return;
+    }
 
     await db.update(usersTable).set({ phone, mergeOtpCode: null, mergeOtpExpiry: null, phoneVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
     writeAuthAuditLog("account_merge_phone", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
-    res.json({ success: true, message: "Phone number linked successfully", linked: "phone" });
+    res.json({ success: true, linked: "phone" });
   } else {
     const email = normalizedIdentifier;
-    if (currentUser.email === email) { res.status(400).json({ error: "This email is already linked to your account" }); return; }
+    if (currentUser.email === email) {
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(400).json({ error: t("apiErrEmailAlreadyOnAccount", lang) }); return;
+    }
 
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
-    if (existing) { res.status(409).json({ error: "This email is already linked to another account" }); return; }
+    if (existing) {
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(409).json({ error: t("apiErrEmailAlreadyLinked", lang) }); return;
+    }
 
     await db.update(usersTable).set({ email, mergeOtpCode: null, mergeOtpExpiry: null, emailVerified: true, pendingMergeIdentifier: null, updatedAt: new Date() }).where(eq(usersTable.id, auth.userId));
 
     writeAuthAuditLog("account_merge_email", { ip, userId: auth.userId, userAgent: req.headers["user-agent"] ?? undefined, metadata: { email } });
-    res.json({ success: true, message: "Email linked successfully", linked: "email" });
+    res.json({ success: true, linked: "email" });
   }
 });
 
@@ -444,7 +482,8 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   const phone = canonicalizePhone(rawPhone);
 
   if (!isValidCanonicalPhone(phone)) {
-    res.status(400).json({ error: "Invalid phone number. Please enter a valid Pakistani mobile number (e.g. 03001234567).", field: "phone" });
+    const lang = await getRequestLocale(req);
+    res.status(400).json({ error: t("apiErrInvalidPhone", lang), field: "phone" });
     return;
   }
 
@@ -480,8 +519,9 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   const lockoutStatus = await checkLockout(phone, maxAttempts, lockoutMinutes);
   if (lockoutStatus.locked) {
     addSecurityEvent({ type: "locked_account_otp_request", ip, details: `OTP request for locked phone: ${phone}`, severity: "medium" });
+    const lang = await getRequestLocale(req);
     res.status(429).json({
-      error: `Account temporarily locked due to too many failed attempts. Please try again in ${lockoutStatus.minutesLeft} minute(s).`,
+      error: t("apiErrAccountLocked", lang).replace("{minutes}", String(lockoutStatus.minutesLeft)),
       lockedMinutes: lockoutStatus.minutesLeft,
     });
     return;
@@ -503,7 +543,8 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
 
   /* ══ OTP DISABLED — return generic "use another method" without revealing account state ══ */
   if (!otpEnabled || !otpEnabledForRole) {
-    res.status(403).json({ error: "Phone OTP is currently disabled. Please use another login method or contact support." });
+    const lang = await getRequestLocale(req, existingUser[0]?.id);
+    res.status(403).json({ error: t("apiErrPhoneOtpDisabled", lang) });
     return;
   }
   /* ── Per-phone OTP resend cooldown (60 s) — prevents SMS bombing ── */
@@ -515,7 +556,8 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
     if (issuedAgoMs < otpCooldownMs) {
       const waitSec = Math.ceil((otpCooldownMs - issuedAgoMs) / 1000);
       addSecurityEvent({ type: "otp_resend_throttle", ip, details: `OTP resend too soon for ${phone} — ${waitSec}s remaining`, severity: "low" });
-      res.status(429).json({ error: `Please wait ${waitSec} second(s) before requesting a new OTP.`, retryAfterSeconds: waitSec });
+      const otpWaitLang = await getRequestLocale(req);
+      res.status(429).json({ error: t("apiErrOtpWaitSeconds", otpWaitLang).replace("{seconds}", String(waitSec)), retryAfterSeconds: waitSec });
       return;
     }
   }
@@ -523,11 +565,10 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   /* ── Per-account + per-IP OTP rate limit (admin-configurable window) ── */
   const otpRateCheck = await checkAndIncrOtpRateLimit({ identifier: phone, ip, settings });
   if (otpRateCheck.blocked) {
-    const label = otpRateCheck.reason === "ip"
-      ? "Too many OTP requests from your network"
-      : "Too many OTP requests for this account";
-    addSecurityEvent({ type: "otp_rate_limit_exceeded", ip, details: `${label} (${phone}) — retry in ${otpRateCheck.retryAfterSeconds}s`, severity: "medium" });
-    res.status(429).json({ error: `${label}. Please wait ${otpRateCheck.retryAfterSeconds} second(s) before trying again.`, retryAfterSeconds: otpRateCheck.retryAfterSeconds });
+    const otpRateLang = await getRequestLocale(req);
+    const errKey: TranslationKey = otpRateCheck.reason === "ip" ? "apiErrOtpRateLimitedIp" : "apiErrOtpRateLimitedAccount";
+    addSecurityEvent({ type: "otp_rate_limit_exceeded", ip, details: `OTP rate limited (${phone}) — retry in ${otpRateCheck.retryAfterSeconds}s`, severity: "medium" });
+    res.status(429).json({ error: t(errKey, otpRateLang).replace("{seconds}", String(otpRateCheck.retryAfterSeconds)), retryAfterSeconds: otpRateCheck.retryAfterSeconds });
     return;
   }
 
@@ -609,7 +650,8 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
       req.log.warn({ phone }, "All OTP delivery channels failed — returning OTP in dev/devOtp mode");
     } else {
       req.log.error({ phone }, "All OTP delivery channels failed");
-      res.status(502).json({ error: "Could not deliver OTP. Please try again or use an alternative login method.", fallbackChannels: availableChannels });
+      const otpLangFail = await getRequestLocale(req);
+      res.status(502).json({ error: t("apiErrOtpDeliveryFailed", otpLangFail), fallbackChannels: availableChannels });
       return;
     }
   }
@@ -643,7 +685,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
   const phone = canonicalizePhone(req.body.phone);
 
   if (!isValidCanonicalPhone(phone)) {
-    res.status(400).json({ error: "Invalid phone number format.", field: "phone" });
+    const lang = await getRequestLocale(req);
+    res.status(400).json({ error: t("apiErrInvalidPhone", lang), field: "phone" });
     return;
   }
 
@@ -653,19 +696,21 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabled(settings, "auth_phone_otp_enabled")) {
-    res.status(403).json({ error: "Phone OTP login is currently disabled." });
+    const lang = await getRequestLocale(req);
+    res.status(403).json({ error: t("apiErrPhoneOtpDisabled", lang) });
     return;
   }
 
   const maxAttempts    = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"]    ?? "30", 10);
+  const lang = await getRequestLocale(req);
 
   /* ── Lockout check ── */
   const lockoutStatus = await checkLockout(phone, maxAttempts, lockoutMinutes);
   if (lockoutStatus.locked) {
     addAuditEntry({ action: "verify_otp_lockout", ip, details: `Locked account OTP attempt: ${phone}`, result: "fail" });
     res.status(429).json({
-      error: `Account temporarily locked. Please try again in ${lockoutStatus.minutesLeft} minute(s).`,
+      error: t("apiErrAccountLocked", lang).replace("{minutes}", String(lockoutStatus.minutesLeft)),
       lockedMinutes: lockoutStatus.minutesLeft,
     });
     return;
@@ -684,8 +729,9 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
        Block auto-registration for these roles to prevent cross-app token issuance. */
     const requestedRoleForNew = req.body.role as string | undefined;
     if (requestedRoleForNew && requestedRoleForNew !== "customer") {
+      const lang = await getRequestLocale(req);
       res.status(403).json({
-        error: `No ${requestedRoleForNew} account found for this phone number. Please use the correct registration process or contact admin.`,
+        error: t("apiErrWrongApp", lang),
         wrongApp: true,
       });
       return;
@@ -702,7 +748,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
       .limit(1);
 
     if (!pending) {
-      res.status(404).json({ error: "User not found. Please request a new OTP." });
+      const lang = await getRequestLocale(req);
+      res.status(404).json({ error: t("apiErrUserNotFoundRequestOtp", lang) });
       return;
     }
 
@@ -715,13 +762,16 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
         .set({ attempts: newAttempts })
         .where(eq(pendingOtpsTable.phone, phone));
 
+      const lang = await getRequestLocale(req);
       if (newAttempts >= maxAttempts) {
         await db.delete(pendingOtpsTable).where(eq(pendingOtpsTable.phone, phone));
-        res.status(429).json({ error: `Too many failed attempts. Please request a new OTP.`, lockedMinutes: 1 });
+        res.status(429).json({ error: t("apiErrTooManyAttemptsRequestOtp", lang), lockedMinutes: 1 });
       } else {
         const remaining = maxAttempts - newAttempts;
         res.status(401).json({
-          error: `Invalid OTP. ${remaining > 0 ? `${remaining} attempt(s) remaining.` : "Please request a new OTP."}`,
+          error: remaining > 0
+            ? `${t("apiErrInvalidOtp", lang)} ${t("apiErrAttemptsRemaining", lang).replace("{count}", String(remaining))}`
+            : `${t("apiErrInvalidOtp", lang)} ${t("apiErrRequestNewOtp", lang)}`,
           attemptsRemaining: Math.max(0, remaining),
         });
       }
@@ -778,7 +828,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
   }
 
   if (!isAuthMethodEnabled(settings, "auth_phone_otp_enabled", user.role ?? undefined)) {
-    res.status(403).json({ error: "Phone OTP login is currently disabled for your account type." });
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrPhoneOtpDisabled", lang) });
     return;
   }
 
@@ -788,7 +839,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
     const userRoles = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
     if (!userRoles.includes(requestedRole)) {
       addSecurityEvent({ type: "cross_role_login_attempt", ip, userId: user.id, details: `User with roles [${user.roles}] tried to log in as ${requestedRole}`, severity: "high" });
-      res.status(403).json({ error: "This account is not registered as a " + requestedRole + ". Please use the correct app.", wrongApp: true });
+      const lang = await getRequestLocale(req, user.id);
+      res.status(403).json({ error: t("apiErrWrongApp", lang), wrongApp: true });
       return;
     }
   }
@@ -796,7 +848,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
   /* ── Banned check ── */
   if (user.isBanned) {
     addSecurityEvent({ type: "banned_login_attempt", ip, userId: user.id, details: `Banned user tried to verify OTP: ${phone}`, severity: "high" });
-    res.status(403).json({ error: "Your account has been suspended. Please contact support." });
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountSuspended", lang) });
     return;
   }
 
@@ -806,7 +859,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
      them to use Google instead without disclosing anything about other numbers. ── */
   if (user.googleId && isAuthMethodEnabled(await getCachedSettings(), "auth_google_enabled", user.role ?? undefined)) {
     addSecurityEvent({ type: "otp_hijack_google_account", ip, userId: user.id, details: `OTP verify attempted on Google-linked account: ${phone}`, severity: "medium" });
-    res.status(403).json({ error: "This account is linked to Google. Please sign in with Google.", useGoogle: true });
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrUseGoogleSignIn", lang), useGoogle: true });
     return;
   }
 
@@ -816,7 +870,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
      Check approvalStatus directly — the setting only controls NEW users, not existing pending ones. ── */
   const isPendingApproval = user.approvalStatus === "pending";
   if (!user.isActive && !isPendingApproval) {
-    res.status(403).json({ error: "Your account is currently inactive. Please contact support." });
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountInactive", lang) });
     return;
   }
 
@@ -881,12 +936,13 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
       const [fresh] = await db.select({ otpUsed: usersTable.otpUsed, otpExpiry: usersTable.otpExpiry })
         .from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
 
+      const otpLangErr = await getRequestLocale(req, user.id);
       if (fresh?.otpUsed) {
         writeAuthAuditLog("otp_reuse_attempt", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
-        res.status(401).json({ error: "This OTP has already been used. Please request a new one." });
+        res.status(401).json({ error: t("apiErrOtpAlreadyUsed", otpLangErr) });
       } else if (!fresh?.otpExpiry || new Date() > fresh.otpExpiry) {
         writeAuthAuditLog("otp_expired", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
-        res.status(401).json({ error: "OTP expired. Please request a new one." });
+        res.status(401).json({ error: t("apiErrOtpExpired", otpLangErr) });
       } else {
         const updated = await recordFailedAttempt(phone, maxAttempts, lockoutMinutes);
         const remaining = maxAttempts - updated.attempts;
@@ -894,10 +950,12 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
         writeAuthAuditLog("otp_failed", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
         if (updated.lockedUntil) {
           addSecurityEvent({ type: "account_locked", ip, userId: user.id, details: `Account locked after ${maxAttempts} failed OTP attempts`, severity: "high" });
-          res.status(429).json({ error: `Too many failed attempts. Account locked for ${lockoutMinutes} minutes.`, lockedMinutes: lockoutMinutes });
+          res.status(429).json({ error: t("apiErrAccountLocked", otpLangErr).replace("{minutes}", String(lockoutMinutes)), lockedMinutes: lockoutMinutes });
         } else {
           res.status(401).json({
-            error: `Invalid OTP. ${remaining > 0 ? `${remaining} attempt(s) remaining before lockout.` : "Next failure will lock your account."}`,
+            error: remaining > 0
+              ? `${t("apiErrInvalidOtp", otpLangErr)} ${t("apiErrAttemptsRemaining", otpLangErr).replace("{count}", String(remaining))}`
+              : `${t("apiErrInvalidOtp", otpLangErr)} ${t("apiErrNextFailureLocks", otpLangErr)}`,
             attemptsRemaining: Math.max(0, remaining),
           });
         }
@@ -925,7 +983,8 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
     return;
   }
   if (u.approvalStatus === "rejected") {
-    res.status(403).json({ error: "Aapka account reject kar diya gaya hai. Admin se rabta karein.", code: "APPROVAL_REJECTED", approvalStatus: "rejected", rejectionReason: u.approvalNote ?? null });
+    const rejLang = await getRequestLocale(req, u.id);
+    res.status(403).json({ error: t("apiErrApprovalRejected", rejLang), code: "APPROVAL_REJECTED", approvalStatus: "rejected", rejectionReason: u.approvalNote ?? null });
     return;
   }
 
@@ -992,39 +1051,45 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
 router.post("/vendor-register", async (req, res) => {
   const auth = extractAuthUser(req);
   if (!auth) {
-    res.status(401).json({ error: "Authentication required. Please verify your phone via OTP first." });
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrAuthRequiredOtp", lang) });
     return;
   }
 
   const { storeName, storeCategory, name, cnic, address, city, bankName, bankAccount, bankAccountTitle, username } = req.body;
   if (!storeName) {
-    res.status(400).json({ error: "Store name is required" });
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(400).json({ error: t("apiErrStoreNameRequired", lang) });
     return;
   }
 
   if (username) {
     const normalizedUsername = String(username).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20);
     if (normalizedUsername.length < 3) {
-      res.status(400).json({ error: "Username must be at least 3 characters" });
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(400).json({ error: t("apiErrUsernameTooShort", lang) });
       return;
     }
     const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
       .where(sql`lower(${usersTable.username}) = ${normalizedUsername} AND ${usersTable.id} != ${auth.userId}`)
       .limit(1);
     if (existing) {
-      res.status(409).json({ error: "Username is already taken" });
+      const lang = await getRequestLocale(req, auth.userId);
+      res.status(409).json({ error: t("apiErrUsernameTaken", lang) });
       return;
     }
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
   if (!user) {
-    res.status(404).json({ error: "User not found." });
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(404).json({ error: t("apiErrUserNotFound", lang) });
     return;
   }
 
   if (!user.phoneVerified) {
-    res.status(403).json({ error: "Phone number not verified. Please verify OTP first." });
+    const lang = await getRequestLocale(req, auth.userId);
+    res.status(403).json({ error: t("apiErrPhoneNotVerified", lang) });
     return;
   }
 
@@ -1119,25 +1184,27 @@ router.post("/validate-token", async (req, res) => {
     ? authHeader.slice(7)
     : bodyToken;
 
-  if (!token) { res.status(400).json({ error: "token required" }); return; }
+  const tokenLang = await getRequestLocale(req);
+  if (!token) { res.status(400).json({ error: t("apiErrTokenRequired", tokenLang) }); return; }
 
   try {
     const payload = verifyUserJwt(token);
-    if (!payload) { res.status(401).json({ valid: false, error: "Invalid or expired token" }); return; }
+    if (!payload) { res.status(401).json({ valid: false, error: t("apiErrInvalidExpiredToken", tokenLang) }); return; }
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-    if (!user)         { res.status(401).json({ valid: false, error: "User not found" }); return; }
-    if (user.isBanned) { res.status(403).json({ valid: false, error: "Account suspended" }); return; }
-    if (!user.isActive){ res.status(403).json({ valid: false, error: "Account inactive" }); return; }
+    const userLang = user ? await getRequestLocale(req, user.id) : tokenLang;
+    if (!user)         { res.status(401).json({ valid: false, error: t("apiErrUserNotFound", tokenLang) }); return; }
+    if (user.isBanned) { res.status(403).json({ valid: false, error: t("apiErrAccountSuspended", userLang) }); return; }
+    if (!user.isActive){ res.status(403).json({ valid: false, error: t("apiErrAccountInactive", userLang) }); return; }
 
     if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
-      res.status(401).json({ valid: false, error: "Token revoked" }); return;
+      res.status(401).json({ valid: false, error: t("apiErrTokenRevoked", userLang) }); return;
     }
 
     const expiresAt = payload.exp ? new Date(payload.exp * 1000).toISOString() : null;
     res.json({ valid: true, expiresAt, userId: user.id, role: user.role });
   } catch {
-    res.status(401).json({ valid: false, error: "Token validation failed" });
+    res.status(401).json({ valid: false, error: t("apiErrTokenValidationFailed", tokenLang) });
   }
 });
 
@@ -1157,7 +1224,8 @@ async function handleRefreshToken(req: Request, res: Response) {
 
   if (!rt) {
     writeAuthAuditLog("refresh_failed_not_found", { ip, userAgent: req.headers["user-agent"] ?? undefined });
-    res.status(401).json({ error: "Invalid refresh token. Please log in again." });
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrInvalidRefreshToken", lang) });
     return;
   }
 
@@ -1166,21 +1234,24 @@ async function handleRefreshToken(req: Request, res: Response) {
     await revokeAllUserRefreshTokens(rt.userId);
     writeAuthAuditLog("refresh_token_reuse", { userId: rt.userId, ip, userAgent: req.headers["user-agent"] ?? undefined });
     addSecurityEvent({ type: "refresh_token_reuse", ip, userId: rt.userId, details: "Refresh token reuse detected — all sessions revoked", severity: "high" });
-    res.status(401).json({ error: "Session invalidated for security. Please log in again." });
+    const lang = await getRequestLocale(req, rt.userId);
+    res.status(401).json({ error: t("apiErrSessionInvalidated", lang) });
     return;
   }
 
   if (new Date() > rt.expiresAt) {
     await revokeRefreshToken(tokenHash);
     writeAuthAuditLog("refresh_token_expired", { userId: rt.userId, ip });
-    res.status(401).json({ error: "Session expired. Please log in again." });
+    const lang = await getRequestLocale(req, rt.userId);
+    res.status(401).json({ error: t("apiErrSessionExpired", lang) });
     return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, rt.userId)).limit(1);
   if (!user || user.isBanned || !user.isActive) {
     await revokeRefreshToken(tokenHash);
-    res.status(401).json({ error: "Account not available. Please log in again." });
+    const lang = await getRequestLocale(req, rt.userId);
+    res.status(401).json({ error: t("apiErrAccountNotAvailable", lang) });
     return;
   }
 
@@ -1210,12 +1281,14 @@ async function handleRefreshToken(req: Request, res: Response) {
       : isAuthMethodEnabled(settings, settingsKey, userRole);
     if (!isEnabled) {
       await revokeRefreshToken(tokenHash);
-      res.status(403).json({ error: "Your login method has been disabled. Please log in again using an available method." });
+      const methodLang = await getRequestLocale(req);
+      res.status(403).json({ error: t("apiErrLoginMethodDisabled", methodLang) });
       return;
     }
   } else {
     await revokeRefreshToken(tokenHash);
-    res.status(403).json({ error: "Session expired. Please log in again." });
+    const expLang = await getRequestLocale(req);
+    res.status(403).json({ error: t("apiErrSessionExpired", expLang) });
     return;
   }
 
@@ -1293,7 +1366,8 @@ router.post("/check-available", async (req, res) => {
   const ip = getClientIp(req);
   const rlCheck = await checkAvailableRateLimit(ip, 20, 10);
   if (rlCheck.limited) {
-    res.status(429).json({ error: `Too many requests. Try again in ${rlCheck.minutesLeft} minute(s).` }); return;
+    const lang = await getRequestLocale(req);
+    res.status(429).json({ error: t("apiErrTooManyRequestsMinutes", lang).replace("{minutes}", String(rlCheck.minutesLeft)) }); return;
   }
 
   const { phone, email, username } = req.body;
@@ -1332,14 +1406,16 @@ router.post("/check-available", async (req, res) => {
 router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   const { email } = req.body;
   if (!email || !email.includes("@")) {
-    res.status(400).json({ error: "Valid email address required" }); return;
+    const lang = await getRequestLocale(req);
+    res.status(400).json({ error: t("apiErrValidEmailRequired", lang) }); return;
   }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabled(settings, "auth_email_otp_enabled")) {
-    res.status(403).json({ error: "Email OTP login is currently disabled." });
+    const lang = await getRequestLocale(req);
+    res.status(403).json({ error: t("apiErrEmailOtpDisabled", lang) });
     return;
   }
   const normalized = email.toLowerCase().trim();
@@ -1352,20 +1428,28 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   }
 
   if (!isAuthMethodEnabled(settings, "auth_email_otp_enabled", user.role ?? "customer")) {
-    res.status(403).json({ error: "Email OTP login is currently disabled for your account type." });
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrEmailOtpDisabled", lang) });
     return;
   }
 
-  if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended." }); return; }
+  if (user.isBanned) {
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountSuspended", lang) }); return;
+  }
   const isPendingEmail = user.approvalStatus === "pending";
-  if (!user.isActive && !isPendingEmail) { res.status(403).json({ error: "Your account is inactive. Contact support." }); return; }
+  if (!user.isActive && !isPendingEmail) {
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountInactive", lang) }); return;
+  }
 
   /* Lockout check using email as key */
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
   const lockout = await checkLockout(normalized, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
-    res.status(429).json({ error: `Too many attempts. Try again in ${lockout.minutesLeft} minute(s).` }); return;
+    const lockLang = await getRequestLocale(req);
+    res.status(429).json({ error: t("apiErrTooManyAttemptsMinutes", lockLang).replace("{minutes}", String(lockout.minutesLeft)) }); return;
   }
 
   /* ── Per-email OTP resend cooldown — prevents inbox flooding ──
@@ -1378,7 +1462,8 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
     if (issuedAgoMs < otpCooldownMs) {
       const waitSec = Math.ceil((otpCooldownMs - issuedAgoMs) / 1000);
       addAuditEntry({ action: "email_otp_throttle", ip, details: `Email OTP resend too soon for ${normalized} — ${waitSec}s remaining`, result: "fail" });
-      res.status(429).json({ error: `Please wait ${waitSec} second(s) before requesting a new email OTP.`, retryAfterSeconds: waitSec });
+      const emailWaitLang = await getRequestLocale(req);
+      res.status(429).json({ error: t("apiErrEmailOtpWaitSeconds", emailWaitLang).replace("{seconds}", String(waitSec)), retryAfterSeconds: waitSec });
       return;
     }
   }
@@ -1386,11 +1471,10 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   /* ── Per-account + per-IP OTP rate limit (admin-configurable window) ── */
   const emailRateCheck = await checkAndIncrOtpRateLimit({ identifier: normalized, ip, settings });
   if (emailRateCheck.blocked) {
-    const label = emailRateCheck.reason === "ip"
-      ? "Too many OTP requests from your network"
-      : "Too many OTP requests for this email";
-    addAuditEntry({ action: "email_otp_rate_limit", ip, details: `${label} (${normalized}) — retry in ${emailRateCheck.retryAfterSeconds}s`, result: "fail" });
-    res.status(429).json({ error: `${label}. Please wait ${emailRateCheck.retryAfterSeconds} second(s) before trying again.`, retryAfterSeconds: emailRateCheck.retryAfterSeconds });
+    const emailRateLang = await getRequestLocale(req);
+    const emailErrKey: TranslationKey = emailRateCheck.reason === "ip" ? "apiErrEmailOtpRateLimitedIp" : "apiErrEmailOtpRateLimitedAccount";
+    addAuditEntry({ action: "email_otp_rate_limit", ip, details: `Email OTP rate limited (${normalized}) — retry in ${emailRateCheck.retryAfterSeconds}s`, result: "fail" });
+    res.status(429).json({ error: t(emailErrKey, emailRateLang).replace("{seconds}", String(emailRateCheck.retryAfterSeconds)), retryAfterSeconds: emailRateCheck.retryAfterSeconds });
     return;
   }
 
@@ -1437,13 +1521,17 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
   const { email, otp } = req.body;
-  if (!email || !otp) { res.status(400).json({ error: "Email and OTP are required" }); return; }
+  if (!email || !otp) {
+    const lang = await getRequestLocale(req);
+    res.status(400).json({ error: t("apiErrEmailAndOtpRequired", lang) }); return;
+  }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabled(settings, "auth_email_otp_enabled")) {
-    res.status(403).json({ error: "Email OTP login is currently disabled." });
+    const lang = await getRequestLocale(req);
+    res.status(403).json({ error: t("apiErrEmailOtpDisabled", lang) });
     return;
   }
   const normalized = email.toLowerCase().trim();
@@ -1453,14 +1541,19 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
 
   const lockout = await checkLockout(normalized, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
-    res.status(429).json({ error: `Account locked. Try again in ${lockout.minutesLeft} minute(s).` }); return;
+    const lang = await getRequestLocale(req);
+    res.status(429).json({ error: t("apiErrAccountLocked", lang).replace("{minutes}", String(lockout.minutesLeft)) }); return;
   }
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalized)).limit(1);
-  if (!user) { res.status(404).json({ error: "Is email se koi account nahi mila." }); return; }
+  if (!user) {
+    const lang = await getRequestLocale(req);
+    res.status(404).json({ error: t("apiErrUserNotFound", lang) }); return;
+  }
 
   if (!isAuthMethodEnabled(settings, "auth_email_otp_enabled", user.role ?? "customer")) {
-    res.status(403).json({ error: "Email OTP login is currently disabled for your account type." });
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrEmailOtpDisabled", lang) });
     return;
   }
 
@@ -1470,35 +1563,45 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
     const userRolesEmail = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
     if (!userRolesEmail.includes(requestedEmailRole)) {
       addSecurityEvent({ type: "cross_role_login_attempt", ip, userId: user.id, details: `User with roles [${user.roles}] tried email OTP login as ${requestedEmailRole}`, severity: "high" });
-      res.status(403).json({ error: "This account is not registered as a " + requestedEmailRole + ". Please use the correct app.", wrongApp: true }); return;
+      const lang = await getRequestLocale(req, user.id);
+      res.status(403).json({ error: t("apiErrWrongApp", lang), wrongApp: true }); return;
     }
   }
 
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
+  if (user.isBanned) {
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountSuspended", lang) }); return;
+  }
   const emailIsPending = user.approvalStatus === "pending";
-  if (!user.isActive && !emailIsPending) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
+  if (!user.isActive && !emailIsPending) {
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountInactive", lang) }); return;
+  }
 
   /* Check expiry FIRST — prevents timing oracle (attacker learning that an
      expired OTP was correct by observing which error branch fires). */
   if (user.emailOtpExpiry && new Date() > user.emailOtpExpiry) {
-    res.status(401).json({ error: "OTP expired. Please request a new one." }); return;
+    const lang = await getRequestLocale(req, user.id);
+    res.status(401).json({ error: t("apiErrOtpExpired", lang) }); return;
   }
 
   if (user.emailOtpCode !== hashOtp(otp)) {
     const updated = await recordFailedAttempt(normalized, maxAttempts, lockoutMinutes);
     const remaining = maxAttempts - updated.attempts;
     addAuditEntry({ action: "email_otp_failed", ip, details: `Wrong email OTP for: ${normalized}`, result: "fail" });
+    const lang = await getRequestLocale(req, user.id);
     if (updated.lockedUntil) {
-      res.status(429).json({ error: `Too many failed attempts. Locked for ${lockoutMinutes} minutes.` });
+      res.status(429).json({ error: t("apiErrAccountLocked", lang).replace("{minutes}", String(lockoutMinutes)) });
     } else {
-      res.status(401).json({ error: `Invalid OTP. ${remaining} attempt(s) remaining.`, attemptsRemaining: remaining });
+      res.status(401).json({ error: `${t("apiErrInvalidOtp", lang)} ${t("apiErrAttemptsRemaining", lang).replace("{count}", String(remaining))}`, attemptsRemaining: remaining });
     }
     return;
   }
 
   /* Check approval BEFORE touching the DB — a rejected user must not have their OTP cleared */
   if (user.approvalStatus === "rejected") {
-    res.status(403).json({ error: "Account rejected. Contact admin.", code: "APPROVAL_REJECTED", approvalStatus: "rejected", rejectionReason: user.approvalNote ?? null }); return;
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountRejected", lang), code: "APPROVAL_REJECTED", approvalStatus: "rejected", rejectionReason: user.approvalNote ?? null }); return;
   }
 
   /* Clear email OTP + mark email verified + update last login */
@@ -1588,18 +1691,23 @@ async function handleUnifiedLogin(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    res.status(400).json({ error: first?.message ?? "Invalid request body", field: first?.path?.[0] ?? undefined });
+    const loginLang = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+    res.status(400).json({ error: first?.message ?? t("apiErrInvalidRequestBody", loginLang), field: first?.path?.[0] ?? undefined });
     return;
   }
   const identifier = (parsed.data.identifier || parsed.data.username || "").trim();
   const { password } = parsed.data;
-  if (!identifier) { res.status(400).json({ error: "Identifier and password required" }); return; }
+  if (!identifier) {
+    const lang = await getRequestLocale(req);
+    res.status(400).json({ error: t("apiErrCredentialsRequired", lang) }); return;
+  }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabled(settings, "auth_username_password_enabled")) {
-    res.status(403).json({ error: "Password login is currently disabled." });
+    const lang = await getRequestLocale(req);
+    res.status(403).json({ error: t("apiErrPasswordLoginDisabled", lang) });
     return;
   }
 
@@ -1612,17 +1720,20 @@ async function handleUnifiedLogin(req: Request, res: Response) {
 
   const lockout = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
-    res.status(429).json({ error: `Account locked. Try again in ${lockout.minutesLeft} minute(s).` }); return;
+    const lang = await getRequestLocale(req, user?.id);
+    res.status(429).json({ error: t("apiErrAccountLocked", lang).replace("{minutes}", String(lockout.minutesLeft)) }); return;
   }
 
   if (!user || !user.passwordHash) {
     await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
     addAuditEntry({ action: "unified_login_failed", ip, details: `Not found or no password (${idType}): ${lookupKey}`, result: "fail" });
-    res.status(401).json({ error: "Invalid credentials" }); return;
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrInvalidCredentials", lang) }); return;
   }
 
   if (!isAuthMethodEnabled(settings, "auth_username_password_enabled", user.role ?? "customer")) {
-    res.status(403).json({ error: "Password login is currently disabled for your account type." });
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrPasswordLoginDisabled", lang) });
     return;
   }
 
@@ -1632,28 +1743,37 @@ async function handleUnifiedLogin(req: Request, res: Response) {
     const userRolesLogin = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim());
     if (!userRolesLogin.includes(requestedRoleLogin)) {
       addSecurityEvent({ type: "cross_role_login_attempt", ip, userId: user.id, details: `User with roles [${user.roles}] tried to log in as ${requestedRoleLogin}`, severity: "high" });
-      res.status(403).json({ error: "This account is not registered as a " + requestedRoleLogin + ". Please use the correct app.", wrongApp: true }); return;
+      const lang = await getRequestLocale(req, user.id);
+      res.status(403).json({ error: t("apiErrWrongApp", lang), wrongApp: true }); return;
     }
   }
 
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
+  if (user.isBanned) {
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountSuspended", lang) }); return;
+  }
   const isPendingApproval = user.approvalStatus === "pending";
-  if (!user.isActive && !isPendingApproval) { res.status(403).json({ error: "Account inactive. Contact support." }); return; }
+  if (!user.isActive && !isPendingApproval) {
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountInactive", lang) }); return;
+  }
 
   const passwordOk = verifyPassword(password, user.passwordHash);
   if (!passwordOk) {
     const updated = await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
     addAuditEntry({ action: "unified_login_failed", ip, details: `Wrong password (${idType}): ${lookupKey}`, result: "fail" });
+    const lang = await getRequestLocale(req, user.id);
     if (updated.lockedUntil) {
-      res.status(429).json({ error: `Too many failed attempts. Locked for ${lockoutMinutes} minutes.` });
+      res.status(429).json({ error: t("apiErrAccountLocked", lang).replace("{minutes}", String(lockoutMinutes)) });
     } else {
-      res.status(401).json({ error: `Invalid credentials. ${maxAttempts - updated.attempts} attempt(s) remaining.` });
+      res.status(401).json({ error: `${t("apiErrInvalidCredentials", lang)} ${t("apiErrAttemptsRemaining", lang).replace("{count}", String(maxAttempts - updated.attempts))}` });
     }
     return;
   }
 
   if (user.approvalStatus === "rejected") {
-    res.status(403).json({ error: "Account rejected. Contact admin.", code: "APPROVAL_REJECTED", approvalStatus: "rejected", rejectionReason: user.approvalNote ?? null }); return;
+    const lang = await getRequestLocale(req, user.id);
+    res.status(403).json({ error: t("apiErrAccountRejected", lang), code: "APPROVAL_REJECTED", approvalStatus: "rejected", rejectionReason: user.approvalNote ?? null }); return;
   }
 
   await resetAttempts(lockoutKey);
@@ -1712,18 +1832,31 @@ router.post("/complete-profile", async (req, res) => {
   const authHeader = req.headers["authorization"] as string | undefined;
   const rawToken = req.body?.token || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
   const { name, email, username, password, currentPassword, cnic, address, city, area, latitude, longitude } = req.body;
-  if (!rawToken) { res.status(401).json({ error: "Token required" }); return; }
+  if (!rawToken) {
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrTokenRequired", lang) }); return;
+  }
 
   /* Verify JWT to get userId */
   const payload = verifyUserJwt(rawToken);
-  if (!payload) { res.status(401).json({ error: "Invalid or expired token. Please log in again." }); return; }
+  if (!payload) {
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrTokenInvalidOrExpired", lang) }); return;
+  }
   const userId = payload.userId;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user)         { res.status(404).json({ error: "User not found" }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
+  if (!user) {
+    const lang = await getRequestLocale(req, userId);
+    res.status(404).json({ error: t("apiErrUserNotFound", lang) }); return;
+  }
+  if (user.isBanned) {
+    const lang = await getRequestLocale(req, userId);
+    res.status(403).json({ error: t("apiErrAccountSuspended", lang) }); return;
+  }
   if (!user.isActive && user.approvalStatus !== "pending") {
-    res.status(403).json({ error: "Account inactive. Contact support." }); return;
+    const lang = await getRequestLocale(req, userId);
+    res.status(403).json({ error: t("apiErrAccountInactive", lang) }); return;
   }
 
   const updates: Partial<typeof usersTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
@@ -1738,7 +1871,8 @@ router.post("/complete-profile", async (req, res) => {
     if (normalized !== user.email) {
       const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, normalized)).limit(1);
       if (existing && existing.id !== userId) {
-        res.status(409).json({ error: "Is email se pehle se ek account bana hua hai" }); return;
+        const lang = await getRequestLocale(req, userId);
+        res.status(409).json({ error: t("apiErrEmailAlreadyExists", lang) }); return;
       }
     }
     updates.email = normalized;
@@ -1746,11 +1880,15 @@ router.post("/complete-profile", async (req, res) => {
 
   if (username && username.length > 2) {
     const clean = username.toLowerCase().replace(/[^a-z0-9_]/g, "").trim();
-    if (clean.length < 3) { res.status(400).json({ error: "Username must be at least 3 characters (letters, numbers, underscore only)" }); return; }
+    if (clean.length < 3) {
+      const lang = await getRequestLocale(req, userId);
+      res.status(400).json({ error: t("apiErrUsernameMinLength", lang) }); return;
+    }
     if (clean !== user.username) {
       const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.username}) = ${clean}`).limit(1);
       if (existing && existing.id !== userId) {
-        res.status(409).json({ error: "Yeh username pehle se liya hua hai" }); return;
+        const lang = await getRequestLocale(req, userId);
+        res.status(409).json({ error: t("apiErrUsernameTaken", lang) }); return;
       }
     }
     updates.username = clean;
@@ -1784,14 +1922,19 @@ router.post("/complete-profile", async (req, res) => {
     const isNewRegistration = !user.name || user.name === "User" || user.name === "Pending";
     if (user.passwordHash && !isNewRegistration) {
       if (!currentPassword) {
-        res.status(400).json({ error: "Current password required to change password" }); return;
+        const lang = await getRequestLocale(req, userId);
+        res.status(400).json({ error: t("apiErrCurrentPasswordChange", lang) }); return;
       }
       if (!verifyPassword(currentPassword, user.passwordHash)) {
-        res.status(401).json({ error: "Current password galat hai" }); return;
+        const lang = await getRequestLocale(req, userId);
+        res.status(401).json({ error: t("apiErrCurrentPasswordWrong", lang) }); return;
       }
     }
     const check = validatePasswordStrength(password);
-    if (!check.ok) { res.status(400).json({ error: check.message }); return; }
+    if (!check.ok) {
+      const lang = await getRequestLocale(req, userId);
+      res.status(400).json({ error: t("apiErrPasswordPolicy", lang) }); return;
+    }
     updates.passwordHash = hashPassword(password);
   }
 
@@ -1808,7 +1951,8 @@ router.post("/complete-profile", async (req, res) => {
   updates.accountLevel = newLevel;
 
   if (Object.keys(updates).length === 1) {
-    res.status(400).json({ error: "Koi update nahi kiya — name, email, username ya password provide karein" }); return;
+    const lang = await getRequestLocale(req, userId);
+    res.status(400).json({ error: t("apiErrNoProfileUpdate", lang) }); return;
   }
 
   const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
@@ -1847,24 +1991,41 @@ router.post("/set-password", async (req, res) => {
   const authHeader = req.headers["authorization"] as string | undefined;
   const rawToken = req.body?.token || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
   const { password, currentPassword } = req.body;
-  if (!rawToken || !password) { res.status(400).json({ error: "Token and password required" }); return; }
+  if (!rawToken || !password) {
+    const lang = await getRequestLocale(req);
+    res.status(400).json({ error: t("apiErrTokenAndPasswordRequired", lang) }); return;
+  }
 
   const payload = verifyUserJwt(rawToken);
-  if (!payload) { res.status(401).json({ error: "Invalid or expired token. Please log in again." }); return; }
+  if (!payload) {
+    const lang = await getRequestLocale(req);
+    res.status(401).json({ error: t("apiErrTokenInvalidOrExpired", lang) }); return;
+  }
   const userId = payload.userId;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user)         { res.status(404).json({ error: "User not found" }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended. Contact support." }); return; }
-  if (!user.isActive){ res.status(403).json({ error: "Account inactive. Contact support." }); return; }
+  if (!user) {
+    const lang = await getRequestLocale(req, userId);
+    res.status(404).json({ error: t("apiErrUserNotFound", lang) }); return;
+  }
+  if (user.isBanned) {
+    const lang = await getRequestLocale(req, userId);
+    res.status(403).json({ error: t("apiErrAccountSuspended", lang) }); return;
+  }
+  if (!user.isActive) {
+    const lang = await getRequestLocale(req, userId);
+    res.status(403).json({ error: t("apiErrAccountInactive", lang) }); return;
+  }
 
   /* If user already has a password, ALWAYS require the current password — no bypass */
   if (user.passwordHash) {
     if (!currentPassword) {
-      res.status(400).json({ error: "Current password required to change password" }); return;
+      const lang = await getRequestLocale(req, userId);
+      res.status(400).json({ error: t("apiErrCurrentPasswordRequired", lang) }); return;
     }
     if (!verifyPassword(currentPassword, user.passwordHash)) {
-      res.status(401).json({ error: "Current password galat hai" }); return;
+      const lang = await getRequestLocale(req, userId);
+      res.status(401).json({ error: t("apiErrCurrentPasswordWrong", lang) }); return;
     }
   }
 
@@ -1986,55 +2147,56 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
   const settings = await getCachedSettings();
   const userRole = (role === "rider" || role === "vendor") ? role : "customer";
 
+  const regLang = await getRequestLocale(req);
   if (settings["feature_new_users"] === "off") {
-    res.status(403).json({ error: "New user registration is currently disabled." });
+    res.status(403).json({ error: t("apiErrRegistrationDisabled", regLang) });
     return;
   }
 
   if (!isAuthMethodEnabled(settings, "auth_phone_otp_enabled", userRole)) {
-    res.status(403).json({ error: "Phone registration is currently disabled for this role." });
+    res.status(403).json({ error: t("apiErrPhoneRegDisabled", regLang) });
     return;
   }
 
   if (!phone) {
-    res.status(400).json({ error: "Phone number is required" });
+    res.status(400).json({ error: t("apiErrPhoneRequired", regLang) });
     return;
   }
   const cleanedPhone = phone.replace(/[\s\-()]/g, "");
   if (!PHONE_REGEX.test(cleanedPhone)) {
-    res.status(400).json({ error: "Invalid phone number. Use format: 03XXXXXXXXX" });
+    res.status(400).json({ error: t("apiErrInvalidPhone", regLang) });
     return;
   }
 
   if (!password) {
-    res.status(400).json({ error: "Password is required" });
+    res.status(400).json({ error: t("apiErrPasswordRequired", regLang) });
     return;
   }
   const pwCheck = validatePasswordStrength(password);
   if (!pwCheck.ok) {
-    res.status(400).json({ error: pwCheck.message });
+    res.status(400).json({ error: t("apiErrPasswordPolicy", regLang) });
     return;
   }
 
   const cnicValue = cnic || nationalId;
   if (cnicValue && !CNIC_REGEX.test(cnicValue)) {
-    res.status(400).json({ error: "CNIC format must be XXXXX-XXXXXXX-X" });
+    res.status(400).json({ error: t("apiErrCnicFormat", regLang) });
     return;
   }
 
   if (userRole === "rider") {
-    if (!cnicValue) { res.status(400).json({ error: "CNIC is required for rider registration" }); return; }
-    if (!vehicleType) { res.status(400).json({ error: "Vehicle type is required for rider registration" }); return; }
+    if (!cnicValue) { res.status(400).json({ error: t("apiErrCnicRequired", regLang) }); return; }
+    if (!vehicleType) { res.status(400).json({ error: t("apiErrVehicleTypeRequired", regLang) }); return; }
   }
 
   if (userRole === "vendor") {
-    if (!businessName && !storeName) { res.status(400).json({ error: "Business/store name is required for vendor registration" }); return; }
+    if (!businessName && !storeName) { res.status(400).json({ error: t("apiErrBusinessNameRequired", regLang) }); return; }
   }
 
   const normalizedPhone = canonicalizePhone(phone);
   const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, normalizedPhone)).limit(1);
   if (existing) {
-    res.status(409).json({ error: "An account with this phone number already exists" });
+    res.status(409).json({ error: t("apiErrPhoneAlreadyExists", regLang) });
     return;
   }
 
@@ -2042,7 +2204,7 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
     const normalizedEmail = email.toLowerCase().trim();
     const [existingEmail] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
     if (existingEmail) {
-      res.status(409).json({ error: "An account with this email already exists" });
+      res.status(409).json({ error: t("apiErrEmailAlreadyExists", regLang) });
       return;
     }
   }
@@ -2053,7 +2215,7 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
     if (cleanUsername !== null && cleanUsername.length >= 3) {
       const [existingUsername] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.username}) = ${cleanUsername}`).limit(1);
       if (existingUsername) {
-        res.status(409).json({ error: "This username is already taken" });
+        res.status(409).json({ error: t("apiErrUsernameTaken", regLang) });
         return;
       }
     } else {
@@ -2145,17 +2307,18 @@ router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPassword
     }
   }
 
+  const forgotLang1 = await getRequestLocale(req);
   if (!phone && !email) {
-    res.status(400).json({ error: "Phone, email, or username is required" });
+    res.status(400).json({ error: t("apiErrPhoneEmailUsernameRequired", forgotLang1) });
     return;
   }
 
   if (phone && !isAuthMethodEnabled(settings, "auth_phone_otp_enabled")) {
-    res.status(403).json({ error: "Phone-based password reset is currently disabled" });
+    res.status(403).json({ error: t("apiErrPhoneResetDisabled", forgotLang1) });
     return;
   }
   if (email && !phone && !isAuthMethodEnabled(settings, "auth_email_otp_enabled")) {
-    res.status(403).json({ error: "Email-based password reset is currently disabled" });
+    res.status(403).json({ error: t("apiErrEmailResetDisabled", forgotLang1) });
     return;
   }
 
@@ -2177,24 +2340,25 @@ router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPassword
   }
 
   const forgotRole = user.role ?? "customer";
+  const forgotUserLang = await getRequestLocale(req, user.id);
   if (phone && !isAuthMethodEnabled(settings, "auth_phone_otp_enabled", forgotRole)) {
-    res.status(403).json({ error: "Phone-based password reset is currently disabled for your account type." });
+    res.status(403).json({ error: t("apiErrPhoneResetAccountDisabled", forgotUserLang) });
     return;
   }
   if (email && !phone && !isAuthMethodEnabled(settings, "auth_email_otp_enabled", forgotRole)) {
-    res.status(403).json({ error: "Email-based password reset is currently disabled for your account type." });
+    res.status(403).json({ error: t("apiErrEmailResetAccountDisabled", forgotUserLang) });
     return;
   }
 
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended." }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account inactive." }); return; }
+  if (user.isBanned) { res.status(403).json({ error: t("apiErrAccountSuspended", forgotUserLang) }); return; }
+  if (!user.isActive) { res.status(403).json({ error: t("apiErrAccountInactive", forgotUserLang) }); return; }
 
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
   const lockoutKey = `reset:${user.id}`;
   const lockout = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
-    res.status(429).json({ error: `Too many attempts. Try again in ${lockout.minutesLeft} minute(s).` });
+    res.status(429).json({ error: t("apiErrTooManyAttemptsMinutes", forgotUserLang).replace("{minutes}", String(lockout.minutesLeft)) });
     return;
   }
 
@@ -2238,12 +2402,13 @@ router.post("/verify-reset-otp", verifyCaptcha, async (req, res) => {
   let { phone, email, otp } = req.body;
   const ip = getClientIp(req);
 
+  const verifyResetLang = await getRequestLocale(req);
   if (!otp || typeof otp !== "string") {
-    res.status(400).json({ error: "OTP is required" });
+    res.status(400).json({ error: t("apiErrOtpRequired", verifyResetLang) });
     return;
   }
   if (!phone && !email) {
-    res.status(400).json({ error: "Phone or email is required" });
+    res.status(400).json({ error: t("apiErrPhoneOrEmailRequired", verifyResetLang) });
     return;
   }
 
@@ -2259,33 +2424,34 @@ router.post("/verify-reset-otp", verifyCaptcha, async (req, res) => {
   }
 
   if (!user) {
-    res.status(422).json({ error: "Invalid or expired code" });
+    res.status(422).json({ error: t("apiErrInvalidOrExpiredCode", verifyResetLang) });
     return;
   }
 
   const hashed = hashOtp(otp);
   const now = new Date();
+  const verifyResetUserLang = await getRequestLocale(req, user.id);
 
   if (phone) {
     if (!user.otpCode || user.otpCode !== hashed) {
-      res.status(422).json({ error: "Invalid verification code" });
+      res.status(422).json({ error: t("apiErrInvalidVerificationCode", verifyResetUserLang) });
       return;
     }
     if (!user.otpExpiry || user.otpExpiry < now) {
-      res.status(422).json({ error: "Verification code has expired. Please request a new one." });
+      res.status(422).json({ error: t("apiErrCodeExpired", verifyResetUserLang) });
       return;
     }
     if (user.otpUsed) {
-      res.status(422).json({ error: "This code has already been used. Please request a new one." });
+      res.status(422).json({ error: t("apiErrCodeAlreadyUsed", verifyResetUserLang) });
       return;
     }
   } else {
     if (!user.emailOtpCode || user.emailOtpCode !== hashed) {
-      res.status(422).json({ error: "Invalid verification code" });
+      res.status(422).json({ error: t("apiErrInvalidVerificationCode", verifyResetUserLang) });
       return;
     }
     if (!user.emailOtpExpiry || user.emailOtpExpiry < now) {
-      res.status(422).json({ error: "Verification code has expired. Please request a new one." });
+      res.status(422).json({ error: t("apiErrCodeExpired", verifyResetUserLang) });
       return;
     }
   }
@@ -2299,8 +2465,9 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
+  const resetLang1 = await getRequestLocale(req);
   if (!otp || !newPassword) {
-    res.status(400).json({ error: "OTP and new password are required" });
+    res.status(400).json({ error: t("apiErrOtpAndPasswordRequired", resetLang1) });
     return;
   }
 
@@ -2322,13 +2489,13 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
   }
 
   if (!phone && !email) {
-    res.status(400).json({ error: "Phone, email, or username is required" });
+    res.status(400).json({ error: t("apiErrPhoneEmailUsernameRequired", resetLang1) });
     return;
   }
 
   const pwCheck = validatePasswordStrength(newPassword);
   if (!pwCheck.ok) {
-    res.status(400).json({ error: pwCheck.message });
+    res.status(400).json({ error: t("apiErrPasswordPolicy", resetLang1) });
     return;
   }
 
@@ -2344,29 +2511,30 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
   }
 
   if (!user) {
-    res.status(404).json({ error: "Account not found" });
+    res.status(404).json({ error: t("apiErrAccountNotFound", resetLang1) });
     return;
   }
 
+  const resetUserLang = await getRequestLocale(req, user.id);
   const userRole = user.role ?? "customer";
 
   if (phone && !isAuthMethodEnabled(settings, "auth_phone_otp_enabled", userRole)) {
-    res.status(403).json({ error: "Phone-based password reset is currently disabled for your account type." });
+    res.status(403).json({ error: t("apiErrPhoneResetAccountDisabled", resetUserLang) });
     return;
   }
   if (email && !phone && !isAuthMethodEnabled(settings, "auth_email_otp_enabled", userRole)) {
-    res.status(403).json({ error: "Email-based password reset is currently disabled for your account type." });
+    res.status(403).json({ error: t("apiErrEmailResetAccountDisabled", resetUserLang) });
     return;
   }
 
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended." }); return; }
+  if (user.isBanned) { res.status(403).json({ error: t("apiErrAccountSuspended", resetUserLang) }); return; }
 
   const maxAttempts = parseInt(settings["security_login_max_attempts"] ?? "5", 10);
   const lockoutMinutes = parseInt(settings["security_lockout_minutes"] ?? "30", 10);
   const lockoutKey = `reset:${user.id}`;
   const lockout = await checkLockout(lockoutKey, maxAttempts, lockoutMinutes);
   if (lockout.locked) {
-    res.status(429).json({ error: `Too many attempts. Try again in ${lockout.minutesLeft} minute(s).` });
+    res.status(429).json({ error: t("apiErrTooManyAttemptsMinutes", resetUserLang).replace("{minutes}", String(lockout.minutesLeft)) });
     return;
   }
 
@@ -2380,21 +2548,21 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
   if (!otpValid) {
     await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
     addAuditEntry({ action: "reset_password_failed", ip, details: `Invalid OTP for password reset: ${user.id}`, result: "fail" });
-    res.status(401).json({ error: "Invalid or expired OTP" });
+    res.status(401).json({ error: t("apiErrInvalidOrExpiredOtp", resetUserLang) });
     return;
   }
 
   if (user.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", userRole)) {
     if (!totpCode) {
-      res.status(400).json({ error: "Two-factor authentication code required", requires2FA: true });
+      res.status(400).json({ error: t("apiErr2faRequired", resetUserLang), requires2FA: true });
       return;
     }
     if (!/^\d{6}$/.test(totpCode)) {
-      res.status(400).json({ error: "TOTP code must be 6 digits" });
+      res.status(400).json({ error: t("apiErrTotpSixDigits", resetUserLang) });
       return;
     }
     if (!user.totpSecret) {
-      res.status(400).json({ error: "2FA is not properly configured for this account. Please contact support." });
+      res.status(400).json({ error: t("apiErr2faNotConfigured", resetUserLang) });
       return;
     }
     const { verifyTotpCode } = await import("../services/password.js");
@@ -2402,7 +2570,7 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
     if (!verifyTotpCode(decryptedSecret, totpCode)) {
       await recordFailedAttempt(lockoutKey, maxAttempts, lockoutMinutes);
       addAuditEntry({ action: "reset_password_2fa_failed", ip, details: `Invalid TOTP for password reset: ${user.id}`, result: "fail" });
-      res.status(401).json({ error: "Invalid two-factor authentication code" });
+      res.status(401).json({ error: t("apiErrInvalid2faCode", resetUserLang) });
       return;
     }
   }
@@ -2432,28 +2600,29 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
   const settings = await getCachedSettings();
   const userRole = (role === "rider" || role === "vendor") ? role : "customer";
 
+  const emailRegLang = await getRequestLocale(req);
   if (!isAuthMethodEnabled(settings, "auth_email_register_enabled", userRole)) {
-    res.status(403).json({ error: "Email registration is currently disabled" });
+    res.status(403).json({ error: t("apiErrEmailRegDisabled", emailRegLang) });
     return;
   }
 
   if (settings["feature_new_users"] === "off") {
-    res.status(403).json({ error: "New user registration is currently disabled." });
+    res.status(403).json({ error: t("apiErrRegistrationDisabled", emailRegLang) });
     return;
   }
 
   if (!email || !email.includes("@")) {
-    res.status(400).json({ error: "Valid email address is required" });
+    res.status(400).json({ error: t("apiErrValidEmailRequired", emailRegLang) });
     return;
   }
   if (!password) {
-    res.status(400).json({ error: "Password is required" });
+    res.status(400).json({ error: t("apiErrPasswordRequired", emailRegLang) });
     return;
   }
 
   const pwCheck = validatePasswordStrength(password);
   if (!pwCheck.ok) {
-    res.status(400).json({ error: pwCheck.message });
+    res.status(400).json({ error: t("apiErrPasswordPolicy", emailRegLang) });
     return;
   }
 
@@ -2461,7 +2630,7 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
 
   const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
   if (existing) {
-    res.status(409).json({ error: "An account with this email already exists" });
+    res.status(409).json({ error: t("apiErrEmailAlreadyExists", emailRegLang) });
     return;
   }
 
@@ -2471,7 +2640,7 @@ router.post("/email-register", verifyCaptcha, async (req, res) => {
     if (cleanUsername !== null && cleanUsername.length >= 3) {
       const [existingUsername] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.username}) = ${cleanUsername}`).limit(1);
       if (existingUsername) {
-        res.status(409).json({ error: "This username is already taken" });
+        res.status(409).json({ error: t("apiErrUsernameTaken", emailRegLang) });
         return;
       }
     } else {
@@ -2547,8 +2716,9 @@ router.get("/verify-email", async (req, res) => {
   const { token, email } = req.query as { token?: string; email?: string };
   const ip = getClientIp(req);
 
+  const verifyEmailLang = await getRequestLocale(req);
   if (!token || !email) {
-    res.status(400).json({ error: "Invalid verification link" });
+    res.status(400).json({ error: t("apiErrInvalidVerificationLink", verifyEmailLang) });
     return;
   }
 
@@ -2557,7 +2727,7 @@ router.get("/verify-email", async (req, res) => {
 
   const lockout = await checkLockout(verifyKey, 5, 15);
   if (lockout.locked) {
-    res.status(429).json({ error: `Too many verification attempts. Try again in ${lockout.minutesLeft} minute(s).` });
+    res.status(429).json({ error: t("apiErrTooManyVerifyAttempts", verifyEmailLang).replace("{minutes}", String(lockout.minutesLeft)) });
     return;
   }
 
@@ -2565,17 +2735,19 @@ router.get("/verify-email", async (req, res) => {
 
   if (!user) {
     await recordFailedAttempt(verifyKey, 5, 15);
-    res.status(400).json({ error: "Invalid or expired verification link" });
+    res.status(400).json({ error: t("apiErrInvalidOrExpiredLink", verifyEmailLang) });
     return;
   }
 
+  const verifyEmailUserLang = await getRequestLocale(req, user.id);
+
   if (user.emailVerified) {
-    res.json({ message: "Email already verified. You can log in." });
+    res.json({ message: t("apiErrEmailAlreadyVerified", verifyEmailUserLang) });
     return;
   }
 
   if (user.emailOtpExpiry && new Date() > user.emailOtpExpiry) {
-    res.status(401).json({ error: "Verification link has expired. Please register again." });
+    res.status(401).json({ error: t("apiErrVerificationLinkExpired", verifyEmailUserLang) });
     return;
   }
 
@@ -2583,7 +2755,7 @@ router.get("/verify-email", async (req, res) => {
   if (!user.emailOtpCode || user.emailOtpCode !== incomingHash) {
     await recordFailedAttempt(verifyKey, 5, 15);
     addAuditEntry({ action: "email_verify_failed", ip, details: `Invalid verification token for ${normalizedEmail}`, result: "fail" });
-    res.status(401).json({ error: "Invalid or expired verification link" });
+    res.status(401).json({ error: t("apiErrInvalidOrExpiredLink", verifyEmailUserLang) });
     return;
   }
 
@@ -2710,13 +2882,14 @@ function isDeviceTrusted(user: Pick<typeof usersTable.$inferSelect, "trustedDevi
 ══════════════════════════════════════════════════════════════ */
 router.post("/social/google", async (req, res) => {
   const { idToken, deviceFingerprint } = req.body;
-  if (!idToken) { res.status(400).json({ error: "idToken required" }); return; }
+  const googleLang1 = await getRequestLocale(req);
+  if (!idToken) { res.status(400).json({ error: t("apiErrIdTokenRequired", googleLang1) }); return; }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabledStrict(settings, "auth_google_enabled", "auth_social_google")) {
-    res.status(403).json({ error: "Google login is currently disabled" }); return;
+    res.status(403).json({ error: t("apiErrGoogleLoginDisabled", googleLang1) }); return;
   }
 
   let googlePayload: { sub?: string; email?: string; name?: string; picture?: string };
@@ -2726,7 +2899,7 @@ router.post("/social/google", async (req, res) => {
     googlePayload = await resp.json() as typeof googlePayload;
   } catch {
     addSecurityEvent({ type: "social_google_invalid_token", ip, details: "Invalid Google ID token", severity: "medium" });
-    res.status(401).json({ error: "Invalid Google token" }); return;
+    res.status(401).json({ error: t("apiErrInvalidGoogleToken", googleLang1) }); return;
   }
 
   const googleId = googlePayload.sub;
@@ -2734,7 +2907,7 @@ router.post("/social/google", async (req, res) => {
   const name = googlePayload.name ?? null;
   const avatar = googlePayload.picture ?? null;
 
-  if (!googleId) { res.status(401).json({ error: "Google token missing sub" }); return; }
+  if (!googleId) { res.status(401).json({ error: t("apiErrGoogleTokenMissingSub", googleLang1) }); return; }
 
   let [user] = await db.select().from(usersTable).where(eq(usersTable.googleId, googleId)).limit(1);
 
@@ -2757,22 +2930,23 @@ router.post("/social/google", async (req, res) => {
       const userRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
       if (!userRoles.includes(requestedSocialRole)) {
         addSecurityEvent({ type: "cross_role_social_login_attempt", ip, details: `Social Google cross-role: requested=${requestedSocialRole} user.roles=${user.roles}`, severity: "medium" });
-        res.status(403).json({ error: `No ${requestedSocialRole} account found for this Google account. Please use the correct app.`, wrongApp: true }); return;
+        res.status(403).json({ error: t("apiErrWrongAppForRole", googleLang1).replace("{role}", requestedSocialRole), wrongApp: true }); return;
       }
     } else {
       /* No user found — cannot auto-create non-customer accounts via social auth */
-      res.status(403).json({ error: `No ${requestedSocialRole} account found for this Google account. Please use the correct registration process or contact admin.`, wrongApp: true }); return;
+      res.status(403).json({ error: t("apiErrNoRoleAccountContact", googleLang1).replace("{role}", requestedSocialRole), wrongApp: true }); return;
     }
   }
 
   const googleEffectiveRole = user?.role ?? "customer";
+  const googleUserLang = user ? await getRequestLocale(req, user.id) : googleLang1;
   if (!isAuthMethodEnabledStrict(settings, "auth_google_enabled", "auth_social_google", googleEffectiveRole)) {
-    res.status(403).json({ error: "Google login is currently disabled for your account type." }); return;
+    res.status(403).json({ error: t("apiErrGoogleLoginAccountDisabled", googleUserLang) }); return;
   }
 
   if (!user) {
     if (settings["feature_new_users"] === "off") {
-      res.status(403).json({ error: "New user registration is currently disabled" }); return;
+      res.status(403).json({ error: t("apiErrRegistrationDisabled", googleLang1) }); return;
     }
     const requireApproval = settings["user_require_approval"] === "on";
     const id = generateId();
@@ -2784,8 +2958,8 @@ router.post("/social/google", async (req, res) => {
     }).returning();
   }
 
-  if (user!.isBanned) { res.status(403).json({ error: "Account suspended" }); return; }
-  if (!user!.isActive && user!.approvalStatus !== "pending") { res.status(403).json({ error: "Account inactive" }); return; }
+  if (user!.isBanned) { res.status(403).json({ error: t("apiErrAccountSuspended", googleUserLang) }); return; }
+  if (!user!.isActive && user!.approvalStatus !== "pending") { res.status(403).json({ error: t("apiErrAccountInactive", googleUserLang) }); return; }
 
   if (user!.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user!.role ?? undefined)) {
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
@@ -2807,13 +2981,14 @@ router.post("/social/google", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/social/facebook", async (req, res) => {
   const { accessToken: fbToken, deviceFingerprint } = req.body;
-  if (!fbToken) { res.status(400).json({ error: "accessToken required" }); return; }
+  const fbLang1 = await getRequestLocale(req);
+  if (!fbToken) { res.status(400).json({ error: t("apiErrAccessTokenRequired", fbLang1) }); return; }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabledStrict(settings, "auth_facebook_enabled", "auth_social_facebook")) {
-    res.status(403).json({ error: "Facebook login is currently disabled" }); return;
+    res.status(403).json({ error: t("apiErrFacebookLoginDisabled", fbLang1) }); return;
   }
 
   let fbPayload: { id?: string; name?: string; email?: string; picture?: { data?: { url?: string } } };
@@ -2823,7 +2998,7 @@ router.post("/social/facebook", async (req, res) => {
     fbPayload = await resp.json() as typeof fbPayload;
   } catch {
     addSecurityEvent({ type: "social_facebook_invalid_token", ip, details: "Invalid Facebook access token", severity: "medium" });
-    res.status(401).json({ error: "Invalid Facebook token" }); return;
+    res.status(401).json({ error: t("apiErrInvalidFacebookToken", fbLang1) }); return;
   }
 
   const facebookId = fbPayload.id;
@@ -2831,7 +3006,7 @@ router.post("/social/facebook", async (req, res) => {
   const name = fbPayload.name ?? null;
   const avatar = fbPayload.picture?.data?.url ?? null;
 
-  if (!facebookId) { res.status(401).json({ error: "Facebook token missing id" }); return; }
+  if (!facebookId) { res.status(401).json({ error: t("apiErrFacebookTokenMissingId", fbLang1) }); return; }
 
   let [user] = await db.select().from(usersTable).where(eq(usersTable.facebookId, facebookId)).limit(1);
 
@@ -2854,22 +3029,23 @@ router.post("/social/facebook", async (req, res) => {
       const userRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
       if (!userRoles.includes(requestedFbSocialRole)) {
         addSecurityEvent({ type: "cross_role_social_login_attempt", ip, details: `Social Facebook cross-role: requested=${requestedFbSocialRole} user.roles=${user.roles}`, severity: "medium" });
-        res.status(403).json({ error: `No ${requestedFbSocialRole} account found for this Facebook account. Please use the correct app.`, wrongApp: true }); return;
+        res.status(403).json({ error: t("apiErrWrongAppForRole", fbLang1).replace("{role}", requestedFbSocialRole), wrongApp: true }); return;
       }
     } else {
       /* No user found — cannot auto-create non-customer accounts via social auth */
-      res.status(403).json({ error: `No ${requestedFbSocialRole} account found for this Facebook account. Please use the correct registration process or contact admin.`, wrongApp: true }); return;
+      res.status(403).json({ error: t("apiErrNoRoleAccountContact", fbLang1).replace("{role}", requestedFbSocialRole), wrongApp: true }); return;
     }
   }
 
   const fbEffectiveRole = user?.role ?? "customer";
+  const fbUserLang = user ? await getRequestLocale(req, user.id) : fbLang1;
   if (!isAuthMethodEnabledStrict(settings, "auth_facebook_enabled", "auth_social_facebook", fbEffectiveRole)) {
-    res.status(403).json({ error: "Facebook login is currently disabled for your account type." }); return;
+    res.status(403).json({ error: t("apiErrFacebookLoginAccountDisabled", fbUserLang) }); return;
   }
 
   if (!user) {
     if (settings["feature_new_users"] === "off") {
-      res.status(403).json({ error: "New user registration is currently disabled" }); return;
+      res.status(403).json({ error: t("apiErrRegistrationDisabled", fbLang1) }); return;
     }
     const requireApproval = settings["user_require_approval"] === "on";
     const id = generateId();
@@ -2881,8 +3057,8 @@ router.post("/social/facebook", async (req, res) => {
     }).returning();
   }
 
-  if (user!.isBanned) { res.status(403).json({ error: "Account suspended" }); return; }
-  if (!user!.isActive && user!.approvalStatus !== "pending") { res.status(403).json({ error: "Account inactive" }); return; }
+  if (user!.isBanned) { res.status(403).json({ error: t("apiErrAccountSuspended", fbUserLang) }); return; }
+  if (!user!.isActive && user!.approvalStatus !== "pending") { res.status(403).json({ error: t("apiErrAccountInactive", fbUserLang) }); return; }
 
   if (user!.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user!.role ?? undefined)) {
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
@@ -2903,17 +3079,18 @@ router.post("/social/facebook", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.get("/2fa/setup", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) { res.status(401).json({ error: t("apiErrAuthRequired", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }); return; }
 
   const settings = await getCachedSettings();
+  const twoFaLang = await getRequestLocale(req, auth.userId);
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", twoFaLang) }); return; }
 
   if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
-    res.status(403).json({ error: "Two-factor authentication is currently disabled" }); return;
+    res.status(403).json({ error: t("apiErr2faDisabled", twoFaLang) }); return;
   }
-  if (user.totpEnabled) { res.status(409).json({ error: "2FA is already enabled" }); return; }
+  if (user.totpEnabled) { res.status(409).json({ error: t("apiErr2faAlreadyEnabled", twoFaLang) }); return; }
 
   const secret = generateTotpSecret();
   const label = user.email ?? user.phone ?? user.name ?? auth.userId;
@@ -2935,25 +3112,26 @@ router.get("/2fa/setup", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/2fa/verify-setup", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) { res.status(401).json({ error: t("apiErrAuthRequired", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }); return; }
 
   const { code } = req.body;
-  if (!code) { res.status(400).json({ error: "TOTP code required" }); return; }
+  const verifySetupLang = await getRequestLocale(req, auth.userId);
+  if (!code) { res.status(400).json({ error: t("apiErrTotpCodeRequired", verifySetupLang) }); return; }
 
   const settings = await getCachedSettings();
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", verifySetupLang) }); return; }
 
   if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
-    res.status(403).json({ error: "Two-factor authentication is currently disabled" }); return;
+    res.status(403).json({ error: t("apiErr2faDisabled", verifySetupLang) }); return;
   }
-  if (user.totpEnabled) { res.status(409).json({ error: "2FA is already enabled" }); return; }
-  if (!user.totpSecret) { res.status(400).json({ error: "Please call /auth/2fa/setup first" }); return; }
+  if (user.totpEnabled) { res.status(409).json({ error: t("apiErr2faAlreadyEnabled", verifySetupLang) }); return; }
+  if (!user.totpSecret) { res.status(400).json({ error: t("apiErr2faSetupFirst", verifySetupLang) }); return; }
 
   const secret = decryptTotpSecret(user.totpSecret);
   if (!verifyTotpToken(code, secret)) {
-    res.status(401).json({ error: "Invalid TOTP code. Please try again." }); return;
+    res.status(401).json({ error: t("apiErrInvalidTotpCode", verifySetupLang) }); return;
   }
 
   const backupCodes: string[] = [];
@@ -2984,27 +3162,29 @@ router.post("/2fa/verify-setup", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/2fa/verify", async (req, res) => {
   const { tempToken, code, deviceFingerprint } = req.body;
-  if (!tempToken || !code) { res.status(400).json({ error: "tempToken and code required" }); return; }
+  const twoFaVerifyLang1 = await getRequestLocale(req);
+  if (!tempToken || !code) { res.status(400).json({ error: t("apiErrTempTokenAndCodeRequired", twoFaVerifyLang1) }); return; }
 
   const challengePayload = verify2faChallengeToken(tempToken);
-  if (!challengePayload) { res.status(401).json({ error: "Invalid or expired 2FA challenge token" }); return; }
+  if (!challengePayload) { res.status(401).json({ error: t("apiErrInvalidExpired2faToken", twoFaVerifyLang1) }); return; }
 
   const settings = await getCachedSettings();
   const ip = getClientIp(req);
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, challengePayload.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  const twoFaVerifyLang = user ? await getRequestLocale(req, user.id) : twoFaVerifyLang1;
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", twoFaVerifyLang1) }); return; }
 
   if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
-    res.status(403).json({ error: "Two-factor authentication has been disabled by admin." }); return;
+    res.status(403).json({ error: t("apiErr2faDisabledAdmin", twoFaVerifyLang) }); return;
   }
 
-  if (!user.totpEnabled || !user.totpSecret) { res.status(400).json({ error: "2FA is not enabled" }); return; }
+  if (!user.totpEnabled || !user.totpSecret) { res.status(400).json({ error: t("apiErr2faNotEnabled", twoFaVerifyLang) }); return; }
 
   const secret = decryptTotpSecret(user.totpSecret);
   if (!verifyTotpToken(code, secret)) {
     addSecurityEvent({ type: "2fa_verify_failed", ip, userId: user.id, details: "Invalid 2FA code on login", severity: "medium" });
-    res.status(401).json({ error: "Invalid 2FA code" }); return;
+    res.status(401).json({ error: t("apiErrInvalid2faCode", twoFaVerifyLang) }); return;
   }
 
   writeAuthAuditLog("2fa_verified", { userId: user.id, ip, userAgent: req.headers["user-agent"] as string });
@@ -3019,25 +3199,26 @@ router.post("/2fa/verify", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/2fa/disable", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) { res.status(401).json({ error: t("apiErrAuthRequired", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }); return; }
 
   const { code } = req.body;
-  if (!code) { res.status(400).json({ error: "TOTP code required to disable 2FA" }); return; }
+  const disableLang = await getRequestLocale(req, auth.userId);
+  if (!code) { res.status(400).json({ error: t("apiErrTotpCodeRequiredDisable", disableLang) }); return; }
 
   const settings = await getCachedSettings();
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", disableLang) }); return; }
 
   if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
-    res.status(403).json({ error: "Two-factor authentication has been disabled by admin." }); return;
+    res.status(403).json({ error: t("apiErr2faDisabledAdmin", disableLang) }); return;
   }
 
-  if (!user.totpEnabled || !user.totpSecret) { res.status(400).json({ error: "2FA is not enabled" }); return; }
+  if (!user.totpEnabled || !user.totpSecret) { res.status(400).json({ error: t("apiErr2faNotEnabled", disableLang) }); return; }
 
   const secret = decryptTotpSecret(user.totpSecret);
   if (!verifyTotpToken(code, secret)) {
-    res.status(401).json({ error: "Invalid TOTP code" }); return;
+    res.status(401).json({ error: t("apiErrInvalidTotpCode", disableLang) }); return;
   }
 
   await db.update(usersTable).set({
@@ -3057,26 +3238,28 @@ router.post("/2fa/disable", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/2fa/recovery", async (req, res) => {
   const { tempToken, backupCode } = req.body;
-  if (!tempToken || !backupCode) { res.status(400).json({ error: "tempToken and backupCode required" }); return; }
+  const recoveryLang1 = await getRequestLocale(req);
+  if (!tempToken || !backupCode) { res.status(400).json({ error: t("apiErrTempTokenAndBackupRequired", recoveryLang1) }); return; }
 
   const challengePayload = verify2faChallengeToken(tempToken);
-  if (!challengePayload) { res.status(401).json({ error: "Invalid or expired 2FA challenge token" }); return; }
+  if (!challengePayload) { res.status(401).json({ error: t("apiErrInvalidExpired2faToken", recoveryLang1) }); return; }
 
   const ip = getClientIp(req);
 
   const settings = await getCachedSettings();
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, challengePayload.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  const recoveryLang = user ? await getRequestLocale(req, user.id) : recoveryLang1;
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", recoveryLang1) }); return; }
 
   if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
-    res.status(403).json({ error: "Two-factor authentication has been disabled by admin." }); return;
+    res.status(403).json({ error: t("apiErr2faDisabledAdmin", recoveryLang) }); return;
   }
 
-  if (!user.totpEnabled || !user.backupCodes) { res.status(400).json({ error: "2FA is not enabled or no backup codes available" }); return; }
+  if (!user.totpEnabled || !user.backupCodes) { res.status(400).json({ error: t("apiErr2faNoBackupCodes", recoveryLang) }); return; }
 
   let storedCodes: string[];
-  try { storedCodes = JSON.parse(user.backupCodes); } catch { res.status(500).json({ error: "Internal error" }); return; }
+  try { storedCodes = JSON.parse(user.backupCodes); } catch { res.status(500).json({ error: t("apiErrInternal", recoveryLang) }); return; }
 
   let matchIdx = -1;
   for (let i = 0; i < storedCodes.length; i++) {
@@ -3085,7 +3268,7 @@ router.post("/2fa/recovery", async (req, res) => {
 
   if (matchIdx === -1) {
     addSecurityEvent({ type: "2fa_recovery_failed", ip, userId: user.id, details: "Invalid backup code attempt", severity: "high" });
-    res.status(401).json({ error: "Invalid backup code" }); return;
+    res.status(401).json({ error: t("apiErrInvalidBackupCode", recoveryLang) }); return;
   }
 
   storedCodes.splice(matchIdx, 1);
@@ -3106,24 +3289,25 @@ router.post("/2fa/recovery", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/2fa/trust-device", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) { res.status(401).json({ error: t("apiErrAuthRequired", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }); return; }
 
   const { deviceFingerprint } = req.body;
+  const trustDeviceLang = await getRequestLocale(req, auth.userId);
   if (!deviceFingerprint || typeof deviceFingerprint !== "string" || deviceFingerprint.length < 8) {
-    res.status(400).json({ error: "Valid deviceFingerprint required (min 8 chars)" }); return;
+    res.status(400).json({ error: t("apiErrDeviceFingerprintRequired", trustDeviceLang) }); return;
   }
 
   const settings = await getCachedSettings();
   const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", trustDeviceLang) }); return; }
 
   if (!isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
-    res.status(403).json({ error: "Two-factor authentication has been disabled by admin." }); return;
+    res.status(403).json({ error: t("apiErr2faDisabledAdmin", trustDeviceLang) }); return;
   }
 
-  if (!user.totpEnabled) { res.status(400).json({ error: "2FA is not enabled" }); return; }
+  if (!user.totpEnabled) { res.status(400).json({ error: t("apiErr2faNotEnabled", trustDeviceLang) }); return; }
 
   let devices: Array<{ fp: string; expiresAt: number }> = [];
   try { if (user.trustedDevices) devices = JSON.parse(user.trustedDevices); } catch {}
@@ -3151,13 +3335,14 @@ const magicLinkRateMap = new Map<string, { count: number; windowStart: number }>
 
 router.post("/magic-link/send", async (req, res) => {
   const { email } = req.body;
-  if (!email || !email.includes("@")) { res.status(400).json({ error: "Valid email address required" }); return; }
+  const mlSendLang1 = await getRequestLocale(req);
+  if (!email || !email.includes("@")) { res.status(400).json({ error: t("apiErrValidEmailRequired", mlSendLang1) }); return; }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabledStrict(settings, "auth_magic_link_enabled", "auth_magic_link")) {
-    res.status(403).json({ error: "Magic link login is currently disabled" }); return;
+    res.status(403).json({ error: t("apiErrMagicLinkDisabled", mlSendLang1) }); return;
   }
 
   const normalized = email.toLowerCase().trim();
@@ -3169,7 +3354,7 @@ router.post("/magic-link/send", async (req, res) => {
   if (rl && now - rl.windowStart < windowMs) {
     if (rl.count >= 3) {
       const waitMin = Math.ceil((rl.windowStart + windowMs - now) / 60000);
-      res.status(429).json({ error: `Too many magic link requests. Try again in ${waitMin} minute(s).` }); return;
+      res.status(429).json({ error: t("apiErrTooManyMagicLinks", mlSendLang1).replace("{minutes}", String(waitMin)) }); return;
     }
     rl.count++;
   } else {
@@ -3181,13 +3366,14 @@ router.post("/magic-link/send", async (req, res) => {
     res.json({ message: "If an account exists with this email, a magic link has been sent." }); return;
   }
 
+  const mlSendUserLang = await getRequestLocale(req, user.id);
   const effectiveMagicRole = user.role ?? ((req.body?.role === "rider" || req.body?.role === "vendor") ? req.body.role : "customer");
   if (!isAuthMethodEnabledStrict(settings, "auth_magic_link_enabled", "auth_magic_link", effectiveMagicRole)) {
-    res.status(403).json({ error: "Magic link login is currently disabled for your account type." }); return;
+    res.status(403).json({ error: t("apiErrMagicLinkAccountDisabled", mlSendUserLang) }); return;
   }
 
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended" }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account inactive" }); return; }
+  if (user.isBanned) { res.status(403).json({ error: t("apiErrAccountSuspended", mlSendUserLang) }); return; }
+  if (!user.isActive) { res.status(403).json({ error: t("apiErrAccountInactive", mlSendUserLang) }); return; }
 
   const rawToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = hashPassword(rawToken);
@@ -3220,13 +3406,14 @@ router.post("/magic-link/send", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/magic-link/verify", async (req, res) => {
   const { token, totpCode, deviceFingerprint } = req.body;
-  if (!token) { res.status(400).json({ error: "Token required" }); return; }
+  const mlVerifyLang1 = await getRequestLocale(req);
+  if (!token) { res.status(400).json({ error: t("apiErrTokenRequired", mlVerifyLang1) }); return; }
 
   const ip = getClientIp(req);
   const settings = await getCachedSettings();
 
   if (!isAuthMethodEnabledStrict(settings, "auth_magic_link_enabled", "auth_magic_link")) {
-    res.status(403).json({ error: "Magic link login is currently disabled" }); return;
+    res.status(403).json({ error: t("apiErrMagicLinkDisabled", mlVerifyLang1) }); return;
   }
 
   const allTokens = await db.select().from(magicLinkTokensTable)
@@ -3240,18 +3427,19 @@ router.post("/magic-link/verify", async (req, res) => {
 
   if (!matchedRow) {
     addSecurityEvent({ type: "magic_link_invalid", ip, details: "Invalid or expired magic link token", severity: "medium" });
-    res.status(401).json({ error: "Invalid or expired magic link. Please request a new one." }); return;
+    res.status(401).json({ error: t("apiErrInvalidOrExpiredMagicLink", mlVerifyLang1) }); return;
   }
 
   await db.update(magicLinkTokensTable).set({ usedAt: new Date() }).where(eq(magicLinkTokensTable.id, matchedRow.id));
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, matchedRow.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Account suspended" }); return; }
-  if (!user.isActive) { res.status(403).json({ error: "Account inactive" }); return; }
+  const mlVerifyUserLang = user ? await getRequestLocale(req, user.id) : mlVerifyLang1;
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", mlVerifyLang1) }); return; }
+  if (user.isBanned) { res.status(403).json({ error: t("apiErrAccountSuspended", mlVerifyUserLang) }); return; }
+  if (!user.isActive) { res.status(403).json({ error: t("apiErrAccountInactive", mlVerifyUserLang) }); return; }
 
   if (!isAuthMethodEnabledStrict(settings, "auth_magic_link_enabled", "auth_magic_link", user.role ?? "customer")) {
-    res.status(403).json({ error: "Magic link login is currently disabled for your account type." }); return;
+    res.status(403).json({ error: t("apiErrMagicLinkAccountDisabled", mlVerifyUserLang) }); return;
   }
 
   if (user.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
@@ -3263,7 +3451,7 @@ router.post("/magic-link/verify", async (req, res) => {
       }
       const secret = decryptTotpSecret(user.totpSecret!);
       if (!verifyTotpToken(totpCode, secret)) {
-        res.status(401).json({ error: "Invalid 2FA code" }); return;
+        res.status(401).json({ error: t("apiErrInvalid2faCode", mlVerifyUserLang) }); return;
       }
     }
   }
@@ -3282,21 +3470,22 @@ router.post("/magic-link/verify", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/change-phone/request", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) { res.status(401).json({ error: t("apiErrAuthRequired", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }); return; }
 
   const { newPhone } = req.body;
+  const chPhoneLang = await getRequestLocale(req, auth.userId);
   if (!newPhone || typeof newPhone !== "string") {
-    res.status(400).json({ error: "New phone number is required" }); return;
+    res.status(400).json({ error: t("apiErrNewPhoneRequired", chPhoneLang) }); return;
   }
 
   const phone = canonicalizePhone(newPhone);
   if (!/^3\d{9}$/.test(phone)) {
-    res.status(400).json({ error: "Invalid Pakistani phone number format" }); return;
+    res.status(400).json({ error: t("apiErrInvalidPhone", chPhoneLang) }); return;
   }
 
   const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
   if (existing) {
-    res.status(409).json({ error: "This phone number is already registered to another account" }); return;
+    res.status(409).json({ error: t("apiErrPhoneAlreadyRegistered", chPhoneLang) }); return;
   }
 
   const ip = getClientIp(req);
@@ -3334,30 +3523,31 @@ router.post("/change-phone/request", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.post("/change-phone/confirm", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) { res.status(401).json({ error: t("apiErrAuthRequired", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }); return; }
 
   const { newPhone, otp } = req.body;
+  const chPhoneConfLang = await getRequestLocale(req, auth.userId);
   if (!newPhone || !otp) {
-    res.status(400).json({ error: "New phone number and OTP are required" }); return;
+    res.status(400).json({ error: t("apiErrPhoneAndOtpRequired", chPhoneConfLang) }); return;
   }
 
   const phone = canonicalizePhone(newPhone);
   const ip = getClientIp(req);
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, auth.userId)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (!user) { res.status(404).json({ error: t("apiErrUserNotFound", chPhoneConfLang) }); return; }
 
   if (user.pendingMergeIdentifier !== phone) {
-    res.status(400).json({ error: "OTP was not requested for this phone number" }); return;
+    res.status(400).json({ error: t("apiErrOtpNotRequestedForPhone", chPhoneConfLang) }); return;
   }
 
   if (user.mergeOtpCode !== hashOtp(otp) || !user.mergeOtpExpiry || user.mergeOtpExpiry < new Date()) {
-    res.status(400).json({ error: "Invalid or expired OTP" }); return;
+    res.status(400).json({ error: t("apiErrInvalidOrExpiredOtp", chPhoneConfLang) }); return;
   }
 
   const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
   if (existing) {
-    res.status(409).json({ error: "This phone number is already registered to another account" }); return;
+    res.status(409).json({ error: t("apiErrPhoneAlreadyRegistered", chPhoneConfLang) }); return;
   }
 
   await db.update(usersTable).set({
@@ -3380,7 +3570,7 @@ router.post("/change-phone/confirm", async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 router.get("/login-history", async (req, res) => {
   const auth = extractAuthUser(req);
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) { res.status(401).json({ error: t("apiErrAuthRequired", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }); return; }
 
   const history = await db.select().from(loginHistoryTable)
     .where(eq(loginHistoryTable.userId, auth.userId))

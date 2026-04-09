@@ -15,6 +15,8 @@ import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 import { z } from "zod";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
+import { t, type TranslationKey } from "@workspace/i18n";
+import { getRequestLocale } from "../lib/requestLocale.js";
 import {
   buildJazzCashHash, buildEasyPaisaHash,
   txnDateTime, txnExpiry,
@@ -254,7 +256,7 @@ router.get("/test-connection/:gateway", adminAuth, async (req, res) => {
     sendSuccess(res, { ok: true, mode, message: `EasyPaisa API ready — ${mode.toUpperCase()} ✅ Hash: ${testHash.slice(0,10)}...` }); return;
   }
 
-  sendValidationError(res, "Unknown gateway. Use: jazzcash, easypaisa");
+  sendValidationError(res, t("apiErrUnknownGateway", "en"));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -267,21 +269,29 @@ router.post("/initiate", customerAuth, async (req, res) => {
 
   const parsed = paymentInitiateSchema.safeParse(req.body);
   if (!parsed.success) {
-    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    const paymentsLang = await getRequestLocale(req, callerId);
+    const firstError = parsed.error.errors[0]?.message ?? t("apiErrInvalidInput", paymentsLang);
     sendValidationError(res, firstError); return;
   }
 
   const { gateway, amount, orderId, mobileNumber } = parsed.data;
 
   if (!isSupportedGateway(gateway)) {
-    sendValidationError(res, `Unsupported gateway. Supported: ${SUPPORTED_GATEWAYS.join(", ")}`); return;
+    const initiateLang = await getRequestLocale(req, callerId);
+    sendValidationError(res, t("apiErrUnsupportedGateway", initiateLang).replace("{gateways}", SUPPORTED_GATEWAYS.join(", "))); return;
   }
 
   /* Verify the order belongs to the authenticated user */
   const [order] = await db.select({ userId: ordersTable.userId })
     .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-  if (!order) { sendNotFound(res, "Order not found"); return; }
-  if (order.userId !== callerId) { sendForbidden(res, "Access denied — order does not belong to you"); return; }
+  if (!order) {
+    const lang = await getRequestLocale(req, callerId);
+    sendNotFound(res, t("apiErrOrderNotFound", lang)); return;
+  }
+  if (order.userId !== callerId) {
+    const lang = await getRequestLocale(req, callerId);
+    sendForbidden(res, t("apiErrAccessDenied", lang)); return;
+  }
 
   const s = await getPlatformSettings();
   const amountPaisa = Math.round(amount * 100);
@@ -440,9 +450,11 @@ router.post("/initiate", customerAuth, async (req, res) => {
             instructions: `Mobile ${mobileNumber} pe notification aayegi — approve karein.` });
           return;
         }
-        sendError(res, `EasyPaisa error: ${epData?.responseDesc || "Unknown error"}`, 502); return;
+        const epLang = await getRequestLocale(req, callerId);
+        sendError(res, t("apiErrEasyPaisaError", epLang).replace("{desc}", String(epData?.responseDesc || t("apiErrUnknownError", epLang))), 502); return;
       } catch (e: unknown) {
-        sendError(res, `EasyPaisa API unreachable: ${(e as Error).message}`, 502); return;
+        const epLang2 = await getRequestLocale(req, callerId);
+        sendError(res, t("apiErrEasyPaisaUnreachable", epLang2).replace("{msg}", (e as Error).message ?? ""), 502); return;
       }
     }
 
@@ -455,7 +467,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
     return;
   }
 
-  sendValidationError(res, "Unsupported gateway. Use: jazzcash, easypaisa");
+  sendValidationError(res, t("apiErrUnsupportedGatewayFixed", "en"));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -465,7 +477,7 @@ router.post("/initiate", customerAuth, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 router.post("/verify-manual", adminAuth, async (req, res) => {
   const { orderId, gateway, transactionId } = req.body;
-  if (!orderId) { sendValidationError(res, "orderId required"); return; }
+  if (!orderId) { sendValidationError(res, t("apiErrOrderIdRequired", "en")); return; }
   await confirmOrder(orderId);
   sendSuccess(res, { orderId, gateway, transactionId }, "Manual payment verified — order confirmed ✅");
 });
@@ -473,7 +485,7 @@ router.post("/verify-manual", adminAuth, async (req, res) => {
 router.post("/reconcile", adminAuth, async (req, res) => {
   const { orderId, txnRef, status: forcedStatus, gateway, notes } = req.body;
   if (!orderId && !txnRef) {
-    sendValidationError(res, "orderId or txnRef is required");
+    sendValidationError(res, t("apiErrOrderIdOrTxnRefRequired", "en"));
     return;
   }
 
@@ -491,12 +503,12 @@ router.post("/reconcile", adminAuth, async (req, res) => {
   }).from(ordersTable).where(whereClause).limit(1);
 
   if (!order) {
-    sendNotFound(res, "Order not found");
+    sendNotFound(res, t("apiErrOrderNotFound", "en"));
     return;
   }
 
   if (!forcedStatus || !["success", "failed"].includes(forcedStatus)) {
-    sendValidationError(res, "status is required and must be 'success' or 'failed'");
+    sendValidationError(res, t("apiErrStatusRequired", "en"));
     return;
   }
   const newPaymentStatus = forcedStatus as "success" | "failed";
@@ -534,7 +546,7 @@ router.get("/simulate/:gateway/:txnRef/:orderId", adminAuth, async (req, res) =>
   const mode = gw === "jazzcash" ? (s["jazzcash_mode"] ?? "sandbox") : (s["easypaisa_mode"] ?? "sandbox");
 
   if (mode !== "sandbox") {
-    sendForbidden(res, "Simulation only available in sandbox mode"); return;
+    sendForbidden(res, t("apiErrSandboxOnly", "en")); return;
   }
 
   await confirmOrder(orderId);
@@ -548,7 +560,7 @@ router.get("/simulate/:gateway/:txnRef", adminAuth, async (req, res) => {
   const mode = gw === "jazzcash" ? (s["jazzcash_mode"] ?? "sandbox") : (s["easypaisa_mode"] ?? "sandbox");
 
   if (mode !== "sandbox") {
-    sendForbidden(res, "Simulation only available in sandbox mode"); return;
+    sendForbidden(res, t("apiErrSandboxOnly", "en")); return;
   }
 
   sendSuccess(res, { status: "success", txnRef: req.params["txnRef"], orderId: null, gateway: gw }, "Sandbox payment simulated ✅");
@@ -567,7 +579,7 @@ router.post("/callback/jazzcash", async (req, res) => {
   /* ── Production-sandbox mismatch guard ── */
   if (process.env["NODE_ENV"] === "production" && mode === "sandbox") {
     console.error("CRITICAL: JazzCash is configured in sandbox mode while running in production. Rejecting callback.");
-    sendError(res, "Payment gateway misconfigured — sandbox mode is not allowed in production", 503); return;
+    sendError(res, t("apiErrGatewayMisconfigured", "en"), 503); return;
   }
 
   /* ── Hash verification ──
@@ -575,14 +587,14 @@ router.post("/callback/jazzcash", async (req, res) => {
      Sandbox mode: skip hash check (sandbox credentials aren't real keys). ── */
   if (mode !== "sandbox") {
     if (!salt) {
-      sendError(res, "JazzCash salt not configured — cannot verify callback", 500); return;
+      sendError(res, t("apiErrJazzCashSaltMissing", "en"), 500); return;
     }
     const receivedHash      = params["pp_SecureHash"];
     const paramsWithoutHash = { ...params };
     delete paramsWithoutHash["pp_SecureHash"];
     const computedHash = buildJazzCashHash(paramsWithoutHash, salt);
     if (receivedHash !== computedHash) {
-      sendValidationError(res, "Hash mismatch — possible tampering"); return;
+      sendValidationError(res, t("apiErrHashMismatch", "en")); return;
     }
   }
 
@@ -627,7 +639,7 @@ router.post("/callback/easypaisa", async (req, res) => {
   /* ── Production-sandbox mismatch guard ── */
   if (process.env["NODE_ENV"] === "production" && mode === "sandbox") {
     console.error("CRITICAL: EasyPaisa is configured in sandbox mode while running in production. Rejecting callback.");
-    sendError(res, "Payment gateway misconfigured — sandbox mode is not allowed in production", 503); return;
+    sendError(res, t("apiErrGatewayMisconfigured", "en"), 503); return;
   }
 
   const receivedHash = body["encryptedHashRequest"];
@@ -641,11 +653,11 @@ router.post("/callback/easypaisa", async (req, res) => {
      Sandbox mode: skip hash check (sandbox credentials aren't real keys). ── */
   if (mode !== "sandbox") {
     if (!hashKey) {
-      sendError(res, "EasyPaisa hash key not configured — cannot verify callback", 500); return;
+      sendError(res, t("apiErrEasyPaisaHashKeyMissing", "en"), 500); return;
     }
     const computedHash = buildEasyPaisaHash([storeId, orderId, amount, "PKR", ""], hashKey);
     if (receivedHash !== computedHash) {
-      sendValidationError(res, "Hash mismatch — verify EasyPaisa credentials"); return;
+      sendValidationError(res, t("apiErrHashMismatchEasypaisa", "en")); return;
     }
   }
 
@@ -729,12 +741,13 @@ async function handleOrderPaymentStatus(req: import("express").Request, res: imp
     updatedAt: ordersTable.updatedAt,
   }).from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
 
+  const statusCheckLang = await getRequestLocale(req, callerId);
   if (!order) {
-    sendNotFound(res, "Order not found");
+    sendNotFound(res, t("apiErrOrderNotFound", statusCheckLang));
     return;
   }
   if (order.userId !== callerId) {
-    sendForbidden(res, "Access denied");
+    sendForbidden(res, t("apiErrAccessDenied", statusCheckLang));
     return;
   }
 

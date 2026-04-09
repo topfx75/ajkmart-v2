@@ -11,6 +11,8 @@ import { calcDeliveryFee, calcGst, calcCodFee } from "../lib/fees.js";
 import { isInServiceZone } from "../lib/geofence.js";
 import { checkDeliveryEligibility } from "../lib/delivery-access.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
+import { t, type TranslationKey } from "@workspace/i18n";
+import { getRequestLocale } from "../lib/requestLocale.js";
 
 const router: IRouter = Router();
 
@@ -188,20 +190,20 @@ function mapOrder(o: typeof ordersTable.$inferSelect, deliveryFee?: number, gstA
 }
 
 /* ── Promo code helper ─────────────────────────────────────────────────────── */
-async function validatePromoCode(code: string, orderTotal: number, orderType: string): Promise<{
+async function validatePromoCode(code: string, orderTotal: number, orderType: string, lang: import("@workspace/i18n").Language = "en"): Promise<{
   valid: boolean; discount: number; discountType: "pct" | "flat" | null; error?: string;
   promoId?: string; maxDiscount?: number | null;
 }> {
   const [promo] = await db.select().from(promoCodesTable)
     .where(eq(promoCodesTable.code, code.toUpperCase().trim())).limit(1);
 
-  if (!promo)                                          return { valid: false, discount: 0, discountType: null, error: "Yeh promo code exist nahi karta." };
-  if (!promo.isActive)                                 return { valid: false, discount: 0, discountType: null, error: "Yeh promo code active nahi hai." };
-  if (promo.expiresAt && new Date() > promo.expiresAt) return { valid: false, discount: 0, discountType: null, error: "Yeh promo code expire ho gaya hai." };
+  if (!promo)                                          return { valid: false, discount: 0, discountType: null, error: t("apiErrPromoNotFound", lang) };
+  if (!promo.isActive)                                 return { valid: false, discount: 0, discountType: null, error: t("apiErrPromoInactive", lang) };
+  if (promo.expiresAt && new Date() > promo.expiresAt) return { valid: false, discount: 0, discountType: null, error: t("apiErrPromoExpired", lang) };
   if (promo.usageLimit !== null && promo.usedCount >= promo.usageLimit)
-    return { valid: false, discount: 0, discountType: null, error: "Yeh promo code apni limit reach kar chuka hai." };
+    return { valid: false, discount: 0, discountType: null, error: t("apiErrPromoLimitReached", lang) };
   if (promo.minOrderAmount && orderTotal < parseFloat(String(promo.minOrderAmount)))
-    return { valid: false, discount: 0, discountType: null, error: `Minimum order Rs. ${promo.minOrderAmount} hona chahiye is code ke liye.` };
+    return { valid: false, discount: 0, discountType: null, error: t("apiErrPromoMinOrder", lang).replace("{min}", String(promo.minOrderAmount)) };
   const ORDER_TYPE_ALIASES: Record<string, string[]> = {
     mart: ["mart", "grocery", "ajkmart"],
     grocery: ["grocery", "mart", "ajkmart"],
@@ -217,7 +219,7 @@ async function validatePromoCode(code: string, orderTotal: number, orderType: st
     || typeAliases.includes(normalizedAppliesTo)
     || appliesToAliases.includes(normalizedType);
   if (!typeMatches)
-    return { valid: false, discount: 0, discountType: null, error: `Yeh code sirf ${promo.appliesTo} orders ke liye hai.` };
+    return { valid: false, discount: 0, discountType: null, error: t("apiErrPromoWrongType", lang).replace("{type}", promo.appliesTo ?? "specific") };
 
   let discount = 0;
   let discountType: "pct" | "flat" = "flat";
@@ -286,8 +288,9 @@ router.get("/validate-promo", customerAuth, async (req, res) => {
   const code  = String(req.query["code"]  || "").trim();
   const total = parseFloat(String(req.query["total"] || "0"));
   const type  = String(req.query["type"]  || "mart");
-  if (!code) { sendValidationError(res, "code required"); return; }
-  const result = await validatePromoCode(code, total, type);
+  const lang  = await getRequestLocale(req, req.customerId ?? undefined);
+  if (!code) { sendValidationError(res, t("apiErrPromoCodeRequired", lang)); return; }
+  const result = await validatePromoCode(code, total, type, lang);
   sendSuccess(res, result);
 });
 
@@ -324,7 +327,10 @@ router.get("/", customerAuth, async (req, res) => {
 router.get("/:id", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
-  if (!order) { sendNotFound(res, "Order not found"); return; }
+  if (!order) {
+    const lang = await getRequestLocale(req, userId);
+    sendNotFound(res, t("apiErrOrderNotFound", lang)); return;
+  }
   if (idorGuard(res, order.userId, userId)) return;
   const s = await getCachedSettings();
   const orderItems = (order.items ?? []) as { price: number; quantity: number }[];
@@ -363,8 +369,14 @@ router.get("/:id/track", customerAuth, async (req, res) => {
     .where(eq(ordersTable.id, String(req.params["id"])))
     .limit(1);
 
-  if (!order) { sendNotFound(res, "Order not found"); return; }
-  if (order.userId !== userId) { sendForbidden(res, "Access denied"); return; }
+  if (!order) {
+    const lang = await getRequestLocale(req, userId);
+    sendNotFound(res, t("apiErrOrderNotFound", lang)); return;
+  }
+  if (order.userId !== userId) {
+    const lang = await getRequestLocale(req, userId);
+    sendForbidden(res, t("apiErrAccessDenied", lang)); return;
+  }
 
   /* Include all statuses where a rider may be en-route so parcel/ride
      orders in "accepted"/"arrived" state also return live coordinates. */
@@ -432,8 +444,10 @@ router.post("/", customerAuth, async (req, res) => {
     }
   }
 
+  const lang = await getRequestLocale(req, userId);
+
   if (!items || !Array.isArray(items) || items.length === 0) {
-    sendValidationError(res, "items (array) required"); return;
+    sendValidationError(res, t("apiErrItemsRequired", lang)); return;
   }
 
   /* Per-item validation — prevents negative-price injection that could
@@ -443,13 +457,13 @@ router.post("/", customerAuth, async (req, res) => {
             !Number.isFinite(Number(it.quantity)) || Number(it.quantity) <= 0,
   );
   if (badItem) {
-    sendValidationError(res, "Each item must have a valid positive price and quantity"); return;
+    sendValidationError(res, t("apiErrInvalidItem", lang)); return;
   }
 
   /* ── Server-side price verification — every item must have a productId ── */
   const missingProductId = (items as Array<Record<string, unknown>>).find((it: Record<string, unknown>) => !it.productId);
   if (missingProductId) {
-    sendValidationError(res, "Each item must include a valid productId"); return;
+    sendValidationError(res, t("apiErrProductIdRequired", lang)); return;
   }
 
   const productIds = (items as Array<Record<string, unknown>>).map((it: Record<string, unknown>) => it.productId);
@@ -484,12 +498,12 @@ router.post("/", customerAuth, async (req, res) => {
     }
 
     if (unavailable.length > 0) {
-      sendErrorWithData(res, `The following items are no longer available: ${unavailable.join(", ")}. Please remove them from your cart.`, { unavailableItems: unavailable }, 400);
+      sendErrorWithData(res, t("apiErrItemsUnavailable", lang).replace("{items}", unavailable.join(", ")), { unavailableItems: unavailable }, 400);
       return;
     }
 
     if (priceChanges.length > 0) {
-      sendErrorWithData(res, `Prices have changed for some items: ${priceChanges.join("; ")}. Please review your cart.`, { priceChanges }, 409);
+      sendErrorWithData(res, t("apiErrPricesChanged", lang).replace("{changes}", priceChanges.join("; ")), { priceChanges }, 409);
       return;
     }
   }  /* end price verification block */
@@ -500,7 +514,7 @@ router.post("/", customerAuth, async (req, res) => {
   );
 
   if (itemsTotal <= 0) {
-    sendValidationError(res, "Order total must be greater than 0"); return;
+    sendValidationError(res, t("apiErrOrderTotalZero", lang)); return;
   }
 
   /* ── Load platform settings once ── */
@@ -513,24 +527,24 @@ router.post("/", customerAuth, async (req, res) => {
     if (Number.isFinite(dLat) && Number.isFinite(dLng)) {
       const zoneCheck = await isInServiceZone(dLat, dLng, "orders");
       if (!zoneCheck.allowed) {
-        sendError(res, "Delivery address is outside our service area. We currently only operate in configured service zones.", 422); return;
+        sendError(res, t("apiErrDeliveryOutsideZone", lang), 422); return;
       }
     }
   }
 
   /* ── 1st gate: service feature flags (fail-fast before any calculation) ── */
   if (type === "mart" && (s["feature_mart"] ?? "on") === "off") {
-    sendError(res, "Mart grocery service is currently unavailable. Please try again later.", 503); return;
+    sendError(res, t("apiErrMartUnavailable", lang), 503); return;
   }
   if (type === "food" && (s["feature_food"] ?? "on") === "off") {
-    sendError(res, "Food delivery service is currently unavailable. Please try again later.", 503); return;
+    sendError(res, t("apiErrFoodUnavailable", lang), 503); return;
   }
   /* app_status maintenance gate */
   if ((s["app_status"] ?? "active") === "maintenance") {
     const mainKey = (s["security_maintenance_key"] ?? "").trim();
     const bypass  = ((req.headers["x-maintenance-key"] as string) ?? "").trim();
     if (!mainKey || bypass !== mainKey) {
-      sendError(res, s["content_maintenance_msg"] ?? "We're performing scheduled maintenance. Back soon!", 503); return;
+      sendError(res, s["content_maintenance_msg"] ?? t("apiErrMaintenance", lang), 503); return;
     }
   }
 
@@ -556,10 +570,10 @@ router.post("/", customerAuth, async (req, res) => {
     const eligibility = await checkDeliveryEligibility(userId, resolvedVendorId, type ?? "mart");
     if (!eligibility.eligible) {
       const reason = eligibility.reason === "store_not_whitelisted"
-        ? "Delivery is not available for this store. Please choose self-pickup."
+        ? t("apiErrDeliveryNotEligibleStore", lang)
         : eligibility.reason === "user_not_whitelisted"
-        ? "Delivery is not available for your account. Please choose self-pickup."
-        : "Delivery is not available. Please choose self-pickup.";
+        ? t("apiErrDeliveryNotEligibleUser", lang)
+        : t("apiErrDeliveryNotEligible", lang);
       res.status(403).json({
         success: false,
         error: reason,
@@ -575,18 +589,18 @@ router.post("/", customerAuth, async (req, res) => {
   const vendorMinOrder = parseFloat(s["vendor_min_order"] ?? "100");
   const effectiveMinOrder = Math.max(minOrder, vendorMinOrder);
   if (itemsTotal < effectiveMinOrder) {
-    sendValidationError(res, `Minimum order amount is Rs. ${effectiveMinOrder}`); return;
+    sendValidationError(res, t("apiErrMinOrderAmount", lang).replace("{min}", String(effectiveMinOrder))); return;
   }
 
   const maxCart = parseFloat(s["order_max_cart_value"] ?? "50000");
   if (itemsTotal > maxCart) {
-    sendValidationError(res, `Cart value cannot exceed Rs. ${maxCart}. Please split into multiple orders.`); return;
+    sendValidationError(res, t("apiErrMaxCartValue", lang).replace("{max}", String(maxCart))); return;
   }
 
   /* ── Scheduled order gate ── */
   const scheduleEnabled = (s["order_schedule_enabled"] ?? "off") === "on";
   if (req.body.scheduledAt && !scheduleEnabled) {
-    sendValidationError(res, "Scheduled orders are not available at this time."); return;
+    sendValidationError(res, t("apiErrScheduledOrdersOff", lang)); return;
   }
 
   /* ── Delivery fee, GST, COD fee — via shared utility (see lib/fees.ts) ── */
@@ -601,9 +615,9 @@ router.post("/", customerAuth, async (req, res) => {
   let promoId: string | null = null;
   const promoCode = req.body.promoCode as string | undefined;
   if (promoCode) {
-    const promoResult = await validatePromoCode(promoCode, itemsTotal, type ?? "mart");
+    const promoResult = await validatePromoCode(promoCode, itemsTotal, type ?? "mart", lang);
     if (!promoResult.valid) {
-      sendValidationError(res, promoResult.error ?? "Invalid promo code"); return;
+      sendValidationError(res, promoResult.error ?? t("apiErrPromoInvalid", lang)); return;
     }
     promoDiscount = promoResult.discount;
     promoId = promoResult.promoId ?? null;
@@ -617,14 +631,14 @@ router.post("/", customerAuth, async (req, res) => {
 
   /* ── Fetch user for fraud checks ── */
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) { sendNotFound(res, "User not found"); return; }
+  if (!user) { sendNotFound(res, t("apiErrUserNotFound", lang)); return; }
 
   /* ── Banned/inactive check ── */
   if (user.isBanned) {
-    sendForbidden(res, "Your account has been suspended. You cannot place orders."); return;
+    sendForbidden(res, t("apiErrAccountSuspendedOrders", lang)); return;
   }
   if (!user.isActive) {
-    sendForbidden(res, "Your account is inactive. Please contact support."); return;
+    sendForbidden(res, t("apiErrAccountInactiveOrders", lang)); return;
   }
 
   /* ── Customer daily order cap (always enforced from Customer Settings) ── */
@@ -637,7 +651,7 @@ router.post("/", customerAuth, async (req, res) => {
     .where(and(eq(ordersTable.userId, userId), gte(ordersTable.createdAt, todayStart)));
   const custDailyCount = Number(custDailyResult?.c ?? 0);
   if (custDailyCount >= custMaxPerDay) {
-    sendError(res, `Aaj ke liye order limit (${custMaxPerDay} orders) reach ho gayi. Kal dobara try karein.`, 429); return;
+    sendError(res, t("apiErrDailyOrderLimitReached", lang).replace("{max}", String(custMaxPerDay)), 429); return;
   }
 
   /* ── Fake order / fraud detection ── */
@@ -646,7 +660,7 @@ router.post("/", customerAuth, async (req, res) => {
     const maxDailyOrders = parseInt(s["security_max_daily_orders"] ?? "20", 10);
     if (custDailyCount >= maxDailyOrders) {
       addSecurityEvent({ type: "daily_order_limit", ip, userId, details: `User ${userId} hit daily order limit: ${custDailyCount}/${maxDailyOrders}`, severity: "medium" });
-      sendError(res, `Daily order limit reached (${maxDailyOrders} orders per day). Please try again tomorrow.`, 429); return;
+      sendError(res, t("apiErrSecurityDailyLimitReached", lang).replace("{max}", String(maxDailyOrders)), 429); return;
     }
 
     /* New account order limit (first 7 days) */
@@ -660,7 +674,7 @@ router.post("/", customerAuth, async (req, res) => {
       const totalOrders = Number(totalOrdersResult?.c ?? 0);
       if (totalOrders >= newAcctLimit) {
         addSecurityEvent({ type: "new_account_limit", ip, userId, details: `New account ${userId} hit order limit: ${totalOrders}/${newAcctLimit}`, severity: "medium" });
-        sendError(res, `New accounts are limited to ${newAcctLimit} orders in the first 7 days. Please contact support if you need assistance.`, 429); return;
+        sendError(res, t("apiErrNewAccountOrderLimit", lang).replace("{max}", String(newAcctLimit)), 429); return;
       }
     }
 
@@ -674,7 +688,7 @@ router.post("/", customerAuth, async (req, res) => {
         .where(and(eq(ordersTable.deliveryAddress, deliveryAddress), gte(ordersTable.createdAt, oneHourAgo)));
       if (sameAddrOrders.length >= sameAddrLimit) {
         addSecurityEvent({ type: "same_address_limit", ip, userId, details: `Same address limit hit: ${deliveryAddress} (${sameAddrOrders.length} orders/hr)`, severity: "high" });
-        sendError(res, `Too many orders to the same address. Please try again later.`, 429); return;
+        sendError(res, t("apiErrSameAddressOrderLimit", lang), 429); return;
       }
     }
   }
@@ -728,7 +742,7 @@ router.post("/", customerAuth, async (req, res) => {
   if (paymentMethod === "cash") {
     const codEnabled = (s["cod_enabled"] ?? "on") === "on";
     if (!codEnabled) {
-      sendValidationError(res, "Cash on Delivery is currently not available"); return;
+      sendValidationError(res, t("apiErrCodUnavailable", lang)); return;
     }
 
     /* ── Per-service COD flag ── */
@@ -736,12 +750,12 @@ router.post("/", customerAuth, async (req, res) => {
     const codAllowedForService = (s[serviceKey] ?? "on") !== "off";
     if (!codAllowedForService) {
       const label = type === "mart" ? "Mart" : type === "food" ? "Food" : type === "pharmacy" ? "Pharmacy" : "Parcel";
-      sendValidationError(res, `Cash on Delivery is not available for ${label} orders. Please choose another payment method.`); return;
+      sendValidationError(res, t("apiErrCodNotAvailable", lang).replace("{label}", label)); return;
     }
 
     const codMax = parseFloat(s["cod_max_amount"] ?? "5000");
     if (total > codMax) {
-      sendValidationError(res, `Maximum Cash on Delivery order is Rs. ${codMax}. Please pay online for larger orders.`); return;
+      sendValidationError(res, t("apiErrCodMaxAmount", lang).replace("{max}", String(codMax))); return;
     }
 
     /* ── COD verification threshold ── */
@@ -758,10 +772,10 @@ router.post("/", customerAuth, async (req, res) => {
     const payMinOnline = parseFloat(s["payment_min_online"] ?? "50");
     const payMaxOnline = parseFloat(s["payment_max_online"] ?? "100000");
     if (total < payMinOnline) {
-      sendValidationError(res, `Minimum online payment is Rs. ${payMinOnline}`); return;
+      sendValidationError(res, t("apiErrMinOnlinePayment", lang).replace("{min}", String(payMinOnline))); return;
     }
     if (total > payMaxOnline) {
-      sendValidationError(res, `Maximum online payment is Rs. ${payMaxOnline}. Please split your order or use another method.`); return;
+      sendValidationError(res, t("apiErrMaxOnlinePayment", lang).replace("{max}", String(payMaxOnline))); return;
     }
   }
 
@@ -769,12 +783,12 @@ router.post("/", customerAuth, async (req, res) => {
   if (paymentMethod === "wallet") {
     const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
     if (!walletEnabled) {
-      sendValidationError(res, "Wallet payments are currently disabled"); return;
+      sendValidationError(res, t("apiErrWalletDisabled", lang)); return;
     }
 
     const [walletUser] = await db.select({ blockedServices: usersTable.blockedServices }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     if (walletUser && (walletUser.blockedServices || "").split(",").map(s2 => s2.trim()).includes("wallet")) {
-      sendForbidden(res, "wallet_frozen", "Your wallet has been temporarily frozen. Contact support."); return;
+      sendForbidden(res, "wallet_frozen", t("apiErrWalletFrozen", lang)); return;
     }
 
     try {
@@ -870,7 +884,7 @@ router.post("/", customerAuth, async (req, res) => {
     sendCreated(res, mapped);
     notifyOnlineRidersOfOrder(order!.id, type || "mart").catch(() => {});
   } catch (e: unknown) {
-    sendError(res, "Order could not be created. Please try again.", 500);
+    sendError(res, t("apiErrOrderCreationFailed", lang), 500);
   }
 });
 
@@ -880,11 +894,15 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 200) : null;
 
   const [existingOrder] = await db.select().from(ordersTable).where(eq(ordersTable.id, String(req.params["id"]))).limit(1);
-  if (!existingOrder) { sendNotFound(res, "Order not found"); return; }
+  if (!existingOrder) {
+    const lang = await getRequestLocale(req, userId);
+    sendNotFound(res, t("apiErrOrderNotFound", lang)); return;
+  }
+  const lang = await getRequestLocale(req, userId);
 
   /* Only the order owner can cancel */
   if (existingOrder.userId !== userId) {
-    sendForbidden(res, "You cannot cancel another user's order."); return;
+    sendForbidden(res, t("apiErrCannotCancelOthersOrder", lang)); return;
   }
 
   /* Enforce cancel window */
@@ -893,12 +911,12 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
   const ageMs = Date.now() - new Date(existingOrder.createdAt).getTime();
   const ageMin = ageMs / 60_000;
   if (ageMin > cancelWindowMin) {
-    sendValidationError(res, `Orders can only be cancelled within ${cancelWindowMin} minutes of placement. Please contact support.`); return;
+    sendValidationError(res, t("apiErrCancelWindowExpired", lang).replace("{min}", String(cancelWindowMin))); return;
   }
 
   /* Only pending/confirmed orders can be customer-cancelled */
   if (!["pending", "confirmed"].includes(existingOrder.status)) {
-    sendValidationError(res, "This order can no longer be cancelled."); return;
+    sendValidationError(res, t("apiErrOrderNotCancellable", lang)); return;
   }
 
   const isWallet = existingOrder.paymentMethod === "wallet";
@@ -956,7 +974,7 @@ router.patch("/:id/cancel", customerAuth, async (req, res) => {
       cancelReason: reason,
     });
   } catch (e: unknown) {
-    sendValidationError(res, (e as Error).message || "Could not cancel order");
+    sendValidationError(res, (e as Error).message || t("apiErrCouldNotCancelOrder", lang));
   }
 });
 
@@ -969,20 +987,24 @@ router.post("/:id/refund-request", customerAuth, async (req, res) => {
       .where(and(eq(ordersTable.id, orderId), eq(ordersTable.userId, userId)))
       .limit(1);
 
-    if (!order) { sendNotFound(res, "Order not found"); return; }
+    if (!order) {
+      const lang = await getRequestLocale(req, userId);
+      sendNotFound(res, t("apiErrOrderNotFound", lang)); return;
+    }
+    const lang = await getRequestLocale(req, userId);
 
     if (!["delivered", "completed"].includes(order.status)) {
-      sendValidationError(res, "Refund can only be requested for delivered orders");
+      sendValidationError(res, t("apiErrRefundDeliveredOnly", lang));
       return;
     }
 
     if (order.paymentMethod === "cod" || order.paymentMethod === "cash") {
-      sendValidationError(res, "Cash orders are not eligible for refund");
+      sendValidationError(res, t("apiErrRefundCashNotEligible", lang));
       return;
     }
 
     if (order.paymentStatus === "refund_requested" || order.refundedAt) {
-      sendValidationError(res, "Refund has already been requested for this order");
+      sendValidationError(res, t("apiErrRefundAlreadyRequested", lang));
       return;
     }
 
@@ -994,9 +1016,10 @@ router.post("/:id/refund-request", customerAuth, async (req, res) => {
     const updatedOrder = { ...order, paymentStatus: "refund_requested" as typeof order.paymentStatus };
     broadcastOrderUpdate(mapOrder(updatedOrder), order.vendorId);
 
-    sendSuccess(res, { refundStatus: "requested" }, "Refund request submitted");
+    sendSuccess(res, { refundStatus: "requested" }, t("apiMsgRefundSubmitted", lang));
   } catch (e: unknown) {
-    sendError(res, (e as Error).message || "Could not process refund request", 500);
+    const refundErrLang = await getRequestLocale(req, req.customerId ?? undefined);
+    sendError(res, (e as Error).message || t("apiErrCouldNotProcessRefund", refundErrLang), 500);
   }
 });
 

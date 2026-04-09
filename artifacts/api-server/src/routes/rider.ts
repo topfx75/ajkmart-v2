@@ -10,8 +10,9 @@ import { emitRiderLocation, emitRiderStatus, emitRideDispatchUpdate, emitRideOtp
 import { emitRideUpdate } from "../lib/rideEvents.js";
 import { sendPushToUser } from "../lib/webpush.js";
 import { z } from "zod";
-import { t } from "@workspace/i18n";
+import { t, type TranslationKey } from "@workspace/i18n";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
+import { getRequestLocale, parseAcceptLanguage } from "../lib/requestLocale.js";
 import { sendSuccess, sendCreated, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendUnauthorized, sendValidationError, sendTooManyRequests } from "../lib/response.js";
 import { isInServiceZone } from "../lib/geofence.js";
 import rateLimit from "express-rate-limit";
@@ -27,8 +28,9 @@ const rideAcceptLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  handler: (_req, res) => {
-    sendTooManyRequests(res, "Too many ride accept attempts. Please wait a moment.");
+  handler: (req, res) => {
+    const rl = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+    sendTooManyRequests(res, t("apiErrTooManyRideAccepts", rl));
   },
 });
 
@@ -40,8 +42,9 @@ const rideBidLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  handler: (_req, res) => {
-    sendTooManyRequests(res, "Too many bid requests. Please wait before submitting another bid.");
+  handler: (req, res) => {
+    const rl = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+    sendTooManyRequests(res, t("apiErrTooManyBids", rl));
   },
 });
 
@@ -53,8 +56,9 @@ const rideStatusLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  handler: (_req, res) => {
-    sendTooManyRequests(res, "Too many status update requests. Please wait a moment.");
+  handler: (req, res) => {
+    const rl = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+    sendTooManyRequests(res, t("apiErrTooManyStatusUpdates", rl));
   },
 });
 
@@ -66,8 +70,9 @@ const otpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  handler: (_req, res) => {
-    sendTooManyRequests(res, "Too many OTP attempts. Please wait before trying again.");
+  handler: (req, res) => {
+    const rl = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+    sendTooManyRequests(res, t("apiErrTooManyOtpAttempts", rl));
   },
 });
 
@@ -230,43 +235,53 @@ async function riderAuth(req: Request, res: Response, next: NextFunction) {
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const raw = tokenHeader || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
 
-  if (!raw) { sendErrorWithData(res, "Authentication required", { code: "AUTH_REQUIRED" }, 401); return; }
+  if (!raw) {
+    const lang = await getRequestLocale(req);
+    sendErrorWithData(res, t("apiErrAuthRequired", lang), { code: "AUTH_REQUIRED" }, 401); return;
+  }
 
   const payload = verifyUserJwt(raw);
-  if (!payload) { sendErrorWithData(res, "Invalid or expired session. Please log in again.", { code: "TOKEN_INVALID" }, 401); return; }
+  if (!payload) {
+    const lang = await getRequestLocale(req);
+    sendErrorWithData(res, t("apiErrSessionExpired", lang), { code: "TOKEN_INVALID" }, 401); return;
+  }
 
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-    if (!user) { sendErrorWithData(res, "User not found", { code: "AUTH_REQUIRED" }, 401); return; }
-    if (user.isBanned) { sendErrorWithData(res, "Your account has been permanently banned. Please contact support.", { code: "ACCOUNT_BANNED" }, 401); return; }
+    if (!user) {
+      const lang = await getRequestLocale(req, payload.userId);
+      sendErrorWithData(res, t("apiErrUserNotFound", lang), { code: "AUTH_REQUIRED" }, 401); return;
+    }
+    const riderLang = await getRequestLocale(req, user.id);
+    if (user.isBanned) { sendErrorWithData(res, t("apiErrAccountBanned", riderLang), { code: "ACCOUNT_BANNED" }, 401); return; }
     if (!user.isActive) {
       /* Structured response for approval states so the frontend can show the right screen */
       if (user.approvalStatus === "pending") {
-        sendErrorWithData(res, "Your account is pending admin approval.", {
+        sendErrorWithData(res, t("apiErrApprovalPending", riderLang), {
           code: "APPROVAL_PENDING",
           approvalStatus: "pending",
         }, 403);
         return;
       }
       if (user.approvalStatus === "rejected") {
-        sendErrorWithData(res, "Your account application was rejected.",  {
+        sendErrorWithData(res, t("apiErrApprovalRejected", riderLang),  {
           code: "APPROVAL_REJECTED",
           approvalStatus: "rejected",
           rejectionReason: user.approvalNote ?? null,
         }, 403);
         return;
       }
-      sendErrorWithData(res, "Account is inactive. Please contact support.", { code: "ACCOUNT_INACTIVE" }, 403); return;
+      sendErrorWithData(res, t("apiErrAccountInactive", riderLang), { code: "ACCOUNT_INACTIVE" }, 403); return;
     }
 
     if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== (user.tokenVersion ?? 0)) {
-      sendErrorWithData(res, "Session revoked. Please log in again.", { code: "TOKEN_EXPIRED" }, 401); return;
+      sendErrorWithData(res, t("apiErrSessionRevoked", riderLang), { code: "TOKEN_EXPIRED" }, 401); return;
     }
 
     const dbRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim());
     const jwtRoles = (payload.roles || payload.role || "").split(",").map((r: string) => r.trim());
     if (!dbRoles.includes("rider") || !jwtRoles.includes("rider")) {
-      sendErrorWithData(res, "Access denied. This portal is for riders only.", { code: "ROLE_DENIED" }, 403); return;
+      sendErrorWithData(res, t("apiErrRoleDenied", riderLang), { code: "ROLE_DENIED" }, 403); return;
     }
 
     req.riderId = user.id;
@@ -274,7 +289,8 @@ async function riderAuth(req: Request, res: Response, next: NextFunction) {
     next();
   } catch (err) {
     logger.error("[riderAuth] DB error:", err instanceof Error ? err.message : err);
-    sendError(res, "Authentication service temporarily unavailable", 503);
+    const lang = await getRequestLocale(req);
+    sendError(res, t("apiErrAuthServiceUnavailable", lang), 503);
   }
 }
 
@@ -354,13 +370,14 @@ router.get("/me", async (req, res) => {
 /* ── PATCH /rider/online — Toggle online status ── */
 router.patch("/online", async (req, res) => {
   const parsed = onlineSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
+  if (!parsed.success) { const l = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en"; sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidInput", l)); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const { isOnline } = parsed.data;
   /* Block pending-approval riders from going online */
   if (isOnline && (riderUser.approvalStatus ?? "pending") !== "approved") {
-    sendForbidden(res, "Your account is pending re-verification. You cannot go online until an admin approves your profile."); return;
+    const lang = await getRequestLocale(req, req.riderId!);
+    sendForbidden(res, t("apiErrRiderPendingReverification", lang)); return;
   }
   let serviceZoneWarning: string | undefined;
   if (isOnline) {
@@ -456,7 +473,7 @@ router.patch("/online", async (req, res) => {
 /* ── PATCH /rider/profile — Update profile ── */
 router.patch("/profile", async (req, res) => {
   const parsed = profileSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
+  if (!parsed.success) { const l = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en"; sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidInput", l)); return; }
   const riderId = req.riderId!;
   const currentUser = req.riderUser!;
   const { name, email, cnic, address, city, emergencyContact, vehicleType, vehiclePlate, vehicleRegNo, drivingLicense, bankName, bankAccount, bankAccountTitle, avatar, cnicDocUrl, licenseDocUrl, regDocUrl, vehiclePhoto } = parsed.data;
@@ -476,7 +493,8 @@ router.patch("/profile", async (req, res) => {
   if (bankAccountTitle !== undefined) updates.bankAccountTitle = bankAccountTitle;
   if (avatar           !== undefined) {
     if (avatar && !avatar.startsWith("/api/uploads/")) {
-      sendValidationError(res, "Avatar must be an uploaded file URL");
+      const lang = await getRequestLocale(req, riderId);
+      sendValidationError(res, t("apiErrUploadedFileUrlRequired", lang));
       return;
     }
     updates.avatar = avatar;
@@ -484,14 +502,15 @@ router.patch("/profile", async (req, res) => {
   /* Document photo URLs — stored in the `documents` JSON column (cnicDocUrl, licenseDocUrl,
      regDocUrl) to avoid schema migration. vehiclePhoto uses its dedicated DB column. */
   if (cnicDocUrl !== undefined || licenseDocUrl !== undefined || regDocUrl !== undefined) {
+    const lang = await getRequestLocale(req, riderId);
     if (cnicDocUrl && !cnicDocUrl.startsWith("/api/uploads/")) {
-      sendValidationError(res, "cnicDocUrl must be an uploaded file URL"); return;
+      sendValidationError(res, t("apiErrUploadedFileUrlRequired", lang)); return;
     }
     if (licenseDocUrl && !licenseDocUrl.startsWith("/api/uploads/")) {
-      sendValidationError(res, "licenseDocUrl must be an uploaded file URL"); return;
+      sendValidationError(res, t("apiErrUploadedFileUrlRequired", lang)); return;
     }
     if (regDocUrl && !regDocUrl.startsWith("/api/uploads/")) {
-      sendValidationError(res, "regDocUrl must be an uploaded file URL"); return;
+      sendValidationError(res, t("apiErrUploadedFileUrlRequired", lang)); return;
     }
     let existingDocs: Record<string, string> = {};
     try { existingDocs = JSON.parse(currentUser.documents || "{}"); } catch { /* ignore */ }
@@ -503,7 +522,8 @@ router.patch("/profile", async (req, res) => {
   /* vehiclePhoto uses the dedicated `vehicle_photo` column in the users table */
   if (vehiclePhoto !== undefined) {
     if (vehiclePhoto && !vehiclePhoto.startsWith("/api/uploads/")) {
-      sendValidationError(res, "vehiclePhoto must be an uploaded file URL"); return;
+      const lang = await getRequestLocale(req, riderId);
+      sendValidationError(res, t("apiErrUploadedFileUrlRequired", lang)); return;
     }
     updates.vehiclePhoto = vehiclePhoto;
   }
@@ -522,10 +542,11 @@ router.patch("/profile", async (req, res) => {
     user = updated;
   } catch (dbErr: unknown) {
     const msg = (dbErr as Error)?.message || "";
+    const lang = await getRequestLocale(req, req.riderId!);
     if (msg.includes("unique") || msg.includes("duplicate")) {
-      sendError(res, "A profile field conflicts with an existing record (e.g. duplicate CNIC)", 409);
+      sendError(res, t("apiErrProfileFieldConflict", lang), 409);
     } else {
-      sendError(res, "Failed to update profile. Please try again.", 500);
+      sendError(res, t("apiErrProfileUpdateFailed", lang), 500);
     }
     return;
   }
@@ -730,16 +751,16 @@ router.get("/active", async (req, res) => {
    Uses WHERE riderId IS NULL to prevent two riders accepting the same order (race condition) */
 router.post("/orders/:id/accept", async (req, res) => {
   const paramParsed = idParamSchema.safeParse(req.params);
-  if (!paramParsed.success) { sendValidationError(res, "Invalid order ID"); return; }
+  const riderLangAccept = await getRequestLocale(req, req.riderId!);
+  if (!paramParsed.success) { sendValidationError(res, t("apiErrInvalidOrderId", riderLangAccept)); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const orderId   = paramParsed.data.id;
-
   if (riderUser.isRestricted) {
-    sendForbidden(res, "Your account is restricted. You cannot accept new orders. Contact support for assistance."); return;
+    sendForbidden(res, t("apiErrRiderRestricted", riderLangAccept)); return;
   }
   if ((riderUser.approvalStatus ?? "pending") !== "approved") {
-    sendForbidden(res, "Your account is pending re-verification. You cannot accept orders until an admin approves your profile."); return;
+    sendForbidden(res, t("apiErrRiderPendingReverificationOrders", riderLangAccept)); return;
   }
 
   const s = await getPlatformSettings();
@@ -752,7 +773,7 @@ router.post("/orders/:id/accept", async (req, res) => {
   const cashAllowed = (s["rider_cash_allowed"] ?? "on") === "on";
   if (!cashAllowed) {
     if (targetOrder?.paymentMethod === "cash" || targetOrder?.paymentMethod === "cod") {
-      sendForbidden(res, "Cash-on-delivery orders are currently not available for riders."); return;
+      sendForbidden(res, t("apiErrRiderCodNotAvailable", riderLangAccept)); return;
     }
   }
 
@@ -765,7 +786,7 @@ router.post("/orders/:id/accept", async (req, res) => {
         .from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
       const currentBal = safeNum(riderRow?.walletBalance);
       if (currentBal < minBalance) {
-        sendErrorWithData(res, `Minimum wallet balance required for cash orders is Rs. ${minBalance}. Your balance: Rs. ${currentBal.toFixed(0)}. Please top up your wallet to accept cash orders.`, {
+        sendErrorWithData(res, t("apiErrBelowMinBalance", riderLangAccept).replace("{required}", String(minBalance)).replace("{current}", currentBal.toFixed(0)), {
           code: "BELOW_MIN_BALANCE",
           required: minBalance,
           current: currentBal,
@@ -782,7 +803,7 @@ router.post("/orders/:id/accept", async (req, res) => {
   ]);
   const activeCount = (activeOrders[0]?.c ?? 0) + (activeRides[0]?.c ?? 0);
   if (activeCount >= maxDeliveries) {
-    sendError(res, `Maximum ${maxDeliveries} active deliveries allowed. Complete a current delivery first.`, 429); return;
+    sendError(res, t("apiErrMaxDeliveries", riderLangAccept).replace("{max}", String(maxDeliveries)), 429); return;
   }
 
   // Atomic accept: only succeeds if riderId is still NULL in DB
@@ -796,8 +817,10 @@ router.post("/orders/:id/accept", async (req, res) => {
   if (!updated) {
     // Either not found OR already taken by another rider
     const [existing] = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-    if (!existing) { sendNotFound(res, "Order not found"); return; }
-    sendError(res, "Order already taken by another rider", 409); return;
+    if (!existing) {
+      sendNotFound(res, t("apiErrOrderNotFound", riderLangAccept)); return;
+    }
+    sendError(res, t("apiErrOrderTaken", riderLangAccept), 409); return;
   }
 
   const orderAcceptLang = await getUserLanguage(updated.userId);
@@ -816,14 +839,18 @@ router.post("/orders/:id/accept", async (req, res) => {
    for future broadcasts of the same order. No penalty is applied. */
 router.post("/orders/:id/reject", async (req, res) => {
   const paramParsed = idParamSchema.safeParse(req.params);
-  if (!paramParsed.success) { sendValidationError(res, "Invalid order ID"); return; }
   const riderId = req.riderId!;
+  const rejectLang = await getRequestLocale(req, riderId);
+  if (!paramParsed.success) { sendValidationError(res, t("apiErrInvalidOrderId", rejectLang)); return; }
   const orderId = paramParsed.data.id;
   const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 200) : "skipped";
 
   const [order] = await db.select({ id: ordersTable.id, status: ordersTable.status })
     .from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-  if (!order) { sendNotFound(res, "Order not found"); return; }
+  if (!order) {
+    const lang = await getRequestLocale(req, riderId);
+    sendNotFound(res, t("apiErrOrderNotFound", lang)); return;
+  }
 
   await db.insert(notificationsTable).values({
     id: generateId(), userId: riderId,
@@ -981,16 +1008,19 @@ router.get("/cancel-stats", async (req, res) => {
 /* ── PATCH /rider/orders/:id/status — Update order status (delivered) ── */
 router.patch("/orders/:id/status", async (req, res) => {
   const parsed = orderStatusSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid status"); return; }
   const riderId = req.riderId!;
+  const orderStatusLang = await getRequestLocale(req, riderId);
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidStatus", orderStatusLang)); return; }
   const { status, proofPhoto } = parsed.data;
 
   const [order] = await db.select().from(ordersTable).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId))).limit(1);
-  if (!order) { sendNotFound(res, "Order not found or not yours"); return; }
+  if (!order) {
+    sendNotFound(res, t("apiErrOrderNotFound", orderStatusLang)); return;
+  }
 
   /* Proof photo is mandatory for delivery confirmation — prevents fraudulent delivery claims */
   if (status === "delivered" && !proofPhoto) {
-    sendValidationError(res, "Proof of delivery photo is required to mark an order as delivered. Please upload a photo."); return;
+    sendValidationError(res, t("apiErrProofPhotoRequired", orderStatusLang)); return;
   }
 
   /* Magic-byte verification for proof photo before writing to the database */
@@ -1033,7 +1063,7 @@ router.patch("/orders/:id/status", async (req, res) => {
   };
   const allowedNext = ORDER_RIDER_TRANSITIONS[order.status] || [];
   if (!allowedNext.includes(status)) {
-    sendValidationError(res, `Cannot change order from "${order.status}" to "${status}". Allowed: ${allowedNext.join(", ") || "none"}.`); return;
+    sendValidationError(res, t("apiErrInvalidOrderTransition", orderStatusLang).replace("{from}", order.status).replace("{to}", status).replace("{allowed}", allowedNext.join(", ") || "none")); return;
   }
 
   const updateData: Partial<typeof ordersTable.$inferInsert> & { status: string; updatedAt: Date } = { status, updatedAt: new Date() };
@@ -1086,7 +1116,10 @@ router.patch("/orders/:id/status", async (req, res) => {
         if (err.message === "STATUS_CONFLICT") return null;
         throw err;
       });
-      if (!txResult) { sendError(res, "Order status has already been updated", 409); return; }
+      if (!txResult) {
+        const lang = await getRequestLocale(req, riderId);
+        sendError(res, t("apiErrOrderStatusAlreadyUpdated", lang), 409); return;
+      }
       updated = txResult;
       const riderCashLang = await getUserLanguage(riderId);
       await db.insert(notificationsTable).values({
@@ -1118,7 +1151,10 @@ router.patch("/orders/:id/status", async (req, res) => {
         if (err.message === "STATUS_CONFLICT") return null;
         throw err;
       });
-      if (!txResult) { sendError(res, "Order status has already been updated", 409); return; }
+      if (!txResult) {
+        const lang = await getRequestLocale(req, riderId);
+        sendError(res, t("apiErrOrderStatusAlreadyUpdated", lang), 409); return;
+      }
       updated = txResult;
       const riderEarnLang = await getUserLanguage(riderId);
       await db.insert(notificationsTable).values({
@@ -1194,7 +1230,10 @@ router.patch("/orders/:id/status", async (req, res) => {
     }
   } else {
     const [row] = await db.update(ordersTable).set(updateData).where(and(eq(ordersTable.id, req.params["id"]!), eq(ordersTable.riderId, riderId), eq(ordersTable.status, order.status))).returning();
-    if (!row) { sendNotFound(res, "Order not found or not yours"); return; }
+    if (!row) {
+      const lang = await getRequestLocale(req, riderId);
+      sendNotFound(res, t("apiErrOrderNotFound", lang)); return;
+    }
     updated = row;
   }
 
@@ -1205,16 +1244,16 @@ router.patch("/orders/:id/status", async (req, res) => {
    Uses WHERE riderId IS NULL to prevent two riders accepting same ride (race condition) */
 router.post("/rides/:id/accept", rideAcceptLimiter, async (req, res) => {
   const paramParsed = idParamSchema.safeParse(req.params);
-  if (!paramParsed.success) { sendValidationError(res, "Invalid ride ID"); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
+  const rideLang = await getRequestLocale(req, riderId);
+  if (!paramParsed.success) { sendValidationError(res, t("apiErrInvalidRideId", rideLang)); return; }
   const rideId    = paramParsed.data.id;
-
   if (riderUser.isRestricted) {
-    sendForbidden(res, "Your account is restricted. You cannot accept new rides. Contact support for assistance."); return;
+    sendForbidden(res, t("apiErrRiderRestrictedRides", rideLang)); return;
   }
   if ((riderUser.approvalStatus ?? "pending") !== "approved") {
-    sendForbidden(res, "Your account is pending re-verification. You cannot accept rides until an admin approves your profile."); return;
+    sendForbidden(res, t("apiErrRiderPendingReverificationRides", rideLang)); return;
   }
 
   // Check max simultaneous deliveries limit
@@ -1226,12 +1265,12 @@ router.post("/rides/:id/accept", rideAcceptLimiter, async (req, res) => {
   ]);
   const activeCount = (activeOrders[0]?.c ?? 0) + (activeRides[0]?.c ?? 0);
   if (activeCount >= maxDeliveries) {
-    sendError(res, `Maximum ${maxDeliveries} active deliveries allowed. Complete a current delivery first.`, 429); return;
+    sendError(res, t("apiErrMaxDeliveries", rideLang).replace("{max}", String(maxDeliveries)), 429); return;
   }
 
   /* Check if this is a bargaining ride — load it first */
   const [targetRide] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!targetRide) { sendNotFound(res, "Ride not found"); return; }
+  if (!targetRide) { sendNotFound(res, t("apiErrRideNotFound", rideLang)); return; }
 
   /* ── Minimum wallet balance gate for cash rides ── */
   if (targetRide.paymentMethod === "cash") {
@@ -1241,7 +1280,7 @@ router.post("/rides/:id/accept", rideAcceptLimiter, async (req, res) => {
         .from(usersTable).where(eq(usersTable.id, riderId)).limit(1);
       const currentBal = safeNum(riderRow?.walletBalance);
       if (currentBal < minBalance) {
-        sendErrorWithData(res, `Minimum wallet balance required for cash rides is Rs. ${minBalance}. Your balance: Rs. ${currentBal.toFixed(0)}. Please top up your wallet first.`, {
+        sendErrorWithData(res, t("apiErrBelowMinBalanceRides", rideLang).replace("{required}", String(minBalance)).replace("{current}", currentBal.toFixed(0)), {
           code: "BELOW_MIN_BALANCE",
           required: minBalance,
           current: currentBal,
@@ -1263,9 +1302,9 @@ router.post("/rides/:id/accept", rideAcceptLimiter, async (req, res) => {
     const fareAmt = safeNum(agreedFare);
     const [customer] = await db.select({ walletBalance: usersTable.walletBalance })
       .from(usersTable).where(eq(usersTable.id, targetRide.userId)).limit(1);
-    if (!customer) { sendNotFound(res, "Customer not found"); return; }
+    if (!customer) { sendNotFound(res, t("apiErrCustomerNotFound", rideLang)); return; }
     if (safeNum(customer.walletBalance) < fareAmt) {
-      sendValidationError(res, "Customer has insufficient wallet balance"); return;
+      sendValidationError(res, t("apiErrCustomerInsufficientWallet", rideLang)); return;
     }
   }
 
@@ -1325,11 +1364,11 @@ router.post("/rides/:id/accept", rideAcceptLimiter, async (req, res) => {
       sendErrorWithData(res, msg, { code: "INSUFFICIENT_WALLET" }, 402); return;
     }
     logger.error("[rider] ride accept transaction failed:", msg);
-    sendError(res, "Failed to accept ride. Please try again.", 500); return;
+    sendError(res, t("apiErrRiderAcceptFailed", rideLang), 500); return;
   }
 
   if (!updated) {
-    sendError(res, "Ride already taken by another rider", 409); return;
+    sendError(res, t("apiErrRideTaken", rideLang), 409); return;
   }
 
   const rideAssignLang = await getUserLanguage(updated.userId);
@@ -1358,18 +1397,21 @@ router.post("/rides/:id/verify-otp", otpLimiter, async (req, res) => {
   const riderId = req.riderId!;
   const rideId  = req.params["id"]!;
   const { otp } = req.body ?? {};
+  const otpLang = await getRequestLocale(req, riderId);
 
   if (!otp || typeof otp !== "string") {
-    sendValidationError(res, "OTP is required"); return;
+    sendValidationError(res, t("apiErrOtpRequired", otpLang)); return;
   }
 
   const [ride] = await db.select().from(ridesTable)
     .where(and(eq(ridesTable.id, rideId), eq(ridesTable.riderId, riderId)))
     .limit(1);
 
-  if (!ride) { sendNotFound(res, "Ride not found or not yours"); return; }
+  if (!ride) {
+    sendNotFound(res, t("apiErrRideNotFoundOrNotYours", otpLang)); return;
+  }
   if (!["arrived", "accepted"].includes(ride.status)) {
-    sendValidationError(res, "OTP can only be verified once you have accepted and are en route to the pickup location."); return;
+    sendValidationError(res, t("apiErrOtpNotAllowed", otpLang)); return;
   }
   if (ride.otpVerified) {
     /* Clear the attempt counter on success */
@@ -1377,7 +1419,7 @@ router.post("/rides/:id/verify-otp", otpLimiter, async (req, res) => {
     sendSuccess(res, undefined, "OTP already verified"); return;
   }
   if (!ride.tripOtp) {
-    sendValidationError(res, "No OTP found for this ride. The customer needs to request a new one."); return;
+    sendValidationError(res, t("apiErrOtpNotFound", otpLang)); return;
   }
   if (ride.tripOtp.trim() !== otp.trim()) {
     /* Track failed attempt */
@@ -1389,12 +1431,12 @@ router.post("/rides/:id/verify-otp", otpLimiter, async (req, res) => {
       /* Invalidate the current OTP so the customer must request a fresh one */
       await db.update(ridesTable).set({ tripOtp: null, updatedAt: new Date() }).where(eq(ridesTable.id, rideId)).catch(() => {});
       rideOtpAttempts.delete(rideId);
-      sendErrorWithData(res, "Too many incorrect OTP attempts. The current OTP has been invalidated. Please ask the customer to refresh their app to receive a new OTP.", { code: "OTP_INVALIDATED" }, 400);
+      sendErrorWithData(res, t("apiErrOtpInvalidated", otpLang), { code: "OTP_INVALIDATED" }, 400);
       return;
     }
 
     const remaining = MAX_OTP_ATTEMPTS - entry.count;
-    sendErrorWithData(res, `Incorrect OTP. Please check with your customer. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`, { code: "OTP_MISMATCH", attemptsRemaining: remaining }, 400); return;
+    sendErrorWithData(res, t("apiErrOtpMismatch", otpLang).replace("{remaining}", String(remaining)), { code: "OTP_MISMATCH", attemptsRemaining: remaining }, 400); return;
   }
 
   /* Success — clear attempt counter and mark verified */
@@ -1408,17 +1450,20 @@ router.post("/rides/:id/verify-otp", otpLimiter, async (req, res) => {
 /* ── PATCH /rider/rides/:id/status — Update ride status (completed/cancelled) ── */
 router.patch("/rides/:id/status", rideStatusLimiter, async (req, res) => {
   const parsed = rideStatusSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid status"); return; }
   const riderId = req.riderId!;
+  const rideStatusLang = await getRequestLocale(req, riderId);
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidStatus", rideStatusLang)); return; }
   const { status, lat, lng } = parsed.data;
 
   const [ride] = await db.select().from(ridesTable).where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId))).limit(1);
-  if (!ride) { sendNotFound(res, "Ride not found or not yours"); return; }
+  if (!ride) {
+    sendNotFound(res, t("apiErrRideNotFoundOrNotYours", rideStatusLang)); return;
+  }
 
   /* ── State Machine: enforce valid transitions ── */
   const allowed = RIDE_STATUS_TRANSITIONS[ride.status];
   if (!allowed || !allowed.includes(status)) {
-    sendValidationError(res, `Cannot transition from "${ride.status}" to "${status}". Allowed: ${(allowed || []).join(", ") || "none"}`); return;
+    sendValidationError(res, t("apiErrInvalidRideTransition", rideStatusLang).replace("{from}", ride.status).replace("{to}", status).replace("{allowed}", (allowed || []).join(", ") || "none")); return;
   }
 
   /* ── Proximity check: "arrived" requires rider to be near pickup ── */
@@ -1439,18 +1484,18 @@ router.patch("/rides/:id/status", rideStatusLimiter, async (req, res) => {
     }
 
     if (riderLat == null || riderLng == null) {
-      sendValidationError(res, "Unable to verify your location. Please enable GPS and try again."); return;
+      sendValidationError(res, t("apiErrGpsRequired", rideStatusLang)); return;
     }
 
     const distKm = calcDistance(riderLat, riderLng, parseFloat(ride.pickupLat), parseFloat(ride.pickupLng));
     if (distKm * 1000 > proximityM) {
-      sendValidationError(res, `You must be within ${proximityM}m of the pickup location to mark arrived. Current distance: ${(distKm * 1000).toFixed(0)}m`); return;
+      sendValidationError(res, t("apiErrGpsTooFar", rideStatusLang).replace("{max}", String(proximityM)).replace("{dist}", (distKm * 1000).toFixed(0))); return;
     }
   }
 
   /* ── OTP gate: in_transit requires OTP verification ── */
   if (status === "in_transit" && !ride.otpVerified) {
-    sendErrorWithData(res, "Customer OTP not verified. Ask the customer for the 4-digit code, then tap 'Verify OTP'.", { code: "OTP_REQUIRED" }, 400);
+    sendErrorWithData(res, t("apiErrOtpVerificationRequired", rideStatusLang), { code: "OTP_REQUIRED" }, 400);
     return;
   }
 
@@ -1569,7 +1614,10 @@ router.patch("/rides/:id/status", rideStatusLimiter, async (req, res) => {
       .set({ status, updatedAt: now, ...timestampFields })
       .where(and(eq(ridesTable.id, req.params["id"]!), eq(ridesTable.riderId, riderId), eq(ridesTable.status, ride.status)))
       .returning();
-    if (!row) { sendNotFound(res, "Ride not found, not yours, or status already changed"); return; }
+    if (!row) {
+      const lang = await getRequestLocale(req, riderId);
+      sendNotFound(res, t("apiErrRideStatusConflict", lang)); return;
+    }
     updated = row;
     /* Web Push + OTP re-emit: rider arrived at pickup */
     if (status === "arrived") {
@@ -1595,16 +1643,19 @@ router.patch("/rides/:id/status", rideStatusLimiter, async (req, res) => {
 /* ── POST /rider/rides/:id/counter — Rider submits a bid on a bargaining ride (InDrive multi-bid) ── */
 router.post("/rides/:id/counter", rideBidLimiter, async (req, res) => {
   const parsed = counterSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "counterFare required"); return; }
+  if (!parsed.success) { const l = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en"; sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrCounterFareRequired", l)); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const rideId    = req.params["id"]!;
   const { counterFare, note } = parsed.data;
 
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { sendNotFound(res, "Ride not found"); return; }
+  const bargainLang = await getRequestLocale(req, riderId);
+  if (!ride) {
+    sendNotFound(res, t("apiErrRideNotFound", bargainLang)); return;
+  }
   if (ride.status !== "bargaining") {
-    sendValidationError(res, "This ride is not in bargaining state"); return;
+    sendValidationError(res, t("apiErrRideNotBargaining", bargainLang)); return;
   }
 
   const parsedCounter = safeNum(counterFare);
@@ -1612,10 +1663,10 @@ router.post("/rides/:id/counter", rideBidLimiter, async (req, res) => {
   const offeredAmt    = safeNum(ride.offeredFare ?? 0);
 
   if (parsedCounter > platformFare) {
-    sendValidationError(res, `Counter offer cannot exceed platform fare (Rs. ${platformFare.toFixed(0)})`); return;
+    sendValidationError(res, t("apiErrCounterExceedsPlatformFare", bargainLang).replace("{fare}", platformFare.toFixed(0))); return;
   }
   if (parsedCounter <= offeredAmt) {
-    sendValidationError(res, `Counter offer must be higher than customer's offer (Rs. ${offeredAmt.toFixed(0)})`); return;
+    sendValidationError(res, t("apiErrCounterBelowCustomerOffer", bargainLang).replace("{offer}", offeredAmt.toFixed(0))); return;
   }
 
   /* Enforce service min_fare — check platform_settings first, fall back to rideServiceTypesTable
@@ -1632,7 +1683,7 @@ router.post("/rides/:id/counter", rideBidLimiter, async (req, res) => {
     serviceMinFare = svc ? parseFloat(svc.minFare ?? "0") : 0;
   }
   if (serviceMinFare > 0 && parsedCounter < serviceMinFare) {
-    sendValidationError(res, `Counter offer cannot be lower than the minimum fare of Rs. ${serviceMinFare.toFixed(0)} for this service`); return;
+    sendValidationError(res, t("apiErrCounterBelowMinFare", bargainLang).replace("{minFare}", serviceMinFare.toFixed(0))); return;
   }
 
   /*
@@ -1700,7 +1751,7 @@ router.post("/rides/:id/counter", rideBidLimiter, async (req, res) => {
   } catch (e: unknown) {
     const err = e as { statusCode?: number; message?: string };
     const status = err.statusCode ?? 400;
-    sendError(res, err.message ?? "Bid failed", status);
+    sendError(res, err.message ?? t("apiErrBidFailed", bargainLang), status);
     return;
   }
 
@@ -1946,7 +1997,7 @@ router.get("/wallet/transactions", async (req, res) => {
 /* ── POST /rider/wallet/withdraw — Atomic withdrawal (prevents race condition) ── */
 router.post("/wallet/withdraw", async (req, res) => {
   const parsed = withdrawSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
+  if (!parsed.success) { const l = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en"; sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidInput", l)); return; }
   const riderId = req.riderId!;
   const { amount, accountTitle, accountNumber, bankName, paymentMethod, note } = parsed.data;
   const amt = amount;
@@ -1956,12 +2007,15 @@ router.post("/wallet/withdraw", async (req, res) => {
   const minPayout = parseFloat(s["rider_min_payout"] ?? "500");
   const maxPayout = parseFloat(s["rider_max_payout"] ?? "50000");
 
-  if (!withdrawalEnabled) { sendForbidden(res, "Withdrawals are currently paused by admin. Please try again later."); return; }
-  if (!amt || amt <= 0)  { sendValidationError(res, "Valid amount required"); return; }
-  if (amt < minPayout)   { sendValidationError(res, `Minimum withdrawal is Rs. ${minPayout}`); return; }
-  if (amt > maxPayout)   { sendValidationError(res, `Maximum single withdrawal is Rs. ${maxPayout}`); return; }
+  const lang = await getRequestLocale(req, riderId);
+  if (!withdrawalEnabled) {
+    sendForbidden(res, t("apiErrWithdrawalsDisabled", lang)); return;
+  }
+  if (!amt || amt <= 0)  { sendValidationError(res, t("apiErrValidAmountRequired", lang)); return; }
+  if (amt < minPayout)   { sendValidationError(res, t("apiErrMinWithdrawal", lang).replace("{min}", String(minPayout))); return; }
+  if (amt > maxPayout)   { sendValidationError(res, t("apiErrMaxWithdrawal", lang).replace("{max}", String(maxPayout))); return; }
   if (!accountTitle || !accountNumber || !bankName) {
-    sendValidationError(res, "Account title, number and bank name are required"); return;
+    sendValidationError(res, t("apiErrBankDetailsRequired", lang)); return;
   }
 
   try {
@@ -2028,14 +2082,15 @@ router.get("/cod-summary", async (req, res) => {
 
 /* ── POST /rider/cod/remit — submit COD cash remittance ── */
 router.post("/cod/remit", async (req, res) => {
+  const riderId = req.riderId!;
+  const codRemitLang = await getRequestLocale(req, riderId);
   try {
-    const riderId = req.riderId!;
     const { amount, paymentMethod, accountNumber, transactionId, note } = req.body;
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-      res.status(400).json({ error: "Valid amount is required" }); return;
+      res.status(400).json({ error: t("apiErrValidAmountRequired", codRemitLang) }); return;
     }
     if (!paymentMethod) {
-      res.status(400).json({ error: "Payment method is required" }); return;
+      res.status(400).json({ error: t("apiErrPaymentMethodRequired", codRemitLang) }); return;
     }
 
     const txId = generateId();
@@ -2076,12 +2131,12 @@ router.post("/cod/remit", async (req, res) => {
     });
 
     if ("overLimit" in result) {
-      res.status(400).json({ error: `Remittance amount exceeds available owed balance (${result.overLimit})` }); return;
+      res.status(400).json({ error: t("apiErrCodRemittanceOverLimit", codRemitLang).replace("{limit}", String(result.overLimit)) }); return;
     }
 
-    res.json({ success: true, transactionId: txId, message: "Remittance submitted for admin verification" });
+    res.json({ success: true, transactionId: txId, message: t("apiMsgRemittanceSubmitted", codRemitLang) });
   } catch (e: unknown) {
-    res.status(500).json({ error: (e instanceof Error ? e.message : null) || "Failed to submit remittance" });
+    res.status(500).json({ error: (e instanceof Error ? e.message : null) || t("apiErrCodRemittanceFailed", codRemitLang) });
   }
 });
 
@@ -2108,7 +2163,8 @@ router.patch("/notifications/:id/read", async (req, res) => {
     const riderId = req.riderId!;
     const { id } = req.params;
     if (!id || typeof id !== "string") {
-      sendValidationError(res, "Invalid notification id"); return;
+      const lang = await getRequestLocale(req, riderId);
+      sendValidationError(res, t("apiErrInvalidNotificationId", lang)); return;
     }
     await db.update(notificationsTable)
       .set({ isRead: true })
@@ -2118,12 +2174,14 @@ router.patch("/notifications/:id/read", async (req, res) => {
       .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, riderId)))
       .limit(1);
     if (!updated) {
-      sendNotFound(res, "Notification not found"); return;
+      const lang = await getRequestLocale(req, req.riderId!);
+      sendNotFound(res, t("apiErrNotificationNotFound", lang)); return;
     }
     sendSuccess(res); return;
   } catch (err) {
     logger.error("Failed to mark notification read:", err);
-    sendError(res, "Failed to mark notification as read", 500); return;
+    const lang = await getRequestLocale(req, req.riderId!);
+    sendError(res, t("apiErrNotificationMarkFailed", lang), 500); return;
   }
 });
 
@@ -2147,7 +2205,7 @@ router.get("/wallet/min-balance", async (req, res) => {
 /* ── POST /rider/wallet/deposit — Submit a manual deposit request ── */
 router.post("/wallet/deposit", async (req, res) => {
   const parsed = depositSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
+  if (!parsed.success) { const l = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en"; sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidInput", l)); return; }
   const riderId = req.riderId!;
   const { amount, paymentMethod, accountNumber, transactionId, note } = parsed.data;
   const amt = amount;
@@ -2155,13 +2213,14 @@ router.post("/wallet/deposit", async (req, res) => {
   const s = await getPlatformSettings();
   const depositEnabled = (s["rider_deposit_enabled"] ?? "on") === "on";
 
+  const depositLang = await getRequestLocale(req, riderId);
   if (!depositEnabled) {
-    sendForbidden(res, "Deposits are currently disabled by admin. Please contact support."); return;
+    sendForbidden(res, t("apiErrDepositsDisabled", depositLang)); return;
   }
-  if (!amt || amt <= 0) { sendValidationError(res, "Valid amount required"); return; }
-  if (amt < 100) { sendValidationError(res, "Minimum deposit is Rs. 100"); return; }
-  if (!paymentMethod) { sendValidationError(res, "Payment method required"); return; }
-  if (!transactionId?.trim()) { sendValidationError(res, "Transaction ID is required for verification"); return; }
+  if (!amt || amt <= 0) { sendValidationError(res, t("apiErrValidAmountRequired", depositLang)); return; }
+  if (amt < 100) { sendValidationError(res, t("apiErrMinDeposit", depositLang).replace("{min}", "100")); return; }
+  if (!paymentMethod) { sendValidationError(res, t("apiErrPaymentMethodRequired", depositLang)); return; }
+  if (!transactionId?.trim()) { sendValidationError(res, t("apiErrTransactionIdRequired", depositLang)); return; }
 
   /* Build explicit allowlist of currently-enabled payment methods */
   const PAYMENT_METHOD_SETTING: Record<string, string> = {
@@ -2172,7 +2231,7 @@ router.post("/wallet/deposit", async (req, res) => {
     .map(([key]) => key);
   const methodKey = paymentMethod.toLowerCase().replace(/\s+/g, "");
   if (enabledMethods.length > 0 && !enabledMethods.includes(methodKey)) {
-    sendValidationError(res, `Payment method '${paymentMethod}' is not enabled. Available: ${enabledMethods.join(", ")}.`); return;
+    sendValidationError(res, t("apiErrPaymentMethodNotEnabled", depositLang).replace("{method}", paymentMethod).replace("{available}", enabledMethods.join(", "))); return;
   }
 
   const txId = generateId();
@@ -2208,23 +2267,25 @@ const locationRateLimiter = rateLimit({
   keyGenerator: (req) => req.riderId ?? getClientIp(req) ?? "unknown",
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (_req, res) => {
-    sendTooManyRequests(res, "Location update rate limit exceeded (60/min). Please wait before sending another update.");
+  handler: (req, res) => {
+    const rl = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+    sendTooManyRequests(res, t("apiErrTooManyLocationUpdates", rl));
   },
 });
 
 /* ── PATCH /rider/location — GPS heartbeat: rider sends periodic location updates ── */
 router.patch("/location", locationRateLimiter, async (req, res) => {
   const parsed = locationSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid location data"); return; }
   const riderId = req.riderId!;
+  const gpsLang = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidLocationData", gpsLang)); return; }
 
   const { latitude, longitude, accuracy, speed, heading, batteryLevel } = parsed.data;
 
   const settings = await getCachedSettings();
 
   if (settings["security_gps_tracking"] === "off") {
-    sendForbidden(res, "GPS tracking is currently disabled by admin."); return;
+    sendForbidden(res, t("apiErrGpsTrackingDisabled", gpsLang)); return;
   }
 
   /* ── Server-side distance throttling ── */
@@ -2257,7 +2318,7 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
       ? "GPS accuracy === 0 — mock provider signature"
       : "mockProvider flag set — client-detected fake GPS";
     addSecurityEvent({ type: "gps_spoof_detected", ip, userId: riderId, details: spoofReason, severity: "medium" });
-    sendErrorWithData(res, "GPS location rejected: mock GPS provider detected. Please disable fake GPS apps.", { code: "GPS_SPOOF_DETECTED" }, 422);
+    sendErrorWithData(res, t("apiErrGpsSpoofDetected", gpsLang), { code: "GPS_SPOOF_DETECTED" }, 422);
     return;
   }
 
@@ -2270,7 +2331,7 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
       /* Reject low-accuracy pings — cell-tower or Wi-Fi triangulation produces
          very high accuracy values (100-1000m+) and must not update live locations
          or be used for proximity checks like "arrived". */
-      sendErrorWithData(res, `GPS accuracy (${Math.round(accuracy)}m) exceeds the allowed threshold (${minAccuracyMeters}m). Please move to an open area or enable high-accuracy GPS.`, {
+      sendErrorWithData(res, t("apiErrGpsAccuracyLow", gpsLang).replace("{accuracy}", String(Math.round(accuracy))).replace("{threshold}", String(minAccuracyMeters)), {
         code: "GPS_ACCURACY_LOW",
         accuracy,
         threshold: minAccuracyMeters,
@@ -2374,7 +2435,7 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
               sentAt: new Date().toISOString(),
             });
           }
-          sendErrorWithData(res, "GPS location rejected: repeated spoofing detected. You have been taken offline.", {
+          sendErrorWithData(res, t("apiErrGpsSpoofRepeated", gpsLang), {
             autoOffline,
             code: "GPS_SPOOF_DETECTED",
             hit: newHits,
@@ -2384,7 +2445,7 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
         /* Emulator/mock on hits 1-2: always hard-reject (unambiguous signal).
            Hit count still accumulates toward 3-hit auto-offline enforcement above. */
         if (mockFlagged || emulatorFlagged) {
-          sendErrorWithData(res, "GPS location rejected: mock GPS provider detected. Please disable fake GPS apps.", {
+          sendErrorWithData(res, t("apiErrGpsSpoofDetected", gpsLang), {
             autoOffline: false,
             code: "GPS_SPOOF_DETECTED",
             hit: newHits,
@@ -2512,8 +2573,9 @@ const batchLocationSchema = z.object({
 
 router.post("/location/batch", async (req, res) => {
   const parsed = batchLocationSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid input"); return; }
   const riderId = req.riderId!;
+  const batchGpsLang = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidInput", batchGpsLang)); return; }
 
   const settings = await getCachedSettings();
 
@@ -2711,7 +2773,7 @@ router.post("/location/batch", async (req, res) => {
       details: `GPS spoof (batch): ${batchHardBlockReason} (hit 3+)`,
       severity: "high",
     });
-    sendErrorWithData(res, "GPS location rejected: repeated spoofing detected in batch. You have been taken offline.", {
+    sendErrorWithData(res, t("apiErrGpsSpoofBatch", batchGpsLang), {
       autoOffline: true,
       code: "GPS_SPOOF_DETECTED",
       inserted,
@@ -2822,10 +2884,13 @@ router.post("/rides/:id/ignore", async (req, res) => {
   const riderId = req.riderId!;
   const rideId = req.params["id"]!;
 
+  const ignoreLang = await getRequestLocale(req, riderId);
   const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
-  if (!ride) { sendNotFound(res, "Ride not found"); return; }
+  if (!ride) {
+    sendNotFound(res, t("apiErrRideNotFound", ignoreLang)); return;
+  }
   if (!["searching", "bargaining"].includes(ride.status)) {
-    sendValidationError(res, "Ride is no longer available"); return;
+    sendValidationError(res, t("apiErrRideNoLongerAvailable", ignoreLang)); return;
   }
 
   const penalty = await handleIgnorePenalty(riderId);
@@ -2885,12 +2950,13 @@ const sosSchema = z.object({
 /* ── POST /rider/sos — Rider SOS alert ── */
 router.post("/sos", async (req, res) => {
   const settings = await getCachedSettings();
+  const sosLangHeader = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
   if ((settings["feature_sos"] ?? "on") !== "on") {
-    sendError(res, "SOS feature is currently disabled", 503); return;
+    sendError(res, t("apiErrSosDisabled", sosLangHeader), 503); return;
   }
 
   const parsed = sosSchema.safeParse(req.body);
-  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || "Invalid SOS data"); return; }
+  if (!parsed.success) { sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrInvalidSosData", sosLangHeader)); return; }
   const riderId   = req.riderId!;
   const riderUser = req.riderUser!;
   const { latitude, longitude, rideId } = parsed.data;
@@ -2926,7 +2992,7 @@ router.post("/sos", async (req, res) => {
     });
   } catch (err) {
     logger.error("[rider] SOS notification insert failed — cannot persist SOS:", err instanceof Error ? err.message : err);
-    sendError(res, "SOS alert could not be saved. Please call emergency contacts directly.", 503);
+    sendError(res, t("apiErrSosSaveFailed", sosLangHeader), 503);
     return;
   }
 
@@ -2966,8 +3032,9 @@ const osrmQuerySchema = z.object({
 /* ── GET /rider/osrm-route — Fetch turn-by-turn directions from OSRM ── */
 router.get("/osrm-route", async (req, res) => {
   const parsed = osrmQuerySchema.safeParse(req.query);
+  const routeLang = parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en";
   if (!parsed.success) {
-    sendValidationError(res, parsed.error.issues[0]?.message || "fromLat, fromLng, toLat, toLng required (valid coordinates)"); return;
+    sendValidationError(res, parsed.error.issues[0]?.message || t("apiErrRouteCoordinatesRequired", routeLang)); return;
   }
   const { fromLat, fromLng, toLat, toLng } = parsed.data;
 
@@ -2981,7 +3048,7 @@ router.get("/osrm-route", async (req, res) => {
     clearTimeout(timeout);
 
     if (!resp.ok) {
-      sendError(res, "Routing service unavailable", 502); return;
+      sendError(res, t("apiErrRoutingUnavailable", routeLang), 502); return;
     }
 
     const data = await resp.json() as {
@@ -2995,7 +3062,7 @@ router.get("/osrm-route", async (req, res) => {
     };
 
     if (data.code !== "Ok" || !data.routes?.length) {
-      sendNotFound(res, "No route found"); return;
+      sendNotFound(res, t("apiErrNoRouteFound", routeLang)); return;
     }
 
     const route = data.routes[0]!;
@@ -3018,9 +3085,9 @@ router.get("/osrm-route", async (req, res) => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Routing request failed";
     if (msg.includes("aborted") || msg.includes("abort")) {
-      sendError(res, "Routing service timed out", 504); return;
+      sendError(res, t("apiErrRoutingTimedOut", routeLang), 504); return;
     }
-    sendError(res, "Could not fetch route", 502); return;
+    sendError(res, t("apiErrRoutingFailed", routeLang), 502); return;
   }
 });
 

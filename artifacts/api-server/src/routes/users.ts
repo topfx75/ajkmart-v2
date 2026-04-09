@@ -10,6 +10,8 @@ import multer from "multer";
 import { generateId } from "../lib/id.js";
 import { z } from "zod";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
+import { t, type TranslationKey } from "@workspace/i18n";
+import { getRequestLocale } from "../lib/requestLocale.js";
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
@@ -72,7 +74,8 @@ router.get("/profile", async (req, res) => {
   const userId = req.customerId!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    sendNotFound(res, "User not found");
+    const lang = await getRequestLocale(req, userId);
+    sendNotFound(res, t("apiErrUserNotFound", lang));
     return;
   }
   sendSuccess(res, {
@@ -102,12 +105,14 @@ router.get("/profile", async (req, res) => {
 router.get("/:id/debt", async (req, res) => {
   const userId = req.customerId!;
   if (req.params["id"] !== userId) {
-    sendForbidden(res, "Access denied");
+    const lang = await getRequestLocale(req, userId);
+    sendForbidden(res, t("apiErrAccessDenied", lang));
     return;
   }
   const [user] = await db.select({ cancellationDebt: usersTable.cancellationDebt }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    sendNotFound(res, "User not found");
+    const lang = await getRequestLocale(req, userId);
+    sendNotFound(res, t("apiErrUserNotFound", lang));
     return;
   }
   sendSuccess(res, { debtBalance: parseFloat(user.cancellationDebt ?? "0") });
@@ -117,7 +122,8 @@ router.post("/export-data", async (req, res) => {
   const userId = req.customerId!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    sendNotFound(res, "User not found");
+    const lang = await getRequestLocale(req, userId);
+    sendNotFound(res, t("apiErrUserNotFound", lang));
     return;
   }
 
@@ -132,7 +138,8 @@ router.post("/export-data", async (req, res) => {
       db.select().from(parcelBookingsTable).where(eq(parcelBookingsTable.userId, userId)).orderBy(desc(parcelBookingsTable.createdAt)),
     ]);
   } catch (err) {
-    sendError(res, "Failed to retrieve your data. Please try again later.");
+    const lang = await getRequestLocale(req, userId);
+    sendError(res, t("apiErrDataRetrieveFailed", lang));
     return;
   }
 
@@ -225,7 +232,8 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
 
   /* Rate limit: max 10 avatar uploads per minute per user */
   if (!profileRateLimit(userId, 10)) {
-    sendError(res, "Too many requests. Please wait a moment before uploading again.");
+    const lang = await getRequestLocale(req, userId);
+    sendError(res, t("apiErrTooManyRequests", lang), 429);
     return;
   }
 
@@ -238,29 +246,34 @@ router.post("/avatar", avatarUpload.single("avatar"), async (req, res) => {
       mime = req.file.mimetype;
     } else {
       const { file, mimeType } = req.body;
-      if (!file) { sendValidationError(res, "No image data provided"); return; }
+      const avatarLang = await getRequestLocale(req, userId);
+      if (!file) { sendValidationError(res, t("apiErrNoImageData", avatarLang)); return; }
       mime = mimeType || "image/jpeg";
       if (!ALLOWED_AVATAR_TYPES.includes(mime)) {
-        sendValidationError(res, "Only JPEG, PNG, and WebP images are allowed"); return;
+        sendValidationError(res, t("apiErrImageTypeNotAllowed", avatarLang)); return;
       }
       const base64Data = (file as string).replace(/^data:image\/\w+;base64,/, "");
       buffer = Buffer.from(base64Data, "base64");
       if (buffer.length > MAX_AVATAR_SIZE) {
-        sendValidationError(res, "File too large. Maximum 5MB allowed"); return;
+        sendValidationError(res, t("apiErrFileTooLarge", avatarLang)); return;
       }
     }
 
     const avatarUrl = await saveAvatarBuffer(userId, buffer, mime);
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) { sendNotFound(res, "User not found"); return; }
+    if (!user) {
+      const lang = await getRequestLocale(req, userId);
+      sendNotFound(res, t("apiErrUserNotFound", lang)); return;
+    }
     sendSuccess(res, { avatarUrl, user: {
       id: user.id, phone: user.phone, name: user.name, email: user.email,
       role: user.role, avatar: user.avatar, walletBalance: parseFloat(user.walletBalance ?? "0"),
     }});
   } catch (e: unknown) {
-    const rawMsg = (e as Error)?.message || "Avatar upload failed";
+    const catchLang = await getRequestLocale(req, req.customerId ?? undefined);
+    const rawMsg = (e as Error)?.message || t("apiErrAvatarUploadFailed", catchLang);
     const safeMsg = rawMsg.replace(/\/[^\s]+\//g, "").replace(/[A-Z]:\\[^\s]+/g, "");
-    sendError(res, safeMsg.includes("/") || safeMsg.includes("\\") ? "Avatar upload failed" : safeMsg);
+    sendError(res, safeMsg.includes("/") || safeMsg.includes("\\") ? t("apiErrAvatarUploadFailed", catchLang) : safeMsg);
   }
 });
 
@@ -269,13 +282,14 @@ router.put("/profile", async (req, res) => {
 
   /* Rate limit: max 10 profile updates per minute per user */
   if (!profileRateLimit(userId, 10)) {
-    sendError(res, "Too many requests. Please wait before updating your profile again.");
+    const lang = await getRequestLocale(req, userId);
+    sendError(res, t("apiErrTooManyRequests", lang), 429);
     return;
   }
 
   const parsed = profileUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
-    const firstError = parsed.error.errors[0]?.message ?? "Invalid input";
+    const firstError = parsed.error.errors[0]?.message ?? t("apiErrInvalidInput", lang);
     sendValidationError(res, firstError);
     return;
   }
@@ -284,7 +298,8 @@ router.put("/profile", async (req, res) => {
 
   const [current] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!current) {
-    sendNotFound(res, "User not found");
+    const lang = await getRequestLocale(req, userId);
+    sendNotFound(res, t("apiErrUserNotFound", lang));
     return;
   }
 
@@ -295,7 +310,8 @@ router.put("/profile", async (req, res) => {
       .where(and(eq(usersTable.email, email.trim()), ne(usersTable.id, userId)))
       .limit(1);
     if (emailTaken) {
-      sendValidationError(res, "This email address is already registered to another account.");
+      const lang = await getRequestLocale(req, userId);
+      sendValidationError(res, t("apiErrEmailAlreadyRegistered", lang));
       return;
     }
   }
@@ -308,7 +324,8 @@ router.put("/profile", async (req, res) => {
       .where(and(eq(usersTable.cnic, cnicClean), ne(usersTable.id, userId)))
       .limit(1);
     if (cnicTaken) {
-      sendValidationError(res, "This CNIC is already registered to another account.");
+      const lang = await getRequestLocale(req, userId);
+      sendValidationError(res, t("apiErrCnicAlreadyRegistered", lang));
       return;
     }
   }
@@ -332,10 +349,11 @@ router.put("/profile", async (req, res) => {
   else if (filledCount >= 3) newLevel = "silver";
   updates.accountLevel = newLevel;
 
+  const profileLang = await getRequestLocale(req, userId);
   await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
-    sendNotFound(res, "User not found");
+    sendNotFound(res, t("apiErrUserNotFound", profileLang));
     return;
   }
   sendSuccess(res, {
@@ -354,22 +372,26 @@ router.put("/profile", async (req, res) => {
     accountLevel: user.accountLevel,
     kycStatus: user.kycStatus,
     createdAt: user.createdAt.toISOString(),
-  }, "پروفائل کامیابی سے اپ ڈیٹ ہو گیا۔");
+  }, t("apiMsgProfileUpdated", profileLang));
 });
 
 router.delete("/delete-account", async (req, res) => {
   const userId = req.customerId!;
+  const deleteAcctLangTop = await getRequestLocale(req, userId);
 
   const parsed = deleteAccountSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
-    const msg = parsed.error.errors[0]?.message ?? "You must type DELETE to confirm account deletion.";
+    const msg = parsed.error.errors[0]?.message ?? t("apiErrDeleteConfirmRequired", deleteAcctLangTop);
     sendValidationError(res, msg);
     return;
   }
 
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-    if (!user) { sendNotFound(res, "User not found"); return; }
+    if (!user) {
+      const lang = await getRequestLocale(req, userId);
+      sendNotFound(res, t("apiErrUserNotFound", lang)); return;
+    }
 
     const activeOrders = await db.select({ c: count() }).from(ordersTable)
       .where(and(
@@ -378,7 +400,8 @@ router.delete("/delete-account", async (req, res) => {
       ));
 
     if (activeOrders[0] && activeOrders[0].c > 0) {
-      sendValidationError(res, "Cannot delete account with active orders. Please wait for all orders to complete.");
+      const lang = await getRequestLocale(req, userId);
+      sendValidationError(res, t("apiErrCannotDeleteWithActiveOrders", lang));
       return;
     }
 
@@ -389,7 +412,8 @@ router.delete("/delete-account", async (req, res) => {
       ));
 
     if (activeRides[0] && activeRides[0].c > 0) {
-      sendValidationError(res, "Cannot delete account with active rides. Please wait for all rides to complete.");
+      const lang = await getRequestLocale(req, userId);
+      sendValidationError(res, t("apiErrCannotDeleteWithActiveRides", lang));
       return;
     }
 
@@ -403,7 +427,9 @@ router.delete("/delete-account", async (req, res) => {
 
     if (pendingWithdrawals[0] && pendingWithdrawals[0].c > 0) {
       const pendingTotal = parseFloat(pendingWithdrawals[0].total || "0");
-      sendValidationError(res, `You have ${pendingWithdrawals[0].c} pending withdrawal(s) totalling Rs. ${pendingTotal.toLocaleString()}. These will be lost if you delete your account. Please wait for them to process or cancel them first.`);
+      sendValidationError(res, t("apiErrPendingWithdrawalsOnDelete", deleteAcctLangTop)
+        .replace("{count}", String(pendingWithdrawals[0].c))
+        .replace("{total}", pendingTotal.toLocaleString()));
       return;
     }
 
@@ -447,9 +473,9 @@ router.delete("/delete-account", async (req, res) => {
     const ip = getClientIp(req);
     writeAuthAuditLog("account_deleted", { userId, ip, userAgent: req.headers["user-agent"] as string });
 
-    sendSuccess(res, null, "اکاؤنٹ حذف ہو گیا اور تمام ڈیٹا گمنام ہو گیا۔");
+    sendSuccess(res, null, t("apiMsgAccountDeleted", deleteAcctLangTop));
   } catch (e: unknown) {
-    sendError(res, (e as Error).message || "Could not delete account");
+    sendError(res, (e as Error).message || t("apiErrCouldNotDeleteAccount", deleteAcctLangTop));
   }
 });
 
@@ -502,7 +528,8 @@ router.delete("/sessions/all", async (req, res) => {
   const ip = getClientIp(req);
   writeAuthAuditLog("sessions_revoked_all", { userId, ip, userAgent: req.headers["user-agent"] as string });
 
-  sendSuccess(res, null, "تمام دیگر سیشنز سے سائن آؤٹ ہو گیا۔");
+  const revokeAllLang = await getRequestLocale(req, userId);
+  sendSuccess(res, null, t("apiMsgAllSessionsRevoked", revokeAllLang));
 });
 
 router.delete("/sessions/:sessionId", async (req, res) => {
@@ -513,13 +540,14 @@ router.delete("/sessions/:sessionId", async (req, res) => {
     .where(and(eq(userSessionsTable.id, sessionId), eq(userSessionsTable.userId, userId)))
     .limit(1);
 
+  const sessLang = await getRequestLocale(req, userId);
   if (!session) {
-    sendNotFound(res, "Session not found");
+    sendNotFound(res, t("apiErrSessionNotFound", sessLang));
     return;
   }
 
   if (session.revokedAt) {
-    sendValidationError(res, "Session already revoked");
+    sendValidationError(res, t("apiErrSessionAlreadyRevoked", sessLang));
     return;
   }
 
