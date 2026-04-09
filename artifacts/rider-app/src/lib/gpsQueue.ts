@@ -82,7 +82,9 @@ export async function enqueue(ping: QueuedPing): Promise<void> {
       };
       countReq.onerror = () => tx.abort();
     });
-  } catch { /* swallow — offline queue is best-effort */ }
+  } catch (err) {
+    console.error("[gpsQueue] enqueue failed — offline queue is best-effort", err);
+  }
 }
 
 export async function dequeueAll(): Promise<QueuedPing[]> {
@@ -97,7 +99,10 @@ export async function dequeueAll(): Promise<QueuedPing[]> {
       req.onerror   = () => reject(req.error);
       tx.oncomplete = () => db.close();
     });
-  } catch { return []; }
+  } catch (err) {
+    console.error("[gpsQueue] dequeueAll failed", err);
+    return [];
+  }
 }
 
 export async function clearQueue(ids: string[]): Promise<void> {
@@ -111,7 +116,9 @@ export async function clearQueue(ids: string[]): Promise<void> {
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror    = () => reject(tx.error);
     });
-  } catch {}
+  } catch (err) {
+    console.error("[gpsQueue] clearQueue failed", err);
+  }
 }
 
 export async function queueSize(): Promise<number> {
@@ -125,7 +132,10 @@ export async function queueSize(): Promise<number> {
       req.onerror   = () => reject(req.error);
       tx.oncomplete = () => db.close();
     });
-  } catch { return 0; }
+  } catch (err) {
+    console.error("[gpsQueue] queueSize failed", err);
+    return 0;
+  }
 }
 
 /* ── Dismissed-request store ──────────────────────────────────────────────────
@@ -142,7 +152,9 @@ export async function addDismissed(id: string): Promise<void> {
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror    = () => { db.close(); reject(tx.error); };
     });
-  } catch {}
+  } catch (err) {
+    console.error("[gpsQueue] addDismissed failed", err);
+  }
 }
 
 export async function removeDismissed(id: string): Promise<void> {
@@ -154,7 +166,9 @@ export async function removeDismissed(id: string): Promise<void> {
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror    = () => { db.close(); reject(tx.error); };
     });
-  } catch {}
+  } catch (err) {
+    console.error("[gpsQueue] removeDismissed failed", err);
+  }
 }
 
 export async function loadDismissed(): Promise<Set<string>> {
@@ -174,7 +188,10 @@ export async function loadDismissed(): Promise<Set<string>> {
       purgeExpiredDismissed(expired.map(e => e.id));
     }
     return new Set(valid.map(e => e.id));
-  } catch { return new Set(); }
+  } catch (err) {
+    console.error("[gpsQueue] loadDismissed failed", err);
+    return new Set();
+  }
 }
 
 /** Purge expired entries from the dismissed store (fire-and-forget) */
@@ -189,7 +206,9 @@ async function purgeExpiredDismissed(ids: string[]): Promise<void> {
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror    = () => { db.close(); reject(tx.error); };
     });
-  } catch {}
+  } catch (err) {
+    console.error("[gpsQueue] purgeExpiredDismissed failed", err);
+  }
 }
 
 /**
@@ -210,7 +229,9 @@ export async function clearAllDismissed(): Promise<void> {
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror    = () => { db.close(); reject(tx.error); };
     });
-  } catch {}
+  } catch (err) {
+    console.error("[gpsQueue] clearAllDismissed failed", err);
+  }
 }
 
 /* ── Drain handler ────────────────────────────────────────────────────────────
@@ -253,15 +274,38 @@ async function drainQueue(): Promise<void> {
           responseDataNested?.code === "GPS_SPOOF_DETECTED" ||
           err.spoofDetected === true;
         if (isSpoofRejection) {
+          console.error("[gpsQueue] drainQueue chunk rejected: GPS spoof detected — dropping chunk", rawErr);
           await clearQueue(chunk.map(p => p.id));
+        } else {
+          console.error("[gpsQueue] drainQueue chunk upload failed — will retry on next online event", rawErr);
         }
         break;
       }
     }
-  } catch { /* drain failed — will retry next online event */ }
-  finally { _draining = false; }
+  } catch (err) {
+    console.error("[gpsQueue] drainQueue failed — will retry on next online event", err);
+  } finally { _draining = false; }
 }
 
-if (typeof window !== "undefined") {
-  window.addEventListener("online", () => drainQueue());
+/* ── Module-level online listener lifecycle ───────────────────────────────────
+   A single "online" listener is registered lazily.
+   `initOnlineListener` registers it (called once on first import or after teardown).
+   `teardownOnlineListener` removes it (for module reset / test isolation). */
+
+let _onlineListenerActive = false;
+
+function _onOnline() { drainQueue(); }
+
+export function initOnlineListener(): void {
+  if (_onlineListenerActive || typeof window === "undefined") return;
+  _onlineListenerActive = true;
+  window.addEventListener("online", _onOnline);
 }
+
+export function teardownOnlineListener(): void {
+  if (!_onlineListenerActive || typeof window === "undefined") return;
+  _onlineListenerActive = false;
+  window.removeEventListener("online", _onOnline);
+}
+
+initOnlineListener();

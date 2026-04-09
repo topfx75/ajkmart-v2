@@ -164,7 +164,9 @@ export default function Home() {
       } else {
         setZoneWarning(null);
       }
-      await refreshUser().catch(() => {});
+      await refreshUser().catch((refreshErr) => {
+        console.error("[Home] refreshUser after toggle failed (non-fatal)", refreshErr);
+      });
       if (!isMountedRef.current) return;
       succeeded = true;
       showToast(newStatus ? T("youAreNowOnline") : T("youAreNowOffline"), "success");
@@ -333,7 +335,8 @@ export default function Home() {
           }
         ).wakeLock.request("screen");
         setWakeLockWarning(false);
-      } catch {
+      } catch (wakeLockErr) {
+        console.error("[Home] wakeLock.request failed — screen may sleep during session", wakeLockErr);
         setWakeLockWarning(true);
       }
     };
@@ -342,7 +345,9 @@ export default function Home() {
 
     return () => {
       cancelled = true;
-      sentinel?.release().catch(() => {});
+      sentinel?.release().catch((releaseErr) => {
+        console.error("[Home] wakeLock.release failed", releaseErr);
+      });
     };
   }, [effectiveOnline, tabVisible]);
 
@@ -380,7 +385,9 @@ export default function Home() {
           batteryRef.current = Math.round(batt.level * 100);
           batt.addEventListener("levelchange", onLevelChange);
         })
-        .catch(() => {});
+        .catch((battErr) => {
+          console.error("[Home] getBattery failed — battery level will not be tracked", battErr);
+        });
       return () => {
         battDisposed = true;
         if (battRef) battRef.removeEventListener("levelchange", onLevelChange);
@@ -487,7 +494,9 @@ export default function Home() {
         };
 
         if (!navigator.onLine) {
-          enqueue(queuedPing).catch(() => {});
+          enqueue(queuedPing).catch((err) => {
+            console.error("[Home] enqueue (offline path) failed", err);
+          });
           return;
         }
 
@@ -503,7 +512,9 @@ export default function Home() {
             if (isSpoofError) {
               setGpsWarningWithRef(`GPS Spoof Detected: ${msg}`);
             } else {
-              enqueue(queuedPing).catch(() => {});
+              enqueue(queuedPing).catch((enqErr) => {
+                console.error("[Home] enqueue (updateLocation error fallback) failed", enqErr);
+              });
               setGpsWarningWithRef(T("gpsLocationError"));
             }
           });

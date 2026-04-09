@@ -17,6 +17,7 @@ import { useLanguage } from "../lib/useLanguage";
 import { useSocket } from "../lib/socket";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { enqueue, registerDrainHandler, type QueuedPing } from "../lib/gpsQueue";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 class MapErrorBoundary extends Component<{ children: ReactNode; fallbackMsg?: string }, { hasError: boolean }> {
   state = { hasError: false };
@@ -62,7 +63,9 @@ function useRiderTileConfig() {
           setTile({ url: `https://{s}.locationiq.com/v3/street/r/{z}/{x}/{y}.png?key=${tok}`, attribution: '© <a href="https://locationiq.com">LocationIQ</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', provider: "locationiq" });
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("[useRiderTileConfig] Failed to fetch map config, using default OSM tile", err);
+      });
   }, []);
   return tile;
 }
@@ -364,7 +367,7 @@ function SosButton({ rideId, riderPos, T }: { rideId?: string | null; riderPos?:
         <p className="font-bold mb-1">Location unavailable</p>
         <p>Your GPS position could not be determined. SOS will be sent without location — admin will contact you by phone.</p>
         <div className="flex gap-2 mt-2">
-          <button onClick={async () => { setLoading(true); try { await fireSos(); } catch { alert("SOS failed — call emergency contacts directly"); } setLoading(false); }}
+          <button onClick={async () => { setLoading(true); try { await fireSos(); } catch (err) { console.error("[SosButton] fireSos (no-location path) failed", err); alert("SOS failed — call emergency contacts directly"); } setLoading(false); }}
             disabled={loading} className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg disabled:opacity-60">
             Send SOS anyway
           </button>
@@ -388,7 +391,9 @@ function SosButton({ rideId, riderPos, T }: { rideId?: string | null; riderPos?:
               });
               lat = pos.coords.latitude;
               lng = pos.coords.longitude;
-            } catch {}
+            } catch (geoErr) {
+              console.error("[SosButton] geolocation.getCurrentPosition failed", geoErr);
+            }
           }
           const hasCoords = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) &&
             !(Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001);
@@ -398,7 +403,8 @@ function SosButton({ rideId, riderPos, T }: { rideId?: string | null; riderPos?:
             return;
           }
           await fireSos(lat!, lng!);
-        } catch {
+        } catch (sosErr) {
+          console.error("[SosButton] fireSos failed", sosErr);
           alert("SOS request failed — please call emergency contacts directly");
         }
         setLoading(false);
@@ -762,7 +768,10 @@ export default function Active() {
       const statusUpdates = pending.filter(item => item.kind === "status");
       if (locationUpdates.length > 0) {
         const latest = locationUpdates[locationUpdates.length - 1];
-        latest.run().catch(() => { pendingUpdatesRef.current.push(latest); });
+        latest.run().catch((err: unknown) => {
+          console.error("[Active] pending location update replay failed — re-queuing", err);
+          pendingUpdatesRef.current.push(latest);
+        });
       }
       statusUpdates.forEach(item => item.run().then(() => {
         qc.invalidateQueries({ queryKey: ["rider-active"] });
@@ -770,7 +779,8 @@ export default function Active() {
         qc.invalidateQueries({ queryKey: ["rider-earnings"] });
         qc.invalidateQueries({ queryKey: ["rider-requests"] });
         showToastRef.current?.(TRef.current?.("statusUpdated") ?? "Status updated");
-      }).catch(() => {
+      }).catch((err: unknown) => {
+        console.error("[Active] pending status update replay failed — re-queuing", err);
         pendingUpdatesRef.current.push(item);
       }));
       refetchRef.current?.();
@@ -894,13 +904,17 @@ export default function Active() {
           } else {
             /* Enqueue for batch replay even when browser reports "online" —
                fetch may fail due to transient network issues or proxy hiccups */
-            enqueue(queuedPing).catch(() => {});
+            enqueue(queuedPing).catch((enqErr) => {
+              console.error("[Active] enqueue (updateLocation error fallback) failed", enqErr);
+            });
             setGpsWarningWithRef(TRef.current?.("gpsLocationError") ?? "Location not being tracked — check GPS permissions");
           }
         });
         if (!navigator.onLine) {
           /* Persist to IndexedDB for later batch replay on reconnect */
-          enqueue(queuedPing).catch(() => {});
+          enqueue(queuedPing).catch((enqErr) => {
+            console.error("[Active] enqueue (offline path) failed", enqErr);
+          });
           queueUpdate({ kind: "location", run: doUpdate });
         } else {
           doUpdate();
@@ -1157,17 +1171,19 @@ export default function Active() {
         </div>
       </div>
 
-      {isOffline && (
-        <div className="mx-4 mt-3 bg-gradient-to-r from-red-50 to-orange-50 border border-red-300 rounded-3xl p-3.5 flex items-center gap-3 shadow-sm">
-          <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 animate-pulse">
-            <WifiOff size={18} className="text-red-600"/>
+      <ErrorBoundary fallback={null}>
+        {isOffline && (
+          <div className="mx-4 mt-3 bg-gradient-to-r from-red-50 to-orange-50 border border-red-300 rounded-3xl p-3.5 flex items-center gap-3 shadow-sm">
+            <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0 animate-pulse">
+              <WifiOff size={18} className="text-red-600"/>
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-extrabold text-red-800">You're offline{pendingUpdatesRef.current.length > 0 ? ` — ${pendingUpdatesRef.current.length} update${pendingUpdatesRef.current.length > 1 ? "s" : ""} queued` : ""}</p>
+              <p className="text-[11px] text-red-600 mt-0.5 leading-relaxed">Updates will retry automatically when reconnected.</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-xs font-extrabold text-red-800">You're offline{pendingUpdatesRef.current.length > 0 ? ` — ${pendingUpdatesRef.current.length} update${pendingUpdatesRef.current.length > 1 ? "s" : ""} queued` : ""}</p>
-            <p className="text-[11px] text-red-600 mt-0.5 leading-relaxed">Updates will retry automatically when reconnected.</p>
-          </div>
-        </div>
-      )}
+        )}
+      </ErrorBoundary>
 
       {gpsWarning && (
         <div className="mx-4 mt-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-3xl p-3.5 flex items-start gap-3 shadow-sm animate-[slideDown_0.3s_ease-out]">
@@ -1383,14 +1399,23 @@ export default function Active() {
                   </div>
 
                   {riderPos && order.vendorLat != null && order.vendorLng != null && (
-                    <MapErrorBoundary>
-                      <TurnByTurnPanel
-                        fromLat={riderPos.lat} fromLng={riderPos.lng}
-                        toLat={order.vendorLat} toLng={order.vendorLng}
-                        label="Store"
-                        riderLat={riderPos.lat} riderLng={riderPos.lng}
-                      />
-                    </MapErrorBoundary>
+                    <ErrorBoundary
+                      fallback={
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center text-xs text-red-600 font-semibold">
+                          <AlertTriangle size={14} className="inline mr-1" />
+                          Route directions unavailable.
+                        </div>
+                      }
+                    >
+                      <MapErrorBoundary>
+                        <TurnByTurnPanel
+                          fromLat={riderPos.lat} fromLng={riderPos.lng}
+                          toLat={order.vendorLat} toLng={order.vendorLng}
+                          label="Store"
+                          riderLat={riderPos.lat} riderLng={riderPos.lng}
+                        />
+                      </MapErrorBoundary>
+                    </ErrorBoundary>
                   )}
 
                   {/* ── Route map: rider → store ── */}
@@ -1404,23 +1429,32 @@ export default function Active() {
                     </MapErrorBoundary>
                   )}
 
-                  <button
-                    onClick={() => { updateOrderMut.mutate({ id: order.id, status: "picked_up" }); }}
-                    disabled={updateOrderMut.isPending}
-                    onTouchStart={() => setPressedBtn("pickup")} onTouchEnd={() => setPressedBtn(null)}
-                    className={`w-full bg-gray-900 text-white font-black rounded-2xl py-4 text-base disabled:opacity-60 flex items-center justify-center gap-2.5 shadow-lg transition-transform ${pressedBtn === "pickup" ? "scale-[0.97]" : ""}`}>
-                    <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
-                      <Package size={18}/>
-                    </div>
-                    {T("pickUpOrder")}
-                    <ChevronRight size={16} className="ml-1"/>
-                  </button>
+                  <ErrorBoundary
+                    fallback={
+                      <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center text-xs text-red-600 font-semibold">
+                        <AlertTriangle size={14} className="inline mr-1" />
+                        Action buttons could not load. Please refresh.
+                      </div>
+                    }
+                  >
+                    <button
+                      onClick={() => { updateOrderMut.mutate({ id: order.id, status: "picked_up" }); }}
+                      disabled={updateOrderMut.isPending}
+                      onTouchStart={() => setPressedBtn("pickup")} onTouchEnd={() => setPressedBtn(null)}
+                      className={`w-full bg-gray-900 text-white font-black rounded-2xl py-4 text-base disabled:opacity-60 flex items-center justify-center gap-2.5 shadow-lg transition-transform ${pressedBtn === "pickup" ? "scale-[0.97]" : ""}`}>
+                      <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
+                        <Package size={18}/>
+                      </div>
+                      {T("pickUpOrder")}
+                      <ChevronRight size={16} className="ml-1"/>
+                    </button>
 
-                  <button
-                    onClick={() => { setCancelTarget("order"); setShowCancelConfirm(true); }}
-                    className="w-full border-2 border-red-200 text-red-500 text-sm font-bold rounded-xl py-3 bg-red-50/50 flex items-center justify-center gap-1.5 active:bg-red-100 transition-colors">
-                    <X size={14}/> {T("cantPickUp")}
-                  </button>
+                    <button
+                      onClick={() => { setCancelTarget("order"); setShowCancelConfirm(true); }}
+                      className="w-full border-2 border-red-200 text-red-500 text-sm font-bold rounded-xl py-3 bg-red-50/50 flex items-center justify-center gap-1.5 active:bg-red-100 transition-colors">
+                      <X size={14}/> {T("cantPickUp")}
+                    </button>
+                  </ErrorBoundary>
                 </div>
               </div>
             )}
@@ -1465,14 +1499,23 @@ export default function Active() {
                   </div>
 
                   {riderPos && order.deliveryLat != null && order.deliveryLng != null && (
-                    <MapErrorBoundary>
-                      <TurnByTurnPanel
-                        fromLat={riderPos.lat} fromLng={riderPos.lng}
-                        toLat={order.deliveryLat} toLng={order.deliveryLng}
-                        label="Customer"
-                        riderLat={riderPos.lat} riderLng={riderPos.lng}
-                      />
-                    </MapErrorBoundary>
+                    <ErrorBoundary
+                      fallback={
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center text-xs text-red-600 font-semibold">
+                          <AlertTriangle size={14} className="inline mr-1" />
+                          Route directions unavailable.
+                        </div>
+                      }
+                    >
+                      <MapErrorBoundary>
+                        <TurnByTurnPanel
+                          fromLat={riderPos.lat} fromLng={riderPos.lng}
+                          toLat={order.deliveryLat} toLng={order.deliveryLng}
+                          label="Customer"
+                          riderLat={riderPos.lat} riderLng={riderPos.lng}
+                        />
+                      </MapErrorBoundary>
+                    </ErrorBoundary>
                   )}
 
                   {/* ── Route map: rider → delivery ── */}
@@ -1533,32 +1576,41 @@ export default function Active() {
                   </div>
 
 
-                  <button
-                    onClick={() => handleMarkDelivered(order.id)}
-                    disabled={updateOrderMut.isPending || proofUploading}
-                    onTouchStart={() => setPressedBtn("deliver")} onTouchEnd={() => setPressedBtn(null)}
-                    className={`w-full font-black rounded-2xl py-4 text-lg disabled:opacity-60 transition-transform bg-gradient-to-r from-green-500 to-emerald-600 text-white flex items-center justify-center gap-2.5 shadow-lg shadow-green-200 ${pressedBtn === "deliver" ? "scale-[0.97]" : ""}`}>
-                    <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
-                      {proofUploading ? <RefreshCw size={18} className="animate-spin"/> : <CheckCircle size={20}/>}
-                    </div>
-                    {proofUploading ? T("uploadingPhoto") : updateOrderMut.isPending ? T("updating") : proofPhoto ? T("confirmDeliveryWithProof") : T("markDelivered")}
-                  </button>
+                  <ErrorBoundary
+                    fallback={
+                      <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center text-xs text-red-600 font-semibold">
+                        <AlertTriangle size={14} className="inline mr-1" />
+                        Action buttons could not load. Please refresh.
+                      </div>
+                    }
+                  >
+                    <button
+                      onClick={() => handleMarkDelivered(order.id)}
+                      disabled={updateOrderMut.isPending || proofUploading}
+                      onTouchStart={() => setPressedBtn("deliver")} onTouchEnd={() => setPressedBtn(null)}
+                      className={`w-full font-black rounded-2xl py-4 text-lg disabled:opacity-60 transition-transform bg-gradient-to-r from-green-500 to-emerald-600 text-white flex items-center justify-center gap-2.5 shadow-lg shadow-green-200 ${pressedBtn === "deliver" ? "scale-[0.97]" : ""}`}>
+                      <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
+                        {proofUploading ? <RefreshCw size={18} className="animate-spin"/> : <CheckCircle size={20}/>}
+                      </div>
+                      {proofUploading ? T("uploadingPhoto") : updateOrderMut.isPending ? T("updating") : proofPhoto ? T("confirmDeliveryWithProof") : T("markDelivered")}
+                    </button>
 
-                  <div>
-                    <div className="w-full border-2 border-gray-100 text-gray-400 text-sm font-bold rounded-xl py-3 bg-gray-50 flex items-center justify-center gap-1.5 cursor-not-allowed">
-                      <ChevronRight size={14} className="rotate-180"/> {T("backToStoreStep")}
+                    <div>
+                      <div className="w-full border-2 border-gray-100 text-gray-400 text-sm font-bold rounded-xl py-3 bg-gray-50 flex items-center justify-center gap-1.5 cursor-not-allowed">
+                        <ChevronRight size={14} className="rotate-180"/> {T("backToStoreStep")}
+                      </div>
+                      <p className="text-[10px] text-gray-400 text-center mt-1">
+                        Cannot go back — server already recorded pickup. Contact support if needed.
+                      </p>
                     </div>
-                    <p className="text-[10px] text-gray-400 text-center mt-1">
-                      Cannot go back — server already recorded pickup. Contact support if needed.
-                    </p>
-                  </div>
 
-                  <button
-                    onClick={() => { setCancelTarget("order"); setShowCancelConfirm(true); }}
-                    disabled={updateOrderMut.isPending}
-                    className="w-full border-2 border-red-200 text-red-500 text-sm font-bold rounded-xl py-3 bg-red-50/50 flex items-center justify-center gap-1.5 active:bg-red-100 transition-colors disabled:opacity-60">
-                    <X size={14}/> {T("cannotDeliverCancel")}
-                  </button>
+                    <button
+                      onClick={() => { setCancelTarget("order"); setShowCancelConfirm(true); }}
+                      disabled={updateOrderMut.isPending}
+                      className="w-full border-2 border-red-200 text-red-500 text-sm font-bold rounded-xl py-3 bg-red-50/50 flex items-center justify-center gap-1.5 active:bg-red-100 transition-colors disabled:opacity-60">
+                      <X size={14}/> {T("cannotDeliverCancel")}
+                    </button>
+                  </ErrorBoundary>
                 </div>
               </div>
             )}
@@ -1673,24 +1725,42 @@ export default function Active() {
               </div>
               {/* Turn-by-turn OSRM navigation */}
               {riderPos && ride.status === "accepted" && ride.pickupLat != null && ride.pickupLng != null && (
-                <MapErrorBoundary>
-                  <TurnByTurnPanel
-                    fromLat={riderPos.lat} fromLng={riderPos.lng}
-                    toLat={ride.pickupLat} toLng={ride.pickupLng}
-                    label="Pickup"
-                    riderLat={riderPos.lat} riderLng={riderPos.lng}
-                  />
-                </MapErrorBoundary>
+                <ErrorBoundary
+                  fallback={
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center text-xs text-red-600 font-semibold">
+                      <AlertTriangle size={14} className="inline mr-1" />
+                      Route directions unavailable.
+                    </div>
+                  }
+                >
+                  <MapErrorBoundary>
+                    <TurnByTurnPanel
+                      fromLat={riderPos.lat} fromLng={riderPos.lng}
+                      toLat={ride.pickupLat} toLng={ride.pickupLng}
+                      label="Pickup"
+                      riderLat={riderPos.lat} riderLng={riderPos.lng}
+                    />
+                  </MapErrorBoundary>
+                </ErrorBoundary>
               )}
               {riderPos && (ride.status === "arrived" || ride.status === "in_transit") && ride.dropLat != null && ride.dropLng != null && (
-                <MapErrorBoundary>
-                  <TurnByTurnPanel
-                    fromLat={riderPos.lat} fromLng={riderPos.lng}
-                    toLat={ride.dropLat} toLng={ride.dropLng}
-                    label="Drop-off"
-                    riderLat={riderPos.lat} riderLng={riderPos.lng}
-                  />
-                </MapErrorBoundary>
+                <ErrorBoundary
+                  fallback={
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center text-xs text-red-600 font-semibold">
+                      <AlertTriangle size={14} className="inline mr-1" />
+                      Route directions unavailable.
+                    </div>
+                  }
+                >
+                  <MapErrorBoundary>
+                    <TurnByTurnPanel
+                      fromLat={riderPos.lat} fromLng={riderPos.lng}
+                      toLat={ride.dropLat} toLng={ride.dropLng}
+                      label="Drop-off"
+                      riderLat={riderPos.lat} riderLng={riderPos.lng}
+                    />
+                  </MapErrorBoundary>
+                </ErrorBoundary>
               )}
 
               {/* ── Visual route map ── */}
@@ -1708,62 +1778,71 @@ export default function Active() {
                 <SosButton rideId={ride.id} riderPos={riderPos} T={T} />
               )}
 
-              <div className="flex gap-2 pt-1">
-                {ride.status === "accepted" && (
-                  <button
-                    onClick={() => {
-                      if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                          (pos) => updateRideMut.mutate({ id: ride.id, status: "arrived", lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                          () => updateRideMut.mutate({ id: ride.id, status: "arrived" }),
-                          { enableHighAccuracy: true, timeout: 5000 }
-                        );
-                      } else {
-                        updateRideMut.mutate({ id: ride.id, status: "arrived" });
-                      }
-                    }}
-                    disabled={updateRideMut.isPending}
-                    onTouchStart={() => setPressedBtn("arrived")} onTouchEnd={() => setPressedBtn(null)}
-                    className={`flex-1 bg-gray-900 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg transition-transform ${pressedBtn === "arrived" ? "scale-[0.97]" : ""}`}>
-                    <MapPin size={16}/> {T("arrivedAtPickup")}
-                  </button>
-                )}
-                {["arrived", "accepted"].includes(ride.status) && !ride.otpVerified && (
-                  <button
-                    onClick={() => { setOtpInput(""); setShowOtpModal(true); }}
-                    disabled={updateRideMut.isPending}
-                    onTouchStart={() => setPressedBtn("otp")} onTouchEnd={() => setPressedBtn(null)}
-                    className={`flex-1 bg-blue-600 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-blue-200 transition-transform ${pressedBtn === "otp" ? "scale-[0.97]" : ""}`}>
-                    <Shield size={16}/> Verify OTP to Start
-                  </button>
-                )}
-                {ride.status === "arrived" && ride.otpVerified && (
-                  <button
-                    onClick={() => updateRideMut.mutate({ id: ride.id, status: "in_transit" })}
-                    disabled={updateRideMut.isPending}
-                    onTouchStart={() => setPressedBtn("start")} onTouchEnd={() => setPressedBtn(null)}
-                    className={`flex-1 bg-gray-900 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg transition-transform ${pressedBtn === "start" ? "scale-[0.97]" : ""}`}>
-                    <Car size={16}/> {T("startRide")}
-                  </button>
-                )}
-                {ride.status === "in_transit" && (
-                  <button
-                    onClick={() => updateRideMut.mutate({ id: ride.id, status: "completed" })}
-                    disabled={updateRideMut.isPending}
-                    onTouchStart={() => setPressedBtn("complete")} onTouchEnd={() => setPressedBtn(null)}
-                    className={`flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-transform ${pressedBtn === "complete" ? "scale-[0.97]" : ""}`}>
-                    <CheckCircle size={16}/> {T("completeRide")}
-                  </button>
-                )}
-                {(ride.status === "accepted" || ride.status === "arrived" || ride.status === "in_transit") && (
-                  <button
-                    onClick={() => { setCancelTarget("ride"); setShowCancelConfirm(true); }}
-                    disabled={updateRideMut.isPending}
-                    className="px-5 bg-red-50 text-red-600 font-bold rounded-2xl py-4 text-sm border-2 border-red-200 active:bg-red-100 transition-colors">
-                    <X size={16}/>
-                  </button>
-                )}
-              </div>
+              <ErrorBoundary
+                fallback={
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-3 text-center text-xs text-red-600 font-semibold">
+                    <AlertTriangle size={14} className="inline mr-1" />
+                    Action buttons could not load. Please refresh.
+                  </div>
+                }
+              >
+                <div className="flex gap-2 pt-1">
+                  {ride.status === "accepted" && (
+                    <button
+                      onClick={() => {
+                        if (navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => updateRideMut.mutate({ id: ride.id, status: "arrived", lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                            () => updateRideMut.mutate({ id: ride.id, status: "arrived" }),
+                            { enableHighAccuracy: true, timeout: 5000 }
+                          );
+                        } else {
+                          updateRideMut.mutate({ id: ride.id, status: "arrived" });
+                        }
+                      }}
+                      disabled={updateRideMut.isPending}
+                      onTouchStart={() => setPressedBtn("arrived")} onTouchEnd={() => setPressedBtn(null)}
+                      className={`flex-1 bg-gray-900 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg transition-transform ${pressedBtn === "arrived" ? "scale-[0.97]" : ""}`}>
+                      <MapPin size={16}/> {T("arrivedAtPickup")}
+                    </button>
+                  )}
+                  {["arrived", "accepted"].includes(ride.status) && !ride.otpVerified && (
+                    <button
+                      onClick={() => { setOtpInput(""); setShowOtpModal(true); }}
+                      disabled={updateRideMut.isPending}
+                      onTouchStart={() => setPressedBtn("otp")} onTouchEnd={() => setPressedBtn(null)}
+                      className={`flex-1 bg-blue-600 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-blue-200 transition-transform ${pressedBtn === "otp" ? "scale-[0.97]" : ""}`}>
+                      <Shield size={16}/> Verify OTP to Start
+                    </button>
+                  )}
+                  {ride.status === "arrived" && ride.otpVerified && (
+                    <button
+                      onClick={() => updateRideMut.mutate({ id: ride.id, status: "in_transit" })}
+                      disabled={updateRideMut.isPending}
+                      onTouchStart={() => setPressedBtn("start")} onTouchEnd={() => setPressedBtn(null)}
+                      className={`flex-1 bg-gray-900 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg transition-transform ${pressedBtn === "start" ? "scale-[0.97]" : ""}`}>
+                      <Car size={16}/> {T("startRide")}
+                    </button>
+                  )}
+                  {ride.status === "in_transit" && (
+                    <button
+                      onClick={() => updateRideMut.mutate({ id: ride.id, status: "completed" })}
+                      disabled={updateRideMut.isPending}
+                      onTouchStart={() => setPressedBtn("complete")} onTouchEnd={() => setPressedBtn(null)}
+                      className={`flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black rounded-2xl py-4 disabled:opacity-60 flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-transform ${pressedBtn === "complete" ? "scale-[0.97]" : ""}`}>
+                      <CheckCircle size={16}/> {T("completeRide")}
+                    </button>
+                  )}
+                  {(ride.status === "accepted" || ride.status === "arrived" || ride.status === "in_transit") && (
+                    <button
+                      onClick={() => { setCancelTarget("ride"); setShowCancelConfirm(true); }}
+                      disabled={updateRideMut.isPending}
+                      className="px-5 bg-red-50 text-red-600 font-bold rounded-2xl py-4 text-sm border-2 border-red-200 active:bg-red-100 transition-colors">
+                      <X size={16}/>
+                    </button>
+                  )}
+                </div>
+              </ErrorBoundary>
             </div>
           </div>
         )}
