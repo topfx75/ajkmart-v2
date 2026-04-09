@@ -290,6 +290,7 @@ export default function Products() {
                     {!imageUploading && (
                       <button
                         type="button"
+                        aria-label="Remove product image"
                         className="absolute top-2 right-2 w-7 h-7 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center text-white transition-colors"
                         onClick={e => { e.stopPropagation(); setImagePreview(""); setFormData(prev => ({ ...prev, image: "" })); }}
                       >
@@ -643,7 +644,7 @@ export default function Products() {
                 </button>
               ))}
               <div className="w-px bg-border/60 mx-1" />
-              {[{ v: "all", l: "All Stock" }, { v: "in", l: "✓ In Stock" }, { v: "out", l: "✗ Out of Stock" }].map(s => (
+              {[{ v: "all", l: T("allStockLabel") }, { v: "in", l: T("inStockFilter") }, { v: "out", l: T("outOfStockFilter") }].map(s => (
                 <button
                   key={s.v}
                   onClick={() => setStockFilter(s.v)}
@@ -672,7 +673,7 @@ export default function Products() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-foreground truncate">{p.name}</p>
                       <Badge variant={p.type === "food" ? "default" : "secondary"} className="text-[10px] uppercase">{p.type}</Badge>
-                      {!p.inStock && <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">Out of Stock</Badge>}
+                      {!p.inStock && <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">{T("outOfStockLabel")}</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 capitalize">{p.category}{p.vendorName ? ` · ${p.vendorName}` : ""}</p>
                     <p className="font-bold text-foreground text-sm mt-1">{formatCurrency(p.price)}</p>
@@ -681,16 +682,17 @@ export default function Products() {
                     <button
                       onClick={() => toggleStock(p)}
                       disabled={updateMutation.isPending}
+                      aria-label={`${p.inStock ? T("outOfStockLabel") : T("inStockLabel")} — ${p.name}`}
                       className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border ${p.inStock ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}
                     >
                       {p.inStock ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
-                      {p.inStock ? "In Stock" : "Out"}
+                      {p.inStock ? T("inStockLabel") : T("outOfStockLabel")}
                     </button>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="hover:bg-blue-50 hover:text-blue-600 h-7 w-7">
+                      <Button variant="ghost" size="icon" aria-label={`Edit ${p.name}`} onClick={() => openEdit(p)} className="hover:bg-blue-50 hover:text-blue-600 h-7 w-7">
                         <Edit className="w-3.5 h-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} className="hover:bg-red-50 hover:text-red-600 h-7 w-7">
+                      <Button variant="ghost" size="icon" aria-label={`Delete ${p.name}`} onClick={() => setDeleteTarget(p)} className="hover:bg-red-50 hover:text-red-600 h-7 w-7">
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -750,17 +752,17 @@ export default function Products() {
                             }`}
                           >
                             {p.inStock
-                              ? <><ToggleRight className="w-4 h-4" /> In Stock</>
-                              : <><ToggleLeft  className="w-4 h-4" /> Out of Stock</>
+                              ? <><ToggleRight className="w-4 h-4" /> {T("inStockLabel")}</>
+                              : <><ToggleLeft  className="w-4 h-4" /> {T("outOfStockLabel")}</>
                             }
                           </button>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => openEdit(p)} className="hover:bg-blue-50 hover:text-blue-600 h-8 w-8">
+                            <Button variant="ghost" size="icon" aria-label={`Edit ${p.name}`} onClick={() => openEdit(p)} className="hover:bg-blue-50 hover:text-blue-600 h-8 w-8">
                               <Edit className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} className="hover:bg-red-50 hover:text-red-600 h-8 w-8">
+                            <Button variant="ghost" size="icon" aria-label={`Delete ${p.name}`} onClick={() => setDeleteTarget(p)} className="hover:bg-red-50 hover:text-red-600 h-8 w-8">
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>

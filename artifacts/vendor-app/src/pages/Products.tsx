@@ -244,7 +244,7 @@ export default function Products() {
   if (view === "bulk") return (
     <div className="bg-gray-50 md:bg-transparent">
       <PageHeader title={T("bulkAdd")} subtitle={`${validRows.length} ${T("readyToAdd")}`}
-        actions={<button onClick={() => setView("list")} className="h-10 px-4 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white font-bold rounded-xl text-sm android-press min-h-0">← Back</button>}
+        actions={<button onClick={() => setView("list")} aria-label={T("closeBulkUpload")} className="h-10 px-4 bg-white/20 md:bg-gray-100 md:text-gray-700 text-white font-bold rounded-xl text-sm android-press min-h-0">← Back</button>}
       />
       <div className="px-4 py-4 space-y-4 md:px-0 md:py-4">
 
@@ -341,6 +341,7 @@ export default function Products() {
                       {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                     <button onClick={() => setBulkRows(r => r.filter((_,j) => j!==i))}
+                      aria-label={`Remove row ${i + 1}`}
                       className="w-8 h-9 text-red-400 hover:text-red-600 font-bold flex items-center justify-center text-base min-h-0">✕</button>
                   </div>
                 );
@@ -358,7 +359,7 @@ export default function Products() {
             <div key={i} className={`${CARD} p-4 space-y-2.5 border-2 ${row.name && row.price ? "border-orange-100" : "border-gray-100"}`}>
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">Row {i+1} {row.name && row.price ? "✓" : ""}</p>
-                <button onClick={() => setBulkRows(r => r.filter((_,j) => j!==i))} className="w-7 h-7 bg-red-50 text-red-500 rounded-lg font-bold text-sm min-h-0">✕</button>
+                <button onClick={() => setBulkRows(r => r.filter((_,j) => j!==i))} aria-label={`Remove row ${i + 1}`} className="w-7 h-7 bg-red-50 text-red-500 rounded-lg font-bold text-sm min-h-0">✕</button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
@@ -545,7 +546,7 @@ export default function Products() {
                           {p.unit && <span className="text-[10px] text-gray-400">/{p.unit}</span>}
                           {p.stock != null && (
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${p.stock < 10 ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700"}`}>
-                              {p.stock < 10 ? `⚠️ ${p.stock} left` : `${p.stock} in stock`}
+                              {p.stock < 10 ? `⚠️ ${p.stock} left` : `${p.stock} ${T("itemsInStock")}`}
                             </span>
                           )}
                         </div>
@@ -560,7 +561,7 @@ export default function Products() {
                         role="switch" aria-checked={p.inStock}
                         aria-label={`${p.name} ${T("stock")}`}
                         className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 ${p.inStock ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                        {p.inStock ? "✓ In Stock" : "✗ Out"}
+                        {p.inStock ? `✓ ${T("inStockLabel")}` : `✗ ${T("outOfStockLabel")}`}
                       </button>
                       <button onClick={() => openEdit(p)} className="h-8 px-3 bg-blue-50 text-blue-600 text-xs font-bold rounded-xl android-press min-h-0">✏️ Edit</button>
                       <button onClick={() => {

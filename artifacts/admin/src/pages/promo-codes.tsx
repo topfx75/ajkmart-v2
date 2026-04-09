@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { z } from "zod";
 import {
   Ticket, Plus, RefreshCw, Search, Trash2, Pencil,
   CheckCircle2, XCircle, Clock, Zap, ToggleLeft, ToggleRight,
@@ -15,6 +16,30 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 
+const promoFormSchema = z.object({
+  code:           z.string().min(1, "Promo code is required"),
+  description:    z.string().optional(),
+  discountPct:    z.union([z.literal(""), z.string()]).refine(
+    v => v === "" || Number(v) >= 0,
+    { message: "Discount % must be 0 or greater" }
+  ),
+  discountFlat:   z.union([z.literal(""), z.string()]).refine(
+    v => v === "" || Number(v) >= 0,
+    { message: "Flat discount must be 0 or greater" }
+  ),
+  minOrderAmount: z.string().optional(),
+  maxDiscount:    z.string().optional(),
+  usageLimit:     z.string().optional(),
+  appliesTo:      z.string(),
+  expiresAt:      z.string().optional(),
+  isActive:       z.boolean(),
+}).refine(
+  data => data.discountPct !== "" || data.discountFlat !== "",
+  { message: "Discount % or flat amount is required", path: ["discountPct"] }
+);
+
+type PromoFormErrors = Partial<Record<keyof z.infer<typeof promoFormSchema>, string>>;
+
 const EMPTY_FORM = {
   code: "", description: "", discountPct: "", discountFlat: "",
   minOrderAmount: "", maxDiscount: "", usageLimit: "",
@@ -27,6 +52,9 @@ function PromoModal({ promo, onClose }: { promo?: any; onClose: () => void }) {
   const updateMutation = useUpdatePromoCode();
   const isEdit = !!promo;
 
+  const { language } = useLanguage();
+  const T = (key: TranslationKey) => tDual(key, language);
+  const [formErrors, setFormErrors] = useState<PromoFormErrors>({});
   const [form, setForm] = useState(promo ? {
     code:           promo.code || "",
     description:    promo.description || "",
@@ -43,8 +71,25 @@ function PromoModal({ promo, onClose }: { promo?: any; onClose: () => void }) {
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSubmit = () => {
-    if (!form.code) { toast({ title: "Promo code required", variant: "destructive" }); return; }
-    if (!form.discountPct && !form.discountFlat) { toast({ title: "Discount % ya flat amount required hai", variant: "destructive" }); return; }
+    const result = promoFormSchema.safeParse(form);
+    if (!result.success) {
+      const fieldErrors: PromoFormErrors = {};
+      for (const issue of result.error.issues) {
+        const field = issue.path[0] as keyof PromoFormErrors;
+        if (field && !fieldErrors[field]) {
+          const msg = (field === "discountPct" || field === "discountFlat")
+            ? T("discountNonNegative")
+            : issue.message;
+          fieldErrors[field] = msg;
+        }
+      }
+      setFormErrors(fieldErrors);
+      if (!fieldErrors.discountPct && !fieldErrors.discountFlat) {
+        toast({ title: result.error.issues[0]?.message ?? "Validation failed", variant: "destructive" });
+      }
+      return;
+    }
+    setFormErrors({});
 
     const payload: any = {
       code:        form.code.toUpperCase().trim(),
@@ -104,11 +149,27 @@ function PromoModal({ promo, onClose }: { promo?: any; onClose: () => void }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">Discount % (e.g. 20)</label>
-              <Input type="number" placeholder="0" value={form.discountPct} onChange={e => set("discountPct", e.target.value)} className="h-11 rounded-xl" />
+              <Input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={form.discountPct}
+                onChange={e => { set("discountPct", e.target.value); if (formErrors.discountPct) setFormErrors(prev => ({ ...prev, discountPct: undefined })); }}
+                className={`h-11 rounded-xl ${formErrors.discountPct ? "border-red-500 focus-visible:ring-red-400" : ""}`}
+              />
+              {formErrors.discountPct && <p className="text-xs text-red-600 mt-1">{formErrors.discountPct}</p>}
             </div>
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">Flat Discount Rs.</label>
-              <Input type="number" placeholder="0" value={form.discountFlat} onChange={e => set("discountFlat", e.target.value)} className="h-11 rounded-xl" />
+              <Input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={form.discountFlat}
+                onChange={e => { set("discountFlat", e.target.value); if (formErrors.discountFlat) setFormErrors(prev => ({ ...prev, discountFlat: undefined })); }}
+                className={`h-11 rounded-xl ${formErrors.discountFlat ? "border-red-500 focus-visible:ring-red-400" : ""}`}
+              />
+              {formErrors.discountFlat && <p className="text-xs text-red-600 mt-1">{formErrors.discountFlat}</p>}
             </div>
           </div>
 
