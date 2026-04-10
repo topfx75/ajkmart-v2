@@ -276,6 +276,8 @@ export const api = {
     apiFetch("/auth/email-register", { method: "POST", body: JSON.stringify({ ...data, role: "rider" }) }),
   uploadFile: (data: { file: string; filename?: string; mimeType?: string }) =>
     apiFetch("/uploads", { method: "POST", body: JSON.stringify(data) }),
+  uploadFilePreRegistration: (data: { file: string; filename?: string; mimeType?: string }) =>
+    apiFetch("/uploads/pre-registration", { method: "POST", body: JSON.stringify(data) }),
   /* Multipart/form-data upload — avoids large base64 payload; used for delivery proof.
      Calls /uploads/proof which is gated by riderAuth and handles multipart parsing. */
   uploadProof: (file: File) => {

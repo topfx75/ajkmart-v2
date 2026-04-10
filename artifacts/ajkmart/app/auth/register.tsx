@@ -236,8 +236,9 @@ export default function RegisterScreen() {
           setLoading(false);
           return;
         }
-        /* API returns "send_phone_otp" for all phone numbers (including new users)
-           to prevent user enumeration. Accept both "register" (old) and "send_phone_otp" (new). */
+        /* API returns "send_phone_otp" for all phone numbers (including new users
+           and incomplete registrations) to prevent user enumeration. Accept both
+           "register" (old) and "send_phone_otp" (new). */
         const isLoginOnlyAction = action && action !== "register" && action !== "send_phone_otp";
         if (isLoginOnlyAction) {
           setError("An account already exists with this number. Please log in.");

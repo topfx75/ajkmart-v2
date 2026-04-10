@@ -161,7 +161,7 @@ export default function Register() {
         reader.readAsDataURL(file);
       });
       const preview = base64;
-      const res = await api.uploadFile({ file: base64, filename: file.name, mimeType: file.type });
+      const res = await api.uploadFilePreRegistration({ file: base64, filename: file.name, mimeType: file.type });
       setter({ label: file.name, url: res.url, preview });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : T("uploadFailed");

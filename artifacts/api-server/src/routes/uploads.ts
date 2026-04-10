@@ -4,7 +4,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import rateLimit from "express-rate-limit";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError, sendTooManyRequests } from "../lib/response.js";
-import { customerAuth, riderAuth } from "../middleware/security.js";
+import { customerAuth, riderAuth, getClientIp } from "../middleware/security.js";
 import { imageUpload, validateImageBuffer, validateBase64Image, handleMulterError, isUploadValidationError } from "../lib/upload-validator.js";
 
 const router: IRouter = Router();
@@ -169,6 +169,53 @@ router.get("/prescription/resolve/:refId", customerAuth, (req, res) => {
     return;
   }
   sendSuccess(res, { url: entry.url });
+});
+
+/* ── POST /uploads/pre-registration — unauthenticated document upload ─────
+   Allows riders (and other new users) to upload KYC documents before their
+   account is created. No JWT is required, but:
+     • Strict IP-based rate limiting (20 requests per IP per 15 minutes)
+     • Image-only validation (MIME + magic-byte check via validateBase64Image)
+     • 5 MB per-image size cap (enforced inside validateBase64Image)
+   Authenticated uploads should continue to use POST /uploads.              */
+const preRegistrationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => getClientIp(req),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    sendTooManyRequests(res, 15 * 60);
+  },
+  validate: { xForwardedForHeader: false },
+});
+
+router.post("/pre-registration", preRegistrationLimiter, async (req, res) => {
+  try {
+    const { file, filename } = req.body;
+
+    if (!file) {
+      sendValidationError(res, "No file data provided");
+      return;
+    }
+
+    const { buffer, mime } = validateBase64Image(file, "File");
+
+    const url = await saveBuffer(buffer, "prereg", mime);
+
+    sendCreated(res, {
+      url,
+      filename: filename || path.basename(url),
+      size: buffer.length,
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Upload failed";
+    if (isUploadValidationError(e)) {
+      sendValidationError(res, msg);
+      return;
+    }
+    sendError(res, msg);
+  }
 });
 
 export { prescriptionRefMap };
