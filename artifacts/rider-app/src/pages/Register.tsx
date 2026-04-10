@@ -258,9 +258,11 @@ export default function Register() {
     if (availabilityStatus === "taken") { setError(T("alreadyRegistered")); return false; }
     if (!username || username.length < 3) { setError(T("usernameRequired") || "Username is required (min 3 characters)"); return false; }
     if (usernameStatus === "taken") { setError(T("usernameTaken")); return false; }
-    if (usernameStatus === "checking" || usernameStatus === "idle") {
+    if (usernameStatus === "checking") {
       setError(T("usernameCheckWait")); return false;
     }
+    /* "idle" means the check hasn't run yet — allow progression.
+       The register API will reject duplicate usernames server-side. */
     return true;
   };
 
@@ -270,10 +272,8 @@ export default function Register() {
     if (!vehicleType) { setError(T("vehicleTypeRequired")); return false; }
     if (!vehicleReg.trim()) { setError(T("vehicleRegRequired")); return false; }
     if (!drivingLicense.trim()) { setError(T("drivingLicenseRequired")); return false; }
-    if (!vehiclePhoto) { setError(T("vehiclePhotoRequired")); return false; }
-    if (!cnicPhoto) { setError(T("cnicFrontRequired")); return false; }
-    if (!cnicBackPhoto) { setError(T("cnicBackRequired")); return false; }
-    if (!licensePhoto) { setError(T("licensePhotoRequired")); return false; }
+    /* Photos are strongly recommended but not required to submit registration.
+       Admin reviews documents before approval — missing photos will delay activation. */
     return true;
   };
 
@@ -693,7 +693,7 @@ export default function Register() {
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 mt-2 flex items-start gap-2">
                   <AlertCircle size={13} className="text-blue-500 flex-shrink-0 mt-0.5" />
                   <p className="text-[10px] text-blue-700 leading-relaxed">
-                    <strong>All 4 documents are mandatory.</strong> Upload clear, legible photos for faster admin approval. Your account will be activated after document verification.
+                    <strong>Documents recommended for faster approval.</strong> Upload clear, legible photos of your vehicle and CNIC. You can register without them, but admin approval requires document verification.
                   </p>
                 </div>
               </div>

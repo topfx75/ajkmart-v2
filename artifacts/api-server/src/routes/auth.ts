@@ -765,19 +765,6 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
     .limit(1);
 
   if (!user) {
-    /* ── Cross-role new-user guard ──
-       Riders and vendors must register through admin-controlled flows.
-       Block auto-registration for these roles to prevent cross-app token issuance. */
-    const requestedRoleForNew = req.body.role as string | undefined;
-    if (requestedRoleForNew && requestedRoleForNew !== "customer") {
-      const lang = await getRequestLocale(req);
-      res.status(403).json({
-        error: t("apiErrWrongApp", lang),
-        wrongApp: true,
-      });
-      return;
-    }
-
     /* ── NEW USER REGISTRATION PATH ──────────────────────────────────────────
        If the phone is not yet in usersTable, check pendingOtpsTable.
        This prevents phantom account creation — user records are only
@@ -791,6 +778,25 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
     if (!pending) {
       const lang = await getRequestLocale(req);
       res.status(404).json({ error: t("apiErrUserNotFoundRequestOtp", lang) });
+      return;
+    }
+
+    /* ── Cross-role new-user guard ──
+       Allow new-user creation only when the pending OTP came from the /auth/register
+       flow (payload._source === "register").  If a non-customer send-otp was fired
+       (e.g. from the wrong app), there will be no registration payload, so block it. */
+    let pendingPayloadParsed: Record<string, unknown> | null = null;
+    if (pending.payload) {
+      try { pendingPayloadParsed = JSON.parse(pending.payload); } catch { /* noop */ }
+    }
+    const requestedRoleForNew = req.body.role as string | undefined;
+    const payloadSource = pendingPayloadParsed?._source as string | undefined;
+    if (requestedRoleForNew && requestedRoleForNew !== "customer" && payloadSource !== "register") {
+      const lang = await getRequestLocale(req);
+      res.status(403).json({
+        error: t("apiErrWrongApp", lang),
+        wrongApp: true,
+      });
       return;
     }
 
@@ -825,10 +831,7 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
     const deviceId = req.body.deviceId as string | undefined;
     const newUserId = generateId();
 
-    let regPayload: Record<string, unknown> | null = null;
-    if (pending.payload) {
-      try { regPayload = JSON.parse(pending.payload); } catch { regPayload = null; }
-    }
+    const regPayload = pendingPayloadParsed;
 
     const userRole = (regPayload?.role === "rider" || regPayload?.role === "vendor")
       ? (regPayload.role as "rider" | "vendor")
@@ -2528,12 +2531,21 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
 
   writeAuthAuditLog("register", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone: normalizedPhone, role: userRole } });
 
-  res.status(201).json({
+  const isDev = process.env.NODE_ENV !== "production";
+  const regResponse: Record<string, unknown> = {
     message: "Registration successful. Please verify your phone with the OTP sent.",
     role: userRole,
     pendingApproval: needsApproval,
     channel: smsResult.sent ? smsResult.provider : "console",
-  });
+  };
+
+  /* In non-production with no real SMS configured (console provider), expose OTP for testing */
+  if (isDev && smsResult.provider === "console") {
+    regResponse.otp = otp;
+    regResponse.devMode = true;
+  }
+
+  res.status(201).json(regResponse);
 });
 
 router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPasswordSchema), async (req, res) => {

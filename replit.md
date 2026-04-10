@@ -71,3 +71,13 @@ The project is a pnpm monorepo built with TypeScript. Frontend applications use 
 - **Sentry:** Error tracking and performance monitoring.
 - **Analytics Platform:** User behavior tracking.
 - **Socket.io:** Real-time bidirectional communication.
+
+### Recent Bug Fixes (Auth & Registration)
+
+1. **Customer App Refresh Loop (Task #3):** `custom-fetch.ts` passes `errorCode` as 3rd param; `AuthContext` handles `PROFILE_INCOMPLETE` via logout not suspension; `PlatformConfigContext` throttles AppState force-refresh to 10s minimum.
+2. **Customer Registration `check-identifier` action:** `register.tsx` was blocking new users with `action !== "register"` check; API now returns `"send_phone_otp"` for all phones — fixed to accept both actions.
+3. **Rider App `usernameStatus` idle block:** `validateStep1()` in `Register.tsx` was blocking Step 1 Next button when `usernameStatus === "idle"` — fixed to only block on `"checking"` (still running) and `"taken"` (duplicate).
+4. **Vendor App BASE URL wrong:** `api.ts` was using `${import.meta.env.BASE_URL}/api` = `/vendor/api` which routed to the Vite dev server (returning HTML). Fixed to `/api` matching rider-app pattern.
+5. **`verify-otp` cross-role guard blocks rider/vendor registration:** Guard was firing before `pending_otps` check, blocking any non-customer role from creating new users via `verify-otp`. Fixed to check `pending_otps.payload._source === "register"` first — if the OTP came from `/auth/register` flow, allow the role through; only block non-customers arriving via raw `send-otp` without registration payload.
+6. **Rider photo uploads mandatory in UI:** Made optional (`Documents recommended but not required`) — backend was already not enforcing them.
+7. **DB:** Added missing `cod_photo_url` and `cod_verified` columns to `orders` table (were causing 500 errors on `/api/admin/stats`).
