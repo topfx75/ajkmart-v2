@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
@@ -31,6 +31,8 @@ export function LiveTrackMap({
 }: LiveTrackMapProps) {
   const webViewRef = useRef<WebView>(null);
   const prevRiderRef = useRef<{ lat: number; lng: number } | null>(null);
+  const pendingMsgRef = useRef<string | null>(null);
+  const [webViewReady, setWebViewReady] = useState(false);
 
   const params = new URLSearchParams({
     orderId,
@@ -43,14 +45,31 @@ export function LiveTrackMap({
   });
   const src = `https://${DOMAIN}/api/maps/live-track?${params.toString()}`;
 
+  const sendRiderUpdate = (lat: number, lng: number) => {
+    const msg = JSON.stringify({ type: "RIDER_UPDATE", lat, lng });
+    if (webViewReady && webViewRef.current) {
+      webViewRef.current.postMessage(msg);
+      pendingMsgRef.current = null;
+    } else {
+      pendingMsgRef.current = msg;
+    }
+  };
+
   useEffect(() => {
     if (riderLat == null || riderLng == null) return;
     const prev = prevRiderRef.current;
     if (prev && prev.lat === riderLat && prev.lng === riderLng) return;
     prevRiderRef.current = { lat: riderLat, lng: riderLng };
-    const msg = JSON.stringify({ type: "RIDER_UPDATE", lat: riderLat, lng: riderLng });
-    webViewRef.current?.postMessage(msg);
-  }, [riderLat, riderLng]);
+    sendRiderUpdate(riderLat, riderLng);
+  }, [riderLat, riderLng, webViewReady]);
+
+  const handleLoad = () => {
+    setWebViewReady(true);
+    if (pendingMsgRef.current && webViewRef.current) {
+      webViewRef.current.postMessage(pendingMsgRef.current);
+      pendingMsgRef.current = null;
+    }
+  };
 
   return (
     <View style={[styles.root, { height }]}>
@@ -64,12 +83,13 @@ export function LiveTrackMap({
         scrollEnabled={false}
         onMessage={(_e: WebViewMessageEvent) => {}}
         originWhitelist={["*"]}
+        onLoadEnd={handleLoad}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { width: "100%", overflow: "hidden", borderRadius: 0, backgroundColor: "#0f172a" },
+  root: { width: "100%", overflow: "hidden", backgroundColor: "#0f172a" },
   webView: { flex: 1, backgroundColor: "transparent" },
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
 
 const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
@@ -31,6 +31,8 @@ export function LiveTrackMap({
 }: LiveTrackMapProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const prevRiderRef = useRef<{ lat: number; lng: number } | null>(null);
+  const pendingRef = useRef<{ lat: number; lng: number } | null>(null);
+  const [iframeReady, setIframeReady] = useState(false);
 
   const params = new URLSearchParams({
     orderId,
@@ -43,18 +45,41 @@ export function LiveTrackMap({
   });
   const src = `${ORIGIN}/api/maps/live-track?${params.toString()}`;
 
+  const sendRiderUpdate = (lat: number, lng: number) => {
+    if (iframeReady && iframeRef.current?.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.postMessage(
+          { type: "RIDER_UPDATE", lat, lng },
+          ORIGIN,
+        );
+      } catch {}
+      pendingRef.current = null;
+    } else {
+      pendingRef.current = { lat, lng };
+    }
+  };
+
   useEffect(() => {
     if (riderLat == null || riderLng == null) return;
     const prev = prevRiderRef.current;
     if (prev && prev.lat === riderLat && prev.lng === riderLng) return;
     prevRiderRef.current = { lat: riderLat, lng: riderLng };
-    try {
-      iframeRef.current?.contentWindow?.postMessage(
-        { type: "RIDER_UPDATE", lat: riderLat, lng: riderLng },
-        ORIGIN,
-      );
-    } catch {}
-  }, [riderLat, riderLng]);
+    sendRiderUpdate(riderLat, riderLng);
+  }, [riderLat, riderLng, iframeReady]);
+
+  const handleLoad = () => {
+    setIframeReady(true);
+    const pending = pendingRef.current;
+    if (pending && iframeRef.current?.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.postMessage(
+          { type: "RIDER_UPDATE", lat: pending.lat, lng: pending.lng },
+          ORIGIN,
+        );
+      } catch {}
+      pendingRef.current = null;
+    }
+  };
 
   return (
     <View style={[styles.root, { height }]}>
@@ -64,6 +89,7 @@ export function LiveTrackMap({
         style={{ width: "100%", height: "100%", border: "none", display: "block" }}
         sandbox="allow-scripts allow-same-origin allow-forms"
         title="Live order tracking"
+        onLoad={handleLoad}
       />
     </View>
   );
