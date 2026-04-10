@@ -91,6 +91,7 @@ const phoneSchema = z
 const sendOtpSchema = z.object({
   phone: phoneSchema,
   role: z.enum(["customer", "rider", "vendor"]).optional(),
+  mode: z.enum(["login", "register"]).optional(),
   deviceId: z.string().max(256).optional(),
   preferredChannel: z.enum(["whatsapp", "sms", "email"]).optional(),
   captchaToken: z.string().optional(),
@@ -504,6 +505,7 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   const rawPhone = req.body.phone;
   const deviceId = req.body.deviceId;
   const preferredChannel = req.body.preferredChannel;
+  const mode = (req.body.mode as string | undefined) ?? "login";
   const phone = canonicalizePhone(rawPhone);
 
   if (!isValidCanonicalPhone(phone)) {
@@ -524,6 +526,33 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
     .where(eq(usersTable.phone, phone))
     .limit(1);
 
+  /* ── Enforce login vs. register separation ────────────────────────────────
+     In "login" mode (the default), the account must already exist.
+     In "register" mode, the caller is explicitly signing up as a new user.  ── */
+  if (mode === "login" && existingUser.length === 0) {
+    const lang = await getRequestLocale(req);
+    res.status(404).json({ error: "Account not found. Please sign up first.", accountNotFound: true });
+    return;
+  }
+
+  /* ── Early role check ─────────────────────────────────────────────────────
+     If the user exists and a role was specified, verify the role matches before
+     sending any OTP — no OTP should be wasted on a wrong-app login attempt.
+     Role is always sent by the first-party apps (customer/rider/vendor).
+     Omitting role is allowed only for passwordless/social flows that don't
+     target a specific app (e.g. programmatic API callers), in which case the
+     check is skipped and the verify-otp endpoint enforces it instead.        ── */
+  const requestedRoleEarly = req.body.role as string | undefined;
+  if (existingUser[0] && requestedRoleEarly && mode === "login") {
+    const userRolesEarly = (existingUser[0].roles || existingUser[0].role || "customer").split(",").map((r: string) => r.trim());
+    if (!userRolesEarly.includes(requestedRoleEarly)) {
+      addSecurityEvent({ type: "cross_role_login_attempt", ip, userId: existingUser[0].id, details: `Wrong-app OTP blocked at send-otp for [${existingUser[0].roles}] trying ${requestedRoleEarly}`, severity: "high" });
+      const lang = await getRequestLocale(req, existingUser[0].id);
+      res.status(403).json({ error: t("apiErrWrongApp", lang), wrongApp: true });
+      return;
+    }
+  }
+
   const effectiveRole = existingUser[0]?.role ?? ((req.body.role === "rider" || req.body.role === "vendor") ? req.body.role : "customer");
   const otpEnabledForRole = isAuthMethodEnabled(settings, "auth_phone_otp_enabled", effectiveRole);
 
@@ -536,6 +565,8 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
      Exceptions that are acceptable to surface at send-otp:
        • lockout  — rate-limit response, keyed on the phone, not on account existence
        • invalid phone format — rejected before DB lookup
+       • login mode with no account — explicit "Account not found" (handled above)
+       • wrong app role — rejected before OTP (handled above)
      Everything else: silently write OTP to pending_otps and return generic success. ── */
 
   /* ── Check lockout before generating new OTP ── */

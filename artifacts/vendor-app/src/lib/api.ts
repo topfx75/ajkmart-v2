@@ -162,7 +162,7 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
 
 export const api = {
   /* Auth */
-  sendOtp:      (phone: string, preferredChannel?: string) => apiFetch("/auth/send-otp", { method: "POST", body: JSON.stringify({ phone, ...(preferredChannel ? { preferredChannel } : {}) }) }),
+  sendOtp:      (phone: string, preferredChannel?: string, mode?: "login" | "register") => apiFetch("/auth/send-otp", { method: "POST", body: JSON.stringify({ phone, role: "vendor", ...(preferredChannel ? { preferredChannel } : {}), ...(mode ? { mode } : {}) }) }),
   verifyOtp:    (phone: string, otp: string, deviceFingerprint?: string, role?: string) => apiFetch("/auth/verify-otp", { method: "POST", body: JSON.stringify({ phone, otp, ...(role ? { role } : {}), ...(deviceFingerprint ? { deviceFingerprint } : {}) }) }),
   sendEmailOtp: (email: string) => apiFetch("/auth/send-email-otp", { method: "POST", body: JSON.stringify({ email }) }),
   verifyEmailOtp:(email: string, otp: string, deviceFingerprint?: string) => apiFetch("/auth/verify-email-otp", { method: "POST", body: JSON.stringify({ email, otp, role: "vendor", ...(deviceFingerprint ? { deviceFingerprint } : {}) }) }),

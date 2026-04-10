@@ -80,6 +80,7 @@ export default function AuthScreen() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [accountNotFound, setAccountNotFound] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
 
   const [phone, setPhone] = useState("");
@@ -159,7 +160,7 @@ export default function AuthScreen() {
     });
   }, []);
 
-  const clearError = () => setError("");
+  const clearError = () => { setError(""); setAccountNotFound(false); };
 
   const getDeviceFingerprint = async (): Promise<string> => {
     try {
@@ -303,8 +304,14 @@ export default function AuthScreen() {
         setPhone(normalized);
         setMethod("phone");
         setLoading(false);
-        const r = await authPost("/auth/send-otp", { phone: `0${normalized}` }).catch((e: any) => {
-          setError(e.message || "Failed to send OTP");
+        const r = await authPost("/auth/send-otp", { phone: `0${normalized}`, mode: "login", role: "customer" }).catch((e: any) => {
+          const msg: string = e.message || "Failed to send OTP";
+          if (msg.toLowerCase().includes("account not found") || msg.toLowerCase().includes("sign up")) {
+            setError("No account found with this number. Please sign up first.");
+            setAccountNotFound(true);
+          } else {
+            setError(msg);
+          }
           return null;
         });
         if (r) {
@@ -374,7 +381,7 @@ export default function AuthScreen() {
     if (resendCooldown > 0) { setError(`Please wait ${resendCooldown}s before resending.`); return; }
     setLoading(true);
     try {
-      const body: any = { phone: normalizedPhone };
+      const body: any = { phone: normalizedPhone, mode: "login", role: "customer" };
       if (preferredChannel) body.preferredChannel = preferredChannel;
       const res = await authPost("/auth/send-otp", body);
       if (res.otpRequired === false && res.token) {
@@ -389,9 +396,14 @@ export default function AuthScreen() {
       animateTransition(() => setStep("otp"));
     } catch (e: any) {
       const msg: string = e.message || "Could not send OTP.";
-      setError(msg);
-      const match = msg.match(/wait (\d+) second/);
-      if (match) setResendCooldown(parseInt(match[1]!, 10));
+      if (msg.toLowerCase().includes("account not found") || msg.toLowerCase().includes("sign up first")) {
+        setError("No account found with this number. Please sign up first.");
+        setAccountNotFound(true);
+      } else {
+        setError(msg);
+        const match = msg.match(/wait (\d+) second/);
+        if (match) setResendCooldown(parseInt(match[1]!, 10));
+      }
     }
     setLoading(false);
   };
@@ -890,6 +902,19 @@ export default function AuthScreen() {
               />
 
               {error ? <AlertBox type="error" message={error} /> : null}
+              {accountNotFound && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => router.push("/auth/register")}
+                  style={{ marginBottom: 8, borderRadius: 10, backgroundColor: "#f0fdf4", borderWidth: 1, borderColor: "#22c55e", padding: 12, alignItems: "center" }}
+                  accessibilityRole="link"
+                  accessibilityLabel="Go to sign up"
+                >
+                  <Text style={{ color: "#16a34a", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
+                    Create a new account →
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               <AuthButton label="Continue" onPress={checkIdentifier} loading={loading} icon="arrow-forward" />
 

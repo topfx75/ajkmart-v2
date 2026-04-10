@@ -246,7 +246,7 @@ export default function RegisterScreen() {
       const sendOtpRes = await fetch(`${API}/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: normalizedPhone }),
+        body: JSON.stringify({ phone: normalizedPhone, mode: "register" }),
       });
       const sendOtpData = await sendOtpRes.json();
       if (!sendOtpRes.ok) {

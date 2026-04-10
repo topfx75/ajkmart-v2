@@ -3,6 +3,7 @@ import { z } from "zod";
 import { sendAdminAlert } from "../../services/email.js";
 import { sendOtpSMS } from "../../services/sms.js";
 import { sendWhatsAppOTP } from "../../services/whatsapp.js";
+import { canonicalizePhone } from "@workspace/phone-utils";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -12,7 +13,7 @@ import {
   vendorProfilesTable,
   bulkUploadLogsTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, type SQL } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray, type SQL } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, invalidatePlatformSettingsCache, adminAuth, getAdminSecret,
@@ -1673,6 +1674,247 @@ router.get("/bulk-uploads/:vendorId", adminAuth, async (req, res) => {
       ...r,
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
     })),
+  });
+});
+
+/* ── GET /admin/system/phone-audit ──────────────────────────────────────────
+   Returns:
+   (a) users with non-canonical phone numbers
+   (b) groups of users sharing the same canonical phone (duplicates)
+   (c) ghost accounts: no name, no orders/rides/transactions, created 7+ days ago ── */
+router.get("/system/phone-audit", adminAuth, async (_req, res) => {
+  const allUsers = await db
+    .select({
+      id: usersTable.id,
+      phone: usersTable.phone,
+      name: usersTable.name,
+      role: usersTable.role,
+      isProfileComplete: usersTable.isProfileComplete,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .where(isNotNull(usersTable.phone))
+    .orderBy(asc(usersTable.createdAt));
+
+  const nonCanonical: typeof allUsers = [];
+  const canonicalMap = new Map<string, typeof allUsers>();
+
+  for (const u of allUsers) {
+    const phone = u.phone!;
+    const canonical = canonicalizePhone(phone);
+    if (!canonical || canonical !== phone) {
+      nonCanonical.push(u);
+    }
+    const key = canonical ?? phone;
+    if (!canonicalMap.has(key)) canonicalMap.set(key, []);
+    canonicalMap.get(key)!.push(u);
+  }
+
+  const duplicates = [...canonicalMap.values()].filter(g => g.length > 1);
+
+  /* Ghost accounts: no name AND incomplete profile AND old enough.
+     Uses strict AND so only fully-abandoned OTP-stage accounts are flagged.
+     Activity check (orders, rides, wallet txns) excludes accounts with real usage.
+     Non-canonical phone accounts are surfaced separately in nonCanonicalPhones above. */
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const ghostCandidates = await db
+    .select({
+      id: usersTable.id,
+      phone: usersTable.phone,
+      name: usersTable.name,
+      role: usersTable.role,
+      isProfileComplete: usersTable.isProfileComplete,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .where(
+      and(
+        isNull(usersTable.name),
+        eq(usersTable.isProfileComplete, false),
+        lte(usersTable.createdAt, sevenDaysAgo),
+      )
+    );
+
+  const ghostIds = ghostCandidates.map(u => u.id);
+
+  const ghostsWithActivity: string[] = [];
+  if (ghostIds.length > 0) {
+    const orderCounts = await db
+      .select({ userId: ordersTable.userId, cnt: count() })
+      .from(ordersTable)
+      .where(inArray(ordersTable.userId, ghostIds))
+      .groupBy(ordersTable.userId);
+    const rideCustomerCounts = await db
+      .select({ userId: ridesTable.userId, cnt: count() })
+      .from(ridesTable)
+      .where(inArray(ridesTable.userId, ghostIds))
+      .groupBy(ridesTable.userId);
+    const rideRiderCounts = await db
+      .select({ userId: ridesTable.riderId, cnt: count() })
+      .from(ridesTable)
+      .where(inArray(ridesTable.riderId, ghostIds.map(id => id) as string[]))
+      .groupBy(ridesTable.riderId);
+    const txCounts = await db
+      .select({ userId: walletTransactionsTable.userId, cnt: count() })
+      .from(walletTransactionsTable)
+      .where(inArray(walletTransactionsTable.userId, ghostIds))
+      .groupBy(walletTransactionsTable.userId);
+    const activeIds = new Set([
+      ...orderCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId),
+      ...rideCustomerCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId),
+      ...rideRiderCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId).filter((id): id is string => Boolean(id)),
+      ...txCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId),
+    ]);
+    ghostsWithActivity.push(...activeIds);
+  }
+
+  const ghosts = ghostCandidates.filter(u => !ghostsWithActivity.includes(u.id));
+
+  sendSuccess(res, {
+    summary: {
+      nonCanonicalCount: nonCanonical.length,
+      duplicateGroupCount: duplicates.length,
+      ghostCount: ghosts.length,
+    },
+    nonCanonicalPhones: nonCanonical.map(u => ({
+      id: u.id, phone: u.phone, canonicalPhone: canonicalizePhone(u.phone!),
+      name: u.name, role: u.role,
+      createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
+    })),
+    duplicateGroups: duplicates.map(group => ({
+      canonicalPhone: canonicalizePhone(group[0]!.phone!) ?? group[0]!.phone,
+      users: group.map(u => ({
+        id: u.id, phone: u.phone, name: u.name, role: u.role,
+        createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
+      })),
+    })),
+    ghostAccounts: ghosts.map(u => ({
+      id: u.id, phone: u.phone, name: u.name, role: u.role,
+      createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
+    })),
+  });
+});
+
+/* ── POST /admin/system/cleanup-ghosts?dryRun=true ──────────────────────────
+   Deletes two classes of dead accounts (both require: no activity + 7+ days old):
+   1. Ghost accounts: name IS NULL AND isProfileComplete=false
+      (OTP was sent but registration was never completed)
+   2. Non-canonical phone accounts: phone stored in non-canonical format
+      (these should be migrated/fixed first; flag them for deletion only if safe)
+   Always runs in dry-run mode by default. Pass dryRun=false to actually delete. ── */
+router.post("/system/cleanup-ghosts", adminAuth, async (req, res) => {
+  const dryRun = (req.query["dryRun"] as string) !== "false";
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  /* Fetch all users that are old enough — then classify in-process */
+  const allOldUsers = await db
+    .select({
+      id: usersTable.id,
+      phone: usersTable.phone,
+      name: usersTable.name,
+      role: usersTable.role,
+      isProfileComplete: usersTable.isProfileComplete,
+      createdAt: usersTable.createdAt,
+    })
+    .from(usersTable)
+    .where(
+      and(
+        isNotNull(usersTable.phone),
+        lte(usersTable.createdAt, sevenDaysAgo),
+      )
+    );
+
+  /* Classify into ghost (strict AND) and non-canonical */
+  const candidates = allOldUsers.filter(u => {
+    const isGhost = u.name === null && u.isProfileComplete === false;
+    const isNonCanonical = (() => {
+      if (!u.phone) return false;
+      const canonical = canonicalizePhone(u.phone);
+      return !canonical || canonical !== u.phone;
+    })();
+    return isGhost || isNonCanonical;
+  });
+
+  if (candidates.length === 0) {
+    sendSuccess(res, { dryRun, wouldDeleteCount: 0, wouldDelete: [], message: "No ghost accounts found." });
+    return;
+  }
+
+  const candidateIds = candidates.map(u => u.id);
+
+  const [orderCounts, rideCustomerCounts, rideRiderCounts, txCounts] = await Promise.all([
+    db.select({ userId: ordersTable.userId, cnt: count() })
+      .from(ordersTable)
+      .where(inArray(ordersTable.userId, candidateIds))
+      .groupBy(ordersTable.userId),
+    db.select({ userId: ridesTable.userId, cnt: count() })
+      .from(ridesTable)
+      .where(inArray(ridesTable.userId, candidateIds))
+      .groupBy(ridesTable.userId),
+    db.select({ userId: ridesTable.riderId, cnt: count() })
+      .from(ridesTable)
+      .where(inArray(ridesTable.riderId, candidateIds))
+      .groupBy(ridesTable.riderId),
+    db.select({ userId: walletTransactionsTable.userId, cnt: count() })
+      .from(walletTransactionsTable)
+      .where(inArray(walletTransactionsTable.userId, candidateIds))
+      .groupBy(walletTransactionsTable.userId),
+  ]);
+
+  const activeIds = new Set([
+    ...orderCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId),
+    ...rideCustomerCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId),
+    ...rideRiderCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId).filter((id): id is string => Boolean(id)),
+    ...txCounts.filter(r => (r.cnt ?? 0) > 0).map(r => r.userId),
+  ]);
+
+  const toDelete = candidates.filter(u => !activeIds.has(u.id));
+
+  const toDeleteMapped = toDelete.map(u => {
+    const isGhost = u.name === null && u.isProfileComplete === false;
+    const isNonCanonical = (() => {
+      if (!u.phone) return false;
+      const canonical = canonicalizePhone(u.phone);
+      return !canonical || canonical !== u.phone;
+    })();
+    const reasons: string[] = [];
+    if (isGhost) reasons.push("incomplete_registration");
+    if (isNonCanonical) reasons.push("non_canonical_phone");
+    return {
+      id: u.id, phone: u.phone, name: u.name, role: u.role,
+      isProfileComplete: u.isProfileComplete,
+      createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
+      reasons,
+    };
+  });
+
+  if (dryRun) {
+    logger.info({ ghostCount: toDelete.length }, "[DRY RUN] Ghost account cleanup — would delete:");
+    toDelete.forEach(u => logger.info({ id: u.id, phone: u.phone, role: u.role, createdAt: u.createdAt }, "[DRY RUN] Would delete ghost account"));
+    sendSuccess(res, {
+      dryRun: true,
+      wouldDeleteCount: toDelete.length,
+      wouldDelete: toDeleteMapped,
+      message: `Dry run complete. ${toDelete.length} ghost account(s) would be deleted. Run with dryRun=false to actually delete.`,
+    });
+    return;
+  }
+
+  const deleteIds = toDelete.map(u => u.id);
+  let deletedCount = 0;
+  if (deleteIds.length > 0) {
+    await db.delete(usersTable).where(inArray(usersTable.id, deleteIds));
+    deletedCount = deleteIds.length;
+    logger.info({ deletedCount, ids: deleteIds }, "Ghost account cleanup: deleted accounts");
+    addAuditEntry({ action: "ghost_cleanup", details: `Deleted ${deletedCount} ghost accounts`, result: "success" });
+  }
+
+  sendSuccess(res, {
+    dryRun: false,
+    deletedCount,
+    deleted: toDeleteMapped,
+    message: `Cleanup complete. ${deletedCount} ghost account(s) deleted.`,
   });
 });
 

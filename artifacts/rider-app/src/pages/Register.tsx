@@ -779,7 +779,7 @@ export default function Register() {
                     if (verifyChannel === "phone") return;
                     setVerifyChannel("phone"); setOtp(""); setDevOtp("");
                     try {
-                      const res = await api.sendOtp(formatPhoneForApi(phone));
+                      const res = await api.sendOtp(formatPhoneForApi(phone), undefined, undefined, "register");
                       if (res.otp) setDevOtp(res.otp);
                     } catch (e: unknown) {
                       setError(e instanceof Error ? e.message : "Failed to send phone OTP. Please try again.");

@@ -514,7 +514,7 @@ export default function Login() {
     if (!regPhone || regPhone.length < 10) { setError("Enter a valid phone number"); return; }
     setLoading(true); clearError();
     try {
-      const res = await api.sendOtp(regPhone);
+      const res = await api.sendOtp(regPhone, undefined, "register");
       if (res.otpRequired === false && res.token) {
         api.storeTokens(res.token, res.refreshToken);
         setStep("register-info");

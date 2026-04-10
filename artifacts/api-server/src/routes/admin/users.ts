@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { getIO } from "../../lib/socketio.js";
+import { canonicalizePhone } from "@workspace/phone-utils";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -128,15 +129,20 @@ const router = Router();
 
 router.post("/users", validateBody(createUserSchema), async (req, res) => {
   const { phone, name, role, city, area, email, cnic, vehicleType, businessName, storeName, storeCategory, approveNow } = req.body;
-  const trimPhone = typeof phone === "string" ? phone.trim() : "";
+  const rawPhone = typeof phone === "string" ? phone.trim() : "";
   const trimName = typeof name === "string" ? name.trim() : "";
-  if (!trimPhone && !trimName) {
+  if (!rawPhone && !trimName) {
     sendValidationError(res, "At least phone or name is required");
     return;
   }
-  if (trimPhone && !/^\+?\d{7,15}$/.test(trimPhone)) {
-    sendValidationError(res, "Phone must be 7-15 digits, optionally prefixed with +");
-    return;
+  let trimPhone = "";
+  if (rawPhone) {
+    const canonical = canonicalizePhone(rawPhone);
+    if (!canonical) {
+      sendValidationError(res, "Invalid phone number format. Please enter a valid Pakistani mobile number (e.g. 03001234567 or +923001234567).");
+      return;
+    }
+    trimPhone = canonical;
   }
   const validRoles = ["customer", "rider", "vendor"];
   const userRole = validRoles.includes(role) ? role : "customer";
@@ -225,9 +231,13 @@ router.get("/users/search-riders", validateQuery(searchRidersQuerySchema), async
     conditions.push(eq(usersTable.isOnline, true) as ReturnType<typeof eq>);
   }
   if (q) {
+    const canonicalQ = canonicalizePhone(q);
+    const phoneMatch = canonicalQ
+      ? eq(usersTable.phone, canonicalQ)
+      : ilike(usersTable.phone, `%${q}%`);
     conditions.push(or(
       ilike(usersTable.name, `%${q}%`),
-      ilike(usersTable.phone, `%${q}%`),
+      phoneMatch,
     )! as ReturnType<typeof eq>);
   }
   const riders = await db
@@ -258,9 +268,13 @@ router.get("/users", validateQuery(usersQuerySchema), async (req, res) => {
     whereConditions.push(eq(usersTable.isProfileComplete, false));
   }
   if (search) {
+    const canonicalSearch = canonicalizePhone(search);
+    const phoneSearchMatch = canonicalSearch
+      ? eq(usersTable.phone, canonicalSearch)
+      : ilike(usersTable.phone, `%${search}%`);
     whereConditions.push(or(
       ilike(usersTable.name, `%${search}%`),
-      ilike(usersTable.phone, `%${search}%`),
+      phoneSearchMatch,
       ilike(usersTable.email, `%${search}%`),
     )!);
   }
