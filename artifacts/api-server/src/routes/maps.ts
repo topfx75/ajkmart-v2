@@ -7,6 +7,24 @@ import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../li
 
 const router: IRouter = Router();
 
+/** Escape HTML special chars to prevent XSS when injecting user-supplied strings into HTML */
+function escHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * JSON-serialize a value for safe injection inside a <script> block.
+ * Replaces "</" with "<\/" to prevent "</script>" from closing the block early.
+ */
+function safeJson(val: unknown): string {
+  return JSON.stringify(val).replace(/<\//g, "<\\/");
+}
+
 const GOOGLE_BASE = "https://maps.googleapis.com/maps/api";
 
 /* ── Reverse-geocode LRU cache: keyed by "lat,lng" rounded to 4 decimal places
@@ -918,8 +936,9 @@ router.get("/picker", (req, res) => {
   const lang  = String(req.query.lang  ?? "en");
 
   const isUrdu = lang === "ur";
+  const labelEsc = escHtml(label);
   const t = {
-    title:       isUrdu ? `${label} چنیں` : `Select ${label}`,
+    title:       isUrdu ? `${labelEsc} چنیں` : `Select ${labelEsc}`,
     searchPH:    isUrdu ? "جگہ تلاش کریں..." : "Search location...",
     centerHint:  isUrdu ? "مرکز پر مقام منتخب ہوگا" : "Move map to position the pin",
     myLocation:  isUrdu ? "میری جگہ" : "My Location",
@@ -1207,8 +1226,9 @@ router.get("/picker", (req, res) => {
           const lat  = p.lat  || '';
           const lng  = p.lng  || '';
           const desc = encodeURIComponent(p.description || p.mainText || '');
-          const main = (p.mainText || p.description || '').replace(/</g,'&lt;');
-          const sub  = (p.secondaryText || '').replace(/</g,'&lt;');
+          const escStr = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          const main = escStr(p.mainText || p.description || '');
+          const sub  = escStr(p.secondaryText || '');
           return '<div class="sug-item" data-lat="'+lat+'" data-lng="'+lng+'" data-pid="'+pid+'" data-desc="'+desc+'">'
             + '<div class="sug-dot"></div>'
             + '<div class="sug-texts">'
@@ -1293,6 +1313,7 @@ router.get("/picker", (req, res) => {
 router.get("/live-track", (req, res) => {
   const { orderId, type = "order", token = "", destLat, destLng, destLabel = "Destination", lang = "en" } = req.query as Record<string, string>;
   const isUrdu = lang === "ur";
+  const destLabelEsc = escHtml(destLabel);
 
   const dLat = destLat ? parseFloat(destLat) : null;
   const dLng = destLng ? parseFloat(destLng) : null;
@@ -1308,7 +1329,7 @@ router.get("/live-track", (req, res) => {
     arrived:     isUrdu ? "پہنچ گیا" : "Arrived",
     offline:     isUrdu ? "آف لائن" : "Offline",
     unavailable: isUrdu ? "ٹریکنگ دستیاب نہیں" : "Tracking unavailable",
-    destination: isUrdu ? "منزل" : `${destLabel}`,
+    destination: isUrdu ? "منزل" : destLabelEsc,
     rider:       isUrdu ? "ڈرائیور" : "Driver",
   };
 
@@ -1352,11 +1373,12 @@ router.get("/live-track", (req, res) => {
 </div>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
 <script>
-  const ORDER_ID    = ${JSON.stringify(orderId || "")};
-  const TRACK_PATH  = ${JSON.stringify(trackPath)};
-  const TOKEN       = ${JSON.stringify(token)};
+  const ORDER_ID    = ${safeJson(orderId || "")};
+  const TRACK_PATH  = ${safeJson(trackPath)};
+  const TOKEN       = ${safeJson(token)};
   const DEST_LAT    = ${dLat !== null ? dLat : "null"};
   const DEST_LNG    = ${dLng !== null ? dLng : "null"};
+  const DEST_LABEL  = ${safeJson(destLabel)};
   const API_BASE    = window.location.origin;
   const POLL_MS     = 6000;
 
@@ -1391,7 +1413,7 @@ router.get("/live-track", (req, res) => {
   let destMarker = null;
   if (DEST_LAT && DEST_LNG) {
     destMarker = L.marker([DEST_LAT, DEST_LNG], { icon: destIcon })
-      .bindPopup('<b>${t.destination}</b>', { closeButton: false })
+      .bindPopup('<b>' + DEST_LABEL + '</b>', { closeButton: false })
       .addTo(map);
   }
 
