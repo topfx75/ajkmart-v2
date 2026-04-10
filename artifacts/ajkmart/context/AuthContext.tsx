@@ -163,6 +163,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /* Ref to doLogout so registerAuth (empty-deps useCallback) can always call latest version */
   const doLogoutRef = useRef<() => Promise<void>>(async () => {});
 
+  /* Guard against StrictMode double-invocation: syncToServer must only fire once per boot */
+  const didSyncRef = useRef(false);
+
   const clearRefreshTimer = () => {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
@@ -300,11 +303,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     /* FIX 4 + FIX 8: Use doLogoutRef so we always call the latest doLogout, and await it */
-    setOnUnauthorized(async (statusCode?: number, errorMsg?: string) => {
+    setOnUnauthorized(async (statusCode?: number, errorMsg?: string, errorCode?: string) => {
       if (statusCode === 403) {
         /* wallet_frozen is a wallet-specific restriction — NOT account suspension.
            Let the wallet screen handle it locally; do not show the suspension screen. */
         if (errorMsg === "wallet_frozen") return;
+        /* PROFILE_INCOMPLETE: user needs to finish registration, NOT suspended.
+           Logout cleanly so they land on auth → login → complete-profile form. */
+        if (errorCode === "PROFILE_INCOMPLETE" || errorMsg?.includes("setup required") || errorMsg?.includes("Profile setup")) {
+          await doLogoutRef.current();
+          return;
+        }
         setIsSuspended(true);
         setSuspendedMessage(errorMsg || "Your account has been suspended. Contact support.");
         return;
@@ -344,6 +353,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (bioPref === "true") setBiometricEnabledState(true);
         if (storedUser && storedToken) {
           const parsedUser = JSON.parse(storedUser);
+
+          /* Fix 4: If the stored user explicitly has isProfileComplete=false, the profile
+             was never completed. Force logout so they re-login and hit the complete-profile flow.
+             Users with isProfileComplete=undefined (pre-Task#1 stored data) continue normally. */
+          if (parsedUser.isProfileComplete === false) {
+            await AsyncStorage.multiRemove([USER_KEY]);
+            await secureDelete(TOKEN_KEY);
+            await secureDelete(REFRESH_TOKEN_KEY);
+            setIsLoading(false);
+            return;
+          }
+
           const exp = decodeJwtExp(storedToken);
           const isExpired = exp ? exp * 1000 < Date.now() : false;
 
@@ -365,7 +386,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   setToken(data.token);
                   setAuthToken(data.token);
                   registerAuth(data.token, data.refreshToken ?? storedRefresh);
-                  syncToServer(data.token).catch(() => {});
+                  if (!didSyncRef.current) { didSyncRef.current = true; syncToServer(data.token).catch(() => {}); }
                   setIsLoading(false);
                   return;
                 }
@@ -385,7 +406,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setToken(storedToken);
             setAuthToken(storedToken);
             registerAuth(storedToken, storedRefresh);
-            syncToServer(storedToken).catch(() => {});
+            if (!didSyncRef.current) { didSyncRef.current = true; syncToServer(storedToken).catch(() => {}); }
           }
         }
       } catch (err) {

@@ -515,11 +515,18 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
     }
   }, []);
 
+  const lastForceFetch = useRef(0);
+
   useEffect(() => {
     fetchConfig();
     const interval = setInterval(() => fetchConfig(), CACHE_MS);
     const sub = AppState.addEventListener("change", (s) => {
-      if (s === "active") fetchConfig(true);
+      if (s === "active") {
+        const now = Date.now();
+        if (now - lastForceFetch.current < 10_000) return;
+        lastForceFetch.current = now;
+        fetchConfig(true);
+      }
     });
     return () => { clearInterval(interval); sub.remove(); };
   }, [fetchConfig]);
