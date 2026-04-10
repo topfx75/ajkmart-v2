@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
-  Image,
   Linking,
   Platform,
   TouchableOpacity,
@@ -26,7 +25,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
-import { staticMapUrl } from "@/hooks/useMaps";
+import { LiveTrackMap } from "@/components/ride/LiveTrackMap";
 import {
   ORDER_STATUS_MAP,
   RIDE_STATUS_MAP,
@@ -380,20 +379,6 @@ export default function OrderDetailScreen() {
     return () => sub.remove();
   }, [orderId, token, isParcel, isRide, isPharmacyType]);
 
-  const mapUrl = useMemo(() => {
-    if (riderLat === null || riderLng === null) return null;
-    const destLat = isRide ? order?.dropLat : order?.deliveryLat;
-    const destLng = isRide ? order?.dropLng : order?.deliveryLng;
-    return staticMapUrl(
-      [
-        { lat: riderLat, lng: riderLng, color: "blue" },
-        ...(destLat && destLng
-          ? [{ lat: Number(destLat), lng: Number(destLng), color: "red" }]
-          : []),
-      ],
-      { width: 600, height: 180, zoom: 14 },
-    );
-  }, [riderLat, riderLng, order?.deliveryLat, order?.deliveryLng, order?.dropLat, order?.dropLng, isRide]);
 
   if (loading) {
     return (
@@ -521,15 +506,7 @@ export default function OrderDetailScreen() {
                 <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>{T("trackingUnavailableMsg" as TranslationKey)}</Text>
               </View>
             )}
-            {mapUrl ? (
-              <Image
-                source={{ uri: mapUrl }}
-                style={{ width: "100%", height: mapHeight }}
-                resizeMode="cover"
-              />
-            ) : trackFailed ? (
-              /* Tracking failed — render a fixed-height placeholder so the card
-                 never collapses to a blank gap. Pairs with the amber warning above. */
+            {trackFailed ? (
               <View style={{ width: "100%", height: mapHeight, alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.surfaceSecondary }}>
                 <Ionicons name="map-outline" size={28} color={C.textMuted} />
                 <Text style={{ ...Typ.caption, color: C.textMuted, textAlign: "center", paddingHorizontal: 16 }}>
@@ -537,13 +514,18 @@ export default function OrderDetailScreen() {
                 </Text>
               </View>
             ) : (
-              /* No location yet — show a loading skeleton */
-              <View style={{ width: "100%", height: mapHeight, alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.surfaceSecondary }}>
-                <ActivityIndicator size="small" color={C.emerald} />
-                <Text style={{ ...Typ.caption, color: C.textMuted }}>
-                  {T("waitingForDriverLocation" as TranslationKey)}
-                </Text>
-              </View>
+              <LiveTrackMap
+                orderId={orderId}
+                type={isRide ? "ride" : isParcel ? "parcel" : isPharmacyType ? "pharmacy" : "order"}
+                token={token ?? ""}
+                destLat={isRide ? order?.dropLat : order?.deliveryLat}
+                destLng={isRide ? order?.dropLng : order?.deliveryLng}
+                destLabel={isRide ? "Drop-off" : "Delivery"}
+                height={mapHeight}
+                lang={language}
+                riderLat={riderLat}
+                riderLng={riderLng}
+              />
             )}
             <View style={{ padding: 14 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: riderLat ? 10 : 0 }}>

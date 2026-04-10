@@ -159,6 +159,42 @@ export default function Store() {
   const [locHasPin, setLocHasPin] = useState(() => Boolean(user?.storeLat && user?.storeLng));
   const tile = useVendorTileConfig();
 
+  /* ── Location search/autocomplete ── */
+  const [locSearch, setLocSearch] = useState("");
+  const [locSuggestions, setLocSuggestions] = useState<{ placeId: string; mainText: string; secondaryText?: string; lat?: number; lng?: number }[]>([]);
+  const [locSearchLoading, setLocSearchLoading] = useState(false);
+  const locSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLocSearch = (q: string) => {
+    setLocSearch(q);
+    setLocSuggestions([]);
+    if (locSearchTimer.current) clearTimeout(locSearchTimer.current);
+    if (!q.trim()) return;
+    setLocSearchLoading(true);
+    locSearchTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`${import.meta.env.BASE_URL}api/maps/autocomplete?input=${encodeURIComponent(q)}`);
+        const d = await r.json();
+        setLocSuggestions((d.predictions || []).slice(0, 6));
+      } catch {}
+      setLocSearchLoading(false);
+    }, 300);
+  };
+
+  const handleLocSuggestionSelect = async (sug: typeof locSuggestions[0]) => {
+    setLocSearch("");
+    setLocSuggestions([]);
+    let lt = sug.lat, lg = sug.lng;
+    if (!lt || !lg) {
+      try {
+        const r = await fetch(`${import.meta.env.BASE_URL}api/maps/geocode?place_id=${encodeURIComponent(sug.placeId)}`);
+        const d = await r.json();
+        lt = d.lat; lg = d.lng;
+      } catch {}
+    }
+    if (lt && lg) { setLocLat(lt); setLocLng(lg); setLocHasPin(true); }
+  };
+
   useEffect(() => {
     if (user?.storeLat && user?.storeLng) {
       setLocLat(Number(user.storeLat));
@@ -556,9 +592,44 @@ export default function Store() {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="text-sm font-bold text-gray-900">Store Location</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Drag the pin or tap the map to set your store's exact location.</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Search for an address or drag the pin to set your store's exact location.</p>
                 </div>
                 <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">{tile.provider.toUpperCase()}</span>
+              </div>
+
+              {/* ── Address search with autocomplete ── */}
+              <div className="relative mb-3">
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 focus-within:border-blue-500 focus-within:bg-white transition-colors">
+                  <span className="text-gray-400 text-sm flex-shrink-0">🔍</span>
+                  <input
+                    type="text"
+                    value={locSearch}
+                    onChange={e => handleLocSearch(e.target.value)}
+                    placeholder="Search for your store address..."
+                    className="flex-1 py-2.5 text-sm bg-transparent outline-none text-gray-900 placeholder-gray-400"
+                  />
+                  {locSearchLoading && <span className="text-xs text-gray-400 flex-shrink-0">...</span>}
+                  {locSearch && !locSearchLoading && (
+                    <button onClick={() => { setLocSearch(""); setLocSuggestions([]); }} className="text-gray-400 hover:text-gray-600 text-sm flex-shrink-0">✕</button>
+                  )}
+                </div>
+                {locSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                    {locSuggestions.map((sug, i) => (
+                      <button
+                        key={sug.placeId + i}
+                        onClick={() => handleLocSuggestionSelect(sug)}
+                        className="w-full text-left flex items-start gap-2.5 px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
+                      >
+                        <span className="text-blue-400 mt-0.5 flex-shrink-0 text-xs">📍</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{sug.mainText}</p>
+                          {sug.secondaryText && <p className="text-xs text-gray-500 truncate">{sug.secondaryText}</p>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Map */}

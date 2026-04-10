@@ -913,7 +913,7 @@ router.get("/config", async (req, res) => {
 router.get("/picker", (req, res) => {
   const lat   = parseFloat(String(req.query.lat  ?? "33.7294"));
   const lng   = parseFloat(String(req.query.lng  ?? "73.3872"));
-  const zoom  = parseInt(String(req.query.zoom   ?? "14"), 10);
+  const zoom  = parseInt(String(req.query.zoom   ?? "15"), 10);
   const label = String(req.query.label ?? "Location");
   const lang  = String(req.query.lang  ?? "en");
 
@@ -921,10 +921,12 @@ router.get("/picker", (req, res) => {
   const t = {
     title:       isUrdu ? `${label} چنیں` : `Select ${label}`,
     searchPH:    isUrdu ? "جگہ تلاش کریں..." : "Search location...",
-    pinHint:     isUrdu ? "پن کھینچ کر مقام تبدیل کریں" : "Drag pin to adjust location",
+    centerHint:  isUrdu ? "مرکز پر مقام منتخب ہوگا" : "Move map to position the pin",
     myLocation:  isUrdu ? "میری جگہ" : "My Location",
     confirm:     isUrdu ? "مقام تصدیق کریں ✓" : "Confirm Location ✓",
-    loading:     isUrdu ? "مقام لوڈ ہو رہا ہے..." : "Loading address...",
+    loading:     isUrdu ? "مقام لوڈ ہو رہا ہے..." : "Fetching address...",
+    gpsError:    isUrdu ? "GPS دستیاب نہیں" : "GPS unavailable",
+    accuracy:    isUrdu ? "درستگی" : "Accuracy",
   };
 
   const html = `<!DOCTYPE html>
@@ -936,196 +938,564 @@ router.get("/picker", (req, res) => {
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
-    #toolbar{background:#fff;padding:10px 12px 0;z-index:1000;box-shadow:0 2px 8px rgba(0,0,0,.12)}
-    #titlebar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-    #titlebar h2{font-size:15px;font-weight:700;color:#1a1a2e;flex:1}
-    #search-wrap{position:relative;margin-bottom:8px}
-    #search{width:100%;padding:9px 36px 9px 12px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;outline:none;transition:border-color .2s}
-    #search:focus{border-color:#4a90e2}
-    #search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#999;font-size:16px;display:none}
-    #suggestions{background:#fff;border:1px solid #e0e0e0;border-radius:8px;max-height:160px;overflow-y:auto;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:2000;display:none;box-shadow:0 4px 12px rgba(0,0,0,.15)}
-    .suggestion{padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0;transition:background .15s}
-    .suggestion:last-child{border-bottom:none}
-    .suggestion:hover,.suggestion:active{background:#f0f7ff}
-    .sug-main{font-weight:600;color:#1a1a2e}
-    .sug-sub{font-size:11px;color:#888;margin-top:1px}
-    #map{flex:1;z-index:1}
-    #address-bar{background:#fff;padding:8px 12px;z-index:1000;box-shadow:0 -2px 8px rgba(0,0,0,.08)}
-    #address-text{font-size:13px;color:#333;margin-bottom:6px;min-height:18px;font-weight:500}
-    #hint{font-size:11px;color:#888;margin-bottom:8px}
+    html,body{height:100%;overflow:hidden}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;display:flex;flex-direction:column;height:100dvh}
+    /* ── Toolbar ── */
+    #toolbar{background:#fff;padding:10px 12px 8px;z-index:1001;box-shadow:0 2px 10px rgba(0,0,0,.1);flex-shrink:0}
+    #titlebar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    #pin-icon{font-size:18px}
+    #titlebar h2{font-size:15px;font-weight:700;color:#111827;flex:1;letter-spacing:-.2px}
+    /* ── Search ── */
+    #search-wrap{position:relative}
+    #search-inner{display:flex;align-items:center;background:#f3f4f6;border-radius:10px;padding:0 10px;gap:6px;border:1.5px solid transparent;transition:border-color .2s,background .2s}
+    #search-inner:focus-within{background:#fff;border-color:#3b82f6}
+    #search-icon{font-size:14px;color:#6b7280;flex-shrink:0}
+    #search{flex:1;border:none;background:none;padding:9px 0;font-size:14px;outline:none;color:#111827}
+    #search::placeholder{color:#9ca3af}
+    #search-clear{background:none;border:none;cursor:pointer;color:#9ca3af;font-size:15px;padding:2px;display:none;flex-shrink:0}
+    #search-clear:hover{color:#374151}
+    #suggestions{background:#fff;border:1px solid #e5e7eb;border-radius:12px;max-height:180px;overflow-y:auto;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:2000;display:none;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+    .sug-item{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;cursor:pointer;transition:background .15s;border-bottom:1px solid #f3f4f6}
+    .sug-item:last-child{border-bottom:none}
+    .sug-item:hover,.sug-item:active{background:#eff6ff}
+    .sug-dot{width:6px;height:6px;border-radius:50%;background:#3b82f6;margin-top:5px;flex-shrink:0}
+    .sug-texts{flex:1;min-width:0}
+    .sug-main{font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sug-sub{font-size:11px;color:#6b7280;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    /* ── Map wrapper: relative so crosshair is positioned correctly ── */
+    #map-wrap{flex:1;position:relative;overflow:hidden}
+    #map{width:100%;height:100%}
+    /* ── Centre crosshair ── */
+    #crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);z-index:500;pointer-events:none;transition:transform .15s ease}
+    #crosshair.dragging{transform:translate(-50%,-108%) scale(1.12)}
+    #crosshair svg{filter:drop-shadow(0 3px 6px rgba(0,0,0,.35))}
+    /* ── Bottom bar ── */
+    #bottom{background:#fff;padding:10px 12px;z-index:1001;box-shadow:0 -2px 10px rgba(0,0,0,.08);flex-shrink:0}
+    #addr-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;min-height:36px}
+    #addr-icon{font-size:16px;margin-top:1px;flex-shrink:0}
+    #addr-texts{flex:1;min-width:0}
+    #addr-main{font-size:13px;font-weight:600;color:#111827;line-height:1.3;word-break:break-word}
+    #addr-sub{font-size:11px;color:#6b7280;margin-top:2px}
+    #addr-accuracy{font-size:11px;color:#059669;margin-top:2px;display:none}
     #btn-row{display:flex;gap:8px;padding-bottom:env(safe-area-inset-bottom,0px)}
-    #btn-locate{flex:0 0 auto;padding:11px 14px;background:#f0f0f0;border:none;border-radius:10px;cursor:pointer;font-size:13px;color:#555;font-weight:600;transition:background .2s}
-    #btn-locate:active{background:#e0e0e0}
-    #btn-confirm{flex:1;padding:11px;background:#4a90e2;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:background .2s}
-    #btn-confirm:active{background:#357abd}
-    #btn-confirm:disabled{background:#ccc;cursor:not-allowed}
-    .leaflet-control-attribution{display:none}
-    #crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-100%);z-index:500;pointer-events:none;font-size:32px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+    #btn-locate{flex:0 0 auto;padding:11px 14px;background:#f3f4f6;border:none;border-radius:12px;cursor:pointer;font-size:13px;color:#374151;font-weight:600;transition:background .15s;display:flex;align-items:center;gap:5px}
+    #btn-locate:active{background:#e5e7eb}
+    #btn-locate.loading{opacity:.6;pointer-events:none}
+    #btn-confirm{flex:1;padding:12px;background:#3b82f6;border:none;border-radius:12px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s}
+    #btn-confirm:active:not(:disabled){background:#2563eb}
+    #btn-confirm:disabled{background:#d1d5db;color:#9ca3af;cursor:not-allowed}
+    .leaflet-control-attribution{display:none!important}
+    .leaflet-control-zoom{border-radius:10px!important;border:none!important;box-shadow:0 2px 8px rgba(0,0,0,.15)!important}
+    .leaflet-control-zoom a{border-radius:8px!important;font-size:16px!important}
   </style>
 </head>
 <body>
 <div id="toolbar">
-  <div id="titlebar"><h2>${t.title}</h2></div>
+  <div id="titlebar">
+    <span id="pin-icon">📍</span>
+    <h2>${t.title}</h2>
+  </div>
   <div id="search-wrap">
-    <input id="search" type="text" placeholder="${t.searchPH}" autocomplete="off"/>
-    <button id="search-clear">✕</button>
+    <div id="search-inner">
+      <span id="search-icon">🔍</span>
+      <input id="search" type="text" placeholder="${t.searchPH}" autocomplete="off" inputmode="search"/>
+      <button id="search-clear" aria-label="Clear">✕</button>
+    </div>
     <div id="suggestions"></div>
   </div>
 </div>
-<div id="map"></div>
-<div id="address-bar">
-  <div id="address-text">${t.loading}</div>
-  <div id="hint">${t.pinHint}</div>
+
+<div id="map-wrap">
+  <div id="map"></div>
+  <!-- Fixed centre crosshair: map pans underneath, pin stays centred -->
+  <div id="crosshair">
+    <svg width="36" height="44" viewBox="0 0 36 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="18" cy="18" r="17" fill="#3b82f6" stroke="white" stroke-width="2.5"/>
+      <circle cx="18" cy="18" r="7" fill="white"/>
+      <!-- Pointer tip -->
+      <path d="M18 35 L12 24 Q18 28 24 24 Z" fill="#3b82f6"/>
+    </svg>
+  </div>
+</div>
+
+<div id="bottom">
+  <div id="addr-row">
+    <span id="addr-icon">🏠</span>
+    <div id="addr-texts">
+      <div id="addr-main">${t.loading}</div>
+      <div id="addr-sub">${t.centerHint}</div>
+      <div id="addr-accuracy"></div>
+    </div>
+  </div>
   <div id="btn-row">
-    <button id="btn-locate">📍 ${t.myLocation}</button>
+    <button id="btn-locate" aria-label="${t.myLocation}">
+      <span id="locate-icon">📡</span>
+      <span>${t.myLocation}</span>
+    </button>
     <button id="btn-confirm" disabled>${t.confirm}</button>
   </div>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
 <script>
-  const INITIAL_LAT = ${isNaN(lat) ? 33.7294 : lat};
-  const INITIAL_LNG = ${isNaN(lng) ? 73.3872 : lng};
-  const INITIAL_ZOOM = ${isNaN(zoom) ? 14 : zoom};
-  const API_BASE = window.location.origin;
+  const INITIAL_LAT  = ${isNaN(lat)  ? 33.7294 : lat};
+  const INITIAL_LNG  = ${isNaN(lng)  ? 73.3872 : lng};
+  const INITIAL_ZOOM = ${isNaN(zoom) ? 15 : Math.max(10, Math.min(19, zoom))};
+  const API_BASE     = window.location.origin;
+  const IS_RTL       = ${isUrdu};
+  const STR_LOADING  = '${t.loading}';
+  const STR_ACCURACY = '${t.accuracy}';
+  const STR_GPS_ERR  = '${t.gpsError}';
 
-  const map = L.map('map', { zoomControl: true }).setView([INITIAL_LAT, INITIAL_LNG], INITIAL_ZOOM);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: ''
-  }).addTo(map);
+  /* ── Map init ── */
+  const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([INITIAL_LAT, INITIAL_LNG], INITIAL_ZOOM);
 
-  const pinIcon = L.divIcon({
-    html: '<div style="font-size:36px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">📍</div>',
-    iconSize: [36,36], iconAnchor: [18,36], className: ''
+  /* ── Dynamic tile provider: load from server config ── */
+  let tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  fetch(API_BASE + '/api/maps/config?app=picker')
+    .then(r => r.json())
+    .then(d => {
+      const cfg = d?.data ?? d;
+      const prov = cfg?.provider ?? 'osm';
+      const tok  = cfg?.token ?? '';
+      let url = null;
+      if (prov === 'mapbox' && tok) {
+        url = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=' + tok;
+      } else if (prov === 'google' && tok) {
+        url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=' + tok;
+      } else if (prov === 'locationiq' && tok) {
+        url = 'https://tiles.locationiq.com/v3/streets/r/{z}/{x}/{y}.png?key=' + tok;
+      }
+      if (url) {
+        map.removeLayer(tileLayer);
+        tileLayer = L.tileLayer(url, { maxZoom: 19 }).addTo(map);
+      }
+    })
+    .catch(() => {});
+
+  /* ── State ── */
+  let currentLat = INITIAL_LAT;
+  let currentLng = INITIAL_LNG;
+  let currentAddress = '';
+  let addrTimer = null;
+  let accuracyCircle = null;
+  let isDragging = false;
+
+  /* ── DOM refs ── */
+  const addrMain   = document.getElementById('addr-main');
+  const addrSub    = document.getElementById('addr-sub');
+  const addrAcc    = document.getElementById('addr-accuracy');
+  const confirmBtn = document.getElementById('btn-confirm');
+  const crosshair  = document.getElementById('crosshair');
+  const locateBtn  = document.getElementById('btn-locate');
+  const locateIcon = document.getElementById('locate-icon');
+
+  /* ── Crosshair drag feedback ── */
+  map.on('movestart', () => {
+    isDragging = true;
+    crosshair.classList.add('dragging');
+  });
+  map.on('moveend', () => {
+    isDragging = false;
+    crosshair.classList.remove('dragging');
+    const c = map.getCenter();
+    currentLat = c.lat;
+    currentLng = c.lng;
+    scheduleReverseGeocode(c.lat, c.lng);
   });
 
-  let marker = L.marker([INITIAL_LAT, INITIAL_LNG], { icon: pinIcon, draggable: true }).addTo(map);
-  let currentLat = INITIAL_LAT, currentLng = INITIAL_LNG, currentAddress = '';
-  let addrTimer = null;
-
-  const addrEl = document.getElementById('address-text');
-  const confirmBtn = document.getElementById('btn-confirm');
-
-  function setLoading() {
-    addrEl.textContent = '${t.loading}';
+  /* ── Reverse geocode ── */
+  function setAddressLoading() {
+    addrMain.textContent = STR_LOADING;
     confirmBtn.disabled = true;
   }
 
   async function reverseGeocode(lat, lng) {
-    setLoading();
+    setAddressLoading();
     try {
       const r = await fetch(API_BASE + '/api/maps/reverse-geocode?lat=' + lat + '&lng=' + lng);
       const d = await r.json();
-      currentAddress = d.address || d.formattedAddress || (lat.toFixed(5) + ', ' + lng.toFixed(5));
+      currentAddress = d.address || d.formattedAddress || (lat.toFixed(6) + ', ' + lng.toFixed(6));
     } catch {
-      currentAddress = lat.toFixed(5) + ', ' + lng.toFixed(5);
+      currentAddress = lat.toFixed(6) + ', ' + lng.toFixed(6);
     }
-    addrEl.textContent = currentAddress;
+    addrMain.textContent = currentAddress;
     confirmBtn.disabled = false;
   }
 
-  function onMarkerMoved(lat, lng) {
-    currentLat = lat; currentLng = lng;
+  function scheduleReverseGeocode(lat, lng) {
     if (addrTimer) clearTimeout(addrTimer);
-    addrTimer = setTimeout(() => reverseGeocode(lat, lng), 600);
+    addrTimer = setTimeout(() => reverseGeocode(lat, lng), 500);
   }
 
-  marker.on('dragend', e => {
-    const pos = e.target.getLatLng();
-    onMarkerMoved(pos.lat, pos.lng);
-  });
+  /* Initial geocode */
+  scheduleReverseGeocode(INITIAL_LAT, INITIAL_LNG);
 
-  map.on('click', e => {
-    marker.setLatLng(e.latlng);
-    onMarkerMoved(e.latlng.lat, e.latlng.lng);
-  });
-
-  reverseGeocode(INITIAL_LAT, INITIAL_LNG);
-
-  document.getElementById('btn-confirm').addEventListener('click', () => {
+  /* ── Confirm button ── */
+  confirmBtn.addEventListener('click', () => {
     const payload = { type: 'MAP_PICKER_CONFIRM', lat: currentLat, lng: currentLng, address: currentAddress };
-    window.parent.postMessage(payload, '*');
-    if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+    try { window.parent.postMessage(payload, '*'); } catch {}
+    try { if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(payload)); } catch {}
   });
 
-  document.getElementById('btn-locate').addEventListener('click', () => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(pos => {
-      const lat = pos.coords.latitude, lng = pos.coords.longitude;
-      map.setView([lat, lng], 16);
-      marker.setLatLng([lat, lng]);
-      onMarkerMoved(lat, lng);
-    }, () => {});
+  /* ── My Location (GPS) ── */
+  locateBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      addrMain.textContent = STR_GPS_ERR;
+      return;
+    }
+    locateBtn.classList.add('loading');
+    locateIcon.textContent = '⏳';
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        locateBtn.classList.remove('loading');
+        locateIcon.textContent = '📡';
+        const { latitude: lt, longitude: lg, accuracy } = pos.coords;
+        map.setView([lt, lg], 17, { animate: true });
+
+        /* Show accuracy circle */
+        if (accuracyCircle) map.removeLayer(accuracyCircle);
+        if (accuracy && accuracy < 2000) {
+          accuracyCircle = L.circle([lt, lg], {
+            radius: accuracy,
+            color: '#3b82f6', fillColor: '#93c5fd',
+            fillOpacity: 0.2, weight: 1.5
+          }).addTo(map);
+          const accText = accuracy < 1000
+            ? Math.round(accuracy) + ' m'
+            : (accuracy / 1000).toFixed(1) + ' km';
+          addrAcc.textContent = STR_ACCURACY + ': ±' + accText;
+          addrAcc.style.display = 'block';
+        } else {
+          addrAcc.style.display = 'none';
+        }
+
+        currentLat = lt; currentLng = lg;
+        scheduleReverseGeocode(lt, lg);
+      },
+      err => {
+        locateBtn.classList.remove('loading');
+        locateIcon.textContent = '📡';
+        addrMain.textContent = STR_GPS_ERR;
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
   });
 
-  /* Search autocomplete */
-  const searchEl = document.getElementById('search');
-  const clearEl = document.getElementById('search-clear');
-  const sugEl = document.getElementById('suggestions');
+  /* ── Search autocomplete ── */
+  const searchEl  = document.getElementById('search');
+  const clearEl   = document.getElementById('search-clear');
+  const sugEl     = document.getElementById('suggestions');
   let searchTimer = null;
+
+  function hideSuggestions() { sugEl.style.display = 'none'; }
+  function showSuggestions() { if (sugEl.children.length) sugEl.style.display = 'block'; }
 
   searchEl.addEventListener('input', () => {
     const q = searchEl.value.trim();
     clearEl.style.display = q ? 'block' : 'none';
     if (searchTimer) clearTimeout(searchTimer);
-    if (!q) { sugEl.style.display = 'none'; return; }
+    if (!q) { hideSuggestions(); return; }
     searchTimer = setTimeout(async () => {
       try {
         const r = await fetch(API_BASE + '/api/maps/autocomplete?input=' + encodeURIComponent(q));
         const d = await r.json();
         const preds = d.predictions || [];
-        if (!preds.length) { sugEl.style.display = 'none'; return; }
-        sugEl.innerHTML = preds.slice(0, 8).map(p =>
-          '<div class="suggestion" data-lat="' + (p.lat||'') + '" data-lng="' + (p.lng||'') + '" data-pid="' + (p.placeId||'') + '" data-desc="' + encodeURIComponent(p.description||p.mainText||'') + '">'
-          + '<div class="sug-main">' + (p.mainText||p.description||'') + '</div>'
-          + (p.secondaryText ? '<div class="sug-sub">' + p.secondaryText + '</div>' : '')
-          + '</div>'
-        ).join('');
-        sugEl.style.display = 'block';
-      } catch { sugEl.style.display = 'none'; }
+        if (!preds.length) { hideSuggestions(); return; }
+        sugEl.innerHTML = preds.slice(0, 8).map(p => {
+          const pid  = encodeURIComponent(p.placeId  || '');
+          const lat  = p.lat  || '';
+          const lng  = p.lng  || '';
+          const desc = encodeURIComponent(p.description || p.mainText || '');
+          const main = (p.mainText || p.description || '').replace(/</g,'&lt;');
+          const sub  = (p.secondaryText || '').replace(/</g,'&lt;');
+          return '<div class="sug-item" data-lat="'+lat+'" data-lng="'+lng+'" data-pid="'+pid+'" data-desc="'+desc+'">'
+            + '<div class="sug-dot"></div>'
+            + '<div class="sug-texts">'
+            + '<div class="sug-main">'+main+'</div>'
+            + (sub ? '<div class="sug-sub">'+sub+'</div>' : '')
+            + '</div></div>';
+        }).join('');
+        showSuggestions();
+      } catch { hideSuggestions(); }
     }, 300);
   });
 
   clearEl.addEventListener('click', () => {
-    searchEl.value = ''; clearEl.style.display = 'none'; sugEl.style.display = 'none';
+    searchEl.value = '';
+    clearEl.style.display = 'none';
+    hideSuggestions();
+    searchEl.focus();
   });
 
   sugEl.addEventListener('click', async e => {
-    const el = e.target.closest('.suggestion');
+    const el = e.target.closest('.sug-item');
     if (!el) return;
-    sugEl.style.display = 'none';
+    hideSuggestions();
     searchEl.value = '';
     clearEl.style.display = 'none';
 
-    let lat = parseFloat(el.dataset.lat), lng = parseFloat(el.dataset.lng);
+    let lt = parseFloat(el.dataset.lat || '');
+    let lg = parseFloat(el.dataset.lng || '');
     const desc = decodeURIComponent(el.dataset.desc || '');
 
-    if (!lat || !lng) {
+    if (!lt || !lg) {
       try {
-        const pid = el.dataset.pid;
+        const pid = decodeURIComponent(el.dataset.pid || '');
         const r = await fetch(API_BASE + '/api/maps/geocode?place_id=' + encodeURIComponent(pid));
         const d = await r.json();
-        lat = d.lat; lng = d.lng;
+        lt = d.lat; lg = d.lng;
       } catch { return; }
     }
-    if (!lat || !lng) return;
-    map.setView([lat, lng], 16);
-    marker.setLatLng([lat, lng]);
-    currentLat = lat; currentLng = lng;
+    if (!lt || !lg) return;
+
+    /* Remove accuracy circle when jumping to a search result */
+    if (accuracyCircle) { map.removeLayer(accuracyCircle); accuracyCircle = null; }
+    addrAcc.style.display = 'none';
+
+    map.setView([lt, lg], 17, { animate: true });
+    currentLat = lt; currentLng = lg;
     currentAddress = desc;
-    addrEl.textContent = desc;
+    addrMain.textContent = desc;
     confirmBtn.disabled = false;
   });
 
   document.addEventListener('click', e => {
-    if (!e.target.closest('#search-wrap')) sugEl.style.display = 'none';
+    if (!e.target.closest('#search-wrap')) hideSuggestions();
+  });
+
+  /* ── Keyboard: close suggestions on Escape ── */
+  searchEl.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hideSuggestions();
   });
 </script>
 </body></html>`;
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Content-Security-Policy", "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'");
+  res.send(html);
+});
+
+/* ══════════════════════════════════════════════════════════
+   LIVE TRACKING VIEW
+   GET /api/maps/live-track
+   Params:
+     orderId - order/ride/parcel ID
+     type    - "order" | "ride" | "parcel" | "pharmacy"
+     token   - bearer token (for polling the tracking API)
+     destLat, destLng  - destination coordinates
+     destLabel         - destination label
+     lang    - "en" | "ur"
+   Returns a full-page Leaflet HTML map that polls for live rider
+   position and smoothly animates the marker on every update.
+══════════════════════════════════════════════════════════ */
+router.get("/live-track", (req, res) => {
+  const { orderId, type = "order", token = "", destLat, destLng, destLabel = "Destination", lang = "en" } = req.query as Record<string, string>;
+  const isUrdu = lang === "ur";
+
+  const dLat = destLat ? parseFloat(destLat) : null;
+  const dLng = destLng ? parseFloat(destLng) : null;
+
+  const trackPath = type === "ride" ? `rides/${orderId}/track`
+    : type === "parcel" ? `orders/${orderId}/track`
+    : type === "pharmacy" ? `pharmacy-orders/${orderId}/track`
+    : `orders/${orderId}/track`;
+
+  const t = {
+    waiting:     isUrdu ? "ڈرائیور کی جگہ کا انتظار..." : "Waiting for driver location...",
+    onWay:       isUrdu ? "آپ کی طرف آ رہا ہے" : "On the way to you",
+    arrived:     isUrdu ? "پہنچ گیا" : "Arrived",
+    offline:     isUrdu ? "آف لائن" : "Offline",
+    unavailable: isUrdu ? "ٹریکنگ دستیاب نہیں" : "Tracking unavailable",
+    destination: isUrdu ? "منزل" : `${destLabel}`,
+    rider:       isUrdu ? "ڈرائیور" : "Driver",
+  };
+
+  const html = `<!DOCTYPE html>
+<html lang="${isUrdu ? "ur" : "en"}" dir="${isUrdu ? "rtl" : "ltr"}">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <title>Live Tracking</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;background:#0f172a;overflow:hidden}
+    #map{width:100%;height:100%}
+    .leaflet-control-attribution{display:none!important}
+    .leaflet-control-zoom{border-radius:10px!important;border:none!important;box-shadow:0 2px 8px rgba(0,0,0,.3)!important}
+    /* Rider marker pulse animation */
+    .rider-pulse{width:40px;height:40px;position:relative}
+    .rider-pulse .dot{width:20px;height:20px;background:#3b82f6;border:3px solid #fff;border-radius:50%;position:absolute;top:10px;left:10px;box-shadow:0 2px 6px rgba(59,130,246,.6)}
+    .rider-pulse .ring{width:40px;height:40px;border:3px solid #3b82f6;border-radius:50%;position:absolute;top:0;left:0;animation:pulse 1.8s ease-out infinite;opacity:0}
+    @keyframes pulse{0%{transform:scale(.4);opacity:.8}100%{transform:scale(1.4);opacity:0}}
+    /* Destination marker */
+    .dest-marker{width:36px;height:44px;position:relative}
+    .dest-marker svg{width:36px;height:44px;filter:drop-shadow(0 2px 5px rgba(0,0,0,.4))}
+    /* Status overlay */
+    #status-bar{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:rgba(15,23,42,.92);backdrop-filter:blur(8px);padding:12px 16px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 12px);display:flex;align-items:center;gap:10px}
+    #status-dot{width:10px;height:10px;border-radius:50%;background:#22c55e;flex-shrink:0;animation:blink 1.5s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    #status-dot.waiting{background:#f59e0b;animation:none}
+    #status-dot.offline{background:#ef4444;animation:none}
+    #status-text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#e2e8f0;font-weight:600;flex:1}
+    #accuracy-text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;color:#64748b}
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="status-bar">
+  <div id="status-dot" class="waiting"></div>
+  <span id="status-text">${t.waiting}</span>
+  <span id="accuracy-text"></span>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+<script>
+  const ORDER_ID    = ${JSON.stringify(orderId || "")};
+  const TRACK_PATH  = ${JSON.stringify(trackPath)};
+  const TOKEN       = ${JSON.stringify(token)};
+  const DEST_LAT    = ${dLat !== null ? dLat : "null"};
+  const DEST_LNG    = ${dLng !== null ? dLng : "null"};
+  const API_BASE    = window.location.origin;
+  const POLL_MS     = 6000;
+
+  /* ── Map init (default to destination or Pakistan center) ── */
+  const initLat = DEST_LAT || 33.7294, initLng = DEST_LNG || 73.3872;
+  const map = L.map('map', { zoomControl: true, attributionControl: false })
+    .setView([initLat, initLng], 14);
+
+  /* ── Tile provider from config ── */
+  let tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  fetch(API_BASE + '/api/maps/config?app=tracking')
+    .then(r => r.json())
+    .then(d => {
+      const cfg = d?.data ?? d;
+      const prov = cfg?.provider ?? 'osm';
+      const tok  = cfg?.token ?? '';
+      let url = null;
+      if (prov === 'mapbox' && tok)
+        url = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=' + tok;
+      else if (prov === 'google' && tok)
+        url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=' + tok;
+      else if (prov === 'locationiq' && tok)
+        url = 'https://tiles.locationiq.com/v3/streets/r/{z}/{x}/{y}.png?key=' + tok;
+      if (url) { map.removeLayer(tileLayer); tileLayer = L.tileLayer(url, { maxZoom: 19 }).addTo(map); }
+    }).catch(() => {});
+
+  /* ── Destination marker ── */
+  const destIcon = L.divIcon({
+    html: '<div class="dest-marker"><svg viewBox="0 0 36 44" fill="none"><circle cx="18" cy="18" r="17" fill="#ef4444" stroke="white" stroke-width="2.5"/><circle cx="18" cy="18" r="7" fill="white"/><path d="M18 35 L12 24 Q18 28 24 24 Z" fill="#ef4444"/></svg></div>',
+    iconSize: [36, 44], iconAnchor: [18, 44], className: ''
+  });
+  let destMarker = null;
+  if (DEST_LAT && DEST_LNG) {
+    destMarker = L.marker([DEST_LAT, DEST_LNG], { icon: destIcon })
+      .bindPopup('<b>${t.destination}</b>', { closeButton: false })
+      .addTo(map);
+  }
+
+  /* ── Rider marker (pulse animation) ── */
+  const riderIcon = L.divIcon({
+    html: '<div class="rider-pulse"><div class="ring"></div><div class="dot"></div></div>',
+    iconSize: [40, 40], iconAnchor: [20, 20], className: ''
+  });
+  let riderMarker = null;
+  let hasFirstFix = false;
+
+  const statusDot  = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const accText    = document.getElementById('accuracy-text');
+
+  function setStatus(state, text, acc) {
+    statusDot.className = state;
+    statusText.textContent = text;
+    accText.textContent = acc || '';
+  }
+
+  /* ── Smooth marker animation ── */
+  function animateMarkerTo(marker, targetLat, targetLng, steps) {
+    const start = marker.getLatLng();
+    const dLat = (targetLat - start.lat) / steps;
+    const dLng = (targetLng - start.lng) / steps;
+    let i = 0;
+    function step() {
+      if (i++ >= steps) return;
+      marker.setLatLng([start.lat + dLat * i, start.lng + dLng * i]);
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  /* ── Poll tracking API ── */
+  async function poll() {
+    if (!ORDER_ID || !TRACK_PATH) { setStatus('offline', '${t.unavailable}', ''); return; }
+    try {
+      const r = await fetch(API_BASE + '/api/' + TRACK_PATH, {
+        headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}
+      });
+      if (!r.ok) throw new Error('fetch');
+      const d = await r.json();
+      const data = d?.data ?? d;
+      const lat = typeof data.riderLat === 'number' ? data.riderLat : null;
+      const lng = typeof data.riderLng === 'number' ? data.riderLng : null;
+      if (lat === null || lng === null) {
+        setStatus('waiting', '${t.waiting}', '');
+        return;
+      }
+      setStatus('status-dot', '${t.onWay}', data.accuracy ? '±' + Math.round(data.accuracy) + 'm' : '');
+      if (!riderMarker) {
+        riderMarker = L.marker([lat, lng], { icon: riderIcon }).addTo(map);
+        if (!hasFirstFix) {
+          hasFirstFix = true;
+          const bounds = [];
+          if (destMarker) bounds.push(destMarker.getLatLng());
+          bounds.push([lat, lng]);
+          if (bounds.length > 1) {
+            map.fitBounds(L.latLngBounds(bounds), { padding: [48, 48], maxZoom: 16, animate: true });
+          } else {
+            map.setView([lat, lng], 16, { animate: true });
+          }
+        }
+      } else {
+        animateMarkerTo(riderMarker, lat, lng, 30);
+        if (!hasFirstFix) { map.setView([lat, lng], 16, { animate: true }); hasFirstFix = true; }
+      }
+      /* Notify parent frame with new position */
+      try { window.parent.postMessage({ type: 'RIDER_LOCATION', lat, lng }, '*'); } catch {}
+      try { if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'RIDER_LOCATION', lat, lng })); } catch {}
+    } catch {
+      setStatus('offline', '${t.unavailable}', '');
+    }
+  }
+
+  /* ── Listen for postMessage updates from parent (socket relay) ── */
+  window.addEventListener('message', e => {
+    try {
+      const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (msg?.type === 'RIDER_UPDATE' && typeof msg.lat === 'number' && typeof msg.lng === 'number') {
+        if (!riderMarker) {
+          riderMarker = L.marker([msg.lat, msg.lng], { icon: riderIcon }).addTo(map);
+          hasFirstFix = true;
+          const bounds = destMarker ? [[msg.lat, msg.lng], destMarker.getLatLng()] : [[msg.lat, msg.lng]];
+          if (destMarker) map.fitBounds(L.latLngBounds(bounds), { padding: [48, 48], maxZoom: 16, animate: true });
+          else map.setView([msg.lat, msg.lng], 16, { animate: true });
+        } else {
+          animateMarkerTo(riderMarker, msg.lat, msg.lng, 30);
+        }
+        setStatus('status-dot', '${t.onWay}', '');
+      }
+    } catch {}
+  });
+
+  poll();
+  setInterval(poll, POLL_MS);
+</script>
+</body></html>`;
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Content-Security-Policy", "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'");
   res.send(html);
 });
 

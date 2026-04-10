@@ -31,6 +31,7 @@ import {
   DevOtpBanner,
   authColors as C,
 } from "@/components/auth-shared";
+import { MapPickerModal, type MapPickerResult } from "@/components/ride/MapPickerModal";
 
 const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
 
@@ -85,6 +86,7 @@ export default function RegisterScreen() {
   const [longitude, setLongitude] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsStatus, setGpsStatus] = useState("");
+  const [mapPickerVisible, setMapPickerVisible] = useState(false);
 
   const [cnic, setCnic] = useState("");
   const [password, setPassword] = useState("");
@@ -622,22 +624,34 @@ export default function RegisterScreen() {
 
           {step === 3 && (
             <>
-              <TouchableOpacity activeOpacity={0.7}
-                onPress={handleGetLocation}
-                disabled={gpsLoading}
-                style={s.gpsButton}
-                accessibilityRole="button"
-                accessibilityLabel="Use GPS to fill address"
-              >
-                {gpsLoading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Ionicons name="navigate" size={20} color="#fff" />
-                )}
-                <Text style={s.gpsButtonText}>
-                  {gpsLoading ? "Getting Location..." : "Use My Current Location"}
-                </Text>
-              </TouchableOpacity>
+              {/* Map & GPS buttons row */}
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
+                <TouchableOpacity activeOpacity={0.7}
+                  onPress={() => setMapPickerVisible(true)}
+                  style={[s.gpsButton, { flex: 1, backgroundColor: C.primary }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick location on map"
+                >
+                  <Ionicons name="map" size={18} color="#fff" />
+                  <Text style={s.gpsButtonText}>Pick on Map</Text>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.7}
+                  onPress={handleGetLocation}
+                  disabled={gpsLoading}
+                  style={[s.gpsButton, { flex: 1, backgroundColor: C.success }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use GPS location"
+                >
+                  {gpsLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="navigate" size={18} color="#fff" />
+                  )}
+                  <Text style={s.gpsButtonText}>
+                    {gpsLoading ? "Getting..." : "Use GPS"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               {!!gpsStatus && (
                 <Text style={[s.gpsStatusText, gpsStatus.includes("denied") && { color: C.danger }]}>
                   {gpsStatus}
@@ -811,6 +825,24 @@ export default function RegisterScreen() {
           )}
         </ScrollView>
       </LinearGradient>
+
+      {/* Map picker modal for step 3 location selection */}
+      <MapPickerModal
+        visible={mapPickerVisible}
+        label="Delivery Location"
+        initialLat={latitude ? parseFloat(latitude) : undefined}
+        initialLng={longitude ? parseFloat(longitude) : undefined}
+        onClose={() => setMapPickerVisible(false)}
+        onConfirm={(result: MapPickerResult) => {
+          setMapPickerVisible(false);
+          setLatitude(result.lat.toFixed(7));
+          setLongitude(result.lng.toFixed(7));
+          if (result.address) {
+            setAddress(result.address);
+          }
+          setGpsStatus("Location selected on map");
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
