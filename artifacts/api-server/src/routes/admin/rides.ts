@@ -7,7 +7,7 @@ import {
   notificationsTable,
   ordersTable, ridesTable, rideBidsTable, rideServiceTypesTable, popularLocationsTable, schoolRoutesTable, schoolSubscriptionsTable, liveLocationsTable, rideEventLogsTable, rideNotifiedRidersTable, locationLogsTable, locationHistoryTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -763,24 +763,40 @@ router.get("/school-subscriptions", validateQuery(schoolSubscriptionsQuerySchema
     ? db.select().from(schoolSubscriptionsTable).where(eq(schoolSubscriptionsTable.routeId, routeIdFilter))
     : db.select().from(schoolSubscriptionsTable);
   const subs = await query.orderBy(desc(schoolSubscriptionsTable.createdAt));
-  /* Enrich with user info */
-  const enriched = await Promise.all(subs.map(async sub => {
-    const [user] = await db.select({ name: usersTable.name, phone: usersTable.phone })
-      .from(usersTable).where(eq(usersTable.id, sub.userId)).limit(1);
-    const [route] = await db.select({ routeName: schoolRoutesTable.routeName, schoolName: schoolRoutesTable.schoolName })
-      .from(schoolRoutesTable).where(eq(schoolRoutesTable.id, sub.routeId)).limit(1);
+
+  /* Batch-fetch users and routes to avoid N+1 queries */
+  const userIds  = [...new Set(subs.map(s => s.userId))];
+  const routeIds = [...new Set(subs.map(s => s.routeId))];
+
+  const [users, routes] = await Promise.all([
+    userIds.length
+      ? db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone })
+          .from(usersTable).where(inArray(usersTable.id, userIds))
+      : Promise.resolve([]),
+    routeIds.length
+      ? db.select({ id: schoolRoutesTable.id, routeName: schoolRoutesTable.routeName, schoolName: schoolRoutesTable.schoolName })
+          .from(schoolRoutesTable).where(inArray(schoolRoutesTable.id, routeIds))
+      : Promise.resolve([]),
+  ]);
+
+  const userMap  = new Map(users.map(u => [u.id, u]));
+  const routeMap = new Map(routes.map(r => [r.id, r]));
+
+  const enriched = subs.map(sub => {
+    const user  = userMap.get(sub.userId);
+    const route = routeMap.get(sub.routeId);
     return {
       ...sub,
       monthlyAmount:   parseFloat(String(sub.monthlyAmount ?? "0")),
-      userName:        user?.name  || null,
-      userPhone:       user?.phone || null,
-      routeName:       route?.routeName   || null,
-      schoolName:      route?.schoolName  || null,
+      userName:        user?.name  ?? null,
+      userPhone:       user?.phone ?? null,
+      routeName:       route?.routeName  ?? null,
+      schoolName:      route?.schoolName ?? null,
       startDate:       sub.startDate instanceof Date       ? sub.startDate.toISOString()       : sub.startDate,
       nextBillingDate: sub.nextBillingDate instanceof Date ? sub.nextBillingDate.toISOString() : sub.nextBillingDate,
       createdAt:       sub.createdAt instanceof Date       ? sub.createdAt.toISOString()       : sub.createdAt,
     };
-  }));
+  });
   sendSuccess(res, { subscriptions: enriched, total: enriched.length });
 });
 

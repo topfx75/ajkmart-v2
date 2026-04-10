@@ -40,6 +40,8 @@ export const ordersTable = pgTable("orders", {
   index("orders_rider_id_idx").on(t.riderId),
   index("orders_vendor_id_idx").on(t.vendorId),
   index("orders_status_idx").on(t.status),
+  index("orders_type_idx").on(t.type),
+  index("orders_payment_method_idx").on(t.paymentMethod),
   index("orders_created_at_idx").on(t.createdAt),
   check("orders_total_non_negative", sql`${t.total} >= 0`),
 ]);

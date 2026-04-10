@@ -469,15 +469,6 @@ export default function Home() {
           const dist = haversineMeters(lastLat, lastLng, latitude, longitude);
           if (dist < MIN_DISTANCE_METERS) return;
         }
-        /* No previous position — record it but don't send a keepalive ping;
-           the socket heartbeat already signals liveness to the server. */
-        if (lastLat === null) {
-          lastLat = latitude;
-          lastLng = longitude;
-          lastSentTime = now;
-          return;
-        }
-
         lastSentTime = now;
         lastLat = latitude;
         lastLng = longitude;

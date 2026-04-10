@@ -486,7 +486,8 @@ function TurnByTurnPanel({ fromLat, fromLng, toLat, toLng, label, riderLat, ride
     const steps = route.steps;
     let newStep = currentStep;
     for (let i = currentStep; i < steps.length - 1; i++) {
-      const step = steps[i + 1]!;
+      const step = steps[i + 1];
+      if (!step) continue;
       if (step.maneuverLat != null && step.maneuverLng != null) {
         const distM = haversineDistance(riderLat, riderLng, step.maneuverLat, step.maneuverLng) * 1000;
         if (distM <= STEP_ADVANCE_M) {

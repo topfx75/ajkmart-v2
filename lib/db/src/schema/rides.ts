@@ -55,6 +55,8 @@ export const ridesTable = pgTable("rides", {
   index("rides_user_id_idx").on(t.userId),
   index("rides_rider_id_idx").on(t.riderId),
   index("rides_status_idx").on(t.status),
+  index("rides_type_idx").on(t.type),
+  index("rides_payment_method_idx").on(t.paymentMethod),
   index("rides_created_at_idx").on(t.createdAt),
   /* Prevent a customer from holding more than one active ride at a time.
      The partial index fires only on non-terminal statuses so completed/cancelled

@@ -4,7 +4,7 @@ import {
   schoolRoutesTable, schoolSubscriptionsTable,
   notificationsTable, usersTable, walletTransactionsTable,
 } from "@workspace/db/schema";
-import { asc, desc, eq, and, sql, gte } from "drizzle-orm";
+import { asc, desc, eq, and, sql, gte, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { customerAuth } from "../middleware/security.js";
 import { getUserLanguage } from "../lib/getUserLanguage.js";
@@ -180,10 +180,15 @@ router.get("/my-subscriptions", customerAuth, async (req, res) => {
     .where(eq(schoolSubscriptionsTable.userId, userId))
     .orderBy(desc(schoolSubscriptionsTable.createdAt));
 
-  /* Enrich with route info */
-  const enriched = await Promise.all(subs.map(async (sub) => {
-    const [route] = await db.select().from(schoolRoutesTable)
-      .where(eq(schoolRoutesTable.id, sub.routeId)).limit(1);
+  /* Batch-fetch routes to avoid N+1 queries */
+  const routeIds = [...new Set(subs.map(s => s.routeId))];
+  const routes = routeIds.length
+    ? await db.select().from(schoolRoutesTable).where(inArray(schoolRoutesTable.id, routeIds))
+    : [];
+  const routeMap = new Map(routes.map(r => [r.id, r]));
+
+  const enriched = subs.map((sub) => {
+    const route = routeMap.get(sub.routeId);
     return {
       ...sub,
       monthlyAmount: safeNum(sub.monthlyAmount),
@@ -192,7 +197,7 @@ router.get("/my-subscriptions", customerAuth, async (req, res) => {
       nextBillingDate: sub.nextBillingDate instanceof Date ? sub.nextBillingDate.toISOString() : sub.nextBillingDate,
       createdAt: sub.createdAt instanceof Date ? sub.createdAt.toISOString() : sub.createdAt,
     };
-  }));
+  });
 
   res.json({ subscriptions: enriched });
 });
