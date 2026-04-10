@@ -760,6 +760,38 @@ export async function ensureTwoFactorEnforcedAt() {
   _twoFactorEnforcedAtMigrated = true;
 }
 
+let _profileCompleteMigrated = false;
+export async function ensureProfileCompleteColumn() {
+  if (_profileCompleteMigrated) return;
+
+  const stmts = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_complete BOOLEAN NOT NULL DEFAULT false`,
+    /* Backfill: mark existing legitimate users as complete so they are not locked out */
+    `UPDATE users SET is_profile_complete = true
+     WHERE is_profile_complete = false
+       AND phone_verified = true
+       AND name IS NOT NULL AND name != ''
+       AND (approval_status = 'approved' OR approval_status = 'pending')`,
+    /* Add payload column to pending_otps so registration intent can be stored before OTP verification */
+    `ALTER TABLE pending_otps ADD COLUMN IF NOT EXISTS payload TEXT`,
+  ];
+
+  for (const stmt of stmts) {
+    try {
+      await db.execute(sql.raw(stmt));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/already exists|duplicate column|42701/i.test(msg)) {
+        logger.fatal({ err: e }, `[migration] profileComplete: FATAL — ${stmt}`);
+        throw e;
+      }
+    }
+  }
+
+  logger.info("[migration] profileComplete: migration complete");
+  _profileCompleteMigrated = true;
+}
+
 let _silenceModeMigrated = false;
 export async function ensureSilenceModeColumns() {
   if (_silenceModeMigrated) return;

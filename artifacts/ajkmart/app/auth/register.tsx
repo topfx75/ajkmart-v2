@@ -94,6 +94,7 @@ export default function RegisterScreen() {
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   const signupBonus = config.customer.signupBonus;
 
@@ -373,6 +374,7 @@ export default function RegisterScreen() {
       if (profileData.token) setAuthToken(profileData.token);
       if (profileData.refreshToken) setAuthRefreshToken(profileData.refreshToken);
       if (profileData.user) setAuthUser(profileData.user);
+      if (profileData.pendingApproval) setPendingApproval(true);
 
       setStep(5);
     } catch (e: any) { setError(e.message || "Could not save profile."); }
@@ -380,6 +382,16 @@ export default function RegisterScreen() {
   };
 
   const handleFinish = async () => {
+    /* Riders/vendors are pending approval — just go to login screen */
+    if (pendingApproval) {
+      try {
+        const SecureStore = await import("expo-secure-store");
+        await SecureStore.deleteItemAsync("ajkmart_reg_token");
+      } catch {}
+      router.replace("/auth");
+      return;
+    }
+
     setLoading(true);
     try {
       let finalToken = authToken;
@@ -428,6 +440,35 @@ export default function RegisterScreen() {
   const levelInfo = LEVEL_CONFIG[accountLevel] || LEVEL_CONFIG.bronze;
 
   if (step === 5) {
+    if (pendingApproval) {
+      return (
+        <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
+          <ScrollView contentContainerStyle={s.successScroll}>
+            <View style={s.successCard}>
+              <View style={s.successIconWrap}>
+                <View style={[s.successIconCircle, { backgroundColor: "#F59E0B" }]}>
+                  <Ionicons name="time" size={40} color="#fff" />
+                </View>
+              </View>
+              <Text style={s.successTitle}>Application Submitted!</Text>
+              <Text style={s.successSub}>
+                Your account is under review. Our team will verify your details and activate your account shortly.
+              </Text>
+
+              <View style={[s.kycPrompt, { backgroundColor: "#FEF3C7", borderColor: "#F59E0B" }]}>
+                <Ionicons name="information-circle-outline" size={20} color="#D97706" />
+                <Text style={[s.kycText, { color: "#92400E" }]}>
+                  You will be notified once your account is approved. This usually takes 24–48 hours.
+                </Text>
+              </View>
+
+              <AuthButton label="Back to Login" onPress={handleFinish} loading={loading} icon="log-in-outline" />
+            </View>
+          </ScrollView>
+        </LinearGradient>
+      );
+    }
+
     return (
       <LinearGradient colors={[C.primaryDark, C.primary, C.primaryLight]} style={s.gradient}>
         <ScrollView contentContainerStyle={s.successScroll}>

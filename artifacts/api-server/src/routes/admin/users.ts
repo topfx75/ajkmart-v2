@@ -9,6 +9,8 @@ import {
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable,
   accountConditionsTable,
   savedAddressesTable,
+  riderProfilesTable,
+  vendorProfilesTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
@@ -38,6 +40,15 @@ const createUserSchema = z.object({
   city: z.string().optional(),
   area: z.string().optional(),
   email: z.string().email().optional(),
+  /* Rider-specific fields */
+  cnic: z.string().optional(),
+  vehicleType: z.string().optional(),
+  /* Vendor-specific fields */
+  businessName: z.string().optional(),
+  storeName: z.string().optional(),
+  storeCategory: z.string().optional(),
+  /* Admin override: immediately approve this user (skip pending queue) */
+  approveNow: z.boolean().optional(),
 }).strip();
 
 const patchUserSchema = z.object({
@@ -84,6 +95,7 @@ const userIdentitySchema = z.object({
 
 const usersQuerySchema = z.object({
   filter: z.enum(["2fa_enabled", ""]).optional(),
+  profileStatus: z.enum(["complete", "incomplete", ""]).optional(),
   conditionTier: z.enum(["has_conditions", "clean", "warnings", "restrictions", "suspensions", "bans", ""]).optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().positive().optional(),
@@ -115,7 +127,7 @@ const bulkBanSchema = z.object({
 const router = Router();
 
 router.post("/users", validateBody(createUserSchema), async (req, res) => {
-  const { phone, name, role, city, area, email } = req.body;
+  const { phone, name, role, city, area, email, cnic, vehicleType, businessName, storeName, storeCategory, approveNow } = req.body;
   const trimPhone = typeof phone === "string" ? phone.trim() : "";
   const trimName = typeof name === "string" ? name.trim() : "";
   if (!trimPhone && !trimName) {
@@ -128,7 +140,28 @@ router.post("/users", validateBody(createUserSchema), async (req, res) => {
   }
   const validRoles = ["customer", "rider", "vendor"];
   const userRole = validRoles.includes(role) ? role : "customer";
+
+  /* Role-based profile completion and activation:
+     - Customer:  complete when name provided; auto-approved + active
+     - Rider:     complete when name + cnic provided; pending approval (or approveNow override)
+     - Vendor:    complete when name + (businessName or storeName) provided; pending approval (or approveNow override)
+     approveNow flag lets admin immediately activate a rider/vendor on creation. */
+  let isProfileComplete = false;
+  if (userRole === "customer") {
+    isProfileComplete = !!(trimName);
+  } else if (userRole === "rider") {
+    isProfileComplete = !!(trimName) && !!(typeof cnic === "string" && cnic.trim());
+  } else if (userRole === "vendor") {
+    const hasStore = !!(typeof businessName === "string" && businessName.trim()) || !!(typeof storeName === "string" && storeName.trim());
+    isProfileComplete = !!(trimName) && hasStore;
+  }
+
+  const adminApproveNow = approveNow === true && isProfileComplete;
+  const approvalStatus = (userRole === "customer" || adminApproveNow) ? "approved" : "pending";
+  const isActive = isProfileComplete && (userRole === "customer" || adminApproveNow);
+
   try {
+    const platformSettings = await getPlatformSettings();
     const [user] = await db.insert(usersTable).values({
       id: generateId(),
       phone: trimPhone || null,
@@ -138,11 +171,31 @@ router.post("/users", validateBody(createUserSchema), async (req, res) => {
       roles: userRole,
       city: typeof city === "string" && city.trim() ? city.trim() : null,
       area: typeof area === "string" && area.trim() ? area.trim() : null,
+      cnic: typeof cnic === "string" && cnic.trim() ? cnic.trim() : null,
+      nationalId: typeof cnic === "string" && cnic.trim() ? cnic.trim() : null,
+      businessName: typeof businessName === "string" && businessName.trim() ? businessName.trim() : (typeof storeName === "string" && storeName.trim() ? storeName.trim() : null),
       phoneVerified: true,
-      approvalStatus: "approved",
-      isActive: true,
-      walletBalance: String(parseFloat((await getPlatformSettings())["customer_signup_bonus"] ?? "1000") || 1000),
+      approvalStatus,
+      isActive,
+      isProfileComplete,
+      walletBalance: isActive && userRole === "customer" ? String(parseFloat(platformSettings["customer_signup_bonus"] ?? "0") || 0) : "0",
     }).returning();
+
+    /* Create role-specific profile records if fields were provided */
+    if (userRole === "rider" && vehicleType) {
+      await db.insert(riderProfilesTable).values({
+        userId: user!.id,
+        vehicleType: vehicleType.toLowerCase().replace(/\s+/g, "_"),
+      }).onConflictDoNothing();
+    }
+    if (userRole === "vendor" && (storeName || businessName)) {
+      await db.insert(vendorProfilesTable).values({
+        userId: user!.id,
+        storeName: storeName || businessName || null,
+        storeCategory: storeCategory || null,
+      }).onConflictDoNothing();
+    }
+
     sendSuccess(res, { user: stripUser(user!) });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -188,6 +241,7 @@ router.get("/users/search-riders", validateQuery(searchRidersQuerySchema), async
 
 router.get("/users", validateQuery(usersQuerySchema), async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
+  const profileStatus = (req.query?.profileStatus as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
   const search = (req.query?.search as string) ?? "";
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
@@ -197,6 +251,11 @@ router.get("/users", validateQuery(usersQuerySchema), async (req, res) => {
   const whereConditions: ReturnType<typeof and>[] = [];
   if (filter === "2fa_enabled") {
     whereConditions.push(eq(usersTable.totpEnabled, true));
+  }
+  if (profileStatus === "complete") {
+    whereConditions.push(eq(usersTable.isProfileComplete, true));
+  } else if (profileStatus === "incomplete") {
+    whereConditions.push(eq(usersTable.isProfileComplete, false));
   }
   if (search) {
     whereConditions.push(or(

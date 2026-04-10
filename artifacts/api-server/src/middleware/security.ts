@@ -281,6 +281,7 @@ export interface JwtUserPayload {
   role: string;
   roles: string;
   tokenVersion?: number;
+  setupOnly?: boolean;
   exp?: number;
   iat?: number;
 }
@@ -299,12 +300,22 @@ export function signUserJwt(
   );
 }
 
-/** Sign a short-lived access token (15 minutes), embedding tokenVersion for revocation checks. */
+/** Sign a short-lived access token (1 hour), embedding tokenVersion for revocation checks. */
 export function signAccessToken(userId: string, phone: string, role: string, roles: string, tokenVersion = 0): string {
   return jwt.sign(
     { sub: userId, phone, role, roles, tokenVersion, type: "access" },
     JWT_SECRET,
     { algorithm: "HS256", expiresIn: ACCESS_TOKEN_TTL_SEC },
+  );
+}
+
+/** Sign a scoped "setup-only" token for new users who have verified OTP but not completed registration.
+ * This token ONLY works on /auth/complete-profile and is rejected by all other protected routes. */
+export function signSetupToken(userId: string, phone: string, role: string): string {
+  return jwt.sign(
+    { sub: userId, phone, role, roles: role, setupOnly: true, type: "setup" },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: 30 * 60 },
   );
 }
 
@@ -370,6 +381,7 @@ export function verifyUserJwt(token: string): JwtUserPayload | null {
       role:         payload["role"]  as string ?? "customer",
       roles:        payload["roles"] as string ?? "customer",
       tokenVersion: typeof payload["tokenVersion"] === "number" ? payload["tokenVersion"] : undefined,
+      setupOnly:    payload["setupOnly"] === true,
       exp:          typeof payload.exp === "number" ? payload.exp : undefined,
       iat:          typeof payload.iat === "number" ? payload.iat : undefined,
     };
@@ -778,6 +790,13 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
     return;
   }
 
+  /* Setup-only tokens are scoped to /auth/complete-profile — reject everywhere else */
+  if (payload.setupOnly) {
+    writeAuthAuditLog("auth_denied_setup_token", { userId: payload.userId, ip, metadata: { url: req.url } });
+    res.status(403).json({ success: false, code: "PROFILE_INCOMPLETE", error: "Profile setup required. Please complete your registration.", message: "پروفائل سیٹ اپ ضروری ہے۔ براہ کرم رجسٹریشن مکمل کریں۔" });
+    return;
+  }
+
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
   if (user.isBanned) {
@@ -788,6 +807,13 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
   if (!user.isActive) {
     writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip });
     res.status(403).json({ success: false, error: "Your account is inactive. Contact support.", message: "آپ کا اکاؤنٹ غیر فعال ہے۔ سپورٹ سے رابطہ کریں۔" });
+    return;
+  }
+
+  /* Block profile-incomplete users from protected routes */
+  if (!user.isProfileComplete) {
+    writeAuthAuditLog("auth_denied_profile_incomplete", { userId: user.id, ip, metadata: { url: req.url } });
+    res.status(403).json({ success: false, code: "PROFILE_INCOMPLETE", error: "Profile setup required. Please complete your registration.", message: "پروفائل سیٹ اپ ضروری ہے۔ براہ کرم رجسٹریشن مکمل کریں۔" });
     return;
   }
 
@@ -831,11 +857,23 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
     return;
   }
 
+  /* Setup-only tokens are scoped to /auth/complete-profile — reject everywhere else */
+  if (payload.setupOnly) {
+    writeAuthAuditLog("auth_denied_setup_token", { userId: payload.userId, ip, metadata: { url: req.url, role: "rider" } });
+    res.status(403).json({ success: false, code: "PROFILE_INCOMPLETE", error: "Profile setup required.", message: "پروفائل سیٹ اپ ضروری ہے۔" });
+    return;
+  }
+
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
   if (user.isBanned) {
     writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
     res.status(403).json({ success: false, code: "AUTH_REQUIRED", error: "Account is banned.", message: "اکاؤنٹ پابندی شدہ ہے۔" }); return;
+  }
+  /* Block users whose profile setup has not been completed */
+  if (!user.isProfileComplete) {
+    writeAuthAuditLog("auth_denied_profile_incomplete", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
+    res.status(403).json({ success: false, code: "PROFILE_INCOMPLETE", error: "Profile setup required.", message: "پروفائل سیٹ اپ ضروری ہے۔" }); return;
   }
   if (!user.isActive) {
     writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
@@ -905,6 +943,13 @@ export function requireRole(
       return;
     }
 
+    /* Setup-only tokens are scoped to /auth/complete-profile — reject everywhere else */
+    if (payload.setupOnly) {
+      writeAuthAuditLog("auth_denied_setup_token", { userId: payload.userId, ip, metadata: { url: req.url } });
+      res.status(403).json({ success: false, code: "PROFILE_INCOMPLETE", error: "Profile setup required. Please complete your registration.", message: "پروفائل سیٹ اپ ضروری ہے۔ براہ کرم رجسٹریشن مکمل کریں۔" });
+      return;
+    }
+
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
     if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
 
@@ -929,6 +974,13 @@ export function requireRole(
       }
       writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url } });
       res.status(403).json({ success: false, error: "Account is inactive. Please contact support.", message: "اکاؤنٹ غیر فعال ہے۔ براہ کرم سپورٹ سے رابطہ کریں۔" });
+      return;
+    }
+
+    /* Block profile-incomplete users from protected routes */
+    if (!user.isProfileComplete) {
+      writeAuthAuditLog("auth_denied_profile_incomplete", { userId: user.id, ip, metadata: { url: req.url } });
+      res.status(403).json({ success: false, code: "PROFILE_INCOMPLETE", error: "Profile setup required. Please complete your registration.", message: "پروفائل سیٹ اپ ضروری ہے۔ براہ کرم رجسٹریشن مکمل کریں۔" });
       return;
     }
 

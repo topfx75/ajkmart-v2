@@ -17,6 +17,7 @@ import {
   getCachedSettings,
   signUserJwt,
   signAccessToken,
+  signSetupToken,
   sign2faChallengeToken,
   verify2faChallengeToken,
   generateRefreshToken,
@@ -787,51 +788,94 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
       return;
     }
 
-    /* OTP valid — create user record now */
-    const requireApproval = (settings["user_require_approval"] ?? "off") === "on";
+    /* OTP valid — create user record now (profile NOT complete yet)
+       If a registration payload exists (from /auth/register flow), use it to
+       pre-fill all the fields the user submitted; otherwise start with minimal data. */
     const deviceId = req.body.deviceId as string | undefined;
     const newUserId = generateId();
+
+    let regPayload: Record<string, unknown> | null = null;
+    if (pending.payload) {
+      try { regPayload = JSON.parse(pending.payload); } catch { regPayload = null; }
+    }
+
+    const userRole = (regPayload?.role === "rider" || regPayload?.role === "vendor")
+      ? (regPayload.role as "rider" | "vendor")
+      : "customer";
+
     await db.insert(usersTable).values({
-      id:             newUserId,
+      id:               newUserId,
       phone,
-      role:           "customer",
-      roles:          "customer",
-      walletBalance:  "0",
-      phoneVerified:  true,
-      isActive:       !requireApproval,
-      approvalStatus: requireApproval ? "pending" : "approved",
+      role:             userRole,
+      roles:            userRole,
+      walletBalance:    "0",
+      phoneVerified:    true,
+      isActive:         false,
+      approvalStatus:   "pending",
+      isProfileComplete: false,
       ...(deviceId ? { deviceId } : {}),
+      /* Pre-fill from registration intent if available */
+      ...(regPayload ? {
+        name:            (regPayload.name as string) || null,
+        email:           (regPayload.email as string) || null,
+        username:        (regPayload.username as string) || null,
+        passwordHash:    (regPayload.passwordHash as string) || null,
+        cnic:            (regPayload.cnic as string) || null,
+        nationalId:      (regPayload.cnic as string) || null,
+        vehicleRegNo:    (regPayload.vehicleRegNo as string) || null,
+        vehiclePlate:    (regPayload.vehiclePlate as string) || null,
+        drivingLicense:  (regPayload.drivingLicense as string) || null,
+        address:         (regPayload.address as string) || null,
+        city:            (regPayload.city as string) || null,
+        emergencyContact: (regPayload.emergencyContact as string) || null,
+        vehiclePhoto:    (regPayload.vehiclePhoto as string) || null,
+        documents:       (regPayload.documents as string) || null,
+        businessName:    (regPayload.businessName as string) || null,
+        businessType:    (regPayload.businessType as string) || null,
+        storeAddress:    (regPayload.storeAddress as string) || null,
+        ntn:             (regPayload.ntn as string) || null,
+      } : {}),
     });
 
-    /* Delete from pending_otps */
-    await db.delete(pendingOtpsTable).where(eq(pendingOtpsTable.phone, phone));
-    writeAuthAuditLog("otp_verified_new_user", { userId: newUserId, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
-
-    const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
-    if (signupBonus > 0) {
-      await db.update(usersTable)
-        .set({ walletBalance: sql`wallet_balance + ${signupBonus}` })
-        .where(eq(usersTable.id, newUserId));
-      await db.insert(walletTransactionsTable).values({
-        id: generateId(), userId: newUserId, type: "bonus",
-        amount: signupBonus.toFixed(2), description: "Welcome bonus — Thanks for joining!",
+    /* Create role-specific profiles if registration payload had that data */
+    if (regPayload && userRole === "rider" && regPayload.vehicleType) {
+      await db.insert(riderProfilesTable).values({
+        userId: newUserId,
+        vehicleType: normalizeVehicleTypeForStorage(regPayload.vehicleType as string),
+      }).onConflictDoUpdate({
+        target: riderProfilesTable.userId,
+        set: { vehicleType: normalizeVehicleTypeForStorage(regPayload.vehicleType as string) },
+      });
+    }
+    if (regPayload && userRole === "vendor" && (regPayload.storeName || regPayload.businessName)) {
+      await db.insert(vendorProfilesTable).values({
+        userId: newUserId,
+        storeName: (regPayload.storeName as string) || (regPayload.businessName as string) || null,
+        storeCategory: (regPayload.storeCategory as string) || null,
+      }).onConflictDoUpdate({
+        target: vendorProfilesTable.userId,
+        set: {
+          storeName: (regPayload.storeName as string) || (regPayload.businessName as string) || null,
+          storeCategory: (regPayload.storeCategory as string) || null,
+        },
       });
     }
 
-    const accessToken = signAccessToken(newUserId, phone, "customer", "customer", 0);
-    const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
-    await db.insert(refreshTokensTable).values({
-      id: generateId(), userId: newUserId, tokenHash: refreshHash,
-      authMethod: "phone_otp", expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000),
-    });
+    /* Delete from pending_otps */
+    await db.delete(pendingOtpsTable).where(eq(pendingOtpsTable.phone, phone));
+    writeAuthAuditLog("otp_verified_new_user", { userId: newUserId, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone, role: userRole } });
+
+    /* Issue a scoped setup-only token — NOT a full access token.
+       This token is only accepted by /auth/complete-profile and rejected everywhere else. */
+    const setupToken = signSetupToken(newUserId, phone, userRole);
 
     res.json({
-      token: accessToken,
-      refreshToken: refreshRaw,
-      expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_SEC * 1000).toISOString(),
-      user: { id: newUserId, phone, name: null, email: null, username: null, role: "customer", roles: "customer",
-              walletBalance: signupBonus, isActive: !requireApproval, totpEnabled: false },
-      ...(requireApproval ? { pendingApproval: true } : {}),
+      token: setupToken,
+      setupOnly: true,
+      isProfileComplete: false,
+      user: { id: newUserId, phone, name: (regPayload?.name as string) ?? null, email: (regPayload?.email as string) ?? null,
+              username: (regPayload?.username as string) ?? null, role: userRole, roles: userRole,
+              walletBalance: 0, isActive: false, totpEnabled: false, isProfileComplete: false },
     });
     return;
   }
@@ -978,6 +1022,24 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
   /* ── Re-fetch user to get latest data (wallet balance, name, etc.) ── */
   const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
   const u = freshUser ?? user;
+
+  /* ── Profile-incomplete guard ──
+     If the user has not finished registration (isProfileComplete = false) we must ONLY
+     issue a setup token — never a full access token — regardless of approval status.    */
+  if (!u.isProfileComplete) {
+    addAuditEntry({ action: "user_login_setup_required", ip, details: `Setup token issued for incomplete profile phone: ${phone}`, result: "pending" });
+    const setupToken = signSetupToken(u.id, phone, u.role ?? "customer");
+    res.json({
+      token: setupToken,
+      setupRequired: true,
+      pendingApproval: u.approvalStatus === "pending",
+      message: u.approvalStatus === "pending"
+        ? "Aapka account admin approval ke liye bheja gaya hai. Approve hone par aap login kar sakenge."
+        : "Kripya apna profile poora karein.",
+      user: { id: u.id, phone: u.phone, name: u.name, role: u.role, roles: u.roles, approvalStatus: u.approvalStatus },
+    });
+    return;
+  }
 
   /* ── Admin approval check ──
      approvalStatus is the source of truth; the setting only controls NEW user creation. ── */
@@ -1798,6 +1860,24 @@ async function handleUnifiedLogin(req: Request, res: Response) {
   await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
   addAuditEntry({ action: "unified_login", ip, details: `Login via ${idType}: ${lookupKey}`, result: "success" });
 
+  /* ── Profile-incomplete guard (password login path) ──
+     Must be checked before 2FA and before access token issuance.
+     An incomplete-profile user receives a setup token only — never a full access token. */
+  if (!user.isProfileComplete) {
+    addAuditEntry({ action: "user_login_setup_required", ip, details: `Setup token issued (password) for incomplete profile: ${lookupKey}`, result: "pending" });
+    const setupToken = signSetupToken(user.id, user.phone ?? "", user.role ?? "customer");
+    res.json({
+      token: setupToken,
+      setupRequired: true,
+      pendingApproval: user.approvalStatus === "pending",
+      message: user.approvalStatus === "pending"
+        ? "Aapka account admin approval ke liye bheja gaya hai. Approve hone par aap login kar sakenge."
+        : "Kripya apna profile poora karein.",
+      user: { id: user.id, phone: user.phone, name: user.name, role: user.role, roles: user.roles, approvalStatus: user.approvalStatus },
+    });
+    return;
+  }
+
   if (user.totpEnabled && isAuthMethodEnabled(settings, "auth_2fa_enabled", user.role ?? undefined)) {
     const deviceFingerprint = req.body.deviceFingerprint ?? "";
     const trustedDays = parseInt(settings["auth_trusted_device_days"] ?? "30", 10);
@@ -1849,19 +1929,22 @@ router.post("/complete-profile", async (req, res) => {
   /* Accept token from body OR Authorization: Bearer header */
   const authHeader = req.headers["authorization"] as string | undefined;
   const rawToken = req.body?.token || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
-  const { name, email, username, password, currentPassword, cnic, address, city, area, latitude, longitude } = req.body;
+  const { name, email, username, password, currentPassword, cnic, address, city, area, latitude, longitude,
+          businessName, storeName, storeCategory, vehicleType } = req.body;
   if (!rawToken) {
     const lang = await getRequestLocale(req);
     res.status(401).json({ error: t("apiErrTokenRequired", lang) }); return;
   }
 
-  /* Verify JWT to get userId */
+  /* Verify JWT to get userId — accept both setup-only and full access tokens */
   const payload = verifyUserJwt(rawToken);
   if (!payload) {
     const lang = await getRequestLocale(req);
     res.status(401).json({ error: t("apiErrTokenInvalidOrExpired", lang) }); return;
   }
   const userId = payload.userId;
+
+  const settings = await getCachedSettings();
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
@@ -1872,7 +1955,8 @@ router.post("/complete-profile", async (req, res) => {
     const lang = await getRequestLocale(req, userId);
     res.status(403).json({ error: t("apiErrAccountSuspended", lang) }); return;
   }
-  if (!user.isActive && user.approvalStatus !== "pending") {
+  /* Allow through: setup-only users (isProfileComplete: false) and pending-approval users */
+  if (!user.isActive && user.isProfileComplete && user.approvalStatus !== "pending") {
     const lang = await getRequestLocale(req, userId);
     res.status(403).json({ error: t("apiErrAccountInactive", lang) }); return;
   }
@@ -1936,6 +2020,20 @@ router.post("/complete-profile", async (req, res) => {
     updates.longitude = longitude;
   }
 
+  /* ── Vendor profile fields ── */
+  if (businessName && typeof businessName === "string" && businessName.trim()) {
+    updates.businessName = businessName.trim();
+  }
+  if (storeName && typeof storeName === "string" && storeName.trim()) {
+    /* storeName maps to businessName on the users table for vendor identity */
+    if (!updates.businessName) updates.businessName = storeName.trim();
+  }
+  if (storeCategory && typeof storeCategory === "string" && storeCategory.trim()) {
+    updates.storeCategory = storeCategory.trim();
+  }
+
+  /* ── Rider vehicle type (upsert into riderProfilesTable) handled after user update ── */
+
   if (password && password.length >= 8) {
     const isNewRegistration = !user.name || user.name === "User" || user.name === "Pending";
     if (user.passwordHash && !isNewRegistration) {
@@ -1973,7 +2071,104 @@ router.post("/complete-profile", async (req, res) => {
     res.status(400).json({ error: t("apiErrNoProfileUpdate", lang) }); return;
   }
 
+  /* ── Role-based activation on profile completion ────────────────────────────
+     This gate is idempotent: only new completions (isProfileComplete: false)
+     trigger bonus credit and status change. Already-complete users may still
+     update fields (name, city, etc.) without side effects.
+
+     Customer → immediately active (approvalStatus: approved, isActive: true)
+     Rider    → pending admin approval (approvalStatus: pending, isActive: false)
+     Vendor   → pending admin approval (approvalStatus: pending, isActive: false)
+
+     Required fields per role (server-side enforced):
+     - Customer: name
+     - Rider:    name + cnic (or already stored from register payload)
+     - Vendor:   name + (businessName already stored or will be checked)
+  ──────────────────────────────────────────────────────────────────────────── */
+  const effectiveRole = user.role ?? "customer";
+  const isFirstCompletion = !user.isProfileComplete;
+
+  /* Validate role-specific required fields before marking profile complete */
+  const resolvedName = (updates.name as string | undefined) || user.name;
+  const resolvedCnic = (updates.cnic as string | undefined) || user.cnic;
+  const resolvedBusinessName = (updates.businessName as string | undefined) || user.businessName;
+
+  if (isFirstCompletion) {
+    if (!resolvedName || (resolvedName as string).trim().length < 2) {
+      const lang = await getRequestLocale(req, userId);
+      res.status(400).json({ error: t("apiErrNameRequired", lang) ?? "Name is required to complete your profile." });
+      return;
+    }
+    if (effectiveRole === "rider" && !resolvedCnic) {
+      const lang = await getRequestLocale(req, userId);
+      res.status(400).json({ error: t("apiErrCnicRequired", lang) ?? "CNIC is required for rider profile completion." });
+      return;
+    }
+    if (effectiveRole === "vendor" && !resolvedBusinessName) {
+      const lang = await getRequestLocale(req, userId);
+      res.status(400).json({ error: t("apiErrBusinessNameRequired", lang) ?? "Business name is required for vendor profile completion." });
+      return;
+    }
+    updates.isProfileComplete = true;
+    if (effectiveRole === "customer") {
+      updates.approvalStatus = "approved";
+      updates.isActive = true;
+    } else {
+      /* Rider and vendor require admin approval */
+      updates.approvalStatus = "pending";
+      updates.isActive = false;
+    }
+  }
+
   const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
+
+  /* ── Credit signup bonus ONLY on first completion, only for customers ──
+     Guard against double-credit: users who went through /auth/register → /auth/verify-otp
+     may have already received the bonus during OTP verification.
+     We check walletTransactionsTable to prevent duplicate bonus issuance. ── */
+  const signupBonusAmount = parseFloat(settings["customer_signup_bonus"] ?? "0");
+  if (isFirstCompletion && effectiveRole === "customer" && signupBonusAmount > 0) {
+    const [existingBonus] = await db
+      .select({ id: walletTransactionsTable.id })
+      .from(walletTransactionsTable)
+      .where(and(eq(walletTransactionsTable.userId, updated!.id), eq(walletTransactionsTable.type, "bonus")))
+      .limit(1);
+    if (!existingBonus) {
+      await db.update(usersTable)
+        .set({ walletBalance: sql`wallet_balance + ${signupBonusAmount}` })
+        .where(eq(usersTable.id, updated!.id));
+      await db.insert(walletTransactionsTable).values({
+        id: generateId(), userId: updated!.id, type: "bonus",
+        amount: signupBonusAmount.toFixed(2), description: "Welcome bonus — Thanks for joining!",
+      });
+      await db.insert(notificationsTable).values({
+        id: generateId(), userId: updated!.id,
+        title: "Welcome Bonus!",
+        body: `Rs. ${signupBonusAmount} has been added to your wallet. Welcome to AJKMart!`,
+        type: "wallet", icon: "gift-outline",
+      }).catch(() => {});
+    }
+  }
+
+  /* ── For riders/vendors: return approval status — no full access token ── */
+  if (effectiveRole !== "customer") {
+    writeAuthAuditLog("profile_complete_pending", { userId: updated!.id, ip: req.socket?.remoteAddress ?? "unknown", metadata: { role: effectiveRole } });
+    res.json({
+      success: true,
+      pendingApproval: updated!.approvalStatus === "pending",
+      isProfileComplete: !!updated!.isProfileComplete,
+      message: updated!.approvalStatus === "approved"
+        ? "Profile updated."
+        : "Profile submitted. Your account is pending admin approval.",
+      user: { id: updated!.id, phone: updated!.phone, name: updated!.name, role: updated!.role, roles: updated!.roles, approvalStatus: updated!.approvalStatus, isActive: updated!.isActive, isProfileComplete: !!updated!.isProfileComplete },
+    });
+    return;
+  }
+
+  /* ── Customer: issue full access token ── */
+  const freshWallet = await db.select({ walletBalance: usersTable.walletBalance })
+    .from(usersTable).where(eq(usersTable.id, updated!.id)).limit(1);
+  const finalWalletBalance = parseFloat(freshWallet[0]?.walletBalance ?? "0");
 
   const accessToken = signAccessToken(updated!.id, updated!.phone ?? "", updated!.role ?? "customer", updated!.roles ?? updated!.role ?? "customer", updated!.tokenVersion ?? 0);
   const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
@@ -1991,12 +2186,15 @@ router.post("/complete-profile", async (req, res) => {
     .where(and(eq(refreshTokensTable.userId, updated!.id), lt(refreshTokensTable.expiresAt, new Date())))
     .catch(() => {});
 
+  writeAuthAuditLog("profile_complete_activated", { userId: updated!.id, ip: req.socket?.remoteAddress ?? "unknown", metadata: { role: effectiveRole } });
+
   res.json({
     success: true,
-    message: "Profile update ho gaya",
+    isProfileComplete: true,
+    message: "Profile complete. Welcome to AJKMart!",
     token: accessToken,
     refreshToken: refreshRaw,
-    user: { id: updated!.id, phone: updated!.phone, name: updated!.name, email: updated!.email, username: updated!.username, role: updated!.role, roles: updated!.roles, avatar: updated!.avatar, cnic: updated!.cnic, city: updated!.city, area: updated!.area, address: updated!.address, latitude: updated!.latitude, longitude: updated!.longitude, kycStatus: updated!.kycStatus, accountLevel: updated!.accountLevel, totpEnabled: updated!.totpEnabled ?? false, emailVerified: updated!.emailVerified, phoneVerified: updated!.phoneVerified, walletBalance: parseFloat(updated!.walletBalance ?? "0"), isActive: updated!.isActive, createdAt: updated!.createdAt.toISOString() },
+    user: { id: updated!.id, phone: updated!.phone, name: updated!.name, email: updated!.email, username: updated!.username, role: updated!.role, roles: updated!.roles, avatar: updated!.avatar, cnic: updated!.cnic, city: updated!.city, area: updated!.area, address: updated!.address, latitude: updated!.latitude, longitude: updated!.longitude, kycStatus: updated!.kycStatus, accountLevel: updated!.accountLevel, totpEnabled: updated!.totpEnabled ?? false, emailVerified: updated!.emailVerified, phoneVerified: updated!.phoneVerified, walletBalance: finalWalletBalance, isActive: true, isProfileComplete: true, createdAt: updated!.createdAt.toISOString() },
   });
 });
 
@@ -2251,73 +2449,56 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
 
   const otp = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + AUTH_OTP_TTL_MS);
-  const userId = generateId();
 
-  await db.insert(usersTable).values({
-    id: userId,
-    phone: normalizedPhone,
-    name: name?.trim() || null,
-    email: email ? email.toLowerCase().trim() : null,
-    username: cleanUsername,
-    role: userRole,
-    roles: userRole,
-    passwordHash: hashPassword(password),
-    otpCode: hashOtp(otp),
-    otpExpiry,
-    otpUsed: false,
-    walletBalance: "0",
-    isActive: !needsApproval,
-    approvalStatus: needsApproval ? "pending" : "approved",
-    cnic: cnicValue || null,
-    nationalId: cnicValue || null,
-    vehicleRegNo: vehicleRegNo || null,
-    vehiclePlate: vehiclePlate || vehicleRegNo || null,
-    drivingLicense: drivingLicense || null,
-    address: address || null,
-    city: city || null,
+  /* ── Store registration INTENT in pendingOtpsTable — NO user record yet ──
+     The user row is only created atomically inside verify-otp after OTP is confirmed.
+     This prevents phantom accounts from being created for unverified phone numbers. */
+  const registrationPayload = JSON.stringify({
+    name:            name?.trim() || null,
+    email:           email ? email.toLowerCase().trim() : null,
+    username:        cleanUsername,
+    role:            userRole,
+    passwordHash:    hashPassword(password),
+    cnic:            cnicValue || null,
+    vehicleType:     vehicleType || null,
+    vehicleRegNo:    vehicleRegNo || null,
+    vehiclePlate:    vehiclePlate || vehicleRegNo || null,
+    drivingLicense:  drivingLicense || null,
+    address:         address || null,
+    city:            city || null,
     emergencyContact: emergencyContact || null,
-    vehiclePhoto: vehiclePhoto || null,
-    documents: documents || null,
-    businessName: businessName || storeName || null,
-    businessType: businessType || null,
-    storeAddress: storeAddress || null,
-    ntn: ntn || null,
+    vehiclePhoto:    vehiclePhoto || null,
+    documents:       documents || null,
+    businessName:    businessName || storeName || null,
+    businessType:    businessType || null,
+    storeAddress:    storeAddress || null,
+    ntn:             ntn || null,
+    storeName:       storeName || businessName || null,
+    storeCategory:   storeCategory || null,
+    needsApproval,
+    _source:         "register",
   });
 
-  if (userRole === "rider" && vehicleType) {
-    await db.insert(riderProfilesTable).values({
-      userId,
-      vehicleType: normalizeVehicleTypeForStorage(vehicleType),
-    }).onConflictDoUpdate({
-      target: riderProfilesTable.userId,
-      set: { vehicleType: normalizeVehicleTypeForStorage(vehicleType) },
+  await db
+    .insert(pendingOtpsTable)
+    .values({ id: generateId(), phone: normalizedPhone, otpHash: hashOtp(otp), otpExpiry, payload: registrationPayload })
+    .onConflictDoUpdate({
+      target: pendingOtpsTable.phone,
+      set: { otpHash: hashOtp(otp), otpExpiry, attempts: 0, payload: registrationPayload },
     });
-  }
-  if (userRole === "vendor" && (storeName || businessName)) {
-    await db.insert(vendorProfilesTable).values({
-      userId,
-      storeName: storeName || businessName || null,
-      storeCategory: storeCategory || null,
-    }).onConflictDoUpdate({
-      target: vendorProfilesTable.userId,
-      set: { storeName: storeName || businessName || null, storeCategory: storeCategory || null },
-    });
-  }
 
-  const registerLang = await getUserLanguage(userId);
-  const smsResult = await sendOtpSMS(normalizedPhone, otp, settings, registerLang);
+  const defaultLang = await getPlatformDefaultLanguage();
+  const smsResult = await sendOtpSMS(normalizedPhone, otp, settings, defaultLang);
   if (settings["integration_whatsapp"] === "on") {
-    sendWhatsAppOTP(normalizedPhone, otp, settings, registerLang).catch(err =>
+    sendWhatsAppOTP(normalizedPhone, otp, settings, defaultLang).catch(err =>
       req.log.warn({ err: err.message }, "WhatsApp OTP send failed (non-fatal)")
     );
   }
 
   writeAuthAuditLog("register", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone: normalizedPhone, role: userRole } });
 
-  const isDev = process.env.NODE_ENV !== "production";
   res.status(201).json({
     message: "Registration successful. Please verify your phone with the OTP sent.",
-    userId,
     role: userRole,
     pendingApproval: needsApproval,
     channel: smsResult.sent ? smsResult.provider : "console",

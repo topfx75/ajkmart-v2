@@ -26,10 +26,13 @@ export const useStats = () => {
 };
 
 // Users
-export const useUsers = (conditionTier?: string) => {
-  const params = conditionTier ? `?conditionTier=${conditionTier}` : "";
+export const useUsers = (conditionTier?: string, profileStatus?: string) => {
+  const qs = new URLSearchParams();
+  if (conditionTier) qs.set("conditionTier", conditionTier);
+  if (profileStatus) qs.set("profileStatus", profileStatus);
+  const params = qs.toString() ? `?${qs.toString()}` : "";
   return useQuery({
-    queryKey: ["admin-users", conditionTier || ""],
+    queryKey: ["admin-users", conditionTier || "", profileStatus || ""],
     queryFn: () => fetcher(`/users${params}`),
     refetchInterval: REFETCH_INTERVAL,
   });

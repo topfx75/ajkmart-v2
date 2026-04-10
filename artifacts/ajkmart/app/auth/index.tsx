@@ -205,6 +205,15 @@ export default function AuthScreen() {
       setStep("totp");
       return;
     }
+    /* setupRequired / setupOnly: profile is not complete — must go through setup flow.
+       This supersedes pendingApproval; the user finishes setup first, then awaits approval. */
+    if (res.setupRequired || res.setupOnly) {
+      setPendingToken(res.token);
+      setPendingRefreshToken(res.refreshToken ?? null);
+      setPendingUser(res.user);
+      setStep("complete-profile");
+      return;
+    }
     if (res.pendingApproval) {
       setPendingToken(res.token);
       setPendingRefreshToken(res.refreshToken);
@@ -212,6 +221,7 @@ export default function AuthScreen() {
       setStep("pending");
       return;
     }
+    /* Legacy guard: also redirect if user has no name (for backward compat) */
     if (res.user && !res.user.name) {
       setPendingToken(res.token);
       setPendingRefreshToken(res.refreshToken);

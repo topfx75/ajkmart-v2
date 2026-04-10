@@ -24,6 +24,7 @@ export {
   ensureWalletNormalizedTxId,
   ensureTwoFactorEnforcedAt,
   ensureSilenceModeColumns,
+  ensureProfileCompleteColumn,
   ensureOtpSettings,
   getPlatformSettings,
   getAdminSecret,

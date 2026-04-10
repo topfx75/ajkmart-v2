@@ -7,4 +7,5 @@ export const pendingOtpsTable = pgTable("pending_otps", {
   otpExpiry: timestamp("otp_expiry").notNull(),
   attempts:  integer("attempts").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  payload:   text("payload"),
 });

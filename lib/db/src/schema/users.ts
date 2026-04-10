@@ -28,6 +28,8 @@ export const usersTable = pgTable("users", {
   /* ── Admin approval ── */
   approvalStatus:  text("approval_status").notNull().default("approved"), /* pending | approved | rejected */
   approvalNote:    text("approval_note"),
+  /* ── Profile completion flag ── */
+  isProfileComplete: boolean("is_profile_complete").notNull().default(false),
   /* ── Account status ── */
   isActive:        boolean("is_active").notNull().default(true),
   isBanned:        boolean("is_banned").notNull().default(false),

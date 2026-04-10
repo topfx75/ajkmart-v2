@@ -41,6 +41,7 @@ function SkeletonRow() {
       <TableCell><div className="h-5 w-16 bg-muted rounded-full" /></TableCell>
       <TableCell className="text-right"><div className="h-4 w-16 bg-muted rounded ml-auto" /></TableCell>
       <TableCell className="text-center"><div className="h-5 w-12 bg-muted rounded-full mx-auto" /></TableCell>
+      <TableCell className="text-center"><div className="h-5 w-16 bg-muted rounded-full mx-auto" /></TableCell>
       <TableCell className="text-right"><div className="h-4 w-20 bg-muted rounded ml-auto" /></TableCell>
       <TableCell className="text-right"><div className="h-8 w-32 bg-muted rounded ml-auto" /></TableCell>
     </TableRow>
@@ -1017,7 +1018,11 @@ export default function Users() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const [conditionTier, setConditionTier] = useState("all");
-  const { data, isLoading, refetch, isFetching, isError } = useUsers(conditionTier !== "all" ? conditionTier : undefined);
+  const [profileStatusFilter, setProfileStatusFilter] = useState("all");
+  const { data, isLoading, refetch, isFetching, isError } = useUsers(
+    conditionTier !== "all" ? conditionTier : undefined,
+    profileStatusFilter !== "all" ? profileStatusFilter : undefined,
+  );
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const { data: twoFaStats } = use2faStats();
   const updateMutation   = useUpdateUser();
@@ -1370,6 +1375,16 @@ export default function Users() {
               <SelectItem value="bans">Bans</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={profileStatusFilter} onValueChange={setProfileStatusFilter}>
+            <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-44">
+              <SelectValue placeholder="Profile Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Profiles</SelectItem>
+              <SelectItem value="complete">Complete</SelectItem>
+              <SelectItem value="incomplete">Incomplete</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-3">
           <div className="flex items-center gap-2 flex-1">
@@ -1484,6 +1499,7 @@ export default function Users() {
                   <TableHead className="font-semibold text-[#1A56DB]/80">Roles</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Wallet</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-center">Status</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-center">Profile</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-center">2FA</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Joined</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Actions</TableHead>
@@ -1500,13 +1516,13 @@ export default function Users() {
                   </>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-40">
+                    <TableCell colSpan={10} className="h-40">
                       <div className="flex flex-col items-center justify-center gap-2 text-center">
                         <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
                           <UsersIcon className="w-6 h-6 text-muted-foreground" />
                         </div>
                         <p className="font-medium text-muted-foreground">No users found</p>
-                        {(search || roleFilter !== "all" || statusFilter !== "all" || conditionTier !== "all" || dateFrom || dateTo) && (
+                        {(search || roleFilter !== "all" || statusFilter !== "all" || conditionTier !== "all" || profileStatusFilter !== "all" || dateFrom || dateTo) && (
                           <p className="text-xs text-muted-foreground">Try adjusting your filters</p>
                         )}
                       </div>
@@ -1585,6 +1601,13 @@ export default function Users() {
                               </Badge>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {user.isProfileComplete ? (
+                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">Complete</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">Incomplete</Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           <TwoFAToggle user={user} />
