@@ -626,7 +626,7 @@ function ProductDetailScreenInner() {
         onClose={() => setShowFullScreen(false)}
       />
 
-      <Animated.View style={[styles.stickyHeader, { paddingTop: topPad + 8, opacity: headerOpacity }]}>
+      <Animated.View style={[styles.stickyHeader, { paddingTop: topPad + 8, opacity: headerOpacity }]} pointerEvents="box-none">
         <View style={styles.stickyHeaderInner}>
           <TouchableOpacity activeOpacity={0.7} onPress={() => router.back()} style={styles.headerBtnSolid}>
             <Ionicons name="arrow-back" size={20} color={C.text} />
@@ -648,7 +648,7 @@ function ProductDetailScreenInner() {
           <Ionicons name="arrow-back" size={22} color={C.textInverse} />
         </TouchableOpacity>
         <View style={{ flexDirection: "row", gap: 8 }}>
-          <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+          <Animated.View style={{ transform: [{ scale: heartScale }] }} pointerEvents="box-none">
             <TouchableOpacity activeOpacity={0.7} onPress={toggleWishlist} style={styles.headerBtn}>
               <Ionicons name={isInWishlist ? "heart" : "heart-outline"} size={22} color={isInWishlist ? C.danger : C.textInverse} />
             </TouchableOpacity>

@@ -73,7 +73,7 @@ export function WishlistHeart({
   return (
     <>
       <AuthGateSheet {...sheetProps} />
-      <Animated.View style={[{ transform: [{ scale: heartScale }] }, style]}>
+      <Animated.View style={[{ transform: [{ scale: heartScale }] }, style]} pointerEvents="box-none">
         <TouchableOpacity activeOpacity={0.7}
           onPress={(e) => { e?.stopPropagation?.(); toggle(); }}
           style={s.btn}

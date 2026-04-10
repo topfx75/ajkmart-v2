@@ -44,6 +44,7 @@ import {
   CountdownTimer,
 } from "@/components/user-shared";
 import { WishlistHeart } from "@/components/WishlistHeart";
+import { NotificationsModal } from "@/components/profile/NotificationsModal";
 import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
 
 import { unwrapApiResponse } from "@/utils/api";
@@ -1131,6 +1132,8 @@ export default function HomeScreen() {
   const contentBanner = platformConfig.content.banner;
   const announcement = platformConfig.content.announcement;
   const [announceDismissed, setAnnounceDismissed] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
 
   const announceKey = React.useMemo(() => {
     if (!announcement) return "";
@@ -1229,6 +1232,21 @@ export default function HomeScreen() {
               <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
             </TouchableOpacity>
             <View style={{ flexDirection: "row", gap: 8 }}>
+              {!isGuest && (
+                <TouchableOpacity activeOpacity={0.7}
+                  onPress={() => setShowNotifs(true)}
+                  style={s.iconBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Notifications${unreadNotifs > 0 ? `, ${unreadNotifs} unread` : ""}`}
+                >
+                  <Ionicons name="notifications-outline" size={20} color="#fff" />
+                  {unreadNotifs > 0 && (
+                    <View style={s.cartBadge}>
+                      <Text style={s.cartBadgeTxt}>{unreadNotifs > 9 ? "9+" : unreadNotifs}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
               <TouchableOpacity activeOpacity={0.7}
                 onPress={() => router.push("/cart" as Href)}
                 style={s.iconBtn}
@@ -1403,6 +1421,15 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {user?.id && (
+        <NotificationsModal
+          visible={showNotifs}
+          userId={user.id}
+          token={token ?? undefined}
+          onClose={(unread) => { setUnreadNotifs(unread); setShowNotifs(false); }}
+        />
+      )}
     </View>
   );
 }

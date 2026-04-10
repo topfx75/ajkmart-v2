@@ -59,7 +59,7 @@ import { stripHtml } from "../lib/sanitize.js";
 ────────────────────────────────────────────────────────────────────────────── */
 const verifyOtpIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: process.env.NODE_ENV === "production" ? 5 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: (req: Request) => ({ error: t("apiErrTooManyRequests", parseAcceptLanguage(req.headers["accept-language"] as string | undefined) ?? "en") }),
