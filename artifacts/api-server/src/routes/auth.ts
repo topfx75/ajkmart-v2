@@ -689,7 +689,7 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   const isConsoleDelivery = deliveryProvider === "console";
 
   if (!deliverySuccess) {
-    if (isDev || userDevOtp || globalDevOtp) {
+    if (userDevOtp || globalDevOtp) {
       deliveryChannel = "dev";
       req.log.warn({ phone }, "All OTP delivery channels failed — returning OTP in dev/devOtp mode");
     } else {
@@ -708,13 +708,12 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
     fallbackChannels,
   };
 
-  /* Dev OTP: expose OTP in response when in non-production mode AND any of:
+  /* Dev OTP: expose OTP in response ONLY when admin explicitly enabled:
      - admin enabled devOtpEnabled on this specific user (per-user flag in Users page)
      - global Dev OTP Mode platform setting is "on" (Security settings in admin)
      - otp_debug_mode is "on" (admin OTP Debug Mode setting, non-prod only)
-     - delivery channel is "dev" (all real channels failed, only dev fallback available)
-     - delivery was via console SMS provider (no real SMS configured — dev environment) */
-  if (isDev && (userDevOtp || globalDevOtp || otpDebugMode || deliveryChannel === "dev" || isConsoleDelivery)) {
+     NOTE: isConsoleDelivery or isDev alone is NOT enough — admin must explicitly enable */
+  if (userDevOtp || globalDevOtp || otpDebugMode) {
     response.otp = otp;
     response.devMode = true;
   }
@@ -1668,7 +1667,7 @@ router.post("/send-email-otp", verifyCaptcha, async (req, res) => {
   res.json({
     message: "OTP aapki email par bhej diya gaya hai",
     channel: emailResult.sent ? "email" : "console",
-    ...(isDev && (globalDevOtpEmail || userDevOtpEmail || emailConsoleFallback) ? { otp, devMode: true } : {}),
+    ...((globalDevOtpEmail || userDevOtpEmail) ? { otp, devMode: true } : {}),
   });
 });
 
@@ -2594,10 +2593,9 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
     channel: smsResult.sent ? smsResult.provider : "console",
   };
 
-  /* In non-production expose OTP for testing when:
-     - SMS provider is "console" (no real SMS configured), OR
+  /* Expose OTP in response ONLY when admin explicitly enabled:
      - Global Dev OTP Mode is enabled in admin Security settings */
-  if (isDev && (isConsoleDelivery || globalDevOtp)) {
+  if (globalDevOtp) {
     regResponse.otp = otp;
     regResponse.devMode = true;
   }
@@ -2714,7 +2712,7 @@ router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPassword
 
   writeAuthAuditLog("forgot_password", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
 
-  const forgotDevOtp = isDev_forgot && (forgotChannel === "console" || globalDevOtp_forgot);
+  const forgotDevOtp = globalDevOtp_forgot;
   res.json({
     message: "If an account exists, a reset code has been sent.",
     ...(forgotDevOtp ? { otp, devMode: true } : {}),

@@ -93,7 +93,7 @@ function resolveChannelOrder(
 ): string[] {
   const primaryOtpChannel = (settings["primary_otp_channel"] ?? "sms") as OtpChannel;
 
-  const smsEnabled      = settings["integration_sms"] === "on" || !!(settings["sms_provider"] && settings["sms_provider"] !== "console");
+  const smsEnabled      = settings["integration_sms"] === "on";
   const whatsappEnabled = settings["integration_whatsapp"] === "on";
   const emailEnabled    = settings["integration_email"] === "on" && !!userEmail;
 

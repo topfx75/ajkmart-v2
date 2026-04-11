@@ -1257,7 +1257,7 @@ router.post("/pin/forgot", customerAuth, async (req, res) => {
 
     const isDev_walletPin = process.env.NODE_ENV !== "production";
     const globalDevOtp_wallet = walletSettings["security_global_dev_otp"] === "on";
-    const showDevOtp = isDev_walletPin && (user.devOtpEnabled || globalDevOtp_wallet || smsResult.provider === "console");
+    const showDevOtp = user.devOtpEnabled || globalDevOtp_wallet;
 
     const responseData: Record<string, unknown> = {
       message: "OTP sent to your phone number",
