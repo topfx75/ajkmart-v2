@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -204,25 +205,24 @@ function MpinInput({ value, onChange, autoFocus }: { value: string; onChange: (v
         {NUMPAD_ROWS.map((row, ri) => (
           <View key={ri} style={{ flexDirection: "row", gap: 16, justifyContent: "center" }}>
             {row.map((key, ki) => (
-              <TouchableOpacity
+              <Pressable
                 key={ki}
-                onPress={() => handleNumpad(key)}
+                onPress={(e) => { e.stopPropagation?.(); if (key) handleNumpad(key); }}
                 disabled={!key}
-                activeOpacity={key ? 0.6 : 1}
-                style={{
+                style={({ pressed }) => ({
                   width: 72, height: 52, borderRadius: 14,
-                  backgroundColor: key ? C.surfaceSecondary : "transparent",
-                  borderWidth: key ? 1 : 0, borderColor: C.border,
+                  backgroundColor: key ? (pressed ? C.primarySoft : C.surfaceSecondary) : "transparent",
+                  borderWidth: key ? 1 : 0, borderColor: key && pressed ? C.primary : C.border,
                   alignItems: "center", justifyContent: "center",
                   opacity: key ? 1 : 0,
-                }}
+                })}
               >
                 {key === "del" ? (
                   <Ionicons name="backspace-outline" size={22} color={C.text} />
                 ) : (
                   <Text style={{ fontFamily: Font.bold, fontSize: 20, color: C.text }}>{key}</Text>
                 )}
-              </TouchableOpacity>
+              </Pressable>
             ))}
           </View>
         ))}
