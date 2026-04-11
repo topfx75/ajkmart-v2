@@ -4,16 +4,19 @@ import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
 
 import Colors, { radii, shadows, typography } from "@/constants/colors";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useCartCount } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual } from "@workspace/i18n";
 import { getActiveServices } from "@/constants/serviceRegistry";
+import { getGetOrdersQueryKey } from "@workspace/api-client-react";
 
 const C = Colors.light;
 
@@ -104,6 +107,31 @@ function TabIconWithBadge({ name, focusedName, color, focused, badgeCount }: {
       )}
     </View>
   );
+}
+
+function TabDataPrefetcher() {
+  const { user, token } = useAuth();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!user?.id || !token) return;
+    const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+    const headers = { Authorization: `Bearer ${token}` };
+
+    queryClient.prefetchQuery({
+      queryKey: getGetOrdersQueryKey({ userId: user.id }),
+      queryFn: () => fetch(`${API}/orders`, { headers }).then(r => r.json()),
+      staleTime: 15_000,
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: [`/api/rides`],
+      queryFn: () => fetch(`${API}/rides`, { headers }).then(r => r.json()),
+      staleTime: 15_000,
+    });
+  }, [user?.id, token]);
+
+  return null;
 }
 
 function ClassicTabLayout() {
@@ -283,6 +311,7 @@ export default function TabLayout() {
 
   return (
     <View style={{ flex: 1 }}>
+      <TabDataPrefetcher />
       {inner}
       {inMaintenance && (
         <MaintenanceOverlay message={config.content.maintenanceMsg} />
