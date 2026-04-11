@@ -290,20 +290,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           borderBottom: "1px solid rgba(255,255,255,0.06)",
         }}
       >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-          style={{
-            background: "linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)",
-            boxShadow: "0 4px 16px rgba(99,102,241,0.4), inset 0 1px 1px rgba(255,255,255,0.15)",
-          }}
-        >
-          <ShoppingBag className="w-5 h-5 text-white" />
-        </div>
-        {(!mini || isMobile) && (
-          <div className="ml-3 overflow-hidden">
-            <span className="font-bold text-[17px] tracking-tight text-white leading-tight block">AJKMart</span>
-            <span className="text-[10px] font-semibold tracking-[0.15em] uppercase" style={{ color: "#818CF8" }}>Admin Console</span>
-          </div>
+        {(!mini || isMobile) ? (
+          <img
+            src={`${import.meta.env.BASE_URL}images/logo.png`}
+            alt="AJKMart"
+            style={{ height: 36, width: "auto", maxWidth: 160, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+          />
+        ) : (
+          <img
+            src={`${import.meta.env.BASE_URL}images/logo.png`}
+            alt="AJKMart"
+            style={{ height: 28, width: 40, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+          />
         )}
         {isMobile && (
           <button

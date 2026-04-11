@@ -633,8 +633,8 @@ export default function Login() {
 
       <div className="w-full max-w-sm relative z-10">
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-2xl">
-            <Bike size={40} className="text-white" />
+          <div className="bg-white rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-2xl px-6 py-3 w-fit">
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="AJKMart" style={{ height: 44, width: "auto", maxWidth: 160, objectFit: "contain" }} />
           </div>
           <h1 className="text-3xl font-bold text-white">{T("riderPortal")}</h1>
           <p className="text-white/40 mt-1">{appName} {T("deliveryPartner")}</p>
