@@ -1703,6 +1703,170 @@ async function handleMapsCacheClear(_req: import("express").Request, res: import
   sendSuccess(res, { cleared: before, cacheSize: 0 });
 }
 
+/* ══════════════════════════════════════════════════════════
+   GET /api/maps/static?center=LAT,LNG&zoom=N&size=WxH&markers=color:green|LAT,LNG
+   Returns a static map image using OpenStreetMap tiles (no API key required).
+   Falls back to a redirect to staticmap.openstreetmap.de if tile stitching fails.
+══════════════════════════════════════════════════════════ */
+router.get("/static", async (req, res) => {
+  const centerParam = String(req.query["center"] ?? "34.37,73.47");
+  const zoomParam   = parseInt(String(req.query["zoom"] ?? "13"), 10);
+  const sizeParam   = String(req.query["size"] ?? "600x280");
+
+  const [centerLat, centerLng] = centerParam.split(",").map(Number);
+  const zoom = Math.max(1, Math.min(19, isNaN(zoomParam) ? 13 : zoomParam));
+  const [widthStr, heightStr] = sizeParam.split("x");
+  const width  = Math.min(1280, Math.max(100, parseInt(widthStr  ?? "600", 10)));
+  const height = Math.min(1280, Math.max(100, parseInt(heightStr ?? "280", 10)));
+
+  const lat = isNaN(centerLat) ? 34.37 : centerLat;
+  const lng = isNaN(centerLng) ? 73.47 : centerLng;
+
+  /* Parse markers: supports multiple &markers=color:COLOR|LAT,LNG params */
+  const rawMarkers = Array.isArray(req.query["markers"])
+    ? req.query["markers"] as string[]
+    : req.query["markers"] ? [req.query["markers"] as string] : [];
+
+  /* Helper: lat/lng → OSM tile x/y */
+  function lngToTileX(lngDeg: number, z: number): number {
+    return Math.floor((lngDeg + 180) / 360 * Math.pow(2, z));
+  }
+  function latToTileY(latDeg: number, z: number): number {
+    const latRad = latDeg * Math.PI / 180;
+    return Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, z));
+  }
+  /* Tile pixel offset: given a lat/lng, return pixel offset within tiled canvas */
+  function latLngToPixel(latDeg: number, lngDeg: number, z: number, originTileX: number, originTileY: number): { x: number; y: number } {
+    const n = Math.pow(2, z);
+    const x = ((lngDeg + 180) / 360 * n - originTileX) * 256;
+    const latRad = latDeg * Math.PI / 180;
+    const y = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n - originTileY) * 256;
+    return { x, y };
+  }
+
+  try {
+    /* Use sharp for image composition if available, else fall back to redirect */
+    let sharpModule: typeof import("sharp") | null = null;
+    try {
+      sharpModule = await import("sharp");
+    } catch {
+      sharpModule = null;
+    }
+    const sharp = sharpModule;
+    if (!sharp) throw new Error("sharp not available");
+
+    /* Determine tile range to cover the requested canvas size */
+    const centerTileX = lngToTileX(lng, zoom);
+    const centerTileY = latToTileY(lat, zoom);
+
+    const tilesWide = Math.ceil(width  / 256) + 3;
+    const tilesHigh = Math.ceil(height / 256) + 3;
+    const startTileX = centerTileX - Math.floor(tilesWide / 2);
+    const startTileY = centerTileY - Math.floor(tilesHigh / 2);
+
+    /* Center pixel offset within the composed tile canvas */
+    const centerPixel = latLngToPixel(lat, lng, zoom, startTileX, startTileY);
+    const offsetX = Math.max(0, Math.round(centerPixel.x - width  / 2));
+    const offsetY = Math.max(0, Math.round(centerPixel.y - height / 2));
+
+    const tileCount = Math.pow(2, zoom);
+
+    /* Collect tile coordinates */
+    const tileJobs: Array<{ tx: number; ty: number; normTx: number; normTy: number; pxX: number; pxY: number }> = [];
+    for (let ty = startTileY; ty < startTileY + tilesHigh; ty++) {
+      for (let tx = startTileX; tx < startTileX + tilesWide; tx++) {
+        const normTx = ((tx % tileCount) + tileCount) % tileCount;
+        const normTy = ((ty % tileCount) + tileCount) % tileCount;
+        const pxX = (tx - startTileX) * 256;
+        const pxY = (ty - startTileY) * 256;
+        tileJobs.push({ tx, ty, normTx, normTy, pxX, pxY });
+      }
+    }
+
+    /* Fetch tiles with concurrency limit of 9 to respect OSM tile server limits */
+    const CONCURRENCY = 9;
+    const tiles: Array<{ x: number; y: number; buf: Buffer | null }> = [];
+    for (let i = 0; i < tileJobs.length; i += CONCURRENCY) {
+      const batch = tileJobs.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(batch.map(job => {
+        const url = `https://tile.openstreetmap.org/${zoom}/${job.normTx}/${job.normTy}.png`;
+        return fetch(url, { headers: { "User-Agent": "AJKMart-Server/1.0" }, signal: AbortSignal.timeout(6000) })
+          .then(r => r.ok ? r.arrayBuffer() : null)
+          .then(ab => ({ x: job.pxX, y: job.pxY, buf: ab ? Buffer.from(ab) : null }))
+          .catch(() => ({ x: job.pxX, y: job.pxY, buf: null }));
+      }));
+      tiles.push(...results);
+    }
+
+    const canvasW = tilesWide * 256 + 256;
+    const canvasH = tilesHigh * 256 + 256;
+
+    /* Build blank canvas and composite tiles */
+    let canvas = sharp.default({ create: { width: canvasW, height: canvasH, channels: 3, background: { r: 242, g: 239, b: 233 } } }).png();
+
+    const composites: import("sharp").OverlayOptions[] = tiles
+      .filter(t => t.buf !== null)
+      .map(t => ({ input: t.buf!, top: t.y, left: t.x }));
+
+    /* Draw marker circles via SVG overlay */
+    const markerOverlays: import("sharp").OverlayOptions[] = [];
+    for (const markerStr of rawMarkers) {
+      const parts = markerStr.split("|");
+      const coordPart = parts[parts.length - 1] ?? "";
+      const [mLatStr, mLngStr] = coordPart.split(",");
+      const mLat = parseFloat(mLatStr ?? "");
+      const mLng = parseFloat(mLngStr ?? "");
+      if (isNaN(mLat) || isNaN(mLng)) continue;
+      const colorPart = parts.find(p => p.startsWith("color:"))?.replace("color:", "") ?? "red";
+      const colorMap: Record<string, string> = { red: "#e53e3e", green: "#38a169", blue: "#3182ce", orange: "#dd6b20", purple: "#805ad5" };
+      const fillColor = colorMap[colorPart] ?? colorPart;
+      const px = latLngToPixel(mLat, mLng, zoom, startTileX, startTileY);
+      const cx = Math.round(px.x);
+      const cy = Math.round(px.y);
+      const r = 10;
+      const markerLeft = cx - r - 2;
+      const markerTop  = cy - r - 2;
+      /* Skip markers outside the canvas bounds */
+      if (markerLeft < 0 || markerTop < 0 || markerLeft + r * 2 + 4 > canvasW || markerTop + r * 2 + 4 > canvasH) continue;
+      const svg = `<svg width="${r * 2 + 4}" height="${r * 2 + 4}" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="${r + 2}" cy="${r + 2}" r="${r}" fill="${escHtml(fillColor)}" stroke="white" stroke-width="2"/>
+      </svg>`;
+      markerOverlays.push({ input: Buffer.from(svg), top: markerTop, left: markerLeft });
+    }
+
+    const allComposites = [...composites, ...markerOverlays];
+
+    /* Composite tiles + markers into a raw buffer first, then crop.
+       In sharp v0.34 chaining .composite().extract() fails when there are
+       multiple overlays; doing two separate sharp operations avoids that. */
+    const { data: rawData, info: rawInfo } = await canvas
+      .composite(allComposites)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const finalBuf = await sharp.default(rawData, { raw: { width: rawInfo.width, height: rawInfo.height, channels: rawInfo.channels as 1 | 2 | 3 | 4 } })
+      .extract({ left: offsetX, top: offsetY, width, height })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+
+    void trackMapUsage("osm", "static");
+    res.set("Content-Type", "image/jpeg");
+    res.set("Cache-Control", "public, max-age=3600");
+    res.send(finalBuf);
+  } catch (staticErr) {
+    /* Log the error for debugging, then fallback */
+    console.error("[maps/static] Tile stitch failed:", (staticErr as Error)?.message ?? staticErr);
+    /* Fallback: redirect to staticmap.openstreetmap.de */
+    const markerQuery = rawMarkers.map(m => {
+      const parts = m.split("|");
+      const coord = parts[parts.length - 1] ?? "";
+      return `markers=${encodeURIComponent(coord)}`;
+    }).join("&");
+    const fallbackUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=${zoom}&size=${width}x${height}${markerQuery ? `&${markerQuery}` : ""}`;
+    res.redirect(302, fallbackUrl);
+  }
+});
+
 /* Register on the main maps router: /api/maps/admin/* */
 router.post("/admin/test",        adminAuth, handleMapsTest);
 router.get("/admin/usage",        adminAuth, handleMapsUsage);

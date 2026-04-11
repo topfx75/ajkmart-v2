@@ -1373,6 +1373,35 @@ router.patch("/:id/customer-counter", bargainLimiter, customerAuth, requireRideS
   sendSuccess(res, formatRide(updated!));
 });
 
+router.get("/history", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const rides = await db.select().from(ridesTable)
+    .where(and(
+      eq(ridesTable.userId, userId),
+      sql`status IN ('completed', 'cancelled', 'dropped_off')`
+    ))
+    .orderBy(ridesTable.createdAt);
+
+  const formatted = await Promise.all(rides.map(async (r) => {
+    const base = formatRide(r);
+    let fareBreakdown: { baseFare: number; gstAmount: number } | null = null;
+    if (r.distance && r.type) {
+      try {
+        const computed = await calcFare(parseFloat(String(r.distance)), r.type);
+        fareBreakdown = { baseFare: computed.baseFare, gstAmount: computed.gstAmount };
+      } catch {
+        /* Non-critical: fare breakdown enrichment — omitted if calc fails */
+      }
+    }
+    return { ...base, fareBreakdown };
+  }));
+
+  sendSuccess(res, {
+    rides: formatted.reverse(),
+    total: formatted.length,
+  });
+});
+
 router.get("/", customerAuth, async (req, res) => {
   const userId = req.customerId!;
   const statusFilter = req.query["status"] as string | undefined;

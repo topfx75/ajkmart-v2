@@ -604,6 +604,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       showToast(`Wallet balance Rs. ${user?.walletBalance ?? 0} — insufficient. Please top up.`, "error"); return;
     }
     setBooking(true);
+    let navigated = false;
     try {
       if (isScheduled) {
         const scheduledDt = new Date(`${scheduledDate}T${scheduledTime}:00`);
@@ -630,6 +631,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       if (payMethod === "wallet" && !bookedRide.isBargaining) {
         updateUser({ walletBalance: (user?.walletBalance ?? 0) - (bookedRide.effectiveFare ?? bookedRide.fare ?? 0) });
       }
+      navigated = true;
       onBooked(bookedRide);
       (async () => {
         try {
@@ -642,13 +644,14 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     } catch (err: any) {
       const errData = err?.response?.data || err?.data;
       if (errData?.activeRideId) {
+        navigated = true;
         onBooked({ id: errData.activeRideId, type: rideType, status: errData.activeRideStatus });
         showToast("You have an active ride. Resuming tracking.", "info");
       } else {
         showToast(errData?.error || "Network error. Please try again.", "error");
       }
     } finally {
-      setBooking(false);
+      if (!navigated) setBooking(false);
     }
   };
 
