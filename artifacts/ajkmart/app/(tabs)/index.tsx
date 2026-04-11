@@ -1183,7 +1183,7 @@ function HomeSkeleton() {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { user, token } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
   const { itemCount, total: cartTotal } = useCart();
   const queryClient = useQueryClient();
   const topPad = Math.max(insets.top, 12);
@@ -1228,6 +1228,7 @@ export default function HomeScreen() {
   const appName = platformConfig.platform.appName;
   const contentBanner = platformConfig.content.banner;
   const announcement = platformConfig.content.announcement;
+  const showBanner = platformConfig.content.showBanner;
   const [announceDismissed, setAnnounceDismissed] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
@@ -1267,7 +1268,7 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const activeServices = getActiveServices(features);
+  const activeServices = useMemo(() => getActiveServices(features), [features]);
   const noServicesActive = activeServices.length === 0;
 
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
@@ -1392,7 +1393,7 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {configLoading ? (
+        {(configLoading || authLoading) ? (
           <HomeSkeleton />
         ) : noServicesActive ? (
           <EmptyState
@@ -1421,7 +1422,7 @@ export default function HomeScreen() {
               <ActiveTrackerStrip userId={user.id} />
             )}
 
-            {platformConfig.content.showBanner && <DynamicBannerCarousel />}
+            {showBanner && <DynamicBannerCarousel />}
 
             <FlashDealsSection T={T} />
 

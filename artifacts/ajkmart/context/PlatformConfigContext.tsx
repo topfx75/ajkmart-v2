@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import { unwrapApiResponse } from "../utils/api";
 
@@ -504,9 +504,12 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
       };
       _cached = parsed;
       _cachedAt = Date.now();
-      setConfig(parsed);
+      setConfig(prev => {
+        if (JSON.stringify(prev) === JSON.stringify(parsed)) return prev;
+        return parsed;
+      });
     } catch {
-      if (_cached) setConfig(_cached);
+      if (_cached) setConfig(prev => prev);
     } finally {
       setLoading(false);
       fetchingRef.current = false;
@@ -531,8 +534,10 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
 
   const refresh = useCallback(() => fetchConfig(true), [fetchConfig]);
 
+  const ctxValue = useMemo(() => ({ config, loading, refresh }), [config, loading, refresh]);
+
   return (
-    <PlatformConfigContext.Provider value={{ config, loading, refresh }}>
+    <PlatformConfigContext.Provider value={ctxValue}>
       {children}
     </PlatformConfigContext.Provider>
   );
