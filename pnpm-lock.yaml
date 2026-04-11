@@ -441,6 +441,12 @@ importers:
       expo-task-manager:
         specifier: ~14.0.9
         version: 14.0.9(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
+      leaflet:
+        specifier: ^1.9.4
+        version: 1.9.4
+      react-leaflet:
+        specifier: ^5.0.0
+        version: 5.0.0(leaflet@1.9.4)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react-native-qrcode-svg:
         specifier: ^6.3.21
         version: 6.3.21(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -475,6 +481,9 @@ importers:
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.90.21(react@19.1.0)
+      '@types/leaflet':
+        specifier: ^1.9.21
+        version: 1.9.21
       '@types/react':
         specifier: ~19.1.10
         version: 19.1.17

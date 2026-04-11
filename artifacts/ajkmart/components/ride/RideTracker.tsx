@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ProgressiveImage } from "@/components/ui/ProgressiveImage";
+
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -29,7 +29,7 @@ import type { CancelTarget } from "@/components/CancelModal";
 import { useRideStatus } from "@/hooks/useRideStatus";
 import { NegotiationScreen } from "@/components/ride/NegotiationScreen";
 import { RideStatusSkeleton } from "@/components/ride/Skeletons";
-import { staticMapUrl } from "@/hooks/useMaps";
+import { LiveTrackMap } from "@/components/ride/LiveTrackMap";
 import { API_BASE } from "@/utils/api";
 import {
   getDispatchStatus,
@@ -76,7 +76,7 @@ export function RideTracker({
   const { showToast } = useToast();
   const { language } = useLanguage();
   const tl = (key: TranslationKey) => tDual(key, language);
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { height: screenHeight } = useWindowDimensions();
 
   const slideUp = useRef(new Animated.Value(50)).current;
   const fadeIn = useRef(new Animated.Value(0)).current;
@@ -620,12 +620,6 @@ export function RideTracker({
   const riderLng = riderLivePos?.lng ?? ride?.riderLng;
   const hasRiderPos = riderLat != null && riderLng != null;
 
-  const mapMarkers: Array<{ lat: number; lng: number; color: string }> = [
-    ...(hasRiderPos ? [{ lat: riderLat as number, lng: riderLng as number, color: "green" }] : []),
-    ...(ride?.pickupLat != null ? [{ lat: ride.pickupLat, lng: ride.pickupLng!, color: "red" }] : []),
-    ...(ride?.dropLat != null && status === "in_transit" ? [{ lat: ride.dropLat, lng: ride.dropLng!, color: "blue" }] : []),
-  ];
-
   const riderPickupKm = hasRiderPos && ride?.pickupLat != null
     ? haversineKm(riderLat as number, riderLng as number, ride.pickupLat, ride.pickupLng!)
     : null;
@@ -633,31 +627,29 @@ export function RideTracker({
   const isLive = riderLivePos != null;
   const stale = !isLive && ride?.riderLocAge != null && ride.riderLocAge > 90;
 
-  const mapZoom = riderPickupKm != null && riderPickupKm < 1 ? 16 : 14;
-  const mapImgUrl = mapMarkers.length > 0
-    ? staticMapUrl(mapMarkers, { width: Math.round(screenWidth * 2), height: Math.round(screenHeight * 1.2), zoom: mapZoom })
-    : null;
+  const destLat = status === "in_transit" ? (ride?.dropLat ?? null) : (ride?.pickupLat ?? null);
+  const destLng = status === "in_transit" ? (ride?.dropLng ?? null) : (ride?.pickupLng ?? null);
+  const destLabel = status === "in_transit" ? (ride?.dropAddress ?? "Drop-off") : (ride?.pickupAddress ?? "Pickup");
 
   const vehiclePlate = ride?.bids?.find((b: any) => b.vehiclePlate)?.vehiclePlate ?? null;
   const completedColor = hdrCfg.color;
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Full screen map background */}
+      {/* Full screen interactive map background */}
       <View style={StyleSheet.absoluteFillObject}>
-        {mapImgUrl ? (
-          <ProgressiveImage source={mapImgUrl} style={{ flex: 1, width: "100%", height: "100%" }} containerStyle={{ flex: 1 }} borderRadius={0} />
-        ) : (
-          <LinearGradient colors={["#0F172A", "#1E293B"]} style={{ flex: 1 }} />
-        )}
-        {!mapImgUrl && (
-          <View style={{ position: "absolute", top: "45%", left: 0, right: 0, alignItems: "center" }}>
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.3)" />
-            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 6 }}>
-              {tl("waitingForDriverLocation")}
-            </Text>
-          </View>
-        )}
+        <LiveTrackMap
+          orderId={rideId}
+          type="ride"
+          token={token ?? ""}
+          destLat={destLat}
+          destLng={destLng}
+          destLabel={destLabel}
+          height={screenHeight}
+          lang={language}
+          riderLat={riderLat ?? null}
+          riderLng={riderLng ?? null}
+        />
       </View>
 
       {/* Top left: back + ride ID */}

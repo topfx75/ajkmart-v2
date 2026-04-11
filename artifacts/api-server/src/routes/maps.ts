@@ -1506,12 +1506,56 @@ router.get("/live-track", (req, res) => {
           animateMarkerTo(riderMarker, msg.lat, msg.lng, 30);
         }
         setStatus('status-dot', '${t.onWay}', '');
+        try { window.dispatchEvent(new CustomEvent('riderUpdateForPolyline', { detail: { lat: msg.lat, lng: msg.lng } })); } catch {}
       }
     } catch {}
   });
 
-  poll();
-  setInterval(poll, POLL_MS);
+  /* ── Route polyline ── */
+  let routeLayer = null;
+  let lastPolylineRiderLat = null;
+  let lastPolylineRiderLng = null;
+
+  function haversineDist(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  async function fetchAndDrawRoute(rLat, rLng) {
+    if (DEST_LAT == null || DEST_LNG == null) return;
+    if (lastPolylineRiderLat != null && haversineDist(rLat, rLng, lastPolylineRiderLat, lastPolylineRiderLng) < 50) return;
+    lastPolylineRiderLat = rLat;
+    lastPolylineRiderLng = rLng;
+    try {
+      const r = await fetch(API_BASE + '/api/maps/directions?origin_lat=' + rLat + '&origin_lng=' + rLng + '&dest_lat=' + DEST_LAT + '&dest_lng=' + DEST_LNG + '&mode=driving', {
+        headers: TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      const geo = d?.geometry ?? d?.data?.geometry ?? null;
+      if (!geo) return;
+      if (routeLayer) { map.removeLayer(routeLayer); }
+      routeLayer = L.geoJSON(geo, { style: { color: '#3b82f6', weight: 4, opacity: 0.7 } }).addTo(map);
+    } catch {}
+  }
+
+  async function pollAndRoute() {
+    await poll();
+    if (riderMarker) {
+      const ll = riderMarker.getLatLng();
+      fetchAndDrawRoute(ll.lat, ll.lng);
+    }
+  }
+
+  pollAndRoute();
+  setInterval(pollAndRoute, POLL_MS);
+
+  window.addEventListener('riderUpdateForPolyline', function(e) {
+    if (e.detail && typeof e.detail.lat === 'number' && typeof e.detail.lng === 'number') fetchAndDrawRoute(e.detail.lat, e.detail.lng);
+  });
 </script>
 </body></html>`;
 

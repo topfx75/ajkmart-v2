@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
   ActivityIndicator,
   Modal,
-  Platform,
   TouchableOpacity,
   StyleSheet,
   Text,
@@ -11,9 +10,9 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Colors from "@/constants/colors";
 import { Font } from "@/constants/typography";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 const C = Colors.light;
+
+const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/maps`;
 
 export type MapPickerResult = {
   lat: number;
@@ -30,31 +29,60 @@ type Props = {
   onClose: () => void;
 };
 
-const PICKER_ORIGIN = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+const LeafletMapInner = lazy(() =>
+  import("./MapPickerLeaflet.web").then((mod) => ({
+    default: mod.MapPickerLeaflet,
+  }))
+);
 
 export function MapPickerModal({ visible, label = "Location", initialLat, initialLng, onConfirm, onClose }: Props) {
-  const insets = useSafeAreaInsets();
-  const [loading, setLoading] = useState(true);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [address, setAddress] = useState("");
+  const currentPos = useRef<{ lat: number; lng: number }>({
+    lat: initialLat ?? 33.7294,
+    lng: initialLng ?? 73.3872,
+  });
+
+  useEffect(() => {
+    currentPos.current = {
+      lat: initialLat ?? 33.7294,
+      lng: initialLng ?? 73.3872,
+    };
+    setAddress("");
+  }, [initialLat, initialLng, visible]);
+
+  const handleDragEnd = useCallback(async (lat: number, lng: number) => {
+    currentPos.current = { lat, lng };
+    setAddress("");
+    try {
+      const r = await fetch(`${API}/reverse-geocode?lat=${lat}&lng=${lng}`);
+      if (r.ok) {
+        const d = await r.json();
+        setAddress(d.address ?? d.formattedAddress ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
+    } catch {}
+  }, []);
+
+  const handleConfirm = useCallback(async () => {
+    setConfirming(true);
+    const { lat, lng } = currentPos.current;
+    let finalAddress = address;
+    if (!finalAddress) {
+      try {
+        const r = await fetch(`${API}/reverse-geocode?lat=${lat}&lng=${lng}`);
+        if (r.ok) {
+          const d = await r.json();
+          finalAddress = d.address ?? d.formattedAddress ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        }
+      } catch {}
+    }
+    if (!finalAddress) finalAddress = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    onConfirm({ lat, lng, address: finalAddress });
+    setConfirming(false);
+  }, [address, onConfirm]);
 
   const lat = initialLat ?? 33.7294;
   const lng = initialLng ?? 73.3872;
-  const src = `${PICKER_ORIGIN}/api/maps/picker?lat=${lat}&lng=${lng}&zoom=14&label=${encodeURIComponent(label)}`;
-
-  useEffect(() => {
-    if (!visible) { setLoading(true); return; }
-
-    function handleMessage(e: MessageEvent) {
-      if (e.origin !== PICKER_ORIGIN) return;
-      if (!e.data || e.data.type !== "MAP_PICKER_CONFIRM") return;
-      const { lat, lng, address } = e.data as { lat: number; lng: number; address: string; type: string };
-      if (typeof lat !== "number" || typeof lng !== "number") return;
-      onConfirm({ lat, lng, address: address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}` });
-    }
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [visible, onConfirm]);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -68,21 +96,40 @@ export function MapPickerModal({ visible, label = "Location", initialLat, initia
         </View>
 
         <View style={styles.mapWrap}>
-          {loading && (
-            <View style={styles.loader}>
-              <ActivityIndicator size="large" color={C.primary} />
-              <Text style={styles.loaderTxt}>Loading map...</Text>
-            </View>
+          {visible && (
+            <Suspense
+              fallback={
+                <View style={styles.loader}>
+                  <ActivityIndicator size="large" color={C.primary} />
+                  <Text style={styles.loaderTxt}>Loading map...</Text>
+                </View>
+              }
+            >
+              <LeafletMapInner lat={lat} lng={lng} onDragEnd={handleDragEnd} />
+            </Suspense>
           )}
-          <iframe
-            ref={iframeRef}
-            src={src}
-            style={{ width: "100%", height: "100%", border: "none", display: loading ? "none" : "block" }}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups"
-            allow="geolocation"
-            onLoad={() => setLoading(false)}
-            title={`Map picker — ${label}`}
-          />
+        </View>
+
+        {address ? (
+          <View style={styles.addressBar}>
+            <Ionicons name="location" size={16} color={C.primary} />
+            <Text style={styles.addressText} numberOfLines={2}>{address}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleConfirm}
+            disabled={confirming}
+            style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
+          >
+            {confirming ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.confirmText}>Confirm Location</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -102,6 +149,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
     backgroundColor: "#fff",
+    zIndex: 10,
   },
   backBtn: {
     width: 40,
@@ -132,5 +180,41 @@ const styles = StyleSheet.create({
     fontFamily: Font.medium,
     fontSize: 14,
     color: C.textMuted,
+  },
+  addressBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#F8FAFC",
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  addressText: {
+    flex: 1,
+    fontFamily: Font.medium,
+    fontSize: 13,
+    color: C.text,
+  },
+  bottomBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 24,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  confirmBtn: {
+    backgroundColor: C.primary,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmText: {
+    fontFamily: Font.bold,
+    fontSize: 15,
+    color: "#fff",
   },
 });
