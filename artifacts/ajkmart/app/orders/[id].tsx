@@ -69,7 +69,7 @@ export default function OrderDetailScreen() {
     };
   }, [language]);
 
-  const STEP_LABELS = [T("statusPlaced"), T("confirmed"), T("preparing"), T("statusOnWay"), T("delivered")];
+  const STEP_LABELS = [T("statusPlaced"), T("confirmed"), T("preparing"), T("readyForPickup"), T("statusOnWay"), T("delivered")];
   const PARCEL_STEP_LABELS = [T("statusPlaced"), T("statusAccepted"), T("inTransit"), T("delivered")];
   const RIDE_STEP_LABELS = [T("searching"), T("statusAccepted"), T("arrived"), T("inTransit"), T("completed")];
 
@@ -497,6 +497,18 @@ export default function OrderDetailScreen() {
             </View>
           )}
         </View>
+
+        {order.status === "pending" && (
+          <View style={{ backgroundColor: C.amberSoft, borderRadius: 14, borderWidth: 1, borderColor: C.amberBorder, padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 4 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.amber, alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Ionicons name="storefront-outline" size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...Typ.body, fontFamily: Font.bold, color: C.amberDark }}>{T("awaitingVendorAccept" as TranslationKey)}</Text>
+              <Text style={{ ...Typ.caption, color: C.amber, marginTop: 3, lineHeight: 18 }}>{T("awaitingVendorNote" as TranslationKey)}</Text>
+            </View>
+          </View>
+        )}
 
         {isActive && LIVE_TRACKING_STATUSES.includes(order.status) && (
           <View style={[s.card, { backgroundColor: C.emeraldBg, borderColor: C.emeraldMid, padding: 0, overflow: "hidden" }]}>

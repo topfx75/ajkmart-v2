@@ -45,7 +45,7 @@ export const PARCEL_STATUS_MAP: Record<string, StatusConfig> = {
   cancelled:  { color: C.red, bg: C.redSoft, icon: "close-circle-outline",       labelKey: "cancelled" },
 };
 
-export const ORDER_STEPS = ["pending", "confirmed", "preparing", "out_for_delivery", "delivered"];
+export const ORDER_STEPS = ["pending", "confirmed", "preparing", "ready", "out_for_delivery", "delivered"];
 export const PARCEL_STEPS = ["pending", "accepted", "in_transit", "completed"];
 export const RIDE_STEPS = ["searching", "accepted", "arrived", "in_transit", "completed"];
 

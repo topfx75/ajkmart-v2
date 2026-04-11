@@ -253,11 +253,11 @@ export default function Orders() {
     return () => { clearInterval(tokenRefreshInterval); socket.disconnect(); socketRef.current = null; };
   }, [user?.id]);
 
-  const apiStatus = tab === "new" ? "pending" : tab;
+  const apiStatus = tab === "new" ? "new" : tab;
   const { data, isLoading, isError, refetch } = useQuery({ queryKey: ["vendor-orders", tab], queryFn: () => api.getOrders(apiStatus), refetchInterval: 15000, retry: 2 });
   const orders = data?.orders || [];
 
-  const countQ = useQuery({ queryKey: ["vendor-orders-count"], queryFn: () => api.getOrders("pending"), refetchInterval: 15000, enabled: tab !== "new" });
+  const countQ = useQuery({ queryKey: ["vendor-orders-count"], queryFn: () => api.getOrders("new"), refetchInterval: 15000, enabled: tab !== "new" });
   const newCount = tab === "new" ? orders.length : (countQ.data?.orders?.length || 0);
 
   const updateMut = useMutation({

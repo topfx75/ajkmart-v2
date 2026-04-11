@@ -9,8 +9,10 @@ import { ensureAuthMethodColumn, ensureRideBidsMigration, ensureOrdersGpsColumns
 import { initVapid } from "./lib/webpush.js";
 import { db } from "@workspace/db";
 import { getPlatformSettings } from "./routes/admin.js";
-import { locationLogsTable, pendingOtpsTable } from "@workspace/db/schema";
-import { lt } from "drizzle-orm";
+import { locationLogsTable, pendingOtpsTable, ordersTable, notificationsTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
+import { lt, eq, and, lte, sql } from "drizzle-orm";
+import { getIO } from "./lib/socketio.js";
+import { generateId } from "./lib/id.js";
 
 const rawPort = process.env["PORT"];
 
@@ -33,6 +35,48 @@ initVapid();
 /* ── Cron: dispatch scheduled rides every minute ── */
 cron.schedule("* * * * *", async () => {
   await dispatchScheduledRides();
+}, { timezone: "Asia/Karachi" });
+
+/* ── Cron: auto-cancel unaccepted pending orders every minute ── */
+cron.schedule("* * * * *", async () => {
+  try {
+    const settings = await getPlatformSettings();
+    const cancelMin = parseInt(settings["order_auto_cancel_min"] ?? "15");
+    if (!cancelMin || cancelMin <= 0) return;
+
+    const cutoff = new Date(Date.now() - cancelMin * 60 * 1000);
+    const expired = await db
+      .select({ id: ordersTable.id, userId: ordersTable.userId, paymentMethod: ordersTable.paymentMethod, total: ordersTable.total })
+      .from(ordersTable)
+      .where(and(eq(ordersTable.status, "pending"), lte(ordersTable.createdAt, cutoff)));
+
+    if (!expired.length) return;
+
+    const io = getIO();
+    for (const order of expired) {
+      await db.transaction(async (tx) => {
+        await tx.update(ordersTable).set({ status: "cancelled", updatedAt: new Date() }).where(eq(ordersTable.id, order.id));
+        if (order.paymentMethod === "wallet") {
+          const refundAmt = parseFloat(order.total ?? "0");
+          if (refundAmt > 0) {
+            await tx.update(usersTable)
+              .set({ walletBalance: sql`wallet_balance + ${refundAmt.toFixed(2)}` })
+              .where(eq(usersTable.id, order.userId));
+            await tx.insert(walletTransactionsTable).values({ id: generateId(), userId: order.userId, type: "credit", amount: refundAmt.toFixed(2), description: "Auto-refund: order cancelled (vendor did not accept)" });
+          }
+        }
+        await tx.insert(notificationsTable).values({ id: generateId(), userId: order.userId, title: "Order Cancelled", body: "Your order was cancelled because no vendor accepted it in time. If paid, refund has been processed.", type: "order", icon: "close-circle-outline" });
+      });
+      if (io) {
+        io.to(`user:${order.userId}`).emit("order:update", { id: order.id, status: "cancelled" });
+      }
+    }
+    if (expired.length > 0) {
+      logger.info({ count: expired.length }, "[cron] auto-cancelled unaccepted pending orders");
+    }
+  } catch (e) {
+    logger.error({ err: e }, "[cron] auto-cancel pending orders failed");
+  }
 }, { timezone: "Asia/Karachi" });
 
 /* ── Cron: cleanup jobs (runs at midnight) ── */
