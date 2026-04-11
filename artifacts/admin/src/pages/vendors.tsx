@@ -5,12 +5,12 @@ import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
   CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
-  Download, CalendarDays, Percent, Truck, Gavel, Clock, Megaphone, Upload, Eye,
+  Download, CalendarDays, Percent, Truck, Gavel, Clock, Megaphone, Upload, Eye, Zap,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension, useDeliveryAccess, useAddWhitelistEntry, useDeleteWhitelistEntry, useDeliveryAccessRequests, useResolveDeliveryRequest, useVendorHours, useUpdateVendorHours, useVendorAnnouncement, useUpdateVendorAnnouncement, useUpdateVendorDeliveryTime, useVendorBulkUploads } from "@/hooks/use-admin";
+import { useVendors, useUpdateVendorStatus, useVendorPayout, useVendorCredit, usePlatformSettings, useVendorCommissionOverride, useOverrideSuspension, useDeliveryAccess, useAddWhitelistEntry, useDeleteWhitelistEntry, useDeliveryAccessRequests, useResolveDeliveryRequest, useVendorHours, useUpdateVendorHours, useVendorAnnouncement, useUpdateVendorAnnouncement, useUpdateVendorDeliveryTime, useVendorBulkUploads, useSetVendorAutoConfirm } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PLATFORM_DEFAULTS } from "@/lib/platformConfig";
 import { useToast } from "@/hooks/use-toast";
@@ -212,6 +212,17 @@ function VendorDetailModal({ vendor, onClose }: { vendor: any; onClose: () => vo
   const updateAnnM = useUpdateVendorAnnouncement();
   const updateDeliveryM = useUpdateVendorDeliveryTime();
   const { data: uploadsData, isLoading: uploadsLoading } = useVendorBulkUploads(vendor.id);
+  const autoConfirmM = useSetVendorAutoConfirm();
+  const [autoConfirm, setAutoConfirm] = useState<boolean>(!!vendor.autoConfirm);
+
+  const handleAutoConfirmToggle = (enabled: boolean) => {
+    const prev = autoConfirm;
+    setAutoConfirm(enabled);
+    autoConfirmM.mutate({ id: vendor.id, enabled }, {
+      onSuccess: () => toast({ title: enabled ? "Auto-confirm enabled" : "Auto-confirm disabled", description: enabled ? "Orders will skip vendor acceptance step" : "Vendor must manually accept orders" }),
+      onError: (e: any) => { setAutoConfirm(prev); toast({ title: "Failed", description: e.message, variant: "destructive" }); },
+    });
+  };
 
   const [annText, setAnnText] = useState(vendor.storeAnnouncement || "");
   const [deliveryTime, setDeliveryTime] = useState(vendor.storeDeliveryTime || "");
@@ -412,6 +423,33 @@ function VendorDetailModal({ vendor, onClose }: { vendor: any; onClose: () => vo
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">Current: {vendor.storeDeliveryTime || "Not set"}</p>
+          </div>
+
+          {/* Auto-Confirm Toggle */}
+          <div className="space-y-2 border-t border-border/40 pt-4">
+            <h3 className="text-sm font-bold flex items-center gap-2"><Zap className="w-4 h-4 text-violet-500" /> Auto-Confirm Orders</h3>
+            <div className="flex items-center justify-between rounded-xl border px-4 py-3 bg-muted/20">
+              <div>
+                <p className="text-sm font-medium">Skip Vendor Acceptance</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {autoConfirm ? "Orders placed to this vendor are auto-confirmed (no manual acceptance needed)" : "Vendor must manually accept each order (default behavior)"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 ml-4 shrink-0">
+                <Button size="sm" variant={autoConfirm ? "default" : "outline"}
+                  className={`h-7 text-xs rounded-lg ${autoConfirm ? "bg-violet-600 hover:bg-violet-700 text-white" : ""}`}
+                  onClick={() => handleAutoConfirmToggle(true)}
+                  disabled={autoConfirmM.isPending || autoConfirm}>
+                  <ToggleRight className="w-3 h-3 mr-1" /> On
+                </Button>
+                <Button size="sm" variant={!autoConfirm ? "destructive" : "outline"}
+                  className="h-7 text-xs rounded-lg"
+                  onClick={() => handleAutoConfirmToggle(false)}
+                  disabled={autoConfirmM.isPending || !autoConfirm}>
+                  <ToggleLeft className="w-3 h-3 mr-1" /> Off
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Bulk Uploads History */}

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { ordersTable, orderItemsTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable, notificationsTable } from "@workspace/db/schema";
+import { ordersTable, orderItemsTable, usersTable, walletTransactionsTable, promoCodesTable, productsTable, liveLocationsTable, notificationsTable, vendorProfilesTable } from "@workspace/db/schema";
 import { eq, and, gte, count, desc, SQL, sql, inArray, lt } from "drizzle-orm";
 import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { generateId } from "../lib/id.js";
@@ -888,6 +888,24 @@ router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) 
     }
   }
 
+  /* ── Auto-confirm: check vendor flag AND per-type platform setting ── */
+  let initialOrderStatus: "pending" | "confirmed" = "pending";
+  {
+    const orderType = (type ?? "mart") as string;
+    const platformKey = `auto_confirm_${orderType}` as string;
+    const platformAutoConfirm = (s[platformKey] ?? "off") === "on";
+
+    let vendorAutoConfirm = false;
+    if (resolvedVendorId) {
+      const [vp] = await db.select({ autoConfirm: vendorProfilesTable.autoConfirm }).from(vendorProfilesTable).where(eq(vendorProfilesTable.userId, resolvedVendorId)).limit(1);
+      vendorAutoConfirm = vp?.autoConfirm === true;
+    }
+
+    if (platformAutoConfirm || vendorAutoConfirm) {
+      initialOrderStatus = "confirmed";
+    }
+  }
+
   /* ── Wallet payment: deduct on placement ── */
   if (paymentMethod === "wallet") {
     const walletEnabled = (s["feature_wallet"] ?? "on") === "on";
@@ -925,7 +943,7 @@ router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) 
         const orderId = generateId();
         const [newOrder] = await tx.insert(ordersTable).values({
           id: orderId, userId, type,
-          status: "pending", total: total.toFixed(2),
+          status: initialOrderStatus, total: total.toFixed(2),
           deliveryAddress, paymentMethod,
           estimatedTime,
           ...gpsInsert,
@@ -957,10 +975,10 @@ router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) 
       /* ── Emit new-order to admin/vendor IMMEDIATELY after DB commit ── */
       broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string }).vendorId);
 
-      /* ── Two-Way ACK: notify customer order was received (pending vendor acceptance) ── */
+      /* ── Two-Way ACK: notify customer order was received ── */
       const io = getIO();
       if (io) {
-        io.to(`user:${userId}`).emit("order:ack", { orderId: order.id, status: "pending", createdAt: order.createdAt.toISOString() });
+        io.to(`user:${userId}`).emit("order:ack", { orderId: order.id, status: initialOrderStatus, createdAt: order.createdAt.toISOString() });
       }
 
       /* ── Broadcast updated wallet balance to all customer devices ── */
@@ -986,7 +1004,7 @@ router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) 
     const [order] = await db.transaction(async (tx) => {
       const [newOrder] = await tx.insert(ordersTable).values({
         id: orderId, userId, type,
-        status: "pending", total: total.toFixed(2),
+        status: initialOrderStatus, total: total.toFixed(2),
         deliveryAddress, paymentMethod,
         estimatedTime,
         ...gpsInsert,
@@ -1018,10 +1036,10 @@ router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) 
     /* ── Emit to admin IMMEDIATELY after DB commit ── */
     broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string })?.vendorId);
 
-    /* ── Two-Way ACK: notify customer order was received (pending vendor acceptance) ── */
+    /* ── Two-Way ACK: notify customer order was received ── */
     const io = getIO();
     if (io) {
-      io.to(`user:${userId}`).emit("order:ack", { orderId: order!.id, status: "pending", createdAt: order!.createdAt.toISOString() });
+      io.to(`user:${userId}`).emit("order:ack", { orderId: order!.id, status: initialOrderStatus, createdAt: order!.createdAt.toISOString() });
     }
 
     await finalizeIdempotency(mapped as unknown as Record<string, unknown>);

@@ -26,6 +26,7 @@ export {
   ensureSilenceModeColumns,
   ensureProfileCompleteColumn,
   ensureOrdersItemsNullable,
+  ensureVendorAutoConfirmColumn,
   ensureOtpSettings,
   getPlatformSettings,
   getAdminSecret,

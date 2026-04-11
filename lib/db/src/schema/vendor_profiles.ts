@@ -18,6 +18,7 @@ export const vendorProfilesTable = pgTable("vendor_profiles", {
   businessType:      text("business_type"),
   businessName:      text("business_name"),
   ntn:               text("ntn"),
+  autoConfirm:       boolean("auto_confirm").notNull().default(false),
   createdAt:         timestamp("created_at").notNull().defaultNow(),
   updatedAt:         timestamp("updated_at").notNull().defaultNow(),
 });

@@ -973,4 +973,18 @@ router.post("/users/:id/2fa/unenforce", validateParams(idParamSchema), async (re
   sendSuccess(res, { success: true, message: `2FA enforcement removed for ${user.name ?? user.phone}` });
 });
 
+/* ── PATCH /admin/vendors/:id/auto-confirm — toggle vendor-level auto-confirm ── */
+router.patch("/vendors/:id/auto-confirm", validateParams(idParamSchema), async (req, res) => {
+  const userId = req.params["id"]!;
+  const { enabled } = req.body as { enabled: boolean };
+  if (typeof enabled !== "boolean") {
+    sendError(res, "`enabled` (boolean) is required", 400); return;
+  }
+  const [vp] = await db.select({ userId: vendorProfilesTable.userId }).from(vendorProfilesTable).where(eq(vendorProfilesTable.userId, userId)).limit(1);
+  if (!vp) { sendNotFound(res, "Vendor profile not found"); return; }
+  await db.update(vendorProfilesTable).set({ autoConfirm: enabled, updatedAt: new Date() }).where(eq(vendorProfilesTable.userId, userId));
+  addAuditEntry({ action: "admin_vendor_auto_confirm", ip: getClientIp(req), details: `Admin set autoConfirm=${enabled} for vendor ${userId}`, result: "success" });
+  sendSuccess(res, { success: true, autoConfirm: enabled });
+});
+
 export default router;

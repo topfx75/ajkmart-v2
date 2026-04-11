@@ -97,6 +97,10 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "order_max_cart_value",      value: "50000", label: "Max Cart Value / Hard Cap (Rs.)",         category: "orders" },
   { key: "order_cancel_window_min",   value: "5",     label: "Customer Cancel Window (minutes)",        category: "orders" },
   { key: "order_auto_cancel_min",     value: "15",    label: "Auto-Cancel if Unaccepted (minutes)",     category: "orders" },
+  { key: "auto_confirm_mart",         value: "off",   label: "Auto-Confirm Mart Orders (skip vendor acceptance)", category: "orders" },
+  { key: "auto_confirm_food",         value: "off",   label: "Auto-Confirm Food Orders (skip vendor acceptance)", category: "orders" },
+  { key: "auto_confirm_pharmacy",     value: "off",   label: "Auto-Confirm Pharmacy Orders",            category: "orders" },
+  { key: "auto_confirm_parcel",       value: "off",   label: "Auto-Confirm Parcel Orders",              category: "orders" },
   { key: "order_refund_days",         value: "3",     label: "Refund Processing Time (days)",           category: "orders" },
   { key: "order_preptime_min",        value: "15",    label: "Default Prep Time Shown (minutes)",       category: "orders" },
   { key: "order_rating_window_hours", value: "48",    label: "Rating Window After Delivery (hours)",    category: "orders" },
@@ -790,6 +794,22 @@ export async function ensureProfileCompleteColumn() {
 
   logger.info("[migration] profileComplete: migration complete");
   _profileCompleteMigrated = true;
+}
+
+let _vendorAutoConfirmMigrated = false;
+export async function ensureVendorAutoConfirmColumn() {
+  if (_vendorAutoConfirmMigrated) return;
+  try {
+    await db.execute(sql.raw(`ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS auto_confirm BOOLEAN NOT NULL DEFAULT false`));
+    logger.info("[migration] vendorAutoConfirm: migration complete");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/already exists|duplicate column|42701/i.test(msg)) {
+      logger.fatal({ err: e }, "[migration] vendorAutoConfirm: FATAL");
+      throw e;
+    }
+  }
+  _vendorAutoConfirmMigrated = true;
 }
 
 let _silenceModeMigrated = false;

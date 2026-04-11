@@ -1448,6 +1448,17 @@ export const useUpdateVendorDeliveryTime = () => {
   });
 };
 
+export const useSetVendorAutoConfirm = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      fetcher(`/vendors/${id}/auto-confirm`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+    },
+  });
+};
+
 export const useVendorBulkUploads = (vendorId: string | null) => {
   return useQuery({
     queryKey: ["admin-vendor-bulk-uploads", vendorId],
