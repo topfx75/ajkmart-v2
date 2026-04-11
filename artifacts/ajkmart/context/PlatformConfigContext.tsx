@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import { unwrapApiResponse } from "../utils/api";
 
 const API_DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
@@ -519,12 +519,12 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
     fetchConfig();
     const interval = setInterval(() => fetchConfig(), CACHE_MS);
     const sub = AppState.addEventListener("change", (s) => {
-      if (s === "active") {
-        const now = Date.now();
-        if (now - lastForceFetch.current < 10_000) return;
-        lastForceFetch.current = now;
-        fetchConfig(true);
-      }
+      if (s !== "active") return;
+      if (Platform.OS === "web") return;
+      const now = Date.now();
+      if (now - lastForceFetch.current < 60_000) return;
+      lastForceFetch.current = now;
+      fetchConfig(true);
     });
     return () => { clearInterval(interval); sub.remove(); };
   }, [fetchConfig]);

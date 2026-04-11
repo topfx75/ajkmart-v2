@@ -6,7 +6,7 @@ import { loadCoreFonts, loadUrduFonts } from "@/utils/fonts";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -70,6 +70,48 @@ const webStyles = Platform.OS === "web" ? StyleSheet.create({
     boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
   },
 }) : { bg: {}, phone: {} };
+
+const splashStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0047B3",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: 12,
+  },
+  logoWrap: {
+    width: 110,
+    height: 110,
+    borderRadius: 28,
+    backgroundColor: "#ffffff",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    marginBottom: 6,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.25)" as any,
+  },
+  logo: {
+    width: 88,
+    height: 88,
+  },
+  appName: {
+    fontFamily: "System",
+    fontSize: 28,
+    fontWeight: "800" as const,
+    color: "#ffffff",
+    letterSpacing: 0.5,
+  },
+  tagline: {
+    fontFamily: "System",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.75)",
+    letterSpacing: 1.5,
+    textTransform: "uppercase" as const,
+    marginTop: -4,
+  },
+  loaderRow: {
+    marginTop: 28,
+  },
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -338,18 +380,19 @@ export default function RootLayout() {
   if (!ready) {
     return (
       <WebShell>
-        <View style={{ flex: 1, backgroundColor: "#0047B3", alignItems: "center", justifyContent: "center", gap: 20 }}>
-          <View style={{
-            width: 72,
-            height: 72,
-            borderRadius: 20,
-            backgroundColor: "rgba(255,255,255,0.15)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}>
-            <Text style={{ fontSize: 36 }}>🛒</Text>
+        <View style={splashStyles.container}>
+          <View style={splashStyles.logoWrap}>
+            <Image
+              source={require("@/assets/images/logo.png")}
+              style={splashStyles.logo}
+              resizeMode="contain"
+            />
           </View>
-          <ActivityIndicator size="large" color="#ffffff" />
+          <Text style={splashStyles.appName}>AJKMart</Text>
+          <Text style={splashStyles.tagline}>Fast Home Delivery</Text>
+          <View style={splashStyles.loaderRow}>
+            <ActivityIndicator size="small" color="rgba(255,255,255,0.9)" />
+          </View>
         </View>
       </WebShell>
     );
