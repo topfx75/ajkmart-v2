@@ -705,6 +705,12 @@ export default function Active() {
   const [adminMessages, setAdminMessages]          = useState<Array<{ text: string; ts: string; from: "admin" | "rider" }>>([]);
   const [showAdminChat, setShowAdminChat]          = useState(false);
   const [chatReply, setChatReply]                  = useState("");
+  const [rideChatMsgs, setRideChatMsgs]            = useState<Array<{ id: string; senderRole: string; body: string; createdAt: string }>>([]);
+  const [showRideChat, setShowRideChat]             = useState(false);
+  const [rideChatInput, setRideChatInput]           = useState("");
+  const [rideChatSending, setRideChatSending]       = useState(false);
+  const [rideChatLoaded, setRideChatLoaded]         = useState(false);
+  const rideChatRef                                 = useRef<HTMLDivElement>(null);
   const { socket: sharedSocket } = useSocket();
   const socketRef = useRef(sharedSocket);
   socketRef.current = sharedSocket;
@@ -739,6 +745,56 @@ export default function Active() {
       sharedSocket.off("order:assigned", onOrderUpdate);
     };
   }, [sharedSocket, qc]);
+
+  useEffect(() => {
+    if (!sharedSocket) return;
+    const handler = (payload: { id: string; rideId: string; senderRole: string; body: string; createdAt: string }) => {
+      if (!isMountedRef.current) return;
+      setRideChatMsgs((prev) => {
+        if (prev.some((m) => m.id === payload.id)) return prev;
+        return [...prev, payload];
+      });
+    };
+    sharedSocket.on("ride:message", handler);
+    return () => { sharedSocket.off("ride:message", handler); };
+  }, [sharedSocket]);
+
+  useEffect(() => {
+    if (!sharedSocket || !data?.ride?.id) return;
+    sharedSocket.emit("join", `ride:${data.ride.id}`);
+  }, [sharedSocket, data?.ride?.id]);
+
+  const loadRideChatMessages = async (rideId: string) => {
+    if (rideChatLoaded) return;
+    try {
+      const msgs = await apiFetch(`/rides/${rideId}/messages`);
+      const list = msgs?.data?.messages ?? msgs?.messages ?? [];
+      setRideChatMsgs(list);
+      setRideChatLoaded(true);
+    } catch {}
+  };
+
+  const sendRideChatMessage = async (rideId: string) => {
+    const body = rideChatInput.trim();
+    if (!body || rideChatSending) return;
+    setRideChatSending(true);
+    try {
+      const resp = await apiFetch(`/rides/${rideId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      const msg = resp?.data ?? resp;
+      if (msg?.id) {
+        setRideChatMsgs((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
+      }
+      setRideChatInput("");
+      setTimeout(() => rideChatRef.current?.scrollTo({ top: rideChatRef.current.scrollHeight, behavior: "smooth" }), 100);
+    } catch {
+      showToast("Could not send message", true);
+    }
+    setRideChatSending(false);
+  };
 
   type QueuedUpdate = { kind: "location" | "status"; run: () => Promise<unknown> };
   const pendingUpdatesRef                          = useRef<QueuedUpdate[]>([]);
@@ -1716,13 +1772,19 @@ export default function Active() {
                 <EstimatedArrivalBadge riderPos={riderPos} pickupLat={ride.pickupLat} pickupLng={ride.pickupLng} vehicleType={ride.type} />
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {ride.status === "accepted" ? (
                   <NavButton label="Go to Pickup" lat={ride.pickupLat} lng={ride.pickupLng} address={ride.pickupAddress} color="orange" />
                 ) : (
                   <NavButton label="Go to Drop" lat={ride.dropLat} lng={ride.dropLng} address={ride.dropAddress} color="blue" />
                 )}
                 <CallButton name={ride.customerName} phone={ride.customerPhone} />
+                <button
+                  onClick={() => { setShowRideChat(true); loadRideChatMessages(ride.id); }}
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm font-bold px-4 py-3 rounded-xl transition-all active:scale-[0.97] shadow-md shadow-purple-200"
+                >
+                  <MessageSquare size={14}/> Chat
+                </button>
               </div>
               {/* Turn-by-turn OSRM navigation */}
               {riderPos && ride.status === "accepted" && ride.pickupLat != null && ride.pickupLng != null && (
@@ -1848,6 +1910,54 @@ export default function Active() {
           </div>
         )}
       </div>
+
+      {/* ── Ride Chat Modal ── */}
+      {showRideChat && ride && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowRideChat(false)}>
+          <div className="bg-white w-full max-w-md rounded-t-3xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-black text-gray-900 flex items-center gap-2"><MessageSquare size={16} className="text-violet-600"/> Chat with Passenger</p>
+                <p className="text-xs text-gray-400">{ride.customerName || "Customer"}</p>
+              </div>
+              <button onClick={() => setShowRideChat(false)}><X size={18} className="text-gray-400"/></button>
+            </div>
+            <div ref={rideChatRef} className="bg-gray-50 rounded-2xl p-3 min-h-[100px] max-h-56 overflow-y-auto space-y-2 mb-3">
+              {rideChatMsgs.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">No messages yet</p>
+              )}
+              {rideChatMsgs.map((m) => (
+                <div key={m.id} className={`flex ${m.senderRole === "rider" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%] ${m.senderRole === "rider" ? "" : ""}`}>
+                    <div className={`text-xs px-3 py-1.5 rounded-xl ${m.senderRole === "rider" ? "bg-violet-600 text-white" : "bg-gray-200 text-gray-900"}`}>{m.body}</div>
+                    <p className={`text-[9px] mt-0.5 ${m.senderRole === "rider" ? "text-right text-gray-400" : "text-gray-400"}`}>
+                      {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={rideChatInput}
+                onChange={e => setRideChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") sendRideChatMessage(ride.id); }}
+                placeholder="Type a message..."
+                maxLength={500}
+                className="flex-1 text-sm border rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400"
+              />
+              <button
+                onClick={() => sendRideChatMessage(ride.id)}
+                disabled={!rideChatInput.trim() || rideChatSending}
+                className="bg-violet-600 text-white text-sm font-bold px-4 py-2 rounded-xl disabled:opacity-50"
+              >
+                {rideChatSending ? "..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── OTP Verification Modal ── */}
       {showOtpModal && ride && (

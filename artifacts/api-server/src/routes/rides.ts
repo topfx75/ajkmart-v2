@@ -8,6 +8,7 @@ import {
   rideServiceTypesTable, ridesTable, rideRatingsTable,
   usersTable, riderProfilesTable, walletTransactionsTable,
   popularLocationsTable, rideEventLogsTable, rideNotifiedRidersTable,
+  rideMessagesTable,
 } from "@workspace/db/schema";
 import { and, asc, eq, ne, sql, or, isNull, gte, count } from "drizzle-orm";
 import { z } from "zod";
@@ -15,7 +16,7 @@ import { generateId } from "../lib/id.js";
 import { ensureDefaultRideServices, ensureDefaultLocations, getPlatformSettings, adminAuth } from "./admin.js";
 import { customerAuth, riderAuth } from "../middleware/security.js";
 import { loadRide, requireRideState, requireRideOwner } from "../middleware/ride-guards.js";
-import { getIO } from "../lib/socketio.js";
+import { getIO, emitRideMessage } from "../lib/socketio.js";
 import { sendSuccess, sendCreated, sendError, sendErrorWithData, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
 
 function broadcastWalletUpdate(userId: string, newBalance: number) {
@@ -2296,5 +2297,103 @@ export async function dispatchScheduledRides(): Promise<void> {
     logger.error({ err: e }, "[scheduled-dispatch] error");
   }
 }
+
+/* ══════════════════════════════════════════════════════
+   In-App Ride Chat
+══════════════════════════════════════════════════════ */
+
+const chatMessageSchema = z.object({
+  body: z.string().min(1, "Message body required").max(500, "Message too long").transform(stripHtml),
+});
+
+router.post("/:id/messages", async (req, res) => {
+  const rideId = req.params["id"]!;
+  let senderRole: "customer" | "rider";
+  let senderId: string;
+
+  if (req.customerId) {
+    senderRole = "customer";
+    senderId = req.customerId;
+  } else if (req.riderId) {
+    senderRole = "rider";
+    senderId = req.riderId;
+  } else {
+    sendForbidden(res, "Authentication required");
+    return;
+  }
+
+  const parsed = chatMessageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error.issues[0]?.message ?? "Invalid message");
+    return;
+  }
+
+  const [ride] = await db.select({ id: ridesTable.id, userId: ridesTable.userId, riderId: ridesTable.riderId, status: ridesTable.status })
+    .from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
+
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
+
+  const isParticipant =
+    (senderRole === "customer" && ride.userId === senderId) ||
+    (senderRole === "rider" && ride.riderId === senderId);
+  if (!isParticipant) { sendForbidden(res, "Not a participant of this ride"); return; }
+
+  const activeStatuses = ["accepted", "arrived", "in_transit"];
+  if (!activeStatuses.includes(ride.status)) {
+    sendValidationError(res, "Chat is only available during active rides");
+    return;
+  }
+
+  const id = generateId();
+  const [msg] = await db.insert(rideMessagesTable).values({
+    id,
+    rideId,
+    senderRole,
+    senderId,
+    body: parsed.data.body,
+  }).returning();
+
+  const payload = {
+    id: msg!.id,
+    rideId: msg!.rideId,
+    senderRole: msg!.senderRole,
+    senderId: msg!.senderId,
+    body: msg!.body,
+    createdAt: msg!.createdAt.toISOString(),
+  };
+
+  emitRideMessage(rideId, payload);
+  sendCreated(res, payload);
+});
+
+router.get("/:id/messages", async (req, res) => {
+  const rideId = req.params["id"]!;
+  let senderId: string | null = null;
+
+  if (req.customerId) senderId = req.customerId;
+  else if (req.riderId) senderId = req.riderId;
+
+  if (!senderId) { sendForbidden(res, "Authentication required"); return; }
+
+  const [ride] = await db.select({ id: ridesTable.id, userId: ridesTable.userId, riderId: ridesTable.riderId })
+    .from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
+
+  if (!ride) { sendNotFound(res, "Ride not found"); return; }
+
+  const isParticipant = ride.userId === senderId || ride.riderId === senderId;
+  if (!isParticipant) { sendForbidden(res, "Not a participant of this ride"); return; }
+
+  const messages = await db.select().from(rideMessagesTable)
+    .where(eq(rideMessagesTable.rideId, rideId))
+    .orderBy(asc(rideMessagesTable.createdAt))
+    .limit(50);
+
+  sendSuccess(res, {
+    messages: messages.map(m => ({
+      ...m,
+      createdAt: m.createdAt.toISOString(),
+    })),
+  });
+});
 
 export default router;

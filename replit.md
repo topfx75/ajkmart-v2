@@ -43,10 +43,12 @@ The project is a pnpm monorepo built with TypeScript. Frontend applications use 
 - **White Label Delivery Access Control:** Whitelisting system for vendors/users to control delivery eligibility, with admin management and vendor request workflows.
 - **Scheduled Rides, Multi-Stop, Van Service & Pool Rides:** Support for scheduled rides, multiple stops per ride, a dedicated commercial van service, and ride-sharing/pool ride matching logic.
 - **Pull-to-Refresh & UI Polish:** Consistent pull-to-refresh component across all apps, UI enhancements, and accessibility improvements (ARIA labels, keyboard navigation).
-- **Socket.io:** Real-time communication for live tracking, notifications, wallet updates, and SOS alerts.
+- **Socket.io:** Real-time communication for live tracking, notifications, wallet updates, SOS alerts, and in-app ride chat.
+- **In-App Ride Chat:** Customer↔rider messaging during active rides via `ride_messages` table and Socket.io `ride:message` events. Chat bottom sheet in customer RideTracker, chat modal in rider Active page.
+- **Saved Address Coordinates:** `lat`/`lng` decimal columns on `saved_addresses` table. Addresses with coordinates appear as quick-select chips in ride booking.
 
 **Database Schema Highlights:**
-- Key tables: `usersTable`, `magicLinkTokensTable`, `productsTable`, `ordersTable`, `walletTransactionsTable`, `ridesTable`, `rideBidsTable`, `liveLocationsTable`, `rideRatingsTable`, `riderPenaltiesTable`, `popularLocationsTable`, `schoolRoutesTable`, `schoolSubscriptionsTable`, `productVariantsTable`, `bannersTable`, `userInteractionsTable`, `delivery_whitelist`, `delivery_access_requests`, `system_audit_log`, `categories`, `kyc_verifications`, `location_logs`, `vanRoutesTable`, `vanVehiclesTable`, `vanSchedulesTable`, `vanBookingsTable`.
+- Key tables: `usersTable`, `magicLinkTokensTable`, `productsTable`, `ordersTable`, `walletTransactionsTable`, `ridesTable`, `rideBidsTable`, `liveLocationsTable`, `rideRatingsTable`, `riderPenaltiesTable`, `popularLocationsTable`, `schoolRoutesTable`, `schoolSubscriptionsTable`, `productVariantsTable`, `bannersTable`, `userInteractionsTable`, `delivery_whitelist`, `delivery_access_requests`, `system_audit_log`, `categories`, `kyc_verifications`, `location_logs`, `vanRoutesTable`, `vanVehiclesTable`, `vanSchedulesTable`, `vanBookingsTable`, `rideMessagesTable`.
 
 ### External Dependencies
 

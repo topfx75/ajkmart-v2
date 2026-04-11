@@ -41,6 +41,8 @@ export interface Address {
   city: string;
   icon?: string;
   isDefault: boolean;
+  lat?: string | number | null;
+  lng?: string | number | null;
 }
 
 export function relativeTime(iso: string) {

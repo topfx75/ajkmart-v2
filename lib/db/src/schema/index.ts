@@ -51,3 +51,4 @@ export * from "./supported_payment_methods";
 export * from "./bulk_upload_logs";
 export * from "./account_deletion_requests";
 export * from "./gps_spoof_alerts";
+export * from "./ride_messages";

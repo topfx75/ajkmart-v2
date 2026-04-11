@@ -36,6 +36,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useApiCall } from "@/hooks/useApiCall";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
+import type { Address } from "@/components/profile/shared";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
 import { ServiceListSkeleton, FareEstimateSkeleton, HistoryRowSkeleton } from "@/components/ride/Skeletons";
 import { VehicleIcon } from "@/components/ride/VehicleIcons";
@@ -220,6 +221,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const [pickupFocus, setPickupFocus] = useState(false);
   const [dropFocus, setDropFocus] = useState(false);
   const [popularSpots, setPopularSpots] = useState<PopularSpot[]>([]);
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [permGuideVisible, setPermGuideVisible] = useState(false);
   const [estimateForType, setEstimateForType] = useState<string | null>(null);
   const [estimateAt, setEstimateAt] = useState<number | null>(null);
@@ -385,6 +387,17 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   }, []);
 
   useEffect(() => {
+    if (!token) return;
+    fetch(`${API_BASE}/addresses`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        const addrs = (d?.data?.addresses ?? d?.addresses ?? []) as Address[];
+        setSavedAddresses(addrs.filter((a) => a.lat != null && a.lng != null));
+      })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
     fetch(`${API_BASE}/rides/payment-methods`)
       .then((r) => r.json())
       .then(unwrapApiResponse)
@@ -520,6 +533,20 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
     } else if (!dropObj) {
       setDrop(spot.name);
       setDropObj({ lat: spot.lat, lng: spot.lng, address: spot.name });
+    }
+  };
+
+  const handleSavedAddress = (addr: Address) => {
+    const lat = Number(addr.lat);
+    const lng = Number(addr.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const name = addr.label ? `${addr.label}: ${addr.address}` : addr.address;
+    if (!pickupObj) {
+      setPickup(name);
+      setPickupObj({ lat, lng, address: name });
+    } else if (!dropObj) {
+      setDrop(name);
+      setDropObj({ lat, lng, address: name });
     }
   };
 
@@ -891,6 +918,28 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               >
                 <Ionicons name="swap-vertical" size={14} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
               </TouchableOpacity>
+
+              {/* Saved addresses */}
+              {savedAddresses.length > 0 && !pickupFocus && !dropFocus && (
+                <ScrollView
+                  horizontal showsHorizontalScrollIndicator={false}
+                  style={{ marginTop: 14, marginHorizontal: -20 }}
+                  contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+                >
+                  {savedAddresses.map((addr) => {
+                    const labelIcon = addr.label === "Home" ? "🏠" : addr.label === "Office" ? "💼" : addr.icon || "📌";
+                    return (
+                      <TouchableOpacity
+                        key={addr.id} onPress={() => handleSavedAddress(addr)} activeOpacity={0.7}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colorScheme === "dark" ? "rgba(252,211,77,0.1)" : "#FFFBEB", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 50, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(252,211,77,0.25)" : "#FDE68A" }}
+                      >
+                        <Text style={{ fontSize: 12 }}>{labelIcon}</Text>
+                        <Text style={{ fontFamily: Font.semiBold, fontSize: 12, color: colorScheme === "dark" ? "#FCD34D" : "#92400E" }} numberOfLines={1}>{addr.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
 
               {/* Popular spots */}
               {popularSpots.length > 0 && !pickupFocus && !dropFocus && (

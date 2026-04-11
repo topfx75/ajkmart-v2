@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, decimal, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -11,6 +11,8 @@ export const savedAddressesTable = pgTable("saved_addresses", {
   city: text("city").notNull().default("Muzaffarabad"),
   icon: text("icon").notNull().default("location-outline"),
   isDefault: boolean("is_default").notNull().default(false),
+  lat: decimal("lat", { precision: 10, scale: 6 }),
+  lng: decimal("lng", { precision: 10, scale: 6 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("saved_addresses_user_id_idx").on(t.userId),

@@ -21,12 +21,17 @@ router.get("/", async (req, res) => {
   sendSuccess(res, { addresses: addresses.map(a => ({ ...a, createdAt: a.createdAt.toISOString() })) });
 });
 
+const latSchema = z.number().min(-90).max(90).optional().nullable();
+const lngSchema = z.number().min(-180).max(180).optional().nullable();
+
 const createAddressSchema = z.object({
   label: z.string().min(1, "Label is required").max(100, "Label must be 100 characters or less").transform(stripHtml),
   address: z.string().min(1, "Address is required").max(500, "Address must be 500 characters or less").transform(stripHtml),
   city: z.string().max(100, "City must be 100 characters or less").optional().transform(v => (v ? stripHtml(v) : v)),
   icon: z.string().optional(),
   isDefault: z.boolean().optional(),
+  lat: z.preprocess(v => (v != null && v !== "" ? Number(v) : null), latSchema),
+  lng: z.preprocess(v => (v != null && v !== "" ? Number(v) : null), lngSchema),
 });
 
 const updateAddressSchema = z.object({
@@ -35,11 +40,13 @@ const updateAddressSchema = z.object({
   city: z.string().max(100).optional().transform(v => (v ? stripHtml(v) : v)),
   icon: z.string().optional(),
   isDefault: z.boolean().optional(),
+  lat: z.preprocess(v => (v != null && v !== "" ? Number(v) : null), latSchema),
+  lng: z.preprocess(v => (v != null && v !== "" ? Number(v) : null), lngSchema),
 });
 
 router.post("/", validateBody(createAddressSchema), async (req, res) => {
   const userId = req.customerId!;
-  const { label, address, city, icon, isDefault } = req.body;
+  const { label, address, city, icon, isDefault, lat, lng } = req.body;
 
   const existing = await db.select({ id: savedAddressesTable.id }).from(savedAddressesTable).where(eq(savedAddressesTable.userId, userId));
   if (existing.length >= 5) {
@@ -61,6 +68,8 @@ router.post("/", validateBody(createAddressSchema), async (req, res) => {
       city: city || null,
       icon: icon || "location-outline",
       isDefault: isDefault ?? false,
+      lat: lat != null ? String(lat) : null,
+      lng: lng != null ? String(lng) : null,
     });
   });
 
@@ -70,7 +79,7 @@ router.post("/", validateBody(createAddressSchema), async (req, res) => {
 
 router.put("/:id", validateBody(updateAddressSchema), async (req, res) => {
   const userId = req.customerId!;
-  const { label, address, city, icon, isDefault } = req.body;
+  const { label, address, city, icon, isDefault, lat, lng } = req.body;
   const { id } = req.params;
 
   const [existing] = await db.select().from(savedAddressesTable).where(eq(savedAddressesTable.id, id!)).limit(1);
@@ -81,7 +90,11 @@ router.put("/:id", validateBody(updateAddressSchema), async (req, res) => {
     if (isDefault) {
       await tx.update(savedAddressesTable).set({ isDefault: false }).where(eq(savedAddressesTable.userId, userId));
     }
-    await tx.update(savedAddressesTable).set({ label, address, city, icon, isDefault }).where(eq(savedAddressesTable.id, id!));
+    await tx.update(savedAddressesTable).set({
+      label, address, city, icon, isDefault,
+      lat: lat != null ? String(lat) : undefined,
+      lng: lng != null ? String(lng) : undefined,
+    }).where(eq(savedAddressesTable.id, id!));
   });
 
   sendSuccess(res, null);

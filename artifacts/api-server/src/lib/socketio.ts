@@ -702,7 +702,18 @@ export function emitRideDispatchUpdate(payload: {
 
 export function emitRideOtp(customerId: string, rideId: string, otp: string) {
   if (!_io) return;
-  /* Emit to both user room and ride room so customer web + mobile can receive it */
   _io.to(`user:${customerId}`).to(`ride:${rideId}`).emit("ride:otp", { rideId, otp });
+}
+
+export function emitRideMessage(rideId: string, message: {
+  id: string;
+  rideId: string;
+  senderRole: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+}) {
+  if (!_io) return;
+  _io.to(`ride:${rideId}`).emit("ride:message", message);
 }
 

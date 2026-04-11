@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { productsTable, bannersTable, flashDealsTable, platformSettingsTable, usersTable } from "@workspace/db/schema";
+import { productsTable, bannersTable, flashDealsTable, platformSettingsTable, usersTable, schoolRoutesTable } from "@workspace/db/schema";
 import { eq, sql, inArray } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { adminAuth } from "./admin.js";
@@ -332,6 +332,206 @@ router.post("/products", async (req, res) => {
     seeded: { mart: seededMart, food: seededFood, banners: seededBanners, deals: seededDeals, paymentSettings: seededPayments },
     message: `Seeded: ${seededMart} mart, ${seededFood} food, ${seededBanners} banners, ${seededDeals} deals, ${seededPayments} payment settings`,
   });
+});
+
+const SCHOOL_ROUTES_SEED = [
+  {
+    routeName: "City Route A",
+    schoolName: "Muzaffarabad Model School",
+    schoolNameUrdu: "مظفرآباد ماڈل سکول",
+    fromArea: "Muzaffarabad Chowk",
+    fromAreaUrdu: "مظفرآباد چوک",
+    toAddress: "Chelsi Road, Muzaffarabad",
+    fromLat: "34.3700", fromLng: "73.4700",
+    toLat: "34.3590", toLng: "73.4710",
+    monthlyPrice: "3500",
+    morningTime: "7:00 AM",
+    afternoonTime: "1:30 PM",
+    capacity: 30,
+    vehicleType: "school_shift",
+    notes: "Stops: Chowk → Nallah Pul → Chelsi Road",
+  },
+  {
+    routeName: "Neelum Road Route",
+    schoolName: "Bright Future Academy",
+    schoolNameUrdu: "برائٹ فیوچر اکیڈمی",
+    fromArea: "Domel Chowk",
+    fromAreaUrdu: "ڈومل چوک",
+    toAddress: "Upper Chattar, Muzaffarabad",
+    fromLat: "34.3650", fromLng: "73.4740",
+    toLat: "34.3780", toLng: "73.4590",
+    monthlyPrice: "4000",
+    morningTime: "7:15 AM",
+    afternoonTime: "2:00 PM",
+    capacity: 25,
+    vehicleType: "school_shift",
+    notes: "Stops: Domel → Neelum Road → Upper Chattar",
+  },
+  {
+    routeName: "CMH Route",
+    schoolName: "AJK Public School",
+    schoolNameUrdu: "اے جے کے پبلک سکول",
+    fromArea: "Lower Chatter",
+    fromAreaUrdu: "لوئر چھتر",
+    toAddress: "CMH Road, Muzaffarabad",
+    fromLat: "34.3720", fromLng: "73.4650",
+    toLat: "34.3550", toLng: "73.4780",
+    monthlyPrice: "3800",
+    morningTime: "7:30 AM",
+    afternoonTime: "1:45 PM",
+    capacity: 28,
+    vehicleType: "school_shift",
+    notes: "Stops: Lower Chatter → Ghari Dupatta Rd → CMH",
+  },
+  {
+    routeName: "Ghari Dupatta Route",
+    schoolName: "Kashmir Model College",
+    schoolNameUrdu: "کشمیر ماڈل کالج",
+    fromArea: "Madina Market",
+    fromAreaUrdu: "مدینہ مارکیٹ",
+    toAddress: "Ghari Dupatta, Muzaffarabad",
+    fromLat: "34.3680", fromLng: "73.4720",
+    toLat: "34.3450", toLng: "73.4850",
+    monthlyPrice: "4500",
+    morningTime: "7:00 AM",
+    afternoonTime: "2:15 PM",
+    capacity: 35,
+    vehicleType: "daba",
+    notes: "Stops: Madina Market → Pir Chinasi Rd → Ghari Dupatta",
+  },
+  {
+    routeName: "Chattar Route",
+    schoolName: "Al-Huda School System",
+    schoolNameUrdu: "الہدیٰ سکول سسٹم",
+    fromArea: "Nallah Pul",
+    fromAreaUrdu: "نالہ پل",
+    toAddress: "Upper Chattar, Muzaffarabad",
+    fromLat: "34.3660", fromLng: "73.4680",
+    toLat: "34.3790", toLng: "73.4560",
+    monthlyPrice: "3200",
+    morningTime: "7:30 AM",
+    afternoonTime: null,
+    capacity: 20,
+    vehicleType: "school_shift",
+    notes: "Morning only. Stops: Nallah Pul → Sangam → Upper Chattar",
+  },
+  {
+    routeName: "Ambore Route",
+    schoolName: "Cadet College Muzaffarabad",
+    schoolNameUrdu: "کیڈٹ کالج مظفرآباد",
+    fromArea: "CMH Chowk",
+    fromAreaUrdu: "سی ایم ایچ چوک",
+    toAddress: "Ambore, Muzaffarabad",
+    fromLat: "34.3540", fromLng: "73.4800",
+    toLat: "34.3400", toLng: "73.4900",
+    monthlyPrice: "5000",
+    morningTime: "6:45 AM",
+    afternoonTime: "3:00 PM",
+    capacity: 40,
+    vehicleType: "daba",
+    notes: "Stops: CMH → Link Road → Ambore Campus",
+  },
+  {
+    routeName: "Kohala Route",
+    schoolName: "Green Hills Academy",
+    schoolNameUrdu: "گرین ہلز اکیڈمی",
+    fromArea: "Kohala Bridge",
+    fromAreaUrdu: "کوہالہ پل",
+    toAddress: "Kohala, Muzaffarabad",
+    fromLat: "34.1060", fromLng: "73.5060",
+    toLat: "34.1100", toLng: "73.5100",
+    monthlyPrice: "3000",
+    morningTime: "7:15 AM",
+    afternoonTime: "1:30 PM",
+    capacity: 22,
+    vehicleType: "school_shift",
+    notes: "Stops: Kohala Bridge → Bazar → School",
+  },
+  {
+    routeName: "Pir Chinasi Road Route",
+    schoolName: "Muzaffarabad Grammar School",
+    schoolNameUrdu: "مظفرآباد گرامر سکول",
+    fromArea: "Sangam Chowk",
+    fromAreaUrdu: "سنگم چوک",
+    toAddress: "Pir Chinasi Road, Muzaffarabad",
+    fromLat: "34.3630", fromLng: "73.4750",
+    toLat: "34.3820", toLng: "73.4520",
+    monthlyPrice: "3700",
+    morningTime: "7:00 AM",
+    afternoonTime: "2:00 PM",
+    capacity: 30,
+    vehicleType: "school_shift",
+    notes: "Stops: Sangam → Chattar → Pir Chinasi Rd",
+  },
+  {
+    routeName: "Jhelum Valley Route",
+    schoolName: "Valley Public School",
+    schoolNameUrdu: "ویلی پبلک سکول",
+    fromArea: "Jhelum Valley Road",
+    fromAreaUrdu: "جہلم ویلی روڈ",
+    toAddress: "Hattiyan Dupatta, Muzaffarabad",
+    fromLat: "34.3500", fromLng: "73.4600",
+    toLat: "34.3300", toLng: "73.4750",
+    monthlyPrice: "4200",
+    morningTime: "6:50 AM",
+    afternoonTime: "2:30 PM",
+    capacity: 32,
+    vehicleType: "daba",
+    notes: "Stops: Jhelum Valley Rd → Hattiyan → School",
+  },
+  {
+    routeName: "Bagh Road Express",
+    schoolName: "AJK Science Academy",
+    schoolNameUrdu: "اے جے کے سائنس اکیڈمی",
+    fromArea: "Chella Bandi",
+    fromAreaUrdu: "چھلہ بندی",
+    toAddress: "Bagh Road, Muzaffarabad",
+    fromLat: "34.3580", fromLng: "73.4850",
+    toLat: "34.3350", toLng: "73.5000",
+    monthlyPrice: "4800",
+    morningTime: "6:30 AM",
+    afternoonTime: "3:00 PM",
+    capacity: 38,
+    vehicleType: "daba",
+    notes: "Long route. Stops: Chella Bandi → Tariqabad → Bagh Rd",
+  },
+];
+
+router.post("/school-routes", async (_req, res) => {
+  const existing = await db.select({ id: schoolRoutesTable.id }).from(schoolRoutesTable).limit(1);
+  if (existing.length > 0) {
+    res.json({ success: true, seeded: 0, message: "School routes already seeded — skipped." });
+    return;
+  }
+
+  let seeded = 0;
+  for (let i = 0; i < SCHOOL_ROUTES_SEED.length; i++) {
+    const r = SCHOOL_ROUTES_SEED[i]!;
+    await db.insert(schoolRoutesTable).values({
+      id: generateId(),
+      routeName: r.routeName,
+      schoolName: r.schoolName,
+      schoolNameUrdu: r.schoolNameUrdu,
+      fromArea: r.fromArea,
+      fromAreaUrdu: r.fromAreaUrdu,
+      toAddress: r.toAddress,
+      fromLat: r.fromLat,
+      fromLng: r.fromLng,
+      toLat: r.toLat,
+      toLng: r.toLng,
+      monthlyPrice: r.monthlyPrice,
+      morningTime: r.morningTime,
+      afternoonTime: r.afternoonTime,
+      capacity: r.capacity,
+      vehicleType: r.vehicleType,
+      notes: r.notes,
+      sortOrder: i + 1,
+      isActive: true,
+    });
+    seeded++;
+  }
+
+  res.json({ success: true, seeded, message: `Seeded ${seeded} school routes for Muzaffarabad` });
 });
 
 export default router;

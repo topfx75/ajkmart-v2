@@ -121,7 +121,14 @@ export function RideTracker({
   const [otpCopied, setOtpCopied] = useState(false);
 
   const [riderLivePos, setRiderLivePos] = useState<{ lat: number; lng: number } | null>(null);
-  const socketRef = useRef<{ disconnect: () => void } | null>(null);
+  const socketRef = useRef<{ disconnect: () => void; emit?: (...args: any[]) => void } | null>(null);
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; senderRole: string; body: string; createdAt: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatLoaded, setChatLoaded] = useState(false);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   const isSocketActive = ["accepted", "arrived", "in_transit"].includes(ride?.status ?? "");
 
@@ -172,6 +179,14 @@ export function RideTracker({
       });
       socket.on("ride:otp", (payload: { rideId: string; otp: string }) => {
         if (payload.rideId === rideId && payload.otp) setTripOtp(payload.otp);
+      });
+      socket.on("ride:message", (payload: { id: string; rideId: string; senderRole: string; body: string; createdAt: string }) => {
+        if (payload.rideId === rideId) {
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === payload.id)) return prev;
+            return [...prev, payload];
+          });
+        }
       });
     });
     return () => {
@@ -396,6 +411,53 @@ export function RideTracker({
     } catch { showToast("SOS failed — please call emergency contacts directly"); }
     setSosLoading(false);
   };
+
+  const loadChatMessages = async () => {
+    if (chatLoaded) return;
+    try {
+      const resp = await fetch(`${rideApiBase}/rides/${rideId}/messages`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (resp.ok) {
+        const d = await resp.json();
+        const msgs = d?.data?.messages ?? d?.messages ?? [];
+        setChatMessages(msgs);
+        setChatLoaded(true);
+      }
+    } catch {}
+  };
+
+  const sendChatMessage = async () => {
+    const body = chatInput.trim();
+    if (!body || chatSending) return;
+    setChatSending(true);
+    try {
+      const resp = await fetch(`${rideApiBase}/rides/${rideId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ body }),
+      });
+      if (resp.ok) {
+        const d = await resp.json();
+        const msg = d?.data ?? d;
+        if (msg?.id) {
+          setChatMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]);
+        }
+        setChatInput("");
+        setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
+      }
+    } catch {
+      showToast("Could not send message", "error");
+    }
+    setChatSending(false);
+  };
+
+  useEffect(() => {
+    if (chatOpen && !chatLoaded) loadChatMessages();
+  }, [chatOpen]);
 
   const status = ride?.status ?? "searching";
   const rideType = ride?.type ?? initialType;
@@ -905,14 +967,24 @@ export function RideTracker({
                     )}
                   </View>
 
-                  {ride.riderPhone && (
-                    <TouchableOpacity activeOpacity={0.7}
-                      onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
-                      style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" }}
-                    >
-                      <Ionicons name="call" size={20} color="#fff" />
-                    </TouchableOpacity>
-                  )}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    {isSocketActive && (
+                      <TouchableOpacity activeOpacity={0.7}
+                        onPress={() => setChatOpen(true)}
+                        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#6366F1", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+                      </TouchableOpacity>
+                    )}
+                    {ride.riderPhone && (
+                      <TouchableOpacity activeOpacity={0.7}
+                        onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
+                        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <Ionicons name="call" size={20} color="#fff" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
 
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9" }}>
@@ -1024,6 +1096,122 @@ export function RideTracker({
             setRide((r: any) => r ? { ...r, status: "cancelled" } : r);
           }}
         />
+      )}
+
+      {chatOpen && (
+        <View style={StyleSheet.absoluteFillObject}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setChatOpen(false)}
+            style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              backgroundColor: colorScheme === "dark" ? "#1E293B" : "#fff",
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              maxHeight: screenHeight * 0.55,
+              paddingBottom: Math.max(insets.bottom, 16),
+              ...Platform.select({
+                ios: { shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.25, shadowRadius: 16 },
+                android: { elevation: 20 },
+                web: { boxShadow: "0 -4px 30px rgba(0,0,0,0.25)" },
+              }),
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#F1F5F9" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: "#6366F1", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="chatbubble-ellipses" size={16} color="#fff" />
+                </View>
+                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>Chat with Rider</Text>
+              </View>
+              <TouchableOpacity onPress={() => setChatOpen(false)} hitSlop={8}>
+                <Ionicons name="close" size={22} color={colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              ref={chatScrollRef}
+              style={{ flex: 1, paddingHorizontal: 16 }}
+              contentContainerStyle={{ paddingVertical: 12, gap: 8 }}
+              onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: false })}
+            >
+              {chatMessages.length === 0 && (
+                <Text style={{ fontFamily: "Inter_400Regular", fontSize: 13, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", textAlign: "center", marginTop: 20 }}>
+                  No messages yet. Say hi to your rider!
+                </Text>
+              )}
+              {chatMessages.map((msg) => {
+                const isMe = msg.senderRole === "customer";
+                return (
+                  <View key={msg.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "80%" }}>
+                    <View style={{
+                      backgroundColor: isMe ? "#6366F1" : (colorScheme === "dark" ? "#0F172A" : "#F1F5F9"),
+                      borderRadius: 16,
+                      borderBottomRightRadius: isMe ? 4 : 16,
+                      borderBottomLeftRadius: isMe ? 16 : 4,
+                      paddingHorizontal: 14,
+                      paddingVertical: 9,
+                    }}>
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: isMe ? "#fff" : (colorScheme === "dark" ? "#E2E8F0" : "#0F172A") }}>{msg.body}</Text>
+                    </View>
+                    <Text style={{ fontFamily: "Inter_400Regular", fontSize: 10, color: colorScheme === "dark" ? "#475569" : "#CBD5E1", marginTop: 2, alignSelf: isMe ? "flex-end" : "flex-start" }}>
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingTop: 8 }}>
+              <TextInput
+                value={chatInput}
+                onChangeText={setChatInput}
+                placeholder="Type a message..."
+                placeholderTextColor={colorScheme === "dark" ? "#64748B" : "#94A3B8"}
+                style={{
+                  flex: 1,
+                  fontFamily: "Inter_400Regular",
+                  fontSize: 14,
+                  color: colorScheme === "dark" ? "#fff" : "#0F172A",
+                  backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC",
+                  borderRadius: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#E2E8F0",
+                }}
+                maxLength={500}
+                onSubmitEditing={sendChatMessage}
+                returnKeyType="send"
+              />
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={sendChatMessage}
+                disabled={!chatInput.trim() || chatSending}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  backgroundColor: chatInput.trim() ? "#6366F1" : (colorScheme === "dark" ? "#334155" : "#E2E8F0"),
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {chatSending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="send" size={18} color={chatInput.trim() ? "#fff" : (colorScheme === "dark" ? "#64748B" : "#94A3B8")} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       )}
     </View>
   );
