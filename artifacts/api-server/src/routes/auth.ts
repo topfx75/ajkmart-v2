@@ -2532,6 +2532,8 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
   writeAuthAuditLog("register", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone: normalizedPhone, role: userRole } });
 
   const isDev = process.env.NODE_ENV !== "production";
+  const globalDevOtp = settings["security_global_dev_otp"] === "on";
+  const isConsoleDelivery = smsResult.provider === "console";
   const regResponse: Record<string, unknown> = {
     message: "Registration successful. Please verify your phone with the OTP sent.",
     role: userRole,
@@ -2539,8 +2541,10 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
     channel: smsResult.sent ? smsResult.provider : "console",
   };
 
-  /* In non-production with no real SMS configured (console provider), expose OTP for testing */
-  if (isDev && smsResult.provider === "console") {
+  /* In non-production expose OTP for testing when:
+     - SMS provider is "console" (no real SMS configured), OR
+     - Global Dev OTP Mode is enabled in admin Security settings */
+  if (isDev && (isConsoleDelivery || globalDevOtp)) {
     regResponse.otp = otp;
     regResponse.devMode = true;
   }
