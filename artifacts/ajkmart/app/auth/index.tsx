@@ -4,6 +4,7 @@ import { router, type Href } from "expo-router";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
@@ -837,15 +838,14 @@ export default function AuthScreen() {
           </TouchableOpacity>
         )}
 
-        <View style={[styles.topSection, { paddingTop: topPad + 32 }]}>
-          <View style={styles.logoWrap}>
-            <View style={styles.logoRing} />
-            <View style={styles.logo}>
-              <Ionicons name="cart" size={38} color={C.primary} />
-            </View>
+        <View style={[styles.topSection, { paddingTop: topPad + 24 }]}>
+          <View style={styles.logoImgWrap}>
+            <Image
+              source={require("@/assets/images/logo.png")}
+              style={styles.logoImg}
+              resizeMode="contain"
+            />
           </View>
-          <Text style={styles.heroTitle}>{appName}</Text>
-          <Text style={styles.heroSubtitle}>{appTagline}</Text>
           <View style={styles.secureBadge}>
             <Ionicons name="shield-checkmark" size={12} color="rgba(255,255,255,0.9)" />
             <Text style={styles.secureBadgeText}>Secure Login</Text>
@@ -1275,7 +1275,19 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scrollGrow: { flexGrow: 1 },
 
-  topSection: { alignItems: "center", paddingBottom: spacing.xxxl },
+  topSection: { alignItems: "center", paddingBottom: spacing.xxl },
+  logoImgWrap: {
+    marginBottom: spacing.lg,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    ...shadows.lg,
+  },
+  logoImg: {
+    width: 220,
+    height: 70,
+  },
   logoWrap: { marginBottom: spacing.lg, position: "relative" },
   logoRing: {
     position: "absolute",

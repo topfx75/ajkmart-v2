@@ -1304,6 +1304,15 @@ export default function HomeScreen() {
           end={{ x: 1, y: 1 }}
           style={[s.header, { paddingTop: (announcement && !announceDismissed) ? 8 : topPad + 8 }]}
         >
+          <View style={s.logoHeaderRow}>
+            <View style={s.headerLogoWrap}>
+              <Image
+                source={require("@/assets/images/logo.png")}
+                style={s.headerLogo}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
           <View style={s.hdrRow}>
             <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={handleLocationPress} accessibilityRole="button" accessibilityLabel="Location selector">
               <Ionicons name="location" size={14} color="#fff" />
@@ -1521,6 +1530,15 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
 
   header: { paddingHorizontal: H_PAD, paddingBottom: 12 },
+  logoHeaderRow: { alignItems: "center", marginBottom: 8 },
+  headerLogoWrap: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    ...shadows.sm,
+  },
+  headerLogo: { width: 160, height: 44 },
   hdrRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   locBtn: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1, marginRight: 12 },
   locTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "#fff", flex: 1 },
