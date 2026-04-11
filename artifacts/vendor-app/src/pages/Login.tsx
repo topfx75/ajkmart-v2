@@ -656,14 +656,9 @@ export default function Login() {
           <div className="absolute -top-24 -right-24 w-80 h-80 bg-white/10 rounded-full pointer-events-none" />
           <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-white/10 rounded-full pointer-events-none" />
           <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="bg-white rounded-2xl flex items-center justify-center shadow-lg px-3 py-2">
-                <img src={`${import.meta.env.BASE_URL}logo.png`} alt="AJKMart" style={{ height: 32, width: "auto", maxWidth: 100, objectFit: "contain" }} />
-              </div>
-              <div>
-                <p className="text-white font-extrabold text-xl leading-tight">{appName}</p>
-                <p className="text-orange-100 text-sm font-medium">Vendor Registration</p>
-              </div>
+            <div className="mb-4">
+              <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+              <p className="text-orange-100 text-sm font-medium mt-1">Vendor Registration</p>
             </div>
           </div>
           <div className="relative z-10">
@@ -693,9 +688,7 @@ export default function Login() {
 
           <div className="w-full max-w-sm relative z-10">
             <div className="text-center mb-6 md:hidden">
-              <div className="bg-white rounded-[20px] flex items-center justify-center mx-auto mb-3 shadow-2xl px-5 py-3 w-fit">
-                <img src={`${import.meta.env.BASE_URL}logo.png`} alt="AJKMart" style={{ height: 36, width: "auto", maxWidth: 120, objectFit: "contain" }} />
-              </div>
+              <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" className="mx-auto mb-3" style={{ height: 60, width: "auto", maxWidth: 200, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
               <h1 className="text-2xl font-extrabold text-white">Become a Vendor</h1>
               <p className="text-orange-100 mt-1 font-medium text-sm">{appName} Business Partner</p>
             </div>
@@ -878,14 +871,9 @@ export default function Login() {
         <div className="absolute -top-24 -right-24 w-80 h-80 bg-white/10 rounded-full pointer-events-none" />
         <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-white/10 rounded-full pointer-events-none" />
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-white rounded-2xl flex items-center justify-center shadow-lg px-3 py-2">
-              <img src={`${import.meta.env.BASE_URL}logo.png`} alt="AJKMart" style={{ height: 32, width: "auto", maxWidth: 100, objectFit: "contain" }} />
-            </div>
-            <div>
-              <p className="text-white font-extrabold text-xl leading-tight">{appName}</p>
-              <p className="text-orange-100 text-sm font-medium">{T("vendorPortal")}</p>
-            </div>
+          <div className="mb-4">
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+            <p className="text-orange-100 text-sm font-medium mt-1">{T("vendorPortal")}</p>
           </div>
         </div>
         <div className="relative z-10">
@@ -915,9 +903,7 @@ export default function Login() {
 
         <div className="w-full max-w-sm relative z-10">
           <div className="text-center mb-8 md:hidden">
-            <div className="bg-white rounded-[24px] flex items-center justify-center mx-auto mb-4 shadow-2xl px-5 py-3 w-fit">
-              <img src={`${import.meta.env.BASE_URL}logo.png`} alt="AJKMart" style={{ height: 40, width: "auto", maxWidth: 140, objectFit: "contain" }} />
-            </div>
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" className="mx-auto mb-3" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
             <h1 className="text-3xl font-extrabold text-white">{T("vendorPortal")}</h1>
             <p className="text-orange-100 mt-1 font-medium">{appName} {T("businessPartner")}</p>
           </div>

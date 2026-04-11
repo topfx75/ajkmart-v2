@@ -292,15 +292,15 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       >
         {(!mini || isMobile) ? (
           <img
-            src={`${import.meta.env.BASE_URL}images/logo.png`}
+            src={`${import.meta.env.BASE_URL}images/logo.svg`}
             alt="AJKMart"
-            style={{ height: 36, width: "auto", maxWidth: 160, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+            style={{ height: 44, width: "auto", maxWidth: 200, objectFit: "contain", filter: "brightness(0) invert(1)" }}
           />
         ) : (
           <img
-            src={`${import.meta.env.BASE_URL}images/logo.png`}
+            src={`${import.meta.env.BASE_URL}images/logo.svg`}
             alt="AJKMart"
-            style={{ height: 28, width: 40, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+            style={{ height: 34, width: 38, objectFit: "contain", objectPosition: "left center", filter: "brightness(0) invert(1)" }}
           />
         )}
         {isMobile && (

@@ -37,11 +37,11 @@ export function SideNav() {
     <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 min-h-screen fixed left-0 top-0 z-30">
       <div className="px-5 py-5 bg-gradient-to-br from-orange-500 to-amber-600">
         <div className="flex items-center gap-3">
-          <div className="bg-white rounded-xl flex items-center justify-center shadow-md flex-shrink-0 px-2 py-1">
+          <div className="bg-white rounded-xl flex items-center justify-center shadow-md flex-shrink-0 px-2 py-1.5">
             <img
-              src={`${import.meta.env.BASE_URL}logo.png`}
+              src={`${import.meta.env.BASE_URL}logo.svg`}
               alt="AJKMart"
-              style={{ height: 28, width: "auto", maxWidth: 80, objectFit: "contain" }}
+              style={{ height: 36, width: "auto", maxWidth: 100, objectFit: "contain" }}
             />
           </div>
           <div className="min-w-0">

@@ -633,9 +633,12 @@ export default function Login() {
 
       <div className="w-full max-w-sm relative z-10">
         <div className="text-center mb-8">
-          <div className="bg-white rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-2xl px-6 py-3 w-fit">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="AJKMart" style={{ height: 44, width: "auto", maxWidth: 160, objectFit: "contain" }} />
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}logo.svg`}
+            alt="AJKMart"
+            className="mx-auto mb-4"
+            style={{ height: 72, width: "auto", maxWidth: 240, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+          />
           <h1 className="text-3xl font-bold text-white">{T("riderPortal")}</h1>
           <p className="text-white/40 mt-1">{appName} {T("deliveryPartner")}</p>
         </div>
