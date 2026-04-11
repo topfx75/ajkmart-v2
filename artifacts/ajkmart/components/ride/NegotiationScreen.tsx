@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -160,6 +160,7 @@ export function NegotiationScreen({
   const [cancelModalTarget, setCancelModalTarget] = useState<CancelTarget | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [offerError, setOfferError] = useState("");
+  const [sliderTrackWidth, setSliderTrackWidth] = useState(0);
   const [connectionLost, setConnectionLost] = useState(false);
   const [bidsInitializing, setBidsInitializing] = useState(true);
   const consecutiveFailsRef = useRef(0);
@@ -282,13 +283,14 @@ export function NegotiationScreen({
       ? Math.ceil(estimatedFare * 0.7)
       : Math.ceil(offeredFare * 0.7);
 
-  const maxOffer = estimatedFare ?? (ride?.fare ?? 0);
+  const platformFareBase = estimatedFare ?? (ride?.fare ?? 0);
+  const maxOffer = Math.ceil(platformFareBase * 1.5);
 
   const validateOffer = (val: string): string => {
     const amt = parseFloat(val);
     if (isNaN(amt) || amt <= 0) return "Please enter a valid amount";
     if (amt < minCounterOffer) return `Minimum offer is Rs. ${minCounterOffer}`;
-    if (maxOffer > 0 && amt > maxOffer) return `Offer cannot exceed the platform fare of Rs. ${Math.round(maxOffer)}`;
+    if (maxOffer > 0 && amt > maxOffer) return `Offer cannot exceed Rs. ${Math.round(maxOffer)} (150% of platform fare)`;
     return "";
   };
 
@@ -334,7 +336,7 @@ export function NegotiationScreen({
     });
   };
 
-  const counterMaxH = counterSlide.interpolate({ inputRange: [0, 1], outputRange: [0, 180] });
+  const counterMaxH = counterSlide.interpolate({ inputRange: [0, 1], outputRange: [0, 300] });
   const counterOpacity = counterSlide.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.5, 1] });
 
   return (
@@ -604,35 +606,78 @@ export function NegotiationScreen({
                 <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 10 }}>
                   <View style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)" }} />
                   <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: RT.textMuted }}>
-                    A new offer cancels all pending bids · Min: Rs. {minCounterOffer}
+                    A new offer cancels all pending bids
                   </Text>
                   {offerError ? <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: RT.red }}>{offerError}</Text> : null}
-                  <View style={{ flexDirection: "row", gap: 10 }}>
-                    <View style={{ flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 13, paddingHorizontal: 14, borderWidth: 1, borderColor: offerError ? "rgba(239,68,68,0.5)" : "rgba(255,255,255,0.12)" }}>
-                      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: RT.textMuted }}>Rs.</Text>
-                      <TextInput
-                        value={counterInput}
-                        onChangeText={(v) => { setCounterInput(v); setOfferError(""); }}
-                        keyboardType="numeric"
-                        placeholder={String(Math.ceil(offeredFare * 1.1))}
-                        placeholderTextColor="rgba(255,255,255,0.2)"
-                        maxLength={7}
-                        style={{ flex: 1, fontFamily: "Inter_700Bold", fontSize: 20, color: "#fff", paddingVertical: 12, paddingHorizontal: 6 }}
-                      />
+
+                  <View style={{ alignItems: "center", marginBottom: 4 }}>
+                    <View style={{ backgroundColor: RT.accentBg, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 8, borderWidth: 1.5, borderColor: RT.accentBorder }}>
+                      <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: RT.accent }}>
+                        Rs. {counterInput || String(minCounterOffer)}
+                      </Text>
                     </View>
-                    <TouchableOpacity
-                      activeOpacity={0.7} onPress={sendCounterOffer}
-                      disabled={counterLoading || !counterInput}
-                      style={{ opacity: !counterInput || counterLoading ? 0.5 : 1 }}
-                    >
-                      <LinearGradient
-                        colors={["#F59E0B", "#D97706"]}
-                        style={{ borderRadius: 13, paddingHorizontal: 20, height: "100%", alignItems: "center", justifyContent: "center", minHeight: 52 }}
-                      >
-                        {counterLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Send</Text>}
-                      </LinearGradient>
-                    </TouchableOpacity>
                   </View>
+
+                  {(() => {
+                    const platformFare = estimatedFare ?? ride?.fare ?? offeredFare;
+                    const minSlider = minCounterOffer;
+                    const maxSlider = Math.max(Math.ceil(platformFare * 1.5), minSlider + 50);
+                    const curVal = counterInput ? parseInt(counterInput) : minSlider;
+                    const sliderPct = maxSlider > minSlider ? Math.max(0, Math.min(1, (curVal - minSlider) / (maxSlider - minSlider))) : 0;
+                    return (
+                      <View>
+                        <View
+                          style={{ height: 40, justifyContent: "center" }}
+                          onLayout={(e) => setSliderTrackWidth(e.nativeEvent.layout.width)}
+                          onStartShouldSetResponder={() => true}
+                          onMoveShouldSetResponder={() => true}
+                          onResponderGrant={(e) => {
+                            const x = e.nativeEvent.locationX;
+                            const tw = sliderTrackWidth || (width - 72);
+                            const ratio = Math.max(0, Math.min(1, x / tw));
+                            setCounterInput(String(Math.round(minSlider + ratio * (maxSlider - minSlider))));
+                            setOfferError("");
+                          }}
+                          onResponderMove={(e) => {
+                            const x = e.nativeEvent.locationX;
+                            const tw = sliderTrackWidth || (width - 72);
+                            const ratio = Math.max(0, Math.min(1, x / tw));
+                            setCounterInput(String(Math.round(minSlider + ratio * (maxSlider - minSlider))));
+                            setOfferError("");
+                          }}
+                        >
+                          <View style={{ height: 6, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden" }}>
+                            <View style={{ height: 6, borderRadius: 3, width: `${sliderPct * 100}%`, backgroundColor: RT.accent }} />
+                          </View>
+                          <View style={{ position: "absolute", left: `${sliderPct * 100}%`, top: 8, marginLeft: -15, marginTop: -15, width: 30, height: 30, borderRadius: 15, backgroundColor: RT.accent, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "rgba(252,211,77,0.4)" }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#0A0F1E" }} />
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                          <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: RT.textMuted }}>Min: Rs. {minSlider} (70%)</Text>
+                          <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 10, color: RT.textMuted }}>Max: Rs. {maxSlider} (150%)</Text>
+                        </View>
+                      </View>
+                    );
+                  })()}
+
+                  <TouchableOpacity
+                    activeOpacity={0.7} onPress={sendCounterOffer}
+                    disabled={counterLoading || !counterInput}
+                    style={{ opacity: !counterInput || counterLoading ? 0.5 : 1, borderRadius: 14, overflow: "hidden" }}
+                  >
+                    <LinearGradient
+                      colors={["#F59E0B", "#D97706"]}
+                      style={{ borderRadius: 14, paddingVertical: 14, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
+                    >
+                      {counterLoading ? <ActivityIndicator color="#fff" size="small" /> : (
+                        <>
+                          <Ionicons name="paper-plane" size={14} color="#fff" />
+                          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 14, color: "#fff" }}>Send Offer · Rs. {counterInput || minCounterOffer}</Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
                 </View>
               </Animated.View>
             </LinearGradient>

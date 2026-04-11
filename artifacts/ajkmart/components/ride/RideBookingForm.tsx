@@ -38,6 +38,7 @@ import { useApiCall } from "@/hooks/useApiCall";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
 import { ServiceListSkeleton, FareEstimateSkeleton, HistoryRowSkeleton } from "@/components/ride/Skeletons";
+import { VehicleIcon } from "@/components/ride/VehicleIcons";
 import { PermissionGuide } from "@/components/PermissionGuide";
 import {
   estimateFare,
@@ -163,9 +164,9 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   const rideCfg = config.rides;
 
   const DEFAULT_SERVICES: ServiceType[] = [
-    { key: "bike", name: "Bike", icon: "🏍️", baseFare: 50, perKm: 15, minFare: 50, maxPassengers: 1, allowBargaining: true },
-    { key: "car", name: "Car", icon: "🚗", baseFare: 150, perKm: 25, minFare: 150, maxPassengers: 4, allowBargaining: true },
-    { key: "rickshaw", name: "Rickshaw", icon: "🛺", baseFare: 80, perKm: 18, minFare: 80, maxPassengers: 3, allowBargaining: true },
+    { key: "bike", name: "Bike", icon: "bike", baseFare: 50, perKm: 15, minFare: 50, maxPassengers: 1, allowBargaining: true },
+    { key: "car", name: "Car", icon: "car", baseFare: 150, perKm: 25, minFare: 150, maxPassengers: 4, allowBargaining: true },
+    { key: "rickshaw", name: "Rickshaw", icon: "rickshaw", baseFare: 80, perKm: 18, minFare: 80, maxPassengers: 3, allowBargaining: true },
   ];
 
   const [step, setStep] = useState<BookingStep>("location");
@@ -248,6 +249,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   });
   const [scheduledTime, setScheduledTime] = useState("08:00");
   const [isPoolRide, setIsPoolRide] = useState(false);
+  const [bargainTrackWidth, setBargainTrackWidth] = useState(0);
   const [debtBalance, setDebtBalance] = useState(0);
   const [debtDismissed, setDebtDismissed] = useState(false);
   const liveAnim = useRef(new Animated.Value(1)).current;
@@ -597,7 +599,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       parsedOffer = parseFloat(offeredFare);
       if (isNaN(parsedOffer) || parsedOffer <= 0) { showToast("Please enter a valid amount for your offer", "error"); return; }
       if (parsedOffer < estimate.minOffer) { showToast(`Minimum offer is Rs. ${estimate.minOffer}`, "error"); return; }
-      if (parsedOffer > estimate.fare) { showToast(`Offer cannot exceed the platform fare of Rs. ${estimate.fare}`, "error"); return; }
+      const maxAllowedOffer = Math.ceil(estimate.fare * 1.5);
+      if (parsedOffer > maxAllowedOffer) { showToast(`Offer cannot exceed Rs. ${maxAllowedOffer} (150% of platform fare)`, "error"); return; }
     }
     const effectiveFare = parsedOffer ?? estimate.fare;
     if (payMethod === "wallet" && (user?.walletBalance ?? 0) < effectiveFare) {
@@ -989,7 +992,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                             </View>
                           )}
                           <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: active ? `${accentColor}22` : (colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9"), alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-                            <Text style={{ fontSize: 28 }}>{svc.icon}</Text>
+                            <VehicleIcon type={svc.key} size={28} color={active ? accentColor : (colorScheme === "dark" ? "#94A3B8" : "#64748B")} />
                           </View>
                           <Text style={{ fontFamily: Font.bold, fontSize: 14, color: active ? accentColor : (colorScheme === "dark" ? "#fff" : "#0F172A"), marginBottom: 4 }}>
                             {svc.name}
@@ -1070,21 +1073,56 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                     <Ionicons name={showBargain ? "chevron-up" : "chevron-down"} size={16} color={showBargain ? "#FCD34D" : colorScheme === "dark" ? "#94A3B8" : "#64748B"} />
                   </TouchableOpacity>
 
-                  <Animated.View style={{ overflow: "hidden", maxHeight: bargainPanelH.interpolate({ inputRange: [0, 1], outputRange: [0, 110] }), opacity: bargainPanelH }}>
-                    <View style={{ backgroundColor: "rgba(252,211,77,0.06)", borderWidth: 1, borderColor: "rgba(252,211,77,0.2)", borderTopWidth: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, padding: 12, gap: 8 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: colorScheme === "dark" ? "#0F172A" : "#fff", borderWidth: 1.5, borderColor: "#FCD34D", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 }}>
-                        <Text style={{ fontFamily: Font.bold, fontSize: 14, color: colorScheme === "dark" ? "#94A3B8" : "#64748B", marginRight: 4 }}>Rs.</Text>
-                        <TextInput
-                          value={offeredFare} onChangeText={setOfferedFare} keyboardType="numeric"
-                          placeholder={String(estimate.minOffer)} placeholderTextColor={colorScheme === "dark" ? "#334155" : "#CBD5E1"}
-                          style={{ flex: 1, fontFamily: Font.bold, fontSize: 18, color: colorScheme === "dark" ? "#fff" : "#0F172A", paddingVertical: 8 }}
-                        />
-                        {offeredFare !== "" && (
-                          <TouchableOpacity onPress={() => setOfferedFare("")} hitSlop={8}>
-                            <Ionicons name="close-circle" size={16} color={colorScheme === "dark" ? "#334155" : "#CBD5E1"} />
-                          </TouchableOpacity>
-                        )}
+                  <Animated.View style={{ overflow: "hidden", maxHeight: bargainPanelH.interpolate({ inputRange: [0, 1], outputRange: [0, 160] }), opacity: bargainPanelH }}>
+                    <View style={{ backgroundColor: "rgba(252,211,77,0.06)", borderWidth: 1, borderColor: "rgba(252,211,77,0.2)", borderTopWidth: 0, borderBottomLeftRadius: 14, borderBottomRightRadius: 14, padding: 12, gap: 10 }}>
+                      <View style={{ alignItems: "center", marginBottom: 2 }}>
+                        <View style={{ backgroundColor: "rgba(252,211,77,0.15)", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 6, borderWidth: 1, borderColor: "rgba(252,211,77,0.3)" }}>
+                          <Text style={{ fontFamily: Font.bold, fontSize: 20, color: "#FCD34D" }}>
+                            Rs. {offeredFare || String(estimate.minOffer)}
+                          </Text>
+                        </View>
                       </View>
+                      {(() => {
+                        const minVal = Math.ceil(estimate.fare * 0.7);
+                        const maxVal = Math.ceil(estimate.fare * 1.5);
+                        const currentVal = offeredFare ? parseInt(offeredFare) : minVal;
+                        const pct = maxVal > minVal ? Math.max(0, Math.min(1, (currentVal - minVal) / (maxVal - minVal))) : 0;
+                        return (
+                          <View>
+                            <View
+                              style={{ height: 36, justifyContent: "center" }}
+                              onLayout={(e) => setBargainTrackWidth(e.nativeEvent.layout.width)}
+                              onStartShouldSetResponder={() => true}
+                              onMoveShouldSetResponder={() => true}
+                              onResponderGrant={(e) => {
+                                const x = e.nativeEvent.locationX;
+                                const tw = bargainTrackWidth || (screenWidth - 104);
+                                const ratio = Math.max(0, Math.min(1, x / tw));
+                                const val = Math.round(minVal + ratio * (maxVal - minVal));
+                                setOfferedFare(String(val));
+                              }}
+                              onResponderMove={(e) => {
+                                const x = e.nativeEvent.locationX;
+                                const tw = bargainTrackWidth || (screenWidth - 104);
+                                const ratio = Math.max(0, Math.min(1, x / tw));
+                                const val = Math.round(minVal + ratio * (maxVal - minVal));
+                                setOfferedFare(String(val));
+                              }}
+                            >
+                              <View style={{ height: 6, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", borderRadius: 3, overflow: "hidden" }}>
+                                <View style={{ height: 6, borderRadius: 3, width: `${pct * 100}%`, backgroundColor: "#FCD34D" }} />
+                              </View>
+                              <View style={{ position: "absolute", left: `${pct * 100}%`, top: 6, marginLeft: -14, marginTop: -14, width: 28, height: 28, borderRadius: 14, backgroundColor: "#FCD34D", alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "rgba(252,211,77,0.4)" }}>
+                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#0A0F1E" }} />
+                              </View>
+                            </View>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                              <Text style={{ fontFamily: Font.semiBold, fontSize: 10, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>Min: Rs. {minVal} (70%)</Text>
+                              <Text style={{ fontFamily: Font.semiBold, fontSize: 10, color: colorScheme === "dark" ? "#64748B" : "#94A3B8" }}>Max: Rs. {maxVal} (150%)</Text>
+                            </View>
+                          </View>
+                        );
+                      })()}
                       <Text style={{ fontSize: 11, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", fontFamily: Font.regular }}>
                         Platform fare: Rs. {estimate.fare} · The rider can accept, counter, or reject.
                       </Text>
@@ -1128,7 +1166,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               <View style={{ backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", borderRadius: 16, padding: 14, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0", marginBottom: 14, gap: 12 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9", alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 24 }}>{selectedSvc?.icon ?? "🚗"}</Text>
+                    <VehicleIcon type={rideType} size={24} color={colorScheme === "dark" ? "#FCD34D" : "#0F172A"} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontFamily: Font.bold, fontSize: 15, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>{selectedSvc?.name ?? rideType}</Text>
@@ -1178,7 +1216,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                   style={{ marginBottom: 14, backgroundColor: colorScheme === "dark" ? "rgba(29,78,216,0.15)" : "#EFF6FF", borderWidth: 1, borderColor: colorScheme === "dark" ? "#1D4ED8" : "#BFDBFE", borderRadius: 16, padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}
                 >
                   <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colorScheme === "dark" ? "#1D4ED8" : "#DBEAFE", alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 22 }}>🚌</Text>
+                    <VehicleIcon type="school_shift" size={22} color={colorScheme === "dark" ? "#93C5FD" : "#1E40AF"} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontFamily: Font.bold, color: colorScheme === "dark" ? "#93C5FD" : "#1E40AF" }}>School Shift Subscribe</Text>
@@ -1285,7 +1323,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
                         {showBargain && offeredFare ? (
                           <Ionicons name="chatbubble-ellipses" size={20} color="#0A0F1E" />
                         ) : (
-                          <Text style={{ fontSize: 20 }}>{selectedSvc?.icon ?? "🚗"}</Text>
+                          <VehicleIcon type={rideType} size={20} color="#0A0F1E" />
                         )}
                         <Text style={{ fontFamily: Font.bold, fontSize: 16, color: "#0A0F1E" }}>
                           {showBargain && offeredFare
@@ -1408,7 +1446,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               {history.map((ride, i) => (
                 <View key={ride.id || i} style={{ backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9", flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F1F5F9", alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 18 }}>{services.find((s) => s.key === ride.type)?.icon ?? (ride.type === "bike" ? "🏍️" : ride.type === "car" ? "🚗" : "🛺")}</Text>
+                    <VehicleIcon type={ride.type ?? "car"} size={18} color={colorScheme === "dark" ? "#FCD34D" : "#64748B"} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontFamily: Font.medium, fontSize: 12, color: colorScheme === "dark" ? "#CBD5E1" : "#0F172A" }} numberOfLines={1}>{ride.pickupAddress} → {ride.dropAddress}</Text>
@@ -1436,7 +1474,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
             <Text style={{ fontFamily: Font.semiBold, fontSize: 14, color: colorScheme === "dark" ? "#fff" : "#0F172A", marginBottom: 4 }}>Select a Route</Text>
             {schoolRoutes.length === 0 ? (
               <View style={{ backgroundColor: colorScheme === "dark" ? "#1E293B" : "#F8FAFC", borderRadius: 16, padding: 24, alignItems: "center", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
-                <Text style={{ fontSize: 24, marginBottom: 10 }}>🚌</Text>
+                <View style={{ marginBottom: 10 }}><VehicleIcon type="school_shift" size={24} color={colorScheme === "dark" ? "#94A3B8" : "#CBD5E1"} /></View>
                 <Text style={{ fontFamily: Font.semiBold, color: colorScheme === "dark" ? "#94A3B8" : "#64748B" }}>No routes available</Text>
                 <Text style={{ fontSize: 12, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", marginTop: 4, textAlign: "center" }}>Contact admin to add school shift routes</Text>
               </View>
@@ -1493,7 +1531,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
               >
                 {subscribing ? <ActivityIndicator color="#fff" /> : (
                   <>
-                    <Text style={{ fontSize: 18 }}>🚌</Text>
+                    <VehicleIcon type="school_shift" size={18} color="#fff" />
                     <Text style={{ fontFamily: Font.bold, fontSize: 16, color: "#fff" }}>Subscribe Now</Text>
                   </>
                 )}

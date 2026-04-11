@@ -30,6 +30,8 @@ import { useRideStatus } from "@/hooks/useRideStatus";
 import { NegotiationScreen } from "@/components/ride/NegotiationScreen";
 import { RideStatusSkeleton } from "@/components/ride/Skeletons";
 import { LiveTrackMap } from "@/components/ride/LiveTrackMap";
+import { VehicleIcon } from "@/components/ride/VehicleIcons";
+import { staticMapUrl } from "@/hooks/useMaps";
 import { API_BASE } from "@/utils/api";
 import {
   getDispatchStatus,
@@ -109,6 +111,11 @@ export function RideTracker({
   const [cancelResult, setCancelResult] = useState<{ cancellationFee?: number; cancelReason?: string } | null>(null);
   const [acceptedAt, setAcceptedAt] = useState<number | null>(null);
   const [noDriversConfirmed, setNoDriversConfirmed] = useState(false);
+  const [autoRetryCountdown, setAutoRetryCountdown] = useState(120);
+  const [autoRetryRadius, setAutoRetryRadius] = useState(5);
+  const autoRetryStartedRef = useRef(false);
+  const autoRetryPulse = useRef(new Animated.Value(1)).current;
+  const autoRetryPulseOp = useRef(new Animated.Value(0.6)).current;
 
   const [tripOtp, setTripOtp] = useState<string | null>(null);
   const [otpCopied, setOtpCopied] = useState(false);
@@ -266,6 +273,51 @@ export function RideTracker({
   }, [sosEnabled]);
 
   useEffect(() => {
+    const st = ride?.status ?? "";
+    const isNoRiders = st === "no_riders" || (st === "searching" && elapsed >= 180 && noDriversConfirmed);
+    if (!isNoRiders) {
+      if (autoRetryStartedRef.current) {
+        autoRetryStartedRef.current = false;
+        setAutoRetryCountdown(120);
+        setAutoRetryRadius(5);
+      }
+      return;
+    }
+    if (!autoRetryStartedRef.current) {
+      autoRetryStartedRef.current = true;
+      setAutoRetryCountdown(120);
+      setAutoRetryRadius(5);
+    }
+    const timer = setInterval(() => {
+      setAutoRetryCountdown((prev) => {
+        const next = prev - 1;
+        if (next === 90) setAutoRetryRadius(10);
+        if (next === 60) setAutoRetryRadius(15);
+        if (next <= 0) {
+          clearInterval(timer);
+          handleRetryDispatch();
+          return 120;
+        }
+        return next;
+      });
+    }, 1000);
+    const pulseAnim = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(autoRetryPulse, { toValue: 1.6, duration: 1200, useNativeDriver: true }),
+          Animated.timing(autoRetryPulseOp, { toValue: 0, duration: 1200, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(autoRetryPulse, { toValue: 1, duration: 0, useNativeDriver: true }),
+          Animated.timing(autoRetryPulseOp, { toValue: 0.6, duration: 0, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    pulseAnim.start();
+    return () => { clearInterval(timer); pulseAnim.stop(); };
+  }, [ride?.status, noDriversConfirmed, elapsed >= 180]);
+
+  useEffect(() => {
     const status = ride?.status;
     if (status !== "searching" && status !== "no_riders") return;
     let consecutiveErrors = 0;
@@ -352,9 +404,6 @@ export function RideTracker({
   const stepIdx = STEPS.indexOf(status) !== -1 ? STEPS.indexOf(status) : 0;
   const LABELS = [tl("stepSearching"), tl("stepAccepted"), tl("stepArrived"), tl("stepEnRoute"), tl("stepCompleted")];
 
-  const vehicleIcons: Record<string, string> = { bike: "🏍️", car: "🚗", rickshaw: "🛺", daba: "🚐", school_shift: "🚌" };
-  const vehicleIcon = vehicleIcons[rideType] ?? "🚗";
-
   const statusCfgs: Record<string, { color: string; bg: string; icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; sub: string; banner: string }> = {
     accepted: { color: "#1A56DB", bg: "#EFF6FF", icon: "car", title: tl("driverIsComing"), sub: tl("driverAcceptedSub"), banner: "Driver on the way" },
     arrived: { color: "#D97706", bg: "#FFFBEB", icon: "location", title: tl("driverHasArrived"), sub: tl("driverAtPickup"), banner: "Driver arrived at pickup!" },
@@ -382,27 +431,50 @@ export function RideTracker({
   }
 
   if (status === "no_riders" || (status === "searching" && elapsed >= 180 && noDriversConfirmed)) {
+    const countdownMin = Math.floor(autoRetryCountdown / 60);
+    const countdownSec = autoRetryCountdown % 60;
+    const countdownStr = `${countdownMin}:${String(countdownSec).padStart(2, "0")}`;
+    const countdownPct = autoRetryCountdown / 120;
+    const radiusLabels = [
+      { km: 5, active: autoRetryRadius >= 5 },
+      { km: 10, active: autoRetryRadius >= 10 },
+      { km: 15, active: autoRetryRadius >= 15 },
+    ];
     return (
       <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 }}>
-          <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: "rgba(239,68,68,0.12)", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
-            <Ionicons name="car-outline" size={44} color="#EF4444" />
-          </View>
-          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: "#fff", textAlign: "center", marginBottom: 8 }}>{tl("noDriversAvailable")}</Text>
-          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.5)", textAlign: "center", lineHeight: 22, marginBottom: 12 }}>
-            {dispatchInfo?.notifiedRiders > 0 ? tl("noDriversNotified").replace("{count}", String(dispatchInfo.notifiedRiders)) : tl("noDriversDefault")}
-          </Text>
-          {dispatchInfo && (
-            <View style={{ backgroundColor: "rgba(255,255,255,0.06)", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-                {dispatchInfo.notifiedRiders} riders notified · {dispatchInfo.elapsedSec}s elapsed
-                {dispatchInfo.dispatchLoopCount != null ? ` · Round ${dispatchInfo.dispatchLoopCount}/${dispatchInfo.maxLoops}` : ""}
-              </Text>
+          <View style={{ width: 120, height: 120, alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+            <Animated.View style={{ position: "absolute", width: 120, height: 120, borderRadius: 60, borderWidth: 2, borderColor: "rgba(252,211,77,0.15)", transform: [{ scale: autoRetryPulse }], opacity: autoRetryPulseOp }} />
+            <Animated.View style={{ position: "absolute", width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: "rgba(252,211,77,0.25)" }} />
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(252,211,77,0.12)", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "rgba(252,211,77,0.35)" }}>
+              <Ionicons name="search-outline" size={28} color="#FCD34D" />
             </View>
-          )}
-          <TouchableOpacity activeOpacity={0.7} onPress={handleRetryDispatch} disabled={retrying} style={{ backgroundColor: "#fff", borderRadius: 16, paddingVertical: 16, paddingHorizontal: 32, alignItems: "center", width: "100%", marginBottom: 12, opacity: retrying ? 0.6 : 1 }}>
-            {retrying ? <ActivityIndicator color={C.primary} size="small" /> : <Text style={{ fontFamily: "Inter_700Bold", fontSize: 15, color: C.primary }}>{tl("retrySearch")}</Text>}
-          </TouchableOpacity>
+          </View>
+
+          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: "#fff", textAlign: "center", marginBottom: 6 }}>Expanding Search…</Text>
+          <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "rgba(255,255,255,0.5)", textAlign: "center", lineHeight: 22, marginBottom: 16 }}>
+            {dispatchInfo?.notifiedRiders > 0 ? tl("noDriversNotified").replace("{count}", String(dispatchInfo.notifiedRiders)) : "Looking for nearby drivers in a wider area"}
+          </Text>
+
+          <View style={{ backgroundColor: "rgba(252,211,77,0.1)", borderRadius: 20, paddingHorizontal: 24, paddingVertical: 14, marginBottom: 20, borderWidth: 1, borderColor: "rgba(252,211,77,0.25)", alignItems: "center" }}>
+            <Text style={{ fontFamily: "Inter_700Bold", fontSize: 32, color: "#FCD34D", marginBottom: 4 }}>{countdownStr}</Text>
+            <View style={{ width: 160, height: 4, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+              <View style={{ height: 4, borderRadius: 2, width: `${Math.max(countdownPct * 100, 0)}%`, backgroundColor: "#FCD34D" }} />
+            </View>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 11, color: "rgba(252,211,77,0.6)", marginTop: 6 }}>Auto-retrying when timer ends</Text>
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 24 }}>
+            {radiusLabels.map((r, idx) => (
+              <React.Fragment key={r.km}>
+                {idx > 0 && <View style={{ width: 20, height: 2, backgroundColor: r.active ? "#FCD34D" : "rgba(255,255,255,0.1)", borderRadius: 1 }} />}
+                <View style={{ backgroundColor: r.active ? "rgba(252,211,77,0.15)" : "rgba(255,255,255,0.06)", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: r.active ? "rgba(252,211,77,0.35)" : "rgba(255,255,255,0.08)" }}>
+                  <Text style={{ fontFamily: r.active ? "Inter_700Bold" : "Inter_400Regular", fontSize: 12, color: r.active ? "#FCD34D" : "rgba(255,255,255,0.3)" }}>{r.km} km</Text>
+                </View>
+              </React.Fragment>
+            ))}
+          </View>
+
           <TouchableOpacity activeOpacity={0.7} onPress={onReset} style={{ backgroundColor: "rgba(245,158,11,0.18)", borderWidth: 1.5, borderColor: "rgba(245,158,11,0.4)", borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32, alignItems: "center", width: "100%", marginBottom: 12, flexDirection: "row", justifyContent: "center", gap: 8 }}>
             <Ionicons name="trending-up-outline" size={16} color="#F59E0B" />
             <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 15, color: "#F59E0B" }}>{tl("increaseOffer")}</Text>
@@ -791,52 +863,77 @@ export function RideTracker({
             </Reanimated.View>
           )}
 
-          {/* Rider info row */}
+          {/* Rider Identity Card */}
           {ride?.riderName && (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 }}>
-              {/* Avatar */}
-              <View style={{ position: "relative" }}>
-                <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: hdrCfg.color + "20", alignItems: "center", justifyContent: "center", borderWidth: 2.5, borderColor: hdrCfg.color }}>
-                  <Text style={{ fontFamily: "Inter_700Bold", fontSize: 22, color: hdrCfg.color }}>{ride.riderName.charAt(0).toUpperCase()}</Text>
-                </View>
-                <View style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderRadius: 7, backgroundColor: "#10B981", borderWidth: 2.5, borderColor: colorScheme === "dark" ? "#1E293B" : "#fff" }} />
-              </View>
-
-              {/* Name + rating */}
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: "Inter_700Bold", fontSize: 16, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>{ride.riderName}</Text>
-                {ride?.riderAvgRating != null && (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
-                    {[1, 2, 3, 4, 5].map((s) => <Ionicons key={s} name={s <= Math.round(ride.riderAvgRating ?? 0) ? "star" : "star-outline"} size={11} color="#F59E0B" />)}
-                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 12, color: "#F59E0B" }}>{ride.riderAvgRating.toFixed(1)}</Text>
+            <View style={{ marginBottom: 14, borderRadius: 20, overflow: "hidden", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
+              <View style={{ backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", padding: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                  <View style={{ position: "relative" }}>
+                    {(ride as any)?.riderPhoto ? (
+                      <ProgressiveImage
+                        source={(ride as any).riderPhoto}
+                        style={{ width: 60, height: 60, borderRadius: 30 }}
+                        containerStyle={{ width: 60, height: 60, borderRadius: 30, borderWidth: 2.5, borderColor: hdrCfg.color, overflow: "hidden" }}
+                        borderRadius={30}
+                      />
+                    ) : (
+                      <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: hdrCfg.color + "20", alignItems: "center", justifyContent: "center", borderWidth: 2.5, borderColor: hdrCfg.color }}>
+                        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 24, color: hdrCfg.color }}>{ride.riderName.charAt(0).toUpperCase()}</Text>
+                      </View>
+                    )}
+                    <View style={{ position: "absolute", bottom: 0, right: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: "#10B981", borderWidth: 2.5, borderColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", alignItems: "center", justifyContent: "center" }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#fff" }} />
+                    </View>
                   </View>
-                )}
-                {ride.riderPhone && (
-                  <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", marginTop: 2 }}>{ride.riderPhone}</Text>
-                )}
-              </View>
 
-              {/* Vehicle */}
-              <View style={{ alignItems: "center", gap: 4 }}>
-                <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F1F5F9", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
-                  <Text style={{ fontSize: 22 }}>{vehicleIcon}</Text>
-                </View>
-                {vehiclePlate && (
-                  <View style={{ backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#F1F5F9", borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.12)" : "#E2E8F0" }}>
-                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 10, color: colorScheme === "dark" ? "#fff" : "#0F172A", letterSpacing: 0.8 }}>{vehiclePlate}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: "Inter_700Bold", fontSize: 17, color: colorScheme === "dark" ? "#fff" : "#0F172A" }}>{ride.riderName}</Text>
+                    {ride?.riderAvgRating != null && (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
+                        {[1, 2, 3, 4, 5].map((s) => {
+                          const filled = s <= Math.floor(ride.riderAvgRating ?? 0);
+                          const half = !filled && s === Math.ceil(ride.riderAvgRating ?? 0) && (ride.riderAvgRating ?? 0) % 1 >= 0.25;
+                          return (
+                            <Ionicons key={s} name={filled ? "star" : half ? "star-half" : "star-outline"} size={13} color="#F59E0B" />
+                          );
+                        })}
+                        <Text style={{ fontFamily: "Inter_700Bold", fontSize: 13, color: "#F59E0B", marginLeft: 2 }}>{(ride.riderAvgRating ?? 0).toFixed(1)}</Text>
+                      </View>
+                    )}
+                    {ride.riderPhone && (
+                      <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: colorScheme === "dark" ? "#64748B" : "#94A3B8", marginTop: 2 }}>{ride.riderPhone}</Text>
+                    )}
                   </View>
-                )}
-              </View>
 
-              {/* Call button */}
-              {ride.riderPhone && (
-                <TouchableOpacity activeOpacity={0.7}
-                  onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
-                  style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" }}
-                >
-                  <Ionicons name="call" size={20} color="#fff" />
-                </TouchableOpacity>
-              )}
+                  {ride.riderPhone && (
+                    <TouchableOpacity activeOpacity={0.7}
+                      onPress={() => Linking.openURL(`tel:${ride.riderPhone}`)}
+                      style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#10B981", alignItems: "center", justifyContent: "center" }}
+                    >
+                      <Ionicons name="call" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9" }}>
+                  <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.06)" : "#F1F5F9", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.08)" : "#E2E8F0" }}>
+                    <VehicleIcon type={rideType} size={22} color={hdrCfg.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: "Inter_600SemiBold", fontSize: 13, color: colorScheme === "dark" ? "#E2E8F0" : "#0F172A" }}>
+                      {(ride as any)?.vehicleModel ?? ({ bike: "Bike", car: "Car", rickshaw: "Rickshaw", daba: "Daba/Van", school_shift: "School Bus" } as Record<string, string>)[rideType] ?? rideType}
+                      {(ride as any)?.vehicleColor ? ` · ${(ride as any).vehicleColor}` : ""}
+                    </Text>
+                    {vehiclePlate && (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                        <View style={{ backgroundColor: colorScheme === "dark" ? "rgba(255,255,255,0.1)" : "#F1F5F9", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colorScheme === "dark" ? "rgba(255,255,255,0.15)" : "#E2E8F0" }}>
+                          <Text style={{ fontFamily: "Inter_700Bold", fontSize: 11, color: colorScheme === "dark" ? "#fff" : "#0F172A", letterSpacing: 1 }}>{vehiclePlate}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
             </View>
           )}
 
