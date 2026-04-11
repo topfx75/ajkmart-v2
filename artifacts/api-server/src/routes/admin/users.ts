@@ -736,10 +736,10 @@ router.patch("/users/:id/identity", validateParams(idParamSchema), validateBody(
   }
 
   if (body.phone !== undefined) {
-    const raw = String(body.phone).replace(/[\s\-()]/g, "");
-    if (raw) {
-      const normalized = raw.replace(/^\+?92/, "").replace(/^0/, "");
-      if (!/^3\d{9}$/.test(normalized)) { sendValidationError(res, "Invalid phone format"); return; }
+    const raw = String(body.phone);
+    if (raw.trim()) {
+      const normalized = canonicalizePhone(raw);
+      if (!normalized || !/^92\d{10}$/.test(normalized)) { sendValidationError(res, "Invalid phone format"); return; }
       const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, normalized)).limit(1);
       if (existing && existing.id !== userId) {
         sendError(res, "Phone already linked to another account", 409); return;

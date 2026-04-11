@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { canonicalizePhone } from "@workspace/phone-utils";
 import { db } from "@workspace/db";
 import { notificationsTable, parcelBookingsTable, usersTable, walletTransactionsTable } from "@workspace/db/schema";
 import { eq, sql, and, gte, count } from "drizzle-orm";
@@ -16,16 +17,14 @@ const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
 const createParcelSchema = z.object({
   senderName: z.string().min(1, "senderName is required").max(100, "senderName too long").transform(stripHtml),
-  senderPhone: z.string().min(7, "senderPhone is required").max(20, "senderPhone too long").refine((val) => {
-    const raw = val.replace(/[\s\-()]/g, "");
-    return /^\+?92(3\d{9})$/.test(raw) || /^0(3\d{9})$/.test(raw) || /^(3\d{9})$/.test(raw);
-  }, { message: "senderPhone must be a valid Pakistani mobile number (e.g. 03001234567)" }),
+  senderPhone: z.string().min(7, "senderPhone is required").max(20, "senderPhone too long")
+    .transform(v => canonicalizePhone(v) ?? "")
+    .pipe(z.string().regex(/^92\d{10}$/, "senderPhone must be a valid Pakistani mobile number (e.g. 03001234567)")),
   pickupAddress: z.string().min(1, "pickupAddress is required").max(500, "pickupAddress too long").transform(stripHtml),
   receiverName: z.string().min(1, "receiverName is required").max(100, "receiverName too long").transform(stripHtml),
-  receiverPhone: z.string().min(7, "receiverPhone is required").max(20, "receiverPhone too long").refine((val) => {
-    const raw = val.replace(/[\s\-()]/g, "");
-    return /^\+?92(3\d{9})$/.test(raw) || /^0(3\d{9})$/.test(raw) || /^(3\d{9})$/.test(raw);
-  }, { message: "receiverPhone must be a valid Pakistani mobile number (e.g. 03001234567)" }),
+  receiverPhone: z.string().min(7, "receiverPhone is required").max(20, "receiverPhone too long")
+    .transform(v => canonicalizePhone(v) ?? "")
+    .pipe(z.string().regex(/^92\d{10}$/, "receiverPhone must be a valid Pakistani mobile number (e.g. 03001234567)")),
   dropAddress: z.string().min(1, "dropAddress is required").max(500, "dropAddress too long").transform(stripHtml),
   parcelType: z.string().min(1, "parcelType is required").max(50, "parcelType too long"),
   paymentMethod: z.enum(["cash", "wallet", "cod"], { errorMap: () => ({ message: "paymentMethod must be cash, wallet, or cod" }) }),

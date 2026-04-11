@@ -206,7 +206,7 @@ export default function RegisterScreen() {
           const checkRes = await fetch(`${API}/auth/check-identifier`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ identifier: `0${normalizedPhone}`, role: "customer" }),
+            body: JSON.stringify({ identifier: normalizedPhone, role: "customer" }),
           });
           checkData = await checkRes.json();
           if (!checkRes.ok) {

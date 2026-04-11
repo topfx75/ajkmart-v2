@@ -194,7 +194,7 @@ function hashVerificationToken(token: string): string {
 
 
 function isValidCanonicalPhone(phone: string | null): phone is string {
-  return phone !== null && /^3\d{9}$/.test(phone);
+  return phone !== null && /^92\d{10}$/.test(phone);
 }
 
 const router: IRouter = Router();
@@ -2385,7 +2385,7 @@ function isAuthMethodEnabledStrict(settings: Record<string, string>, newKey: str
 }
 
 const CNIC_REGEX = /^\d{5}-\d{7}-\d{1}$/;
-const PHONE_REGEX = /^0?3\d{9}$/;
+const PHONE_REGEX = /^(\+?92|0)?3\d{9}$/;
 
 router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), async (req, res) => {
   const { phone, password, name, role, cnic, nationalId, email, username,

@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger.js";
+import { canonicalizePhone } from "@workspace/phone-utils";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { usersTable, walletTransactionsTable, notificationsTable, supportedPaymentMethodsTable } from "@workspace/db/schema";
@@ -554,12 +555,8 @@ router.get("/deposits", customerAuth, async (req, res) => {
 const resolvePhoneSchema = z.object({
   phone: z.string()
     .min(1, "phone is required")
-    .transform(v => {
-      const trimmed = v.trim();
-      if (/^03\d{9}$/.test(trimmed)) return trimmed.slice(1);
-      return trimmed;
-    })
-    .pipe(z.string().regex(/^3\d{9}$/, "Invalid Pakistani phone number (must be 10 digits starting with 3, or 11 digits starting with 03)")),
+    .transform(v => canonicalizePhone(v.trim()) ?? "")
+    .pipe(z.string().regex(/^92\d{10}$/, "Invalid Pakistani phone number (must be a valid Pakistani mobile number e.g. 03001234567 or +923001234567)")),
 });
 
 router.post("/resolve-phone", customerAuth, async (req, res) => {

@@ -294,18 +294,17 @@ export default function AuthScreen() {
         return;
       }
       if (res.action === "send_phone_otp") {
-        const digits = id.replace(/\D/g, "");
-        const normalized = digits.replace(/^92/, "").replace(/^0/, "");
-        if (!isValidPakistaniPhone(normalized)) {
+        const canonicalized = normalizePhone(id.trim());
+        if (!isValidPakistaniPhone(id.trim())) {
           setMethod("phone");
           setLoading(false);
           animateTransition(() => setStep("method"));
           return;
         }
-        setPhone(normalized);
+        setPhone(canonicalized);
         setMethod("phone");
         setLoading(false);
-        const r = await authPost("/auth/send-otp", { phone: `0${normalized}`, mode: "login", role: "customer" }).catch((e: any) => {
+        const r = await authPost("/auth/send-otp", { phone: canonicalized, mode: "login", role: "customer" }).catch((e: any) => {
           const msg: string = e.message || "Failed to send OTP";
           if (msg.toLowerCase().includes("account not found") || msg.toLowerCase().includes("sign up")) {
             setError("No account found with this number. Please sign up first.");
@@ -1046,7 +1045,7 @@ export default function AuthScreen() {
                   <Text style={styles.backRowText}>{T("changeNumber")}</Text>
                 </TouchableOpacity>
                 <Text style={styles.sectionTitle}>{T("enterOtp")}</Text>
-                <Text style={styles.sectionSubtitle}>{T("otpSentToPhone")} +92 {phone}</Text>
+                <Text style={styles.sectionSubtitle}>{T("otpSentToPhone")} +92 {phone.startsWith("92") ? phone.slice(2) : phone}</Text>
 
                 {otpChannel ? <ChannelBadge channel={otpChannel} /> : null}
                 <FallbackChannelButtons

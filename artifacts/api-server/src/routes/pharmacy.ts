@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { canonicalizePhone } from "@workspace/phone-utils";
 import { db } from "@workspace/db";
 import { notificationsTable, pharmacyOrdersTable, productsTable, usersTable, walletTransactionsTable, liveLocationsTable } from "@workspace/db/schema";
 import { eq, sql, and, gte, count, inArray } from "drizzle-orm";
@@ -191,17 +192,8 @@ router.post("/", customerAuth, async (req, res) => {
   }
 
   /* Validate contactPhone format — must be a valid Pakistani mobile number */
-  const canonPhone = (function() {
-    const raw = String(contactPhone ?? "").replace(/[\s\-()]/g, "");
-    const e164 = raw.match(/^\+?92(3\d{9})$/);
-    if (e164) return e164[1]!;
-    const local = raw.match(/^0(3\d{9})$/);
-    if (local) return local[1]!;
-    const bare = raw.match(/^(3\d{9})$/);
-    if (bare) return bare[1]!;
-    return raw;
-  })();
-  if (!/^3\d{9}$/.test(canonPhone)) {
+  const canonPhone = canonicalizePhone(String(contactPhone ?? ""));
+  if (!canonPhone || !/^92\d{10}$/.test(canonPhone)) {
     sendValidationError(res, "Invalid contactPhone: must be a valid Pakistani mobile number (e.g. 03001234567)");
     return;
   }
@@ -383,7 +375,7 @@ router.post("/", customerAuth, async (req, res) => {
           id: generateId(), userId, items,
           prescriptionNote: mergedPrescriptionNote,
           prescriptionStatus: (hasRxItem || mergedPrescriptionNote) ? "pending" : "none",
-          deliveryAddress, contactPhone,
+          deliveryAddress, contactPhone: canonPhone,
           total: total.toFixed(2), paymentMethod,
           status: "pending", estimatedTime,
         }).returning();
@@ -409,7 +401,7 @@ router.post("/", customerAuth, async (req, res) => {
     id: generateId(), userId, items,
     prescriptionNote: mergedPrescriptionNote,
     prescriptionStatus: (hasRxItem || mergedPrescriptionNote) ? "pending" : "none",
-    deliveryAddress, contactPhone,
+    deliveryAddress, contactPhone: canonPhone,
     total: total.toFixed(2), paymentMethod,
     status: "pending", estimatedTime,
   }).returning();

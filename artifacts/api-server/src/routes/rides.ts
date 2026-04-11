@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger.js";
+import { canonicalizePhone } from "@workspace/phone-utils";
 import { isInServiceZone } from "../lib/geofence.js";
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
@@ -104,7 +105,7 @@ const bookRideSchema = z.object({
   /* ── Parcel delivery fields ── */
   isParcel: z.boolean().optional().default(false),
   receiverName: z.string().max(200).transform(stripHtml).optional(),
-  receiverPhone: z.string().max(20).regex(/^03\d{9}$/, "Receiver phone must be a valid Pakistani mobile number (11 digits, starts with 03)").optional(),
+  receiverPhone: z.string().max(20).transform(v => canonicalizePhone(v) ?? "").pipe(z.string().regex(/^92\d{10}$/, "Receiver phone must be a valid Pakistani mobile number (e.g. 03001234567)")).optional(),
   packageType: z.string().max(100).transform(stripHtml).optional(),
   /* ── Scheduled ride ── */
   isScheduled: z.boolean().optional().default(false),
