@@ -42,11 +42,12 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
   const integrationOn = settings["integration_sms"] === "on";
   const provider      = settings["sms_provider"] ?? "console";
 
-  /* Console/dev logging is allowed only in non-production AND when otp_debug_mode is enabled */
+  /* Console/dev logging: always log in non-production when provider is "console",
+     or when otp_debug_mode is explicitly enabled (even for real providers). */
   const otpDebugMode  = !isProd && settings["otp_debug_mode"] === "on";
 
   if (!integrationOn || provider === "console") {
-    if (otpDebugMode) {
+    if (!isProd) {
       console.log(`[SMS:console] To: ${phone} | ${message}`);
     }
     return { sent: !isProd, provider: "console" };
