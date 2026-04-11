@@ -46,6 +46,7 @@ export default function Login() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const appName = config.platform.appName;
+  const logoSrc = config.platform.logoUrl || `${import.meta.env.BASE_URL}logo.svg`;
   const auth = getRiderAuthConfig(config);
   const captchaSiteKey = config.auth?.captchaSiteKey;
   const googleClientId = config.auth?.googleClientId;
@@ -634,7 +635,7 @@ export default function Login() {
       <div className="w-full max-w-sm relative z-10">
         <div className="text-center mb-8">
           <img
-            src={`${import.meta.env.BASE_URL}logo.svg`}
+            src={logoSrc}
             alt="AJKMart"
             className="mx-auto mb-4"
             style={{ height: 72, width: "auto", maxWidth: 240, objectFit: "contain", filter: "brightness(0) invert(1)" }}

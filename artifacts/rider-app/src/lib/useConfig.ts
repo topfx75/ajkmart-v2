@@ -29,6 +29,7 @@ export interface PlatformConfig {
     appTagline: string;
     appVersion: string;
     appStatus: "active" | "maintenance";
+    logoUrl: string;
     supportPhone: string;
     supportEmail: string;
     supportHours: string;
@@ -184,6 +185,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
     appTagline: "Your super app for everything",
     appVersion: "1.0.0",
     appStatus: "active",
+    logoUrl: "",
     supportPhone: "03001234567",
     supportEmail: "",
     supportHours: "Mon–Sat, 8AM–10PM",

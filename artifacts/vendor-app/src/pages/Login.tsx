@@ -37,6 +37,7 @@ export default function Login() {
   const T = (key: TranslationKey) => tDual(key, language);
 
   const appName           = config.platform.appName;
+  const logoSrc           = config.platform.logoUrl || `${import.meta.env.BASE_URL}logo.svg`;
   const businessAddress   = config.platform.businessAddress;
   const vendorEarningsPct = Math.round(100 - (config.platform.vendorCommissionPct ?? 15));
   const vendorAuth        = getVendorAuthConfig(config);
@@ -657,7 +658,7 @@ export default function Login() {
           <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-white/10 rounded-full pointer-events-none" />
           <div className="relative z-10">
             <div className="mb-4">
-              <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+              <img src={logoSrc} alt="AJKMart" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
               <p className="text-orange-100 text-sm font-medium mt-1">Vendor Registration</p>
             </div>
           </div>
@@ -688,7 +689,7 @@ export default function Login() {
 
           <div className="w-full max-w-sm relative z-10">
             <div className="text-center mb-6 md:hidden">
-              <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" className="mx-auto mb-3" style={{ height: 60, width: "auto", maxWidth: 200, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+              <img src={logoSrc} alt="AJKMart" className="mx-auto mb-3" style={{ height: 60, width: "auto", maxWidth: 200, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
               <h1 className="text-2xl font-extrabold text-white">Become a Vendor</h1>
               <p className="text-orange-100 mt-1 font-medium text-sm">{appName} Business Partner</p>
             </div>
@@ -872,7 +873,7 @@ export default function Login() {
         <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-white/10 rounded-full pointer-events-none" />
         <div className="relative z-10">
           <div className="mb-4">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+            <img src={logoSrc} alt="AJKMart" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
             <p className="text-orange-100 text-sm font-medium mt-1">{T("vendorPortal")}</p>
           </div>
         </div>
@@ -903,7 +904,7 @@ export default function Login() {
 
         <div className="w-full max-w-sm relative z-10">
           <div className="text-center mb-8 md:hidden">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="AJKMart" className="mx-auto mb-3" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+            <img src={logoSrc} alt="AJKMart" className="mx-auto mb-3" style={{ height: 64, width: "auto", maxWidth: 220, objectFit: "contain", filter: "brightness(0) invert(1)" }} />
             <h1 className="text-3xl font-extrabold text-white">{T("vendorPortal")}</h1>
             <p className="text-orange-100 mt-1 font-medium">{appName} {T("businessPartner")}</p>
           </div>

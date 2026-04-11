@@ -126,6 +126,7 @@ router.get("/", async (req, res) => {
       appName:              s["app_name"]           ?? "AJKMart",
       appTagline:           s["app_tagline"]        ?? "Your super app for everything",
       appVersion:           s["app_version"]        ?? "1.0.0",
+      logoUrl:              s["app_logo_url"]       ?? "",
       appStatus:            (() => {
         const base = s["app_status"] ?? "active";
         if (base !== "maintenance") return base;

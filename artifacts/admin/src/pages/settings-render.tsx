@@ -79,7 +79,7 @@ export const TOGGLE_KEYS = new Set([
 
 export const TEXT_KEYS = new Set([
   "app_name","app_status","support_phone",
-  "app_tagline","app_version","support_email","support_hours","business_address","social_facebook","social_instagram",
+  "app_tagline","app_version","app_logo_url","support_email","support_hours","business_address","social_facebook","social_instagram",
   "content_banner","content_announcement","content_maintenance_msg","content_support_msg",
   "content_vendor_notice","content_rider_notice",
   "content_tnc_url","content_privacy_url","content_refund_policy_url","content_faq_url","content_about_url",
@@ -563,7 +563,7 @@ export function renderSection(
     const appStatusDirty = dirtyKeys.has("app_status");
 
     const GENERAL_GROUPS: { label: string; icon: any; keys: string[] }[] = [
-      { label: "App Identity",     icon: Globe,        keys: ["app_name","app_tagline","app_version","app_status"] },
+      { label: "App Identity",     icon: Globe,        keys: ["app_name","app_tagline","app_version","app_logo_url","app_status"] },
       { label: "Support Contact",  icon: Phone,        keys: ["support_phone","support_email","support_hours"] },
       { label: "Business Info",    icon: Building2,    keys: ["business_address"] },
       { label: "Social Media",     icon: LinkIcon,         keys: ["social_facebook","social_instagram"] },
@@ -572,6 +572,7 @@ export function renderSection(
       app_name:         "App Name",
       app_tagline:      "App Tagline",
       app_version:      "App Version",
+      app_logo_url:     "Logo URL",
       app_status:       "App Status",
       support_phone:    "Support Phone",
       support_email:    "Support Email",
@@ -584,6 +585,7 @@ export function renderSection(
       app_name:         "AJKMart",
       app_tagline:      "Your super app for everything",
       app_version:      "1.0.0",
+      app_logo_url:     "https://cdn.ajkmart.pk/logo.svg",
       support_phone:    "03001234567",
       support_email:    "support@ajkmart.pk",
       support_hours:    "Mon–Sat, 8AM–10PM",
@@ -595,6 +597,7 @@ export function renderSection(
       app_name:         "Shown in all three apps — customer, vendor and rider",
       app_tagline:      "Subtitle on the customer login screen",
       app_version:      "Shown in customer profile app info footer",
+      app_logo_url:     "Custom logo URL (SVG or PNG). Leave blank to use the default built-in logo",
       support_phone:    "Tappable call button in all 3 apps",
       support_email:    "Shown in support section (optional — leave blank to hide)",
       support_hours:    "Shown under Call Support row in all apps",
@@ -640,7 +643,7 @@ export function renderSection(
                 }
                 const isDirty = dirtyKeys.has(key);
                 const curVal = localValues[key] ?? "";
-                const isUrl = key.startsWith("social_");
+                const isUrl = key.startsWith("social_") || key === "app_logo_url";
                 const isNameBlank = key === "app_name" && curVal.trim() === "";
                 return (
                   <div key={key} className={`rounded-xl border p-3.5 space-y-2 transition-all ${isNameBlank ? "border-red-400 bg-red-50/30" : isDirty ? "border-amber-300 bg-amber-50/30" : "border-border"}`}>

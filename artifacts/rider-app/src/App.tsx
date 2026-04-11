@@ -91,7 +91,12 @@ function AppRoutes() {
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-green-600 to-emerald-800 flex items-center justify-center">
       <div className="text-center">
-        <div className="text-5xl mb-4">🏍️</div>
+        <img
+          src={`${import.meta.env.BASE_URL}logo.svg`}
+          alt="AJKMart"
+          className="mx-auto mb-6"
+          style={{ height: 80, width: "auto", maxWidth: 240, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+        />
         <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
         <p className="text-white mt-3 font-medium">Loading Rider Portal...</p>
       </div>

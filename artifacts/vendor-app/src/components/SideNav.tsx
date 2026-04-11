@@ -39,7 +39,7 @@ export function SideNav() {
         <div className="flex items-center gap-3">
           <div className="bg-white rounded-xl flex items-center justify-center shadow-md flex-shrink-0 px-2 py-1.5">
             <img
-              src={`${import.meta.env.BASE_URL}logo.svg`}
+              src={config.platform.logoUrl || `${import.meta.env.BASE_URL}logo.svg`}
               alt="AJKMart"
               style={{ height: 36, width: "auto", maxWidth: 100, objectFit: "contain" }}
             />
