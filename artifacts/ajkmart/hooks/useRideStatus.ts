@@ -11,18 +11,24 @@ type RideStatusHookResult = {
 };
 
 /** Base delay (ms) for the first SSE reconnection attempt. */
-const SSE_RETRY_BASE_DELAY = 3000;
+const SSE_RETRY_BASE_DELAY = 2000;
 /**
  * Maximum SSE reconnection delay (ms). Caps exponential growth so we never
- * wait more than 10 s between reconnects before falling back to polling.
+ * wait more than 30 s between reconnects before falling back to polling.
  */
-const SSE_MAX_RETRY_DELAY = 10_000;
-const POLL_INTERVAL = 5000;
+const SSE_MAX_RETRY_DELAY = 30_000;
+/**
+ * On Edge/slow networks the initial SSE connect can time out silently.
+ * After this many ms without the connection going live, we abort and retry.
+ */
+const SSE_CONNECT_TIMEOUT_MS = 8000;
+const POLL_INTERVAL_GOOD = 5000;
+const POLL_INTERVAL_SLOW  = 12_000;
 /**
  * How long (ms) to stay in polling mode before attempting to re-upgrade
  * to SSE.  Gives transient connectivity blips time to recover.
  */
-const POLLING_UPGRADE_DELAY = 30_000;
+const POLLING_UPGRADE_DELAY = 45_000;
 
 export function useRideStatus(rideId: string): RideStatusHookResult {
   const [ride, setRide] = useState<Ride | null>(null);
@@ -57,8 +63,13 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
     clearUpgradeTimer();
   }, [clearUpgradeTimer]);
 
+  /* Track controllers that were intentionally aborted (via closeSse/reconnect)
+     so the catch block in connectSse can distinguish them from timeout aborts. */
+  const intentionalAbortSet = useRef<WeakSet<AbortController>>(new WeakSet());
+
   const closeSse = useCallback(() => {
     if (abortRef.current) {
+      intentionalAbortSet.current.add(abortRef.current);
       abortRef.current.abort();
       abortRef.current = null;
     }
@@ -67,12 +78,15 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
   /* Forward declaration — connectSse is referenced by startPolling */
   const connectSseRef = useRef<() => void>(() => {});
 
-  const startPolling = useCallback(() => {
+  const startPolling = useCallback((slow = false) => {
     if (pollRef.current) clearInterval(pollRef.current);
     clearUpgradeTimer();
     setConnectionType("polling");
 
+    const interval = slow ? POLL_INTERVAL_SLOW : POLL_INTERVAL_GOOD;
+
     const poll = async () => {
+      const t0 = Date.now();
       try {
         const d = await getRideApi(rideId);
         if (mountedRef.current) {
@@ -87,9 +101,16 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
           }
         }
       } catch {}
+      /* Adaptive: if the poll itself took longer than POLL_INTERVAL_GOOD,
+         the connection is slow — reschedule with POLL_INTERVAL_SLOW. */
+      const elapsed = Date.now() - t0;
+      if (!slow && elapsed > POLL_INTERVAL_GOOD && mountedRef.current && pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = setInterval(poll, POLL_INTERVAL_SLOW);
+      }
     };
     poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL);
+    pollRef.current = setInterval(poll, interval);
 
     /* Schedule a re-upgrade attempt to SSE after POLLING_UPGRADE_DELAY.
        If SSE succeeds connectSse will call stopPolling internally. */
@@ -109,6 +130,11 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    /* Abort the SSE connect attempt if it takes too long (Edge networks). */
+    const connectTimeoutId = setTimeout(() => {
+      if (abortRef.current === controller) controller.abort();
+    }, SSE_CONNECT_TIMEOUT_MS);
+
     try {
       let token: string | null = null;
       try {
@@ -126,6 +152,8 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
         },
         signal: controller.signal,
       });
+
+      clearTimeout(connectTimeoutId);
 
       if (!response.ok || !response.body) {
         throw new Error("SSE connection failed");
@@ -186,8 +214,29 @@ export function useRideStatus(rideId: string): RideStatusHookResult {
         }
       }
     } catch (err: unknown) {
+      clearTimeout(connectTimeoutId);
       const isAbort = (err as { name?: string })?.name === "AbortError";
-      if (isAbort) return;
+      if (isAbort) {
+        /* Distinguish intentional aborts (closeSse / reconnect / unmount)
+           from timeout aborts triggered by SSE_CONNECT_TIMEOUT_MS. */
+        const wasIntentional = intentionalAbortSet.current.has(controller);
+        if (wasIntentional) return;
+        /* Connection timed out on Edge/slow network — fall through to retry. */
+        if (!mountedRef.current) return;
+        sseFailCountRef.current += 1;
+        if (sseFailCountRef.current >= 3) {
+          startPolling(true);
+        } else {
+          const delay = Math.min(
+            SSE_RETRY_BASE_DELAY * Math.pow(2, sseFailCountRef.current - 1),
+            SSE_MAX_RETRY_DELAY,
+          );
+          retryTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) connectSse();
+          }, delay);
+        }
+        return;
+      }
       if (!mountedRef.current) return;
 
       sseFailCountRef.current += 1;

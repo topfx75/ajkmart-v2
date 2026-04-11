@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ProgressiveImage } from "@/components/ui/ProgressiveImage";
 import * as Clipboard from "expo-clipboard";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -7,7 +8,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Image,
   Linking,
   Platform,
   TouchableOpacity,
@@ -646,7 +646,7 @@ export function RideTracker({
       {/* Full screen map background */}
       <View style={StyleSheet.absoluteFillObject}>
         {mapImgUrl ? (
-          <Image source={{ uri: mapImgUrl }} style={{ flex: 1 }} resizeMode="cover" />
+          <ProgressiveImage source={mapImgUrl} style={{ flex: 1, width: "100%", height: "100%" }} containerStyle={{ flex: 1 }} borderRadius={0} />
         ) : (
           <LinearGradient colors={["#0F172A", "#1E293B"]} style={{ flex: 1 }} />
         )}
@@ -721,6 +721,12 @@ export function RideTracker({
           <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#92400E", flex: 1 }}>{tl("liveUpdatesPaused")}</Text>
           <Ionicons name="refresh-outline" size={14} color="#D97706" />
         </TouchableOpacity>
+      )}
+      {connectionType === "connecting" && !!ride && (
+        <View style={{ position: "absolute", top: topPad + 122, left: 16, right: 16, zIndex: 20, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(15,23,42,0.85)", paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 }}>
+          <ActivityIndicator size="small" color="#94A3B8" />
+          <Text style={{ fontFamily: "Inter_500Medium", fontSize: 12, color: "#CBD5E1", flex: 1 }}>Reconnecting…</Text>
+        </View>
       )}
 
       {/* ── Bottom Card ── */}

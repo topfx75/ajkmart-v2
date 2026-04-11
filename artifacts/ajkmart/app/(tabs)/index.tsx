@@ -44,6 +44,7 @@ import {
   CountdownTimer,
 } from "@/components/user-shared";
 import { WishlistHeart } from "@/components/WishlistHeart";
+import { ProgressiveImage } from "@/components/ui/ProgressiveImage";
 import { NotificationsModal } from "@/components/profile/NotificationsModal";
 import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
 
@@ -577,7 +578,7 @@ const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
             >
               {b.imageUrl ? (
                 <View style={ban.card}>
-                  <Image source={{ uri: b.imageUrl }} style={ban.bgImage} />
+                  <ProgressiveImage source={b.imageUrl} style={ban.bgImage} containerStyle={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} borderRadius={0} />
                   <LinearGradient
                     colors={[`${b.gradient1 || C.primary}cc`, `${b.gradient2 || C.primaryDark}bb`]}
                     start={{ x: 0, y: 0 }}
@@ -804,7 +805,7 @@ const FlashDealsSection = React.memo(function FlashDealsSection({ T }: { T: (key
               </View>
               <View style={fd.imgWrap}>
                 {item.image ? (
-                  <Image source={{ uri: item.image }} style={fd.productImg} resizeMode="cover" />
+                  <ProgressiveImage source={item.image} containerStyle={{ width: "100%", height: "100%" }} style={{ width: "100%", height: "100%" }} borderRadius={0} />
                 ) : (
                   <View style={[fd.productImg, { backgroundColor: "#FFF5F5", alignItems: "center", justifyContent: "center" }]}>
                     <Ionicons name="flash" size={28} color="#FF4444" />
@@ -922,7 +923,7 @@ const TrendingSection = React.memo(function TrendingSection() {
           >
             <View style={{ position: "relative" }}>
               {item.image ? (
-                <Image source={{ uri: item.image }} style={tr2.img} resizeMode="cover" />
+                <ProgressiveImage source={item.image} style={tr2.img} containerStyle={tr2.img} borderRadius={12} />
               ) : (
                 <View style={[tr2.img, { backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }]}>
                   <Ionicons name="cube-outline" size={28} color={C.textMuted} />

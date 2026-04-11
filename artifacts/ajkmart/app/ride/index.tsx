@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
@@ -9,13 +9,19 @@ import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { withServiceGuard } from "@/components/ServiceGuard";
 import { withErrorBoundary } from "@/utils/withErrorBoundary";
-import { RideBookingForm } from "@/components/ride/RideBookingForm";
-import { RideTracker } from "@/components/ride/RideTracker";
+import { ServiceListSkeleton, RideStatusSkeleton } from "@/components/ride/Skeletons";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { TouchableOpacity, Text, Platform } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
+
+const RideBookingForm = lazy(() =>
+  import("@/components/ride/RideBookingForm").then((m) => ({ default: m.RideBookingForm }))
+);
+const RideTracker = lazy(() =>
+  import("@/components/ride/RideTracker").then((m) => ({ default: m.RideTracker }))
+);
 
 const C = Colors.light;
 
@@ -291,18 +297,24 @@ function RideScreenInner() {
 
   if (booked) {
     return (
-      <RideTracker
-        rideId={booked.id}
-        initialType={booked.type ?? "bike"}
-        userId={user?.id ?? ""}
-        token={token}
-        cancellationFee={rideCfg.cancellationFee ?? 30}
-        onReset={() => setBooked(null)}
-      />
+      <Suspense fallback={<RideStatusSkeleton />}>
+        <RideTracker
+          rideId={booked.id}
+          initialType={booked.type ?? "bike"}
+          userId={user?.id ?? ""}
+          token={token}
+          cancellationFee={rideCfg.cancellationFee ?? 30}
+          onReset={() => setBooked(null)}
+        />
+      </Suspense>
     );
   }
 
-  return <RideBookingForm onBooked={(ride) => setBooked(ride)} prefillPickup={prefillPickup} prefillDrop={prefillDrop} prefillType={prefillType} />;
+  return (
+    <Suspense fallback={<View style={{ flex: 1, padding: 16 }}><ServiceListSkeleton /></View>}>
+      <RideBookingForm onBooked={(ride) => setBooked(ride)} prefillPickup={prefillPickup} prefillDrop={prefillDrop} prefillType={prefillType} />
+    </Suspense>
+  );
 }
 
 export default withErrorBoundary(withServiceGuard("rides", RideScreenInner));

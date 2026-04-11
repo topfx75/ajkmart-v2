@@ -1,5 +1,6 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import compression from "compression";
 import pinoHttp from "pino-http";
 import path from "path";
 import router from "./routes";
@@ -32,6 +33,20 @@ app.use(
 app.use(securityHeadersMiddleware);
 
 app.use(cors());
+
+/* Compress all JSON/text API responses (gzip).
+   Placed after CORS/security headers but before body parsers and routing.
+   Binary upload routes are excluded — their responses are small or binary. */
+app.use(
+  compression({
+    filter: (req, res) => {
+      const ct = res.getHeader("Content-Type");
+      if (typeof ct === "string" && /^image\//.test(ct)) return false;
+      return compression.filter(req, res);
+    },
+    threshold: 1024,
+  }),
+);
 
 /* Large JSON parser for upload-capable routes (base64 image payloads).
    Must be registered BEFORE the tight global parser so these paths are
