@@ -25,6 +25,7 @@ export {
   ensureTwoFactorEnforcedAt,
   ensureSilenceModeColumns,
   ensureProfileCompleteColumn,
+  ensureOrdersItemsNullable,
   ensureOtpSettings,
   getPlatformSettings,
   getAdminSecret,

@@ -3,8 +3,8 @@ import { api } from "./api";
 import type { Language } from "@workspace/i18n";
 import { DEFAULT_LANGUAGE, LANGUAGE_OPTIONS, isRTL } from "@workspace/i18n";
 
-interface SettingsResponse {
-  language?: string;
+interface PlatformConfigResponse {
+  language?: { defaultLanguage?: string; enabledLanguages?: string[] };
   [key: string]: unknown;
 }
 
@@ -22,10 +22,11 @@ export function useLanguage() {
   const [initialised, setInitialised] = useState(false);
 
   useEffect(() => {
-    api.getSettings()
-      .then((s: SettingsResponse) => {
-        if (s?.language && VALID_LANGS.has(s.language)) {
-          const lang = s.language as Language;
+    api.getPlatformConfig()
+      .then((s: PlatformConfigResponse) => {
+        const serverLang = s?.language?.defaultLanguage;
+        if (serverLang && VALID_LANGS.has(serverLang)) {
+          const lang = serverLang as Language;
           setLang(lang);
           applyRTL(lang);
         }
@@ -38,9 +39,6 @@ export function useLanguage() {
     setLoading(true);
     setLang(lang);
     applyRTL(lang);
-    try {
-      await api.updateSettings({ language: lang });
-    } catch {}
     setLoading(false);
   }, []);
 

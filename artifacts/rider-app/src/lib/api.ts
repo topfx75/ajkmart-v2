@@ -376,7 +376,10 @@ export const api = {
   markAllRead:      () => apiFetch("/rider/notifications/read-all", { method: "PATCH", body: "{}" }),
   markOneRead:      (id: string) => apiFetch(`/rider/notifications/${id}/read`, { method: "PATCH", body: "{}" }),
 
-  /* Settings */
+  /* Platform config (public) */
+  getPlatformConfig: () => apiFetch("/platform-config"),
+
+  /* Settings — admin-only; keep for completeness but not called by rider flows */
   getSettings:    () => apiFetch("/settings"),
   updateSettings: (data: Record<string, unknown>) => apiFetch("/settings", { method: "PUT", body: JSON.stringify(data) }),
 };

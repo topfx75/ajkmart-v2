@@ -35,6 +35,11 @@ const LanguageContext = createContext<LanguageCtx>({
   initialised: false,
 });
 
+interface PlatformConfigResponse {
+  language?: { defaultLanguage?: string; enabledLanguages?: string[] };
+  [key: string]: unknown;
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en");
   const [loading, setLoading] = useState(false);
@@ -46,9 +51,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLanguageState(local);
       applyRTL(local);
       setInitialised(true);
-      api.getSettings()
-        .then((data: { language?: string }) => {
-          const serverLang = data?.language;
+      api.getPlatformConfig()
+        .then((data: PlatformConfigResponse) => {
+          const serverLang = data?.language?.defaultLanguage;
           if (serverLang && VALID_LANGS.has(serverLang) && serverLang !== local) {
             setLanguageState(serverLang as Language);
             applyRTL(serverLang as Language);
@@ -57,9 +62,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => {});
     } else {
-      api.getSettings()
-        .then((data: { language?: string }) => {
-          const serverLang = data?.language;
+      api.getPlatformConfig()
+        .then((data: PlatformConfigResponse) => {
+          const serverLang = data?.language?.defaultLanguage;
           if (serverLang && VALID_LANGS.has(serverLang)) {
             setLanguageState(serverLang as Language);
             applyRTL(serverLang as Language);
@@ -76,9 +81,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setLanguageState(lang);
     applyRTL(lang);
     try { localStorage.setItem(STORAGE_KEY, lang); } catch {}
-    try {
-      await api.updateSettings({ language: lang });
-    } catch {}
     setLoading(false);
   }, []);
 

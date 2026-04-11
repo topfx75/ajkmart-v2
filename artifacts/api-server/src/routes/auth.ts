@@ -633,13 +633,17 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
 
   if (isNewUser) {
     /* NEW USERS: store OTP in pending_otps — do NOT create a users record yet.
-       The users record is only created after OTP is successfully verified. */
+       The users record is only created after OTP is successfully verified.
+       When mode=register, include _source so verify-otp allows non-customer roles. */
+    const sendOtpPayload = mode === "register"
+      ? JSON.stringify({ _source: "register", role: req.body.role ?? "customer" })
+      : null;
     await db
       .insert(pendingOtpsTable)
-      .values({ id: generateId(), phone, otpHash: hashOtp(otp), otpExpiry })
+      .values({ id: generateId(), phone, otpHash: hashOtp(otp), otpExpiry, payload: sendOtpPayload })
       .onConflictDoUpdate({
         target: pendingOtpsTable.phone,
-        set: { otpHash: hashOtp(otp), otpExpiry, attempts: 0 },
+        set: { otpHash: hashOtp(otp), otpExpiry, attempts: 0, payload: sendOtpPayload },
       });
   } else {
     /* EXISTING USERS: update OTP in the users table (login / resend flow) */
@@ -1234,13 +1238,17 @@ router.post("/vendor-register", async (req, res) => {
 
   const existingRoles = (user.roles || user.role || "").split(",").map((r: string) => r.trim()).filter(Boolean);
   if (existingRoles.includes("vendor")) {
-    if (user.approvalStatus === "pending") {
-      res.json({ success: true, status: "pending", message: "Your vendor application is already pending admin approval." });
-      return;
-    }
-    if (user.approvalStatus === "approved") {
-      res.json({ success: true, status: "approved", message: "You are already approved as a vendor." });
-      return;
+    /* Allow profile completion even for existing vendor accounts that have not
+       yet completed setup (isProfileComplete: false). Only skip if already done. */
+    if (user.isProfileComplete) {
+      if (user.approvalStatus === "pending") {
+        res.json({ success: true, status: "pending", message: "Your vendor application is already pending admin approval." });
+        return;
+      }
+      if (user.approvalStatus === "approved") {
+        res.json({ success: true, status: "approved", message: "You are already approved as a vendor." });
+        return;
+      }
     }
   }
 
@@ -1251,6 +1259,7 @@ router.post("/vendor-register", async (req, res) => {
   await db.update(usersTable).set({
     roles: newRoles.join(","),
     role: "vendor",
+    businessName: storeName || user.businessName || null,
     storeCategory: storeCategory || null,
     name: name || user.name,
     username: username ? String(username).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) : user.username || null,
@@ -1262,6 +1271,7 @@ router.post("/vendor-register", async (req, res) => {
     bankAccountTitle: bankAccountTitle || user.bankAccountTitle || null,
     approvalStatus: autoApprove ? "approved" : "pending",
     isActive: autoApprove ? true : false,
+    isProfileComplete: true,
     updatedAt: new Date(),
   }).where(eq(usersTable.id, user.id));
 
@@ -2000,7 +2010,7 @@ router.post("/complete-profile", async (req, res) => {
   const authHeader = req.headers["authorization"] as string | undefined;
   const rawToken = req.body?.token || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
   const { name, email, username, password, currentPassword, cnic, address, city, area, latitude, longitude,
-          businessName, storeName, storeCategory, vehicleType } = req.body;
+          businessName, storeName, storeCategory, vehicleType, role: requestedRole } = req.body;
   if (!rawToken) {
     const lang = await getRequestLocale(req);
     res.status(401).json({ error: t("apiErrTokenRequired", lang) }); return;
@@ -2155,8 +2165,15 @@ router.post("/complete-profile", async (req, res) => {
      - Rider:    name + cnic (or already stored from register payload)
      - Vendor:   name + (businessName already stored or will be checked)
   ──────────────────────────────────────────────────────────────────────────── */
-  const effectiveRole = user.role ?? "customer";
+  /* Allow role upgrade from customer → rider/vendor during first profile completion only */
+  const allowedRoles = ["customer", "rider", "vendor"] as const;
   const isFirstCompletion = !user.isProfileComplete;
+  let effectiveRole: string = user.role ?? "customer";
+  if (isFirstCompletion && requestedRole && allowedRoles.includes(requestedRole as typeof allowedRoles[number]) && requestedRole !== "customer") {
+    effectiveRole = requestedRole as string;
+    updates.role = effectiveRole;
+    updates.roles = effectiveRole;
+  }
 
   /* Validate role-specific required fields before marking profile complete */
   const resolvedName = (updates.name as string | undefined) || user.name;

@@ -98,6 +98,8 @@ const usersQuerySchema = z.object({
   filter: z.enum(["2fa_enabled", ""]).optional(),
   profileStatus: z.enum(["complete", "incomplete", ""]).optional(),
   conditionTier: z.enum(["has_conditions", "clean", "warnings", "restrictions", "suspensions", "bans", ""]).optional(),
+  role: z.enum(["customer", "rider", "vendor", ""]).optional(),
+  approvalStatus: z.enum(["pending", "approved", "rejected", "correction_needed", ""]).optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().optional(),
@@ -253,6 +255,8 @@ router.get("/users", validateQuery(usersQuerySchema), async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
   const profileStatus = (req.query?.profileStatus as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
+  const roleFilter = (req.query?.role as string) ?? "";
+  const approvalStatusFilter = (req.query?.approvalStatus as string) ?? "";
   const search = (req.query?.search as string) ?? "";
   const page = Math.max(1, parseInt(req.query?.page as string) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(req.query?.limit as string) || 50));
@@ -261,6 +265,12 @@ router.get("/users", validateQuery(usersQuerySchema), async (req, res) => {
   const whereConditions: ReturnType<typeof and>[] = [];
   if (filter === "2fa_enabled") {
     whereConditions.push(eq(usersTable.totpEnabled, true));
+  }
+  if (roleFilter && ["customer", "rider", "vendor"].includes(roleFilter)) {
+    whereConditions.push(eq(usersTable.role, roleFilter as "customer" | "rider" | "vendor"));
+  }
+  if (approvalStatusFilter && ["pending", "approved", "rejected", "correction_needed"].includes(approvalStatusFilter)) {
+    whereConditions.push(eq(usersTable.approvalStatus, approvalStatusFilter));
   }
   if (profileStatus === "complete") {
     whereConditions.push(eq(usersTable.isProfileComplete, true));

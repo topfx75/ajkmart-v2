@@ -1,4 +1,4 @@
-import { boolean, check, decimal, doublePrecision, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, check, decimal, doublePrecision, index, json, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -30,9 +30,11 @@ export const ordersTable = pgTable("orders", {
   gpsMismatch: boolean("gps_mismatch").default(false),
   deliveryLat: decimal("delivery_lat", { precision: 10, scale: 7 }),
   deliveryLng: decimal("delivery_lng", { precision: 10, scale: 7 }),
+  /* ── Embedded items JSON (legacy — items also stored in order_items table) ── */
+  items: json("items").$type<Array<{ productId?: string; name?: string; price?: number; quantity?: number; image?: string }>>().default([]),
   /* ── COD verification fields ── */
   codPhotoUrl: text("cod_photo_url"),
-  codVerified: text("cod_verified"),
+  codVerified: boolean("cod_verified").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

@@ -1177,3 +1177,34 @@ export function serializeSosAlert(a: Record<string, unknown>) {
     createdAt:          ts(a.createdAt) ?? "",
   };
 }
+
+let _ordersItemsNullableMigrated = false;
+export async function ensureOrdersItemsNullable() {
+  if (_ordersItemsNullableMigrated) return;
+
+  const stmts = [
+    /* The orders.items column was created NOT NULL with no default in an older schema.
+       New inserts go into order_items table instead; make items nullable with a default. */
+    `ALTER TABLE orders ALTER COLUMN items DROP NOT NULL`,
+    `ALTER TABLE orders ALTER COLUMN items SET DEFAULT '[]'::json`,
+    /* cod_verified was text in an old schema but should be boolean */
+    `DO $$ BEGIN
+       ALTER TABLE orders ALTER COLUMN cod_verified TYPE boolean USING (cod_verified::boolean);
+     EXCEPTION WHEN others THEN NULL;
+     END $$`,
+  ];
+
+  for (const stmt of stmts) {
+    try {
+      await db.execute(sql.raw(stmt));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/already|duplicate|42701|column.*does not exist/i.test(msg)) {
+        logger.warn({ err: e }, `[migration] ordersItemsNullable: non-fatal — ${stmt.slice(0, 80)}`);
+      }
+    }
+  }
+
+  logger.info("[migration] ordersItemsNullable: migration complete");
+  _ordersItemsNullableMigrated = true;
+}

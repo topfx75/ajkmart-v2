@@ -284,7 +284,10 @@ export const api = {
   markAllRead:       () => apiFetch("/vendor/notifications/read-all", { method: "PATCH", body: "{}" }),
   markNotificationRead: (id: string) => apiFetch(`/vendor/notifications/${id}/read`, { method: "PATCH", body: "{}" }),
 
-  /* Settings */
+  /* Platform config (public) */
+  getPlatformConfig: () => apiFetch("/platform-config"),
+
+  /* Settings — admin-only; keep for completeness but not called by vendor flows */
   getSettings:    () => apiFetch("/settings"),
   updateSettings: (data: Record<string, unknown>) => apiFetch("/settings", { method: "PUT", body: JSON.stringify(data) }),
 };
