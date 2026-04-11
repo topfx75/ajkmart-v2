@@ -1142,7 +1142,7 @@ function OrdersScreenInner() {
   }, []);
 
   const [hasActiveItems, setHasActiveItems] = useState(false);
-  const pollInterval = hasActiveItems ? 10000 : 30000;
+  const pollInterval = hasActiveItems ? 20000 : 60000;
   const [historyLimit, setHistoryLimit] = useState(5);
 
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = useGetOrders(

@@ -62,6 +62,9 @@ const queryClient = new QueryClient({
     queries: {
       retry: 2,
       retryDelay: (attempt) => Math.floor(1500 * Math.pow(1.5, attempt - 1)),
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 15_000,
     },
   },
 });
