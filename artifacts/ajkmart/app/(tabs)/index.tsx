@@ -505,7 +505,7 @@ const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
     }
   };
 
-  if (bannersLoading) {
+  if (bannersLoading && !banners) {
     return (
       <View style={{ marginTop: 16 }}>
         <View style={ban.headerRow}>
@@ -727,7 +727,7 @@ const FlashDealsSection = React.memo(function FlashDealsSection({ T }: { T: (key
     return new Date(Math.min(...times));
   }, [items]);
 
-  if (isLoading) {
+  if (isLoading && !deals) {
     return (
       <View style={fd.section}>
         <LinearGradient colors={["#FF4444", "#FF6B35"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={fd.headerGrad}>

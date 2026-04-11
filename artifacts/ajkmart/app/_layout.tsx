@@ -5,7 +5,7 @@ import * as Linking from "expo-linking";
 import { loadCoreFonts, loadUrduFonts } from "@/utils/fonts";
 import { router, Stack, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef, useState, Suspense } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -264,20 +264,6 @@ function MisconfigScreen() {
   );
 }
 
-function ScreenSkeleton() {
-  return (
-    <View style={{ flex: 1, backgroundColor: "#f8fafc", padding: 20, gap: 16 }}>
-      <View style={{ height: 56, borderRadius: 14, backgroundColor: "#e2e8f0", opacity: 0.7 }} />
-      <View style={{ height: 140, borderRadius: 16, backgroundColor: "#e2e8f0", opacity: 0.6 }} />
-      <View style={{ height: 100, borderRadius: 16, backgroundColor: "#e2e8f0", opacity: 0.5 }} />
-      <View style={{ flexDirection: "row", gap: 12 }}>
-        {[0,1,2].map(i => (
-          <View key={i} style={{ flex: 1, height: 80, borderRadius: 14, backgroundColor: "#e2e8f0", opacity: 0.5 - i * 0.1 }} />
-        ))}
-      </View>
-    </View>
-  );
-}
 
 function RootLayoutNav() {
   const { isSuspended, user, token } = useAuth();
@@ -321,22 +307,20 @@ function RootLayoutNav() {
     <>
       <AuthGuard />
       <MagicLinkHandler />
-      <Suspense fallback={<ScreenSkeleton />}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index"          options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)"         options={{ headerShown: false }} />
-          <Stack.Screen name="auth"           options={{ headerShown: false }} />
-          <Stack.Screen name="mart/index"     options={{ headerShown: false }} />
-          <Stack.Screen name="food/index"     options={{ headerShown: false }} />
-          <Stack.Screen name="ride/index"     options={{ headerShown: false }} />
-          <Stack.Screen name="cart/index"     options={{ headerShown: false }} />
-          <Stack.Screen name="pharmacy/index" options={{ headerShown: false }} />
-          <Stack.Screen name="parcel/index"   options={{ headerShown: false }} />
-          <Stack.Screen name="categories/index" options={{ headerShown: false }} />
-          <Stack.Screen name="order/index"    options={{ headerShown: false }} />
-          <Stack.Screen name="orders/[id]"    options={{ headerShown: false }} />
-        </Stack>
-      </Suspense>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index"          options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)"         options={{ headerShown: false }} />
+        <Stack.Screen name="auth"           options={{ headerShown: false }} />
+        <Stack.Screen name="mart/index"     options={{ headerShown: false }} />
+        <Stack.Screen name="food/index"     options={{ headerShown: false }} />
+        <Stack.Screen name="ride/index"     options={{ headerShown: false }} />
+        <Stack.Screen name="cart/index"     options={{ headerShown: false }} />
+        <Stack.Screen name="pharmacy/index" options={{ headerShown: false }} />
+        <Stack.Screen name="parcel/index"   options={{ headerShown: false }} />
+        <Stack.Screen name="categories/index" options={{ headerShown: false }} />
+        <Stack.Screen name="order/index"    options={{ headerShown: false }} />
+        <Stack.Screen name="orders/[id]"    options={{ headerShown: false }} />
+      </Stack>
     </>
   );
 }
