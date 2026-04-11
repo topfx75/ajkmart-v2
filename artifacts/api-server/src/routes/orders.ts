@@ -954,12 +954,19 @@ router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) 
       const orderItemRows = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
       const mapped = { ...mapOrder(order, deliveryFee, gstAmount, codFee, mapOrderItems(orderItemRows)), promoDiscount };
 
+      /* ── Auto-confirm order immediately after creation ── */
+      await db.update(ordersTable).set({ status: "confirmed" }).where(eq(ordersTable.id, order.id));
+      mapped.status = "confirmed";
+
       /* ── Emit new-order to admin/vendor IMMEDIATELY after DB commit ── */
       broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string }).vendorId);
 
       /* ── Two-Way ACK: confirm order receipt back to the customer ── */
       const io = getIO();
-      if (io) io.to(`user:${userId}`).emit("order:ack", { orderId: order.id, status: "pending", createdAt: order.createdAt.toISOString() });
+      if (io) {
+        io.to(`user:${userId}`).emit("order:ack", { orderId: order.id, status: "confirmed", createdAt: order.createdAt.toISOString() });
+        io.to(`user:${userId}`).emit("order:confirmed", { orderId: order.id, status: "confirmed" });
+      }
 
       /* ── Broadcast updated wallet balance to all customer devices ── */
       const [updatedUser] = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -1013,12 +1020,19 @@ router.post("/", customerAuth, validateBody(placeOrderSchema), async (req, res) 
     const orderItemRows = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, orderId));
     const mapped = { ...mapOrder(order!, deliveryFee, gstAmount, codFee, mapOrderItems(orderItemRows)), promoDiscount };
 
+    /* ── Auto-confirm order immediately after creation ── */
+    await db.update(ordersTable).set({ status: "confirmed" }).where(eq(ordersTable.id, orderId));
+    mapped.status = "confirmed";
+
     /* ── Emit to admin IMMEDIATELY after DB commit (Task 7: <500ms latency) ── */
     broadcastNewOrder(mapped, (order as typeof ordersTable.$inferSelect & { vendorId?: string })?.vendorId);
 
     /* ── Two-Way ACK for non-wallet orders ── */
     const io = getIO();
-    if (io) io.to(`user:${userId}`).emit("order:ack", { orderId: order!.id, status: "pending", createdAt: order!.createdAt.toISOString() });
+    if (io) {
+      io.to(`user:${userId}`).emit("order:ack", { orderId: order!.id, status: "confirmed", createdAt: order!.createdAt.toISOString() });
+      io.to(`user:${userId}`).emit("order:confirmed", { orderId: order!.id, status: "confirmed" });
+    }
 
     await finalizeIdempotency(mapped as unknown as Record<string, unknown>);
     sendCreated(res, mapped);
