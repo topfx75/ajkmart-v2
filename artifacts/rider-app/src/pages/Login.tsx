@@ -15,8 +15,9 @@ type LoginMethod = "phone" | "email" | "username" | "google" | "facebook" | "mag
 type Step = "continue" | "input" | "otp" | "pending" | "rejected" | "2fa";
 
 type AuthResponse = {
-  token: string; refreshToken?: string;
+  token?: string; refreshToken?: string;
   pendingApproval?: boolean;
+  setupRequired?: boolean; setupOnly?: boolean;
   requires2FA?: boolean;
   tempToken?: string; userId?: string;
   user?: { roles?: string; role?: string; name?: string; email?: string };
@@ -279,7 +280,11 @@ export default function Login() {
       return;
     }
     if (!checkRiderRole(res)) return;
+    /* setupRequired / setupOnly means the account isn't fully activated yet —
+       treat the same as pendingApproval (show the pending screen, don't store setup token) */
+    if (res.setupRequired || res.setupOnly) { api.clearTokens(); setStep("pending"); return; }
     if (res.pendingApproval) { setStep("pending"); return; }
+    if (!res.token) { setStep("pending"); return; }
     api.storeTokens(res.token, res.refreshToken);
     /* Fetch full profile. If it fails (e.g. brief network blip), clear the tokens
        and show an error — we do NOT proceed with a structurally invalid user object.

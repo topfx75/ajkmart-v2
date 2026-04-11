@@ -482,8 +482,21 @@ router.post("/users/:id/approve", validateParams(idParamSchema), validateBody(ap
     }
   }
 
+  /* Also mark profile complete if the user has the required fields — this allows
+     riders/vendors to log in immediately after approval without a separate
+     complete-profile step (they submitted all data during registration). */
+  const hasName = !!target.name;
+  const hasCnicForApprove = !!target.cnic;
+  const hasBizForApprove = !!target.businessName;
+  let setProfileComplete = !target.isProfileComplete; // only update if not already set
+  if (target.role === "rider")  setProfileComplete = setProfileComplete && hasName && hasCnicForApprove;
+  else if (target.role === "vendor") setProfileComplete = setProfileComplete && hasName && hasBizForApprove;
+  else setProfileComplete = setProfileComplete && hasName;
+
   const [user] = await db.update(usersTable)
-    .set({ approvalStatus: "approved", approvalNote: note || null, isActive: true, updatedAt: new Date() })
+    .set({ approvalStatus: "approved", approvalNote: note || null, isActive: true,
+           ...(setProfileComplete ? { isProfileComplete: true } : {}),
+           updatedAt: new Date() })
     .where(eq(usersTable.id, req.params["id"]!))
     .returning();
   if (!user) { sendNotFound(res, "User not found"); return; }

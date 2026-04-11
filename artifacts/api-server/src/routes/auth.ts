@@ -827,7 +827,7 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
       return;
     }
 
-    /* OTP valid — create user record now (profile NOT complete yet)
+    /* OTP valid — create user record now.
        If a registration payload exists (from /auth/register flow), use it to
        pre-fill all the fields the user submitted; otherwise start with minimal data. */
     const deviceId = req.body.deviceId as string | undefined;
@@ -839,6 +839,19 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
       ? (regPayload.role as "rider" | "vendor")
       : "customer";
 
+    /* Determine profile completeness from registration payload.
+       Riders/vendors who submitted a full registration form via /auth/register already
+       have all required fields — mark their profile complete so they can log in after
+       admin approval without needing a separate complete-profile step.
+       Customer accounts created from a bare send-otp (no payload) remain incomplete. */
+    const payloadName  = (regPayload?.name  as string | null) || null;
+    const payloadCnic  = (regPayload?.cnic  as string | null) || null;
+    const payloadBiz   = ((regPayload?.businessName as string | null) || (regPayload?.storeName as string | null)) || null;
+    let isProfileCompleteFromReg = false;
+    if (userRole === "rider")   isProfileCompleteFromReg = !!(payloadName && payloadCnic);
+    else if (userRole === "vendor") isProfileCompleteFromReg = !!(payloadName && payloadBiz);
+    else isProfileCompleteFromReg = !!payloadName;
+
     await db.insert(usersTable).values({
       id:               newUserId,
       phone,
@@ -848,7 +861,7 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
       phoneVerified:    true,
       isActive:         false,
       approvalStatus:   "pending",
-      isProfileComplete: false,
+      isProfileComplete: isProfileCompleteFromReg,
       ...(deviceId ? { deviceId } : {}),
       /* Pre-fill from registration intent if available */
       ...(regPayload ? {
@@ -901,18 +914,30 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
     await db.delete(pendingOtpsTable).where(eq(pendingOtpsTable.phone, phone));
     writeAuthAuditLog("otp_verified_new_user", { userId: newUserId, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone, role: userRole } });
 
-    /* Issue a scoped setup-only token — NOT a full access token.
-       This token is only accepted by /auth/complete-profile and rejected everywhere else. */
-    const setupToken = signSetupToken(newUserId, phone, userRole);
-
-    res.json({
-      token: setupToken,
-      setupOnly: true,
-      isProfileComplete: false,
-      user: { id: newUserId, phone, name: (regPayload?.name as string) ?? null, email: (regPayload?.email as string) ?? null,
-              username: (regPayload?.username as string) ?? null, role: userRole, roles: userRole,
-              walletBalance: 0, isActive: false, totpEnabled: false, isProfileComplete: false },
-    });
+    /* For users whose profile is already complete (riders/vendors with full registration
+       data), return a pending-approval response — no setup token needed.
+       For users who still need to complete their profile (bare send-otp customers),
+       issue a scoped setup-only token accepted only by /auth/complete-profile. */
+    if (isProfileCompleteFromReg) {
+      res.json({
+        pendingApproval: true,
+        isProfileComplete: true,
+        message: "Aapka account admin approval ke liye bheja gaya hai. Approve hone par aap login kar sakenge.",
+        user: { id: newUserId, phone, name: (regPayload?.name as string) ?? null, email: (regPayload?.email as string) ?? null,
+                username: (regPayload?.username as string) ?? null, role: userRole, roles: userRole,
+                walletBalance: 0, isActive: false, totpEnabled: false, isProfileComplete: true, approvalStatus: "pending" },
+      });
+    } else {
+      const setupToken = signSetupToken(newUserId, phone, userRole);
+      res.json({
+        token: setupToken,
+        setupOnly: true,
+        isProfileComplete: false,
+        user: { id: newUserId, phone, name: (regPayload?.name as string) ?? null, email: (regPayload?.email as string) ?? null,
+                username: (regPayload?.username as string) ?? null, role: userRole, roles: userRole,
+                walletBalance: 0, isActive: false, totpEnabled: false, isProfileComplete: false },
+      });
+    }
     return;
   }
 

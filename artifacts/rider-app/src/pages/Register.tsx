@@ -393,6 +393,9 @@ export default function Register() {
           token?: string; refreshToken?: string;
           user?: AuthUser;
           pendingApproval?: boolean;
+          setupOnly?: boolean;
+          setupRequired?: boolean;
+          isProfileComplete?: boolean;
         };
         let res: OtpVerifyResponse;
         if (verifyChannel === "phone") {
@@ -400,9 +403,20 @@ export default function Register() {
         } else {
           res = await api.verifyEmailOtp(email, otp, undefined, captchaToken) as OtpVerifyResponse;
         }
-        /* If server returns a token the rider was auto-approved, log them in directly.
-           Backend may return a token without an embedded user object; in that case,
-           store the token and fetch the full profile via getMe(). */
+        /* setupOnly / setupRequired means the server created the rider account but it
+           still needs admin approval — do NOT store the setup token or call authLogin.
+           Show the pending-approval completion screen instead. */
+        if (res?.setupOnly || res?.setupRequired) {
+          api.clearTokens();
+          setCompleted(true);
+          setLoading(false); return;
+        }
+        /* pendingApproval on a full token means the rider exists but awaits admin review */
+        if (res?.token && res.pendingApproval) {
+          setCompleted(true);
+          setLoading(false); return;
+        }
+        /* If server returns a full access token the rider was auto-approved — log them in */
         if (res?.token) {
           api.storeTokens(res.token, res.refreshToken);
           let profile: AuthUser | null = res.user ?? null;
