@@ -1,9 +1,7 @@
 import { Redirect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { Image, View, StyleSheet } from "react-native";
-import Colors, { shadows } from "@/constants/colors";
-
-const C = Colors.light;
+import { View, StyleSheet, Text } from "react-native";
+import { AjkLogo } from "@/components/ui/AjkLogo";
 
 export default function RootIndex() {
   const { user, isLoading } = useAuth();
@@ -11,13 +9,8 @@ export default function RootIndex() {
   if (isLoading) {
     return (
       <View style={styles.container}>
-        <View style={styles.logoWrap}>
-          <Image
-            source={require("@/assets/images/logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
+        <AjkLogo variant="white" width={240} height={99} />
+        <Text style={styles.tagline}>Your Super App</Text>
       </View>
     );
   }
@@ -31,16 +24,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#0047B3",
+    gap: 16,
   },
-  logoWrap: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    paddingHorizontal: 32,
-    paddingVertical: 20,
-    ...shadows.xl,
-  },
-  logo: {
-    width: 240,
-    height: 80,
+  tagline: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    letterSpacing: 1.5,
   },
 });

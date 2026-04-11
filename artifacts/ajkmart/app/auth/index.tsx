@@ -4,7 +4,6 @@ import { router, type Href } from "expo-router";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Animated,
-  Image,
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
@@ -17,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 
 import Colors, { spacing, radii, shadows, typography } from "@/constants/colors";
+import { AjkLogo } from "@/components/ui/AjkLogo";
 import { useAuth, type AppUser } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigContext";
@@ -838,12 +838,8 @@ export default function AuthScreen() {
         )}
 
         <View style={[styles.topSection, { paddingTop: topPad + 24 }]}>
-          <View style={styles.logoImgWrap}>
-            <Image
-              source={require("@/assets/images/logo.png")}
-              style={styles.logoImg}
-              resizeMode="contain"
-            />
+          <View style={{ marginBottom: spacing.md }}>
+            <AjkLogo variant="white" width={220} height={91} />
           </View>
           <View style={styles.secureBadge}>
             <Ionicons name="shield-checkmark" size={12} color="rgba(255,255,255,0.9)" />
@@ -1275,18 +1271,7 @@ const styles = StyleSheet.create({
   scrollGrow: { flexGrow: 1 },
 
   topSection: { alignItems: "center", paddingBottom: spacing.xxl },
-  logoImgWrap: {
-    marginBottom: spacing.lg,
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    ...shadows.lg,
-  },
-  logoImg: {
-    width: 220,
-    height: 70,
-  },
+  logoImgWrap: { marginBottom: spacing.lg },
   logoWrap: { marginBottom: spacing.lg, position: "relative" },
   logoRing: {
     position: "absolute",

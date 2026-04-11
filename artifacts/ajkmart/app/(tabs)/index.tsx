@@ -48,6 +48,7 @@ import { NotificationsModal } from "@/components/profile/NotificationsModal";
 import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
 
 import { unwrapApiResponse } from "@/utils/api";
+import { AjkLogo } from "@/components/ui/AjkLogo";
 import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
 
@@ -1304,21 +1305,8 @@ export default function HomeScreen() {
           end={{ x: 1, y: 1 }}
           style={[s.header, { paddingTop: (announcement && !announceDismissed) ? 8 : topPad + 8 }]}
         >
-          <View style={s.logoHeaderRow}>
-            <View style={s.headerLogoWrap}>
-              <Image
-                source={require("@/assets/images/logo.png")}
-                style={s.headerLogo}
-                resizeMode="contain"
-              />
-            </View>
-          </View>
           <View style={s.hdrRow}>
-            <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={handleLocationPress} accessibilityRole="button" accessibilityLabel="Location selector">
-              <Ionicons name="location" size={14} color="#fff" />
-              <Text style={s.locTxt} numberOfLines={1}>{selectedLocation || platformConfig.platform.businessAddress || "AJK, Pakistan"}</Text>
-              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
-            </TouchableOpacity>
+            <AjkLogo variant="compact-white" width={110} height={38} />
             <View style={{ flexDirection: "row", gap: 8 }}>
               {!isGuest && (
                 <TouchableOpacity activeOpacity={0.7}
@@ -1350,6 +1338,12 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={handleLocationPress} accessibilityRole="button" accessibilityLabel="Location selector">
+            <Ionicons name="location" size={14} color="rgba(255,255,255,0.85)" />
+            <Text style={s.locTxt} numberOfLines={1}>{selectedLocation || platformConfig.platform.businessAddress || "AJK, Pakistan"}</Text>
+            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.55)" />
+          </TouchableOpacity>
 
           <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.push("/search")}
@@ -1530,18 +1524,9 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.background },
 
   header: { paddingHorizontal: H_PAD, paddingBottom: 12 },
-  logoHeaderRow: { alignItems: "center", marginBottom: 8 },
-  headerLogoWrap: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    ...shadows.sm,
-  },
-  headerLogo: { width: 160, height: 44 },
-  hdrRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  locBtn: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1, marginRight: 12 },
-  locTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "#fff", flex: 1 },
+  hdrRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  locBtn: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 },
+  locTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "#fff", flexShrink: 1 },
 
   iconBtn: {
     width: 38, height: 38, borderRadius: 12,
