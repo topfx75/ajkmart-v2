@@ -251,7 +251,7 @@ router.put("/platform-settings", validateBody(bulkSettingsSchema), async (req, r
   /* Fetch old values before writing so we can record them in the audit log */
   const keys = settings.map(s => s.key);
   const oldRows = await db.select().from(platformSettingsTable).where(
-    keys.length === 1 ? eq(platformSettingsTable.key, keys[0]!) : sql`${platformSettingsTable.key} = ANY(${keys})`
+    inArray(platformSettingsTable.key, keys)
   );
   const oldValueMap: Record<string, string> = {};
   for (const r of oldRows) oldValueMap[r.key] = r.value;
