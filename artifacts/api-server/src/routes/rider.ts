@@ -1510,7 +1510,7 @@ router.patch("/rides/:id/status", rideStatusLimiter, async (req, res) => {
 
   /* ── OTP gate: in_transit requires OTP verification ── */
   if (status === "in_transit" && !ride.otpVerified) {
-    sendErrorWithData(res, t("apiErrOtpVerificationRequired", rideStatusLang), { code: "OTP_REQUIRED" }, 400);
+    sendErrorWithData(res, t("apiErrOtpVerificationRequired", rideStatusLang), { code: "OTP_REQUIRED" }, 403);
     return;
   }
 

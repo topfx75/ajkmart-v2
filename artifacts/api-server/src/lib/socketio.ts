@@ -694,6 +694,7 @@ export function emitRideDispatchUpdate(payload: {
   rideId: string;
   action: string;
   status: string;
+  radiusKm?: number;
 }) {
   if (!_io) return;
   _io.to("admin-fleet").emit("ride:dispatch-update", payload);

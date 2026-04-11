@@ -45,6 +45,7 @@ const createRideServiceSchema = z.object({
   color: z.string().optional(),
   baseFare: z.number().optional(),
   perKm: z.number().optional(),
+  perMinuteRate: z.number().min(0).optional(),
   minFare: z.number().optional(),
   maxPassengers: z.number().int().optional(),
   allowBargaining: z.boolean().optional(),
@@ -60,6 +61,7 @@ const patchRideServiceSchema = z.object({
   isEnabled: z.boolean().optional(),
   baseFare: z.number().optional(),
   perKm: z.number().optional(),
+  perMinuteRate: z.number().min(0).optional(),
   minFare: z.number().optional(),
   maxPassengers: z.number().int().optional(),
   allowBargaining: z.boolean().optional(),
@@ -510,7 +512,7 @@ router.get("/ride-services", async (_req, res) => {
 
 /* POST /admin/ride-services — create custom service */
 router.post("/ride-services", validateBody(createRideServiceSchema), async (req, res) => {
-  const { key, name, nameUrdu, icon, description, color, baseFare, perKm, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
+  const { key, name, nameUrdu, icon, description, color, baseFare, perKm, perMinuteRate, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
   if (!key || !name || !icon) { sendValidationError(res, "key, name, icon are required"); return; }
   const existing = await db.select({ id: rideServiceTypesTable.id }).from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, String(key))).limit(1);
   if (existing.length > 0) { sendError(res, `Service key "${key}" already exists`, 409); return; }
@@ -518,18 +520,19 @@ router.post("/ride-services", validateBody(createRideServiceSchema), async (req,
     id: `svc_${generateId()}`,
     key: String(key).toLowerCase().replace(/\s+/g, "_"),
     name: String(name),
-    nameUrdu:      nameUrdu      || null,
-    icon:          String(icon),
-    description:   description   || null,
-    color:         color         || "#6B7280",
-    isEnabled:     true,
-    isCustom:      true,
-    baseFare:      String(baseFare  ?? 15),
-    perKm:         String(perKm     ?? 8),
-    minFare:       String(minFare   ?? 50),
-    maxPassengers: Number(maxPassengers ?? 1),
+    nameUrdu:        nameUrdu        || null,
+    icon:            String(icon),
+    description:     description     || null,
+    color:           color           || "#6B7280",
+    isEnabled:       true,
+    isCustom:        true,
+    baseFare:        String(baseFare      ?? 15),
+    perKm:           String(perKm        ?? 8),
+    perMinuteRate:   String(perMinuteRate ?? 0),
+    minFare:         String(minFare       ?? 50),
+    maxPassengers:   Number(maxPassengers ?? 1),
     allowBargaining: allowBargaining !== false,
-    sortOrder:     Number(sortOrder ?? 99),
+    sortOrder:       Number(sortOrder ?? 99),
   }).returning();
   sendCreated(res, { service: formatSvc(created) });
 });
@@ -539,20 +542,21 @@ router.patch("/ride-services/:id", validateParams(idParamSchema), validateBody(p
   const svcId = req.params["id"]!;
   const [existing] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.id, svcId)).limit(1);
   if (!existing) { sendNotFound(res, "Service not found"); return; }
-  const { name, nameUrdu, icon, description, color, isEnabled, baseFare, perKm, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
+  const { name, nameUrdu, icon, description, color, isEnabled, baseFare, perKm, perMinuteRate, minFare, maxPassengers, allowBargaining, sortOrder } = req.body;
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  if (name          !== undefined) patch["name"]           = String(name);
-  if (nameUrdu      !== undefined) patch["nameUrdu"]       = nameUrdu;
-  if (icon          !== undefined) patch["icon"]           = String(icon);
-  if (description   !== undefined) patch["description"]    = description;
-  if (color         !== undefined) patch["color"]          = String(color);
-  if (isEnabled     !== undefined) patch["isEnabled"]      = Boolean(isEnabled);
-  if (baseFare      !== undefined) patch["baseFare"]       = String(baseFare);
-  if (perKm         !== undefined) patch["perKm"]          = String(perKm);
-  if (minFare       !== undefined) patch["minFare"]        = String(minFare);
-  if (maxPassengers !== undefined) patch["maxPassengers"]  = Number(maxPassengers);
-  if (allowBargaining !== undefined) patch["allowBargaining"] = Boolean(allowBargaining);
-  if (sortOrder     !== undefined) patch["sortOrder"]      = Number(sortOrder);
+  if (name             !== undefined) patch["name"]           = String(name);
+  if (nameUrdu         !== undefined) patch["nameUrdu"]       = nameUrdu;
+  if (icon             !== undefined) patch["icon"]           = String(icon);
+  if (description      !== undefined) patch["description"]    = description;
+  if (color            !== undefined) patch["color"]          = String(color);
+  if (isEnabled        !== undefined) patch["isEnabled"]      = Boolean(isEnabled);
+  if (baseFare         !== undefined) patch["baseFare"]       = String(baseFare);
+  if (perKm            !== undefined) patch["perKm"]          = String(perKm);
+  if (perMinuteRate    !== undefined) patch["perMinuteRate"]  = String(perMinuteRate);
+  if (minFare          !== undefined) patch["minFare"]        = String(minFare);
+  if (maxPassengers    !== undefined) patch["maxPassengers"]  = Number(maxPassengers);
+  if (allowBargaining  !== undefined) patch["allowBargaining"] = Boolean(allowBargaining);
+  if (sortOrder        !== undefined) patch["sortOrder"]      = Number(sortOrder);
   const [updated] = await db.update(rideServiceTypesTable).set(patch as Partial<typeof rideServiceTypesTable.$inferInsert>).where(eq(rideServiceTypesTable.id, svcId)).returning();
   sendSuccess(res, { service: formatSvc(updated) });
 });

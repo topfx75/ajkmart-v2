@@ -1044,11 +1044,12 @@ export async function ensureDefaultRideServices() {
 export function formatSvc(s: Record<string, unknown>) {
   return {
     ...s,
-    baseFare:      parseFloat(String(s.baseFare ?? "0")),
-    perKm:         parseFloat(String(s.perKm ?? "0")),
-    minFare:       parseFloat(String(s.minFare ?? "0")),
-    createdAt:     s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
-    updatedAt:     s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
+    baseFare:        parseFloat(String(s.baseFare       ?? "0")),
+    perKm:           parseFloat(String(s.perKm         ?? "0")),
+    perMinuteRate:   parseFloat(String(s.perMinuteRate ?? "0")),
+    minFare:         parseFloat(String(s.minFare       ?? "0")),
+    createdAt:       s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
+    updatedAt:       s.updatedAt instanceof Date ? s.updatedAt.toISOString() : s.updatedAt,
   };
 }
 const DEFAULT_LOCATIONS = [

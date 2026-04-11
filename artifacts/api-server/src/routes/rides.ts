@@ -230,6 +230,119 @@ function normalizeVehicleTypeSync(raw: string | null | undefined, serviceKeys: S
   return slug || v;
 }
 
+/** Notify eligible riders within the given radius for a ride request.
+ *  Returns the number of new riders notified in this phase. */
+async function notifyRidersInRadius(
+  rideId: string,
+  ride: { userId: string; type: string | null; pickupAddress: string; dropAddress: string; fare: string | null; status: string; dispatchedAt: Date | null },
+  pickupLat: number,
+  pickupLng: number,
+  radiusKm: number,
+  avgSpeed: number,
+  serviceKeys: Set<string>,
+): Promise<number> {
+  const ttlCutoff = new Date(Date.now() - 5 * 60 * 1000);
+
+  const onlineRiders = await db.select({
+    userId: liveLocationsTable.userId,
+    latitude: liveLocationsTable.latitude,
+    longitude: liveLocationsTable.longitude,
+    vehicleType: riderProfilesTable.vehicleType,
+  }).from(liveLocationsTable)
+    .innerJoin(usersTable, eq(liveLocationsTable.userId, usersTable.id))
+    .leftJoin(riderProfilesTable, eq(liveLocationsTable.userId, riderProfilesTable.userId))
+    .where(and(
+      eq(liveLocationsTable.role, "rider"),
+      gte(liveLocationsTable.updatedAt, ttlCutoff),
+      eq(usersTable.isActive, true),
+      eq(usersTable.isBanned, false),
+      eq(usersTable.isRestricted, false),
+    ));
+
+  const [alreadyNotified, busyRiders] = await Promise.all([
+    db.select({ riderId: rideNotifiedRidersTable.riderId })
+      .from(rideNotifiedRidersTable)
+      .where(eq(rideNotifiedRidersTable.rideId, rideId)),
+    db.select({ riderId: ridesTable.riderId })
+      .from(ridesTable)
+      .where(sql`${ridesTable.riderId} IS NOT NULL AND ${ridesTable.status} IN ('accepted', 'arrived', 'in_transit')`),
+  ]);
+  const alreadySet = new Set(alreadyNotified.map(r => r.riderId));
+  const busySet = new Set(busyRiders.map(r => r.riderId));
+
+  const rideVt = ride.type ? normalizeVehicleTypeSync(ride.type, serviceKeys) : null;
+  let notifiedCount = 0;
+
+  for (const r of onlineRiders) {
+    if (alreadySet.has(r.userId)) continue;
+    if (busySet.has(r.userId)) continue;
+    if (rideVt) {
+      const riderVt = normalizeVehicleTypeSync(r.vehicleType, serviceKeys);
+      if (!riderVt || riderVt !== rideVt) continue;
+    }
+    const rLat = parseFloat(String(r.latitude));
+    const rLng = parseFloat(String(r.longitude));
+    if (!Number.isFinite(rLat) || !Number.isFinite(rLng)) continue;
+    const dist = calcDistance(pickupLat, pickupLng, rLat, rLng);
+    if (dist > radiusKm) continue;
+
+    const etaMin = Math.max(1, Math.round((dist / avgSpeed) * 60));
+    const fareStr = parseFloat(ride.fare ?? "0").toFixed(0);
+    const riderLang = await getUserLanguage(r.userId);
+    const titleKey = ride.status === "bargaining" ? "notifRideBargaining" : "notifRideRequest";
+    const bodyStr = t("notifRideRequestBody", riderLang)
+      .replace("{from}", ride.pickupAddress)
+      .replace("{to}", ride.dropAddress)
+      .replace("{fare}", fareStr)
+      .replace("{dist}", dist.toFixed(1))
+      .replace("{eta}", String(etaMin));
+
+    await db.insert(notificationsTable).values({
+      id: generateId(), userId: r.userId,
+      title: `${t(titleKey, riderLang)} 🚗`,
+      body: bodyStr,
+      type: "ride", icon: "car-outline", link: `/ride/${rideId}`,
+    }).catch(() => {});
+
+    await db.insert(rideNotifiedRidersTable).values({
+      id: generateId(),
+      rideId,
+      riderId: r.userId,
+    }).catch(() => {});
+
+    emitRiderNewRequest(r.userId, {
+      type: "ride",
+      requestId: rideId,
+      summary: `${ride.pickupAddress} → ${ride.dropAddress}`,
+    });
+
+    sendPushToUser(r.userId, {
+      title: "🚗 New Ride Request",
+      body: `${ride.pickupAddress} → ${ride.dropAddress} · Rs. ${fareStr}`,
+      tag: `ride-request-${rideId}`,
+      data: { rideId },
+    }).catch(() => {});
+
+    notifiedCount++;
+  }
+
+  return notifiedCount;
+}
+
+/**
+ * Progressive dispatch: select the search radius based on how long the ride
+ * has been searching and notify eligible riders within that radius.
+ *
+ * Phase selection (elapsed since dispatchedAt / createdAt):
+ *   0 – 30 s  → 2 km
+ *   30 – 90 s → 5 km
+ *   90 s +    → 10 km
+ *
+ * This function is non-blocking — it returns immediately after notifying
+ * the current phase's riders.  The dispatch engine calls it every 10 s so
+ * the radius expands naturally over time without sleeping inside this call.
+ * The engine is responsible for expiry / no_riders transitions.
+ */
 async function broadcastRide(rideId: string) {
   try {
     const [ride] = await db.select().from(ridesTable).where(eq(ridesTable.id, rideId)).limit(1);
@@ -237,7 +350,6 @@ async function broadcastRide(rideId: string) {
     if (!["searching", "bargaining"].includes(ride.status)) return;
 
     const s = await getPlatformSettings();
-    const radiusKm = parseFloat(s["dispatch_min_radius_km"] ?? "5");
     const avgSpeed = parseFloat(s["dispatch_avg_speed_kmh"] ?? "25");
 
     const pickupLat = parseFloat(ride.pickupLat ?? "");
@@ -247,112 +359,42 @@ async function broadcastRide(rideId: string) {
       return;
     }
 
-    const onlineRiders = await db.select({
-      userId: liveLocationsTable.userId,
-      latitude: liveLocationsTable.latitude,
-      longitude: liveLocationsTable.longitude,
-      isActive: usersTable.isActive,
-      isBanned: usersTable.isBanned,
-      isRestricted: usersTable.isRestricted,
-      vehicleType: riderProfilesTable.vehicleType,
-    }).from(liveLocationsTable)
-      .innerJoin(usersTable, eq(liveLocationsTable.userId, usersTable.id))
-      .leftJoin(riderProfilesTable, eq(liveLocationsTable.userId, riderProfilesTable.userId))
-      .where(and(
-        eq(liveLocationsTable.role, "rider"),
-        gte(liveLocationsTable.updatedAt, new Date(Date.now() - 5 * 60 * 1000)),
-        eq(usersTable.isActive, true),
-        eq(usersTable.isBanned, false),
-        eq(usersTable.isRestricted, false),
-      ));
+    const now = Date.now();
+    if (!ride.dispatchedAt) {
+      await db.update(ridesTable).set({
+        dispatchedAt: new Date(now),
+        updatedAt: new Date(now),
+      }).where(and(eq(ridesTable.id, rideId), isNull(ridesTable.riderId)));
+    }
 
-    const [alreadyNotified, busyRiders] = await Promise.all([
-      db.select({ riderId: rideNotifiedRidersTable.riderId })
-        .from(rideNotifiedRidersTable)
-        .where(eq(rideNotifiedRidersTable.rideId, rideId)),
-      db.select({ riderId: ridesTable.riderId })
-        .from(ridesTable)
-        .where(sql`${ridesTable.riderId} IS NOT NULL AND ${ridesTable.status} IN ('accepted', 'arrived', 'in_transit')`),
-    ]);
-    const alreadySet = new Set(alreadyNotified.map(r => r.riderId));
-    const busySet = new Set(busyRiders.map(r => r.riderId));
+    const dispatchOrigin = ride.dispatchedAt ? ride.dispatchedAt.getTime() : now;
+    const elapsedSec = (now - dispatchOrigin) / 1000;
 
-    let notifiedCount = 0;
+    /* Select radius for this cycle based on elapsed time */
+    let radiusKm: number;
+    if (elapsedSec < 30) {
+      radiusKm = 2;
+    } else if (elapsedSec < 90) {
+      radiusKm = 5;
+    } else {
+      radiusKm = 10;
+    }
+
     const serviceKeys = await getServiceKeys();
-    const rideVt = ride.type ? normalizeVehicleTypeSync(ride.type, serviceKeys) : null;
 
-    for (const r of onlineRiders) {
-      if (alreadySet.has(r.userId)) continue;
-      if (busySet.has(r.userId)) continue;
-      if (rideVt) {
-        const riderVt = normalizeVehicleTypeSync(r.vehicleType, serviceKeys);
-        if (!riderVt || riderVt !== rideVt) continue;
-      }
-      const rLat = parseFloat(String(r.latitude));
-      const rLng = parseFloat(String(r.longitude));
-      if (!Number.isFinite(rLat) || !Number.isFinite(rLng)) continue;
-      const dist = calcDistance(pickupLat, pickupLng, rLat, rLng);
-      if (dist > radiusKm) continue;
+    const notified = await notifyRidersInRadius(
+      rideId, ride, pickupLat, pickupLng,
+      radiusKm, avgSpeed, serviceKeys,
+    );
 
-      const etaMin = Math.max(1, Math.round((dist / avgSpeed) * 60));
-      const fareStr = parseFloat(ride.fare ?? "0").toFixed(0);
-      const riderLang = await getUserLanguage(r.userId);
-      const titleKey = ride.status === "bargaining" ? "notifRideBargaining" : "notifRideRequest";
-      const bodyStr = t("notifRideRequestBody", riderLang)
-        .replace("{from}", ride.pickupAddress)
-        .replace("{to}", ride.dropAddress)
-        .replace("{fare}", fareStr)
-        .replace("{dist}", dist.toFixed(1))
-        .replace("{eta}", String(etaMin));
+    logger.info(`[broadcast] Ride ${rideId} elapsed=${elapsedSec.toFixed(0)}s radius=${radiusKm}km — notified ${notified} rider(s)`);
 
-      await db.insert(notificationsTable).values({
-        id: generateId(), userId: r.userId,
-        title: `${t(titleKey, riderLang)} 🚗`,
-        body: bodyStr,
-        type: "ride", icon: "car-outline", link: `/ride/${rideId}`,
-      }).catch(() => {});
-
-      await db.insert(rideNotifiedRidersTable).values({
-        id: generateId(),
-        rideId,
-        riderId: r.userId,
-      }).catch(() => {});
-
-      emitRiderNewRequest(r.userId, {
-        type: "ride",
-        requestId: rideId,
-        summary: `${ride.pickupAddress} → ${ride.dropAddress}`,
-      });
-
-      sendPushToUser(r.userId, {
-        title: "🚗 New Ride Request",
-        body: `${ride.pickupAddress} → ${ride.dropAddress} · Rs. ${fareStr}`,
-        tag: `ride-request-${rideId}`,
-        data: { rideId },
-      }).catch(() => {});
-
-      notifiedCount++;
-    }
-
-    if (notifiedCount === 0 && alreadySet.size === 0) {
-      logger.warn(`[broadcast] NO_RIDERS_AVAILABLE for ride ${rideId} — no eligible riders within ${radiusKm}km`);
-      await db.insert(notificationsTable).values({
-        id: generateId(), userId: ride.userId,
-        title: "No riders available",
-        body: "No riders are currently available in your area. We'll keep searching — you'll be notified as soon as a rider accepts.",
-        type: "ride", icon: "car-outline", link: `/ride/${rideId}`,
-      }).catch(() => {});
-      emitRideDispatchUpdate({
-        rideId,
-        action: "NO_RIDERS_AVAILABLE",
-        status: "searching",
-      });
-    }
-
-    await db.update(ridesTable).set({
-      dispatchedAt: ride.dispatchedAt ?? new Date(),
-      updatedAt: new Date(),
-    }).where(and(eq(ridesTable.id, rideId), isNull(ridesTable.riderId)));
+    emitRideDispatchUpdate({
+      rideId,
+      action: "SEARCHING",
+      status: "searching",
+      radiusKm,
+    });
 
   } catch (err) {
     logger.error(`[broadcast] Error for ride ${rideId}:`, err);
@@ -394,18 +436,13 @@ function generateOtp(): string {
 
 /**
  * Returns road distance in km using the configured routing provider.
- * Falls back to haversine if no API key is available or the call fails.
- * When haversine is used, the admin-configurable haversine_terrain_multiplier
- * (default 1.4×) is applied in ALL fallback paths including network exceptions,
- * so estimated distance is more representative of actual road distance in
- * mountainous terrain. The response source is "haversine_adjusted" when the
- * multiplier is applied, allowing the UI to optionally warn the customer.
+ * Provider priority: locationiq → google → mapbox → haversine (no multiplier).
+ * The haversine fallback is plain straight-line distance with no multiplier —
+ * it is only used as a last resort when no routing API is configured or reachable.
  */
-async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): Promise<{ distanceKm: number; durationSeconds: number; source: "google" | "mapbox" | "haversine" | "haversine_adjusted" }> {
+async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): Promise<{ distanceKm: number; durationSeconds: number; source: "locationiq" | "google" | "mapbox" | "haversine" }> {
   const haversine = calcDistance(lat1, lng1, lat2, lng2);
 
-  /* Load settings outside the provider try/catch so they are available in the
-     exception fallback path and the multiplier is always admin-configurable. */
   let s: Record<string, string>;
   try {
     s = await getPlatformSettings();
@@ -416,9 +453,25 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
   const routingProvider = s["routing_api_provider"] ?? "google";
 
   try {
+    if (routingProvider === "locationiq") {
+      const locationiqKey = s["locationiq_api_key"];
+      if (!locationiqKey) return buildHaversineFallback(haversine);
+      const url = `https://us1.locationiq.com/v1/directions/driving/${lng1},${lat1};${lng2},${lat2}?key=${locationiqKey}&overview=false&steps=false`;
+      const raw  = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const data = await raw.json() as { code?: string; routes?: Array<{ distance: number; duration: number }> };
+      if (data.routes?.length) {
+        return {
+          distanceKm:      Math.round(data.routes[0]!.distance / 100) / 10,
+          durationSeconds: Math.round(data.routes[0]!.duration),
+          source: "locationiq",
+        };
+      }
+      return buildHaversineFallback(haversine);
+    }
+
     if (routingProvider === "google") {
       const googleKey = s["maps_api_key"];
-      if (!googleKey) return buildHaversineFallback(haversine, s);
+      if (!googleKey) return buildHaversineFallback(haversine);
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat1},${lng1}&destination=${lat2},${lng2}&mode=driving&key=${googleKey}`;
       const raw  = await fetch(url, { signal: AbortSignal.timeout(4000) });
       const data = await raw.json() as { status?: string; routes?: Array<{ legs: Array<{ distance: { value: number }; duration: { value: number } }> }> };
@@ -430,52 +483,42 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
           source: "google",
         };
       }
-      return buildHaversineFallback(haversine, s);
+      return buildHaversineFallback(haversine);
     }
 
     if (routingProvider === "mapbox") {
       const mapboxKey = s["mapbox_api_key"];
-      if (!mapboxKey) return buildHaversineFallback(haversine, s);
+      if (!mapboxKey) return buildHaversineFallback(haversine);
       const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lng1},${lat1};${lng2},${lat2}?access_token=${mapboxKey}&overview=false`;
       const raw  = await fetch(url, { signal: AbortSignal.timeout(4000) });
       const data = await raw.json() as { routes?: Array<{ distance: number; duration: number }> };
       if (data.routes?.length) {
         return {
-          distanceKm:      Math.round(data.routes[0].distance / 100) / 10,
-          durationSeconds: Math.round(data.routes[0].duration),
+          distanceKm:      Math.round(data.routes[0]!.distance / 100) / 10,
+          durationSeconds: Math.round(data.routes[0]!.duration),
           source: "mapbox",
         };
       }
-      return buildHaversineFallback(haversine, s);
+      return buildHaversineFallback(haversine);
     }
 
-    return buildHaversineFallback(haversine, s);
+    return buildHaversineFallback(haversine);
   } catch {
-    /* Network/API error — fall back to haversine using the admin-configured multiplier */
-    return buildHaversineFallback(haversine, s);
+    return buildHaversineFallback(haversine);
   }
 }
 
 /**
- * Build a haversine fallback result applying the terrain multiplier from settings.
- * The multiplier (default 1.4×) compensates for mountainous terrain where road
- * distances exceed straight-line distances. Set haversine_terrain_multiplier=1
- * in admin settings to disable the adjustment.
+ * Plain haversine fallback — no terrain multiplier applied.
+ * Used only when no routing API is configured or reachable.
  */
 function buildHaversineFallback(
   haversineKm: number,
-  s: Record<string, string>,
-): { distanceKm: number; durationSeconds: number; source: "haversine" | "haversine_adjusted" } {
-  const multiplier = parseFloat(s["haversine_terrain_multiplier"] ?? "1.4");
-  const safeMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1.4;
-  if (safeMultiplier === 1) {
-    return { distanceKm: haversineKm, durationSeconds: Math.round((haversineKm / 45) * 3600), source: "haversine" };
-  }
-  const adjusted = Math.round(haversineKm * safeMultiplier * 10) / 10;
-  return { distanceKm: adjusted, durationSeconds: Math.round((adjusted / 45) * 3600), source: "haversine_adjusted" };
+): { distanceKm: number; durationSeconds: number; source: "haversine" } {
+  return { distanceKm: haversineKm, durationSeconds: Math.round((haversineKm / 45) * 3600), source: "haversine" };
 }
 
-async function calcFare(distance: number, type: string): Promise<{ baseFare: number; gstAmount: number; total: number; minFare: number }> {
+async function calcFare(distance: number, type: string, durationMinutes = 0): Promise<{ baseFare: number; gstAmount: number; total: number; minFare: number }> {
   if (!isFinite(distance) || distance < 0) {
     throw new RideApiError("Invalid distance: must be a non-negative number", "INVALID_DISTANCE", 422);
   }
@@ -485,37 +528,45 @@ async function calcFare(distance: number, type: string): Promise<{ baseFare: num
 
   const s = await getPlatformSettings();
 
-  let baseRate: number, perKm: number, minFare: number;
-  const psBase = s[`ride_${type}_base_fare`];
-  const psKm   = s[`ride_${type}_per_km`];
-  const psMin  = s[`ride_${type}_min_fare`];
+  let baseRate: number, perKm: number, minFare: number, perMinuteRate: number;
+  const psBase      = s[`ride_${type}_base_fare`];
+  const psKm        = s[`ride_${type}_per_km`];
+  const psMin       = s[`ride_${type}_min_fare`];
+  const psPerMinute = s[`ride_${type}_per_minute_rate`];
 
   if (psBase !== undefined && psKm !== undefined && psMin !== undefined) {
-    baseRate = parseFloat(psBase);
-    perKm    = parseFloat(psKm);
-    minFare  = parseFloat(psMin);
+    baseRate      = parseFloat(psBase);
+    perKm         = parseFloat(psKm);
+    minFare       = parseFloat(psMin);
+    perMinuteRate = psPerMinute !== undefined ? parseFloat(psPerMinute) : 0;
   } else {
     const [svc] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, type)).limit(1);
     if (!svc) {
       throw new RideApiError(`Unknown ride service type: '${type}'`, "UNKNOWN_SERVICE_TYPE", 422);
     }
-    baseRate = parseFloat(svc.baseFare  ?? "15");
-    perKm    = parseFloat(svc.perKm     ?? "8");
-    minFare  = parseFloat(svc.minFare   ?? "50");
+    baseRate      = parseFloat(svc.baseFare      ?? "15");
+    perKm         = parseFloat(svc.perKm         ?? "8");
+    perMinuteRate = parseFloat(svc.perMinuteRate ?? "0");
+    minFare       = parseFloat(svc.minFare       ?? "50");
   }
 
   if (!isFinite(baseRate) || !isFinite(perKm) || !isFinite(minFare)) {
     throw new RideApiError("Fare configuration is invalid for this service type", "INVALID_FARE_CONFIG", 500);
   }
 
+  const safeDuration    = isFinite(durationMinutes) && durationMinutes >= 0 ? durationMinutes : 0;
+  const safePerMin      = isFinite(perMinuteRate) && perMinuteRate >= 0 ? perMinuteRate : 0;
+
   const surgeEnabled    = (s["ride_surge_enabled"] ?? "off") === "on";
   const surgeMultiplier = surgeEnabled ? parseFloat(s["ride_surge_multiplier"] ?? "1.5") : 1;
-  const raw      = Math.round(baseRate + distance * perKm);
+
+  /* New formula: Base + (Actual_KM × PerKM) + (Total_Minutes × PerMinuteRate) */
+  const raw      = Math.round(baseRate + distance * perKm + safeDuration * safePerMin);
   const baseFare = Math.round(Math.max(minFare, raw) * surgeMultiplier);
   const gstEnabled = (s["finance_gst_enabled"] ?? "off") === "on";
   const gstPct     = parseFloat(s["finance_gst_pct"] ?? "17");
   const gstAmount  = gstEnabled ? Math.round((baseFare * gstPct) / 100) : 0;
-  const total      = baseFare + gstAmount; /* total is already integer: Math.round(baseFare) + Math.round(gst) */
+  const total      = baseFare + gstAmount;
   return { baseFare, gstAmount, total, minFare };
 }
 
@@ -565,9 +616,10 @@ router.get("/services", async (_req, res) => {
       icon:            s.icon,
       description:     s.description,
       color:           s.color,
-      baseFare:        parseFloat(s.baseFare   ?? "0"),
-      perKm:           parseFloat(s.perKm      ?? "0"),
-      minFare:         parseFloat(s.minFare    ?? "0"),
+      baseFare:        parseFloat(s.baseFare       ?? "0"),
+      perKm:           parseFloat(s.perKm         ?? "0"),
+      perMinuteRate:   parseFloat(s.perMinuteRate ?? "0"),
+      minFare:         parseFloat(s.minFare       ?? "0"),
       maxPassengers:   s.maxPassengers,
       allowBargaining: s.allowBargaining,
       sortOrder:       s.sortOrder,
@@ -601,9 +653,9 @@ router.post("/estimate", estimateLimiter, async (req, res) => {
   try {
     const serviceType = type || "bike";
     const { distanceKm, durationSeconds, source } = await getRoadDistanceKm(pickupLat, pickupLng, dropLat, dropLng);
-    const { baseFare, gstAmount, total } = await calcFare(distanceKm, serviceType);
     const s = await getPlatformSettings();
     const durationMin = Math.round(durationSeconds / 60);
+    const { baseFare, gstAmount, total } = await calcFare(distanceKm, serviceType, durationMin);
     const duration = `${durationMin} min`;
     const bargainEnabled = (s["ride_bargaining_enabled"] ?? "on") === "on";
     const bargainMinPct  = parseFloat(s["ride_bargaining_min_pct"] ?? "70");
@@ -703,7 +755,8 @@ router.post("/", customerAuth, bookRideLimiter, async (req, res) => {
   try {
     const routeResult = await getRoadDistanceKm(pickupLat, pickupLng, dropLat, dropLng);
     distance = routeResult.distanceKm;
-    const fareResult = await calcFare(distance, type);
+    const durationMin = Math.round(routeResult.durationSeconds / 60);
+    const fareResult = await calcFare(distance, type, durationMin);
     baseFare = fareResult.baseFare;
     gstAmount = fareResult.gstAmount;
     platformFare = fareResult.total;
@@ -2033,15 +2086,79 @@ async function runDispatchCycle() {
       .where(sql`ride_id NOT IN (SELECT id FROM rides WHERE status IN ('searching', 'bargaining') AND rider_id IS NULL)`)
       .catch(() => {});
 
+    /* Progressive dispatch timing:
+     *   Phase 1 (0–30s):  2 km radius
+     *   Phase 2 (30–90s): 5 km radius
+     *   Phase 3 (90s+):  10 km radius
+     * Rides should not be marked expired until the full dispatch sequence
+     * has had a chance to complete (at least 90s for phase-3 to start,
+     * plus a reasonable acceptance window). MAX_DISPATCH_ROUNDS drives the
+     * no_riders terminal state; expired is a safety net for truly stale rides.
+     */
     const DISPATCH_ROUND_INTERVAL_SEC = 45;
     const MAX_DISPATCH_ROUNDS = 3;
+    /* Minimum seconds before expired can fire: must be > full dispatch window */
+    const MIN_EXPIRED_AFTER_SEC = MAX_DISPATCH_ROUNDS * DISPATCH_ROUND_INTERVAL_SEC; // 135s
 
     for (const ride of pendingRides) {
       try {
         const createdMs = new Date(ride.createdAt!).getTime();
         const elapsedSec = (Date.now() - createdMs) / 1000;
 
-        if (elapsedSec > totalTimeoutSec) {
+        const currentRound = Math.floor(elapsedSec / DISPATCH_ROUND_INTERVAL_SEC);
+        const loopCount = ride.dispatchLoopCount ?? 0;
+
+        /* ── Terminal: no_riders after full progressive dispatch ── */
+        if (currentRound >= MAX_DISPATCH_ROUNDS) {
+          await db.transaction(async (tx) => {
+            const [upd] = await tx.update(ridesTable)
+              .set({ status: "no_riders", updatedAt: new Date() })
+              .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)))
+              .returning({ id: ridesTable.id });
+            if (!upd) return;
+
+            if (ride.paymentMethod === "wallet") {
+              const rideRef = `ride:${ride.id}`;
+              const txns = await tx.select({ type: walletTransactionsTable.type, amount: walletTransactionsTable.amount })
+                .from(walletTransactionsTable)
+                .where(and(
+                  eq(walletTransactionsTable.userId, ride.userId),
+                  eq(walletTransactionsTable.reference, rideRef),
+                ));
+              let netDebit = 0;
+              for (const t of txns) {
+                const a = parseFloat(t.amount);
+                if (t.type === "debit") netDebit += a; else if (t.type === "credit") netDebit -= a;
+              }
+              if (netDebit > 0) {
+                await tx.update(usersTable)
+                  .set({ walletBalance: sql`wallet_balance + ${netDebit.toFixed(2)}`, updatedAt: new Date() })
+                  .where(eq(usersTable.id, ride.userId));
+                await tx.insert(walletTransactionsTable).values({
+                  id: generateId(), userId: ride.userId, type: "credit",
+                  amount: netDebit.toFixed(2),
+                  description: `No riders found — auto-refund #${ride.id.slice(-6).toUpperCase()}`,
+                  reference: rideRef,
+                });
+              }
+            }
+          });
+          const noRiderLang = await getUserLanguage(ride.userId);
+          await db.insert(notificationsTable).values({
+            id: generateId(), userId: ride.userId,
+            title: t("noRequests", noRiderLang),
+            body: t("searching_driver", noRiderLang),
+            type: "ride", icon: "close-circle-outline",
+          }).catch(() => {});
+          emitRideUpdate(ride.id);
+          await cleanupNotifiedRiders(ride.id);
+          continue;
+        }
+
+        /* ── Safety net: expired for rides stuck beyond totalTimeoutSec
+         *  This only fires AFTER the full dispatch sequence (MIN_EXPIRED_AFTER_SEC)
+         *  so rides always get all progressive phases before expiry. ── */
+        if (elapsedSec > Math.max(totalTimeoutSec, MIN_EXPIRED_AFTER_SEC)) {
           await db.transaction(async (tx) => {
             const [upd] = await tx.update(ridesTable)
               .set({ status: "expired", updatedAt: new Date() })
@@ -2086,55 +2203,6 @@ async function runDispatchCycle() {
             icon: "close-circle-outline",
           }).catch(() => {});
 
-          emitRideUpdate(ride.id);
-          await cleanupNotifiedRiders(ride.id);
-          continue;
-        }
-
-        const currentRound = Math.floor(elapsedSec / DISPATCH_ROUND_INTERVAL_SEC);
-        const loopCount = ride.dispatchLoopCount ?? 0;
-
-        if (currentRound >= MAX_DISPATCH_ROUNDS) {
-          await db.transaction(async (tx) => {
-            const [upd] = await tx.update(ridesTable)
-              .set({ status: "no_riders", updatedAt: new Date() })
-              .where(and(eq(ridesTable.id, ride.id), isNull(ridesTable.riderId)))
-              .returning({ id: ridesTable.id });
-            if (!upd) return;
-
-            if (ride.paymentMethod === "wallet") {
-              const rideRef = `ride:${ride.id}`;
-              const txns = await tx.select({ type: walletTransactionsTable.type, amount: walletTransactionsTable.amount })
-                .from(walletTransactionsTable)
-                .where(and(
-                  eq(walletTransactionsTable.userId, ride.userId),
-                  eq(walletTransactionsTable.reference, rideRef),
-                ));
-              let netDebit = 0;
-              for (const t of txns) {
-                const a = parseFloat(t.amount);
-                if (t.type === "debit") netDebit += a; else if (t.type === "credit") netDebit -= a;
-              }
-              if (netDebit > 0) {
-                await tx.update(usersTable)
-                  .set({ walletBalance: sql`wallet_balance + ${netDebit.toFixed(2)}`, updatedAt: new Date() })
-                  .where(eq(usersTable.id, ride.userId));
-                await tx.insert(walletTransactionsTable).values({
-                  id: generateId(), userId: ride.userId, type: "credit",
-                  amount: netDebit.toFixed(2),
-                  description: `No riders found — auto-refund #${ride.id.slice(-6).toUpperCase()}`,
-                  reference: rideRef,
-                });
-              }
-            }
-          });
-          const noRiderLang = await getUserLanguage(ride.userId);
-          await db.insert(notificationsTable).values({
-            id: generateId(), userId: ride.userId,
-            title: t("noRequests", noRiderLang),
-            body: t("searching_driver", noRiderLang),
-            type: "ride", icon: "close-circle-outline",
-          }).catch(() => {});
           emitRideUpdate(ride.id);
           await cleanupNotifiedRiders(ride.id);
           continue;
