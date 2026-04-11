@@ -1597,6 +1597,37 @@ router.get("/:id/stream", customerAuth, async (req, res) => {
   }, SSE_HEARTBEAT_MS);
 });
 
+/* ══════════════════════════════════════════════════════
+   GET /rides/history  — alias for GET /rides (API-client compat)
+══════════════════════════════════════════════════════ */
+router.get("/history", customerAuth, async (req, res) => {
+  const userId = req.customerId!;
+  const statusFilter = req.query["status"] as string | undefined;
+
+  const baseQuery = db.select().from(ridesTable);
+  const rides = await (statusFilter === "active"
+    ? baseQuery.where(and(eq(ridesTable.userId, userId), sql`status IN ('searching', 'bargaining', 'accepted', 'arrived', 'in_transit')`))
+    : baseQuery.where(eq(ridesTable.userId, userId)).orderBy(ridesTable.createdAt)
+  );
+
+  const formatted = await Promise.all(rides.map(async (r) => {
+    const base = formatRide(r);
+    let fareBreakdown: { baseFare: number; gstAmount: number } | null = null;
+    if (r.distance && r.type && ["completed", "dropped_off"].includes(r.status) && statusFilter !== "active") {
+      try {
+        const computed = await calcFare(parseFloat(String(r.distance)), r.type);
+        fareBreakdown = { baseFare: computed.baseFare, gstAmount: computed.gstAmount };
+      } catch {
+        /* Non-critical */
+      }
+    }
+    return { ...base, fareBreakdown };
+  }));
+
+  const result = statusFilter === "active" ? formatted : formatted.reverse();
+  sendSuccess(res, { rides: result, total: result.length });
+});
+
 router.get("/:id", customerAuth, async (req, res) => {
   const callerId = req.customerId!;
 
