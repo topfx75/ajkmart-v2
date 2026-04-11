@@ -81,7 +81,6 @@ export default function AuthScreen() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [accountNotFound, setAccountNotFound] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
 
   const [phone, setPhone] = useState("");
@@ -161,7 +160,7 @@ export default function AuthScreen() {
     });
   }, []);
 
-  const clearError = () => { setError(""); setAccountNotFound(false); };
+  const clearError = () => { setError(""); };
 
   const getDeviceFingerprint = async (): Promise<string> => {
     try {
@@ -308,7 +307,6 @@ export default function AuthScreen() {
           const msg: string = e.message || "Failed to send OTP";
           if (msg.toLowerCase().includes("account not found") || msg.toLowerCase().includes("sign up")) {
             setError("No account found with this number. Please sign up first.");
-            setAccountNotFound(true);
           } else {
             setError(msg);
           }
@@ -398,7 +396,6 @@ export default function AuthScreen() {
       const msg: string = e.message || "Could not send OTP.";
       if (msg.toLowerCase().includes("account not found") || msg.toLowerCase().includes("sign up first")) {
         setError("No account found with this number. Please sign up first.");
-        setAccountNotFound(true);
       } else {
         setError(msg);
         const match = msg.match(/wait (\d+) second/);
@@ -897,19 +894,6 @@ export default function AuthScreen() {
               />
 
               {error ? <AlertBox type="error" message={error} /> : null}
-              {accountNotFound && (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => router.push("/auth/register")}
-                  style={{ marginBottom: 8, borderRadius: 10, backgroundColor: "#f0fdf4", borderWidth: 1, borderColor: "#22c55e", padding: 12, alignItems: "center" }}
-                  accessibilityRole="link"
-                  accessibilityLabel="Go to sign up"
-                >
-                  <Text style={{ color: "#16a34a", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>
-                    Create a new account →
-                  </Text>
-                </TouchableOpacity>
-              )}
 
               <AuthButton label="Continue" onPress={checkIdentifier} loading={loading} icon="arrow-forward" />
 
