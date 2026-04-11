@@ -157,31 +157,76 @@ function MethodIcon({ id, size = 24 }: { id: string; size?: number }) {
   return <Ionicons name="business" size={size} color={C.blueDeep} />;
 }
 
+const NUMPAD_ROWS = [["1","2","3"],["4","5","6"],["7","8","9"],["","0","del"]] as const;
+
 function MpinInput({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
   const inputRef = useRef<TextInput>(null);
-  useEffect(() => { if (autoFocus) setTimeout(() => inputRef.current?.focus(), 300); }, []);
+  const isWeb = Platform.OS === "web";
+
+  useEffect(() => {
+    if (autoFocus && !isWeb) setTimeout(() => inputRef.current?.focus(), 300);
+  }, []);
+
+  const handleNumpad = (key: string) => {
+    if (key === "del") { onChange(value.slice(0, -1)); return; }
+    if (key === "") return;
+    if (value.length < 4) onChange(value + key);
+  };
+
   return (
-    <View style={{ alignItems: "center", gap: 16 }}>
-      <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
+    <View style={{ alignItems: "center", gap: 12 }}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => { if (!isWeb) inputRef.current?.focus(); }}
+        style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}
+      >
         {[0, 1, 2, 3].map(i => (
-          <View key={i} style={{ width: 48, height: 56, borderRadius: 14, borderWidth: 2, borderColor: value.length > i ? C.primary : C.border, backgroundColor: value.length > i ? C.primarySoft : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontFamily: Font.bold, fontSize: 24, color: C.text }}>{value[i] ? "●" : ""}</Text>
+          <View key={i} style={{ width: 52, height: 60, borderRadius: 14, borderWidth: 2, borderColor: value.length > i ? C.primary : C.border, backgroundColor: value.length > i ? C.primarySoft : C.surfaceSecondary, alignItems: "center", justifyContent: "center" }}>
+            <Text style={{ fontFamily: Font.bold, fontSize: 26, color: C.text }}>{value[i] ? "●" : ""}</Text>
+          </View>
+        ))}
+      </TouchableOpacity>
+
+      {!isWeb && (
+        <TextInput
+          ref={inputRef}
+          value={value}
+          onChangeText={t => { if (/^\d{0,4}$/.test(t)) onChange(t); }}
+          keyboardType="number-pad"
+          maxLength={4}
+          secureTextEntry
+          style={{ position: "absolute", opacity: 0, height: 1, width: 1 }}
+          autoFocus={autoFocus}
+        />
+      )}
+
+      <View style={{ gap: 10, marginTop: 4 }}>
+        {NUMPAD_ROWS.map((row, ri) => (
+          <View key={ri} style={{ flexDirection: "row", gap: 16, justifyContent: "center" }}>
+            {row.map((key, ki) => (
+              <TouchableOpacity
+                key={ki}
+                onPress={() => handleNumpad(key)}
+                disabled={!key}
+                activeOpacity={key ? 0.6 : 1}
+                style={{
+                  width: 72, height: 52, borderRadius: 14,
+                  backgroundColor: key ? C.surfaceSecondary : "transparent",
+                  borderWidth: key ? 1 : 0, borderColor: C.border,
+                  alignItems: "center", justifyContent: "center",
+                  opacity: key ? 1 : 0,
+                }}
+              >
+                {key === "del" ? (
+                  <Ionicons name="backspace-outline" size={22} color={C.text} />
+                ) : (
+                  <Text style={{ fontFamily: Font.bold, fontSize: 20, color: C.text }}>{key}</Text>
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
         ))}
       </View>
-      <TextInput
-        ref={inputRef}
-        value={value}
-        onChangeText={t => { if (/^\d{0,4}$/.test(t)) onChange(t); }}
-        keyboardType="number-pad"
-        maxLength={4}
-        secureTextEntry
-        style={{ position: "absolute", opacity: 0, height: 1, width: 1 }}
-        autoFocus={autoFocus}
-      />
-      <TouchableOpacity activeOpacity={0.7} onPress={() => inputRef.current?.focus()} style={{ paddingVertical: 8 }}>
-        <Text style={{ ...Typ.caption, color: C.primary }}>Tap to enter PIN</Text>
-      </TouchableOpacity>
     </View>
   );
 }
