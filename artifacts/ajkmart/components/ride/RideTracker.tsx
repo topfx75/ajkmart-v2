@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Image,
   Linking,
   Platform,
   TouchableOpacity,
@@ -31,7 +32,6 @@ import { NegotiationScreen } from "@/components/ride/NegotiationScreen";
 import { RideStatusSkeleton } from "@/components/ride/Skeletons";
 import { LiveTrackMap } from "@/components/ride/LiveTrackMap";
 import { VehicleIcon } from "@/components/ride/VehicleIcons";
-import { staticMapUrl } from "@/hooks/useMaps";
 import { API_BASE } from "@/utils/api";
 import {
   getDispatchStatus,
@@ -931,12 +931,11 @@ export function RideTracker({
               <View style={{ backgroundColor: colorScheme === "dark" ? "#0F172A" : "#F8FAFC", padding: 16 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
                   <View style={{ position: "relative" }}>
-                    {(ride as any)?.riderPhoto ? (
-                      <ProgressiveImage
-                        source={(ride as any).riderPhoto}
-                        style={{ width: 60, height: 60, borderRadius: 30 }}
-                        containerStyle={{ width: 60, height: 60, borderRadius: 30, borderWidth: 2.5, borderColor: hdrCfg.color, overflow: "hidden" }}
-                        borderRadius={30}
+                    {typeof (ride as any)?.riderPhoto === "string" && (ride as any).riderPhoto ? (
+                      <Image
+                        source={{ uri: (ride as any).riderPhoto }}
+                        style={{ width: 60, height: 60, borderRadius: 30, borderWidth: 2.5, borderColor: hdrCfg.color }}
+                        defaultSource={undefined}
                       />
                     ) : (
                       <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: hdrCfg.color + "20", alignItems: "center", justifyContent: "center", borderWidth: 2.5, borderColor: hdrCfg.color }}>

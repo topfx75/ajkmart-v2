@@ -696,7 +696,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   };
 
   const selectedSvc = services.find((s) => s.key === rideType) ?? services[0];
-  const canProceedFromLocation = !!(dropObj);
+  const canProceedFromLocation = !!(pickupObj && dropObj);
   const sheetHeight = screenHeight * STEP_SHEET_HEIGHTS[step];
 
   const mapMarkers = [

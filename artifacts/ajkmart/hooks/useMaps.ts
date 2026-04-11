@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "@/utils/api";
 
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/maps`;
+const domain = process.env.EXPO_PUBLIC_DOMAIN;
+const API = domain ? `https://${domain}/api/maps` : `${API_BASE}/maps`;
 
 export interface MapPrediction {
   placeId:       string;

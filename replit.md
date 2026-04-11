@@ -85,6 +85,13 @@ The project is a pnpm monorepo built with TypeScript. Frontend applications use 
 7. **DB:** Added missing `cod_photo_url` and `cod_verified` columns to `orders` table (were causing 500 errors on `/api/admin/stats`).
 8. **Web Session Persistence (`AuthContext.tsx`):** `expo-secure-store` on web is a no-op stub — all reads return `null`, clearing sessions on every reload. Fixed by platform-branching to `AsyncStorage` with a `@ajkmart_ws_` prefix on web; native SecureStore unchanged.
 
+### Ride Module Bug Fixes
+
+1. **ProgressiveImage crash in RideTracker:** `ProgressiveImage` component was referenced but never imported — replaced with native `Image` from react-native with type-safe string check on `riderPhoto`.
+2. **Pickup location validation:** `canProceedFromLocation` in `RideBookingForm` only checked `dropObj`, allowing users to proceed without a resolved pickup — fixed to require both `pickupObj && dropObj`.
+3. **Maps API URL undefined:** `useMaps.ts` constructed `https://undefined/api/maps` when `EXPO_PUBLIC_DOMAIN` was unset — now falls back to `API_BASE` from `utils/api.ts`.
+4. **NegotiationScreen skeleton delay:** Reduced init timeout from 3.5s to 1.5s with early dismissal when bids arrive.
+
 ### Development Notes
 
 **Dev-only Hash Auth (`_layout.tsx`):**  

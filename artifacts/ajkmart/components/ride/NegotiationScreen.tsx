@@ -166,9 +166,13 @@ export function NegotiationScreen({
   const consecutiveFailsRef = useRef(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setBidsInitializing(false), 3500);
+    const t = setTimeout(() => setBidsInitializing(false), 1500);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (ride?.bids && ride.bids.length > 0) setBidsInitializing(false);
+  }, [ride?.bids]);
 
   useEffect(() => {
     const pulse = (scale: Animated.Value, op: Animated.Value, delay: number, resetOp: number) =>
