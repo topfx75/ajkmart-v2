@@ -312,8 +312,6 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
     if (fetchingRef.current) return;
     const now = Date.now();
     if (!force && _cached && now - _cachedAt < CACHE_MS) {
-      setConfig(_cached);
-      setLoading(false);
       return;
     }
     fetchingRef.current = true;
