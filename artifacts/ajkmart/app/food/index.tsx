@@ -133,7 +133,7 @@ const FoodCard = React.memo(function FoodCard({ item }: { item: any }) {
 
 function FoodScreenInner() {
   const insets = useSafeAreaInsets();
-  const { itemCount, cartType, clearCart } = useCart();
+  const { itemCount, total: cartTotal, cartType, clearCart } = useCart();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const showCartBanner = itemCount > 0 && cartType !== "food" && cartType !== "none";
@@ -303,8 +303,40 @@ function FoodScreenInner() {
             </View>
           </>
         )}
-        <View style={{ height: Math.max(insets.bottom, Platform.OS === "web" ? 34 : 20) }} />
+        <View style={{ height: Math.max(insets.bottom, Platform.OS === "web" ? 34 : 20) + (itemCount > 0 ? 72 : 0) }} />
       </ScrollView>
+
+      {itemCount > 0 && (
+        <View style={[styles.checkoutBar, { bottom: Math.max(insets.bottom, 16) }]}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => router.push("/cart")}
+            style={styles.checkoutBarInner}
+            accessibilityRole="button"
+            accessibilityLabel={`View cart — ${itemCount} items`}
+          >
+            <LinearGradient
+              colors={[C.amberDark, C.amber]}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={styles.checkoutBarGrad}
+            >
+              <View style={styles.checkoutBarLeft}>
+                <View style={styles.checkoutBarBadge}>
+                  <Text style={styles.checkoutBarBadgeTxt}>{itemCount > 99 ? "99+" : itemCount}</Text>
+                </View>
+                <View>
+                  <Text style={styles.checkoutBarItemsTxt}>{itemCount} {itemCount === 1 ? "item" : "items"} in cart</Text>
+                  <Text style={styles.checkoutBarPriceTxt}>Rs. {cartTotal.toLocaleString()}</Text>
+                </View>
+              </View>
+              <View style={styles.checkoutBarRight}>
+                <Text style={styles.checkoutBarCta}>View Cart</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -369,4 +401,15 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   emptyTitle: { ...typography.h3, color: C.text },
   emptyText: { ...typography.body, color: C.textSecondary },
+
+  checkoutBar: { position: "absolute", left: 16, right: 16, zIndex: 99 },
+  checkoutBarInner: { borderRadius: 16, overflow: "hidden", shadowColor: C.amberDark, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 8 },
+  checkoutBarGrad: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 14 },
+  checkoutBarLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  checkoutBarBadge: { width: 38, height: 38, borderRadius: 10, backgroundColor: "rgba(0,0,0,0.15)", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.35)" },
+  checkoutBarBadgeTxt: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
+  checkoutBarItemsTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "rgba(255,255,255,0.9)" },
+  checkoutBarPriceTxt: { fontFamily: Font.bold, fontSize: 16, color: "#fff", marginTop: 1 },
+  checkoutBarRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  checkoutBarCta: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
 });

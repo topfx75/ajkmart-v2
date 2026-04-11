@@ -1183,11 +1183,13 @@ function HomeSkeleton() {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, token } = useAuth();
-  const { itemCount } = useCart();
+  const { itemCount, total: cartTotal } = useCart();
   const queryClient = useQueryClient();
   const topPad = Math.max(insets.top, 12);
   const TAB_H = Platform.OS === "web" ? 72 : 49;
   const hdOp = useRef(new Animated.Value(0)).current;
+  const cartBarAnim = useRef(new Animated.Value(itemCount > 0 ? 1 : 0)).current;
+  const prevItemCount = useRef(itemCount);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   const { config: platformConfig, loading: configLoading, refresh: refreshConfig } = usePlatformConfig();
@@ -1206,6 +1208,20 @@ export default function HomeScreen() {
     }
     setLastRefreshed(new Date());
   }, [refreshConfig, queryClient, isGuest]);
+
+  useEffect(() => {
+    const hasItems = itemCount > 0;
+    const hadItems = prevItemCount.current > 0;
+    prevItemCount.current = itemCount;
+    if (hasItems !== hadItems) {
+      Animated.spring(cartBarAnim, {
+        toValue: hasItems ? 1 : 0,
+        useNativeDriver: true,
+        tension: 60,
+        friction: 10,
+      }).start();
+    }
+  }, [itemCount, cartBarAnim]);
 
   const features = platformConfig.features;
   const appName = platformConfig.platform.appName;
@@ -1324,16 +1340,19 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity activeOpacity={0.7}
-                onPress={() => router.push("/cart" as Href)}
-                style={s.iconBtn}
+                onPress={() => {
+                  if (!user?.id) { router.push("/auth/login" as Href); return; }
+                  router.push("/cart" as Href);
+                }}
+                style={itemCount > 0 ? s.cartPill : s.iconBtn}
                 accessibilityRole="button"
                 accessibilityLabel={`Cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}
               >
-                <Ionicons name="cart-outline" size={20} color="#fff" />
+                <Ionicons name={itemCount > 0 ? "cart" : "cart-outline"} size={20} color="#fff" />
                 {itemCount > 0 && (
-                  <View style={s.cartBadge}>
-                    <Text style={s.cartBadgeTxt}>{itemCount > 99 ? "99+" : itemCount}</Text>
-                  </View>
+                  <>
+                    <Text style={s.cartPillTxt}>{itemCount > 99 ? "99+" : itemCount} items</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
@@ -1419,24 +1438,55 @@ export default function HomeScreen() {
           </>
         )}
 
-        <View style={{ height: TAB_H + insets.bottom + 20 }} />
+        <View style={{ height: TAB_H + insets.bottom + (itemCount > 0 ? 80 : 20) }} />
       </SmartRefresh>
 
-      {!!user?.id && itemCount > 0 && (
-        <TouchableOpacity activeOpacity={0.7}
-          onPress={() => router.push("/cart" as Href)}
-          style={[s.cartFab, { bottom: TAB_H + insets.bottom + 16 }]}
-          accessibilityRole="button"
-          accessibilityLabel={`Cart — ${itemCount} item${itemCount > 1 ? "s" : ""}`}
+      {itemCount > 0 && (
+        <Animated.View
+          style={[
+            s.checkoutBar,
+            { bottom: TAB_H + insets.bottom },
+            {
+              opacity: cartBarAnim,
+              transform: [{ translateY: cartBarAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }],
+            },
+          ]}
+          pointerEvents={itemCount > 0 ? "auto" : "none"}
         >
-          <LinearGradient colors={["#0047B3", "#0066FF"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.cartFabGrad}>
-            <Ionicons name="bag" size={18} color="#fff" />
-            <Text style={s.cartFabTxt}>Cart</Text>
-            <View style={s.cartFabBadge}>
-              <Text style={s.cartFabBadgeTxt}>{itemCount > 9 ? "9+" : itemCount}</Text>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              if (!user?.id) { router.push("/auth/login" as Href); return; }
+              router.push("/cart" as Href);
+            }}
+            style={s.checkoutBarInner}
+            accessibilityRole="button"
+            accessibilityLabel={`View cart — ${itemCount} item${itemCount > 1 ? "s" : ""}, Rs. ${cartTotal}`}
+          >
+            <LinearGradient
+              colors={["#0052CC", "#0066FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={s.checkoutBarGrad}
+            >
+              <View style={s.checkoutBarLeft}>
+                <View style={s.checkoutBarBadge}>
+                  <Text style={s.checkoutBarBadgeTxt}>{itemCount > 99 ? "99+" : itemCount}</Text>
+                </View>
+                <View>
+                  <Text style={s.checkoutBarItemsTxt}>
+                    {itemCount} {itemCount === 1 ? "item" : "items"} in cart
+                  </Text>
+                  <Text style={s.checkoutBarPriceTxt}>Rs. {cartTotal.toLocaleString()}</Text>
+                </View>
+              </View>
+              <View style={s.checkoutBarRight}>
+                <Text style={s.checkoutBarCta}>View Cart</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
       )}
 
       <Modal
@@ -1541,6 +1591,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 3, borderWidth: 1.5, borderColor: "#0066FF",
   },
   cartBadgeTxt: { fontFamily: Font.bold, fontSize: 9, color: "#fff" },
+  cartPill: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderRadius: 22, paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1.5, borderColor: "rgba(255,255,255,0.35)",
+  },
+  cartPillTxt: { fontFamily: Font.bold, fontSize: 12, color: "#fff" },
 
   searchBar: {
     flexDirection: "row", alignItems: "center", gap: 10,
@@ -1550,11 +1607,28 @@ const s = StyleSheet.create({
   searchText: { flex: 1, fontFamily: Font.regular, fontSize: 13, color: C.textMuted },
   searchDivider: { width: 1, height: 18, backgroundColor: C.borderLight },
 
-  cartFab: { position: "absolute", right: H_PAD, borderRadius: 99, overflow: "hidden", ...shadows.xl },
-  cartFabGrad: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, paddingHorizontal: 18, borderRadius: 99 },
-  cartFabTxt: { fontFamily: Font.bold, fontSize: 13, color: "#fff" },
-  cartFabBadge: { backgroundColor: "#FF3B30", borderRadius: 11, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 4, borderWidth: 2, borderColor: C.primary },
-  cartFabBadgeTxt: { fontFamily: Font.bold, fontSize: 10, color: "#fff" },
+  checkoutBar: {
+    position: "absolute", left: 0, right: 0,
+    paddingHorizontal: H_PAD, paddingBottom: 8,
+    zIndex: 99,
+  },
+  checkoutBarInner: { borderRadius: 16, overflow: "hidden", ...shadows.xl },
+  checkoutBarGrad: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  checkoutBarLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  checkoutBarBadge: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1.5, borderColor: "rgba(255,255,255,0.35)",
+  },
+  checkoutBarBadgeTxt: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
+  checkoutBarItemsTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "rgba(255,255,255,0.9)" },
+  checkoutBarPriceTxt: { fontFamily: Font.bold, fontSize: 16, color: "#fff", marginTop: 1 },
+  checkoutBarRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  checkoutBarCta: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
 
   announceBar: {
     backgroundColor: C.primary, flexDirection: "row", alignItems: "center",
