@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   setAuthTokenGetter,
@@ -72,49 +72,60 @@ const BIOMETRIC_TOKEN   = "ajkmart_biometric_token";
 const LEGACY_TOKEN_KEY = "@ajkmart_token";
 const LEGACY_REFRESH_KEY = "@ajkmart_refresh_token";
 
-/* Auth tokens are stored exclusively in SecureStore. If SecureStore is unavailable
-   the error propagates to the caller (login is blocked), preventing silent
-   fallback to unencrypted AsyncStorage which is readable on rooted devices. */
+/* On web, expo-secure-store is unavailable (its web module is a no-op stub).
+   Fall back to AsyncStorage (which uses localStorage on web) so that sessions
+   persist across page reloads in the browser. On native, SecureStore is used
+   for hardware-backed encryption. */
+const IS_WEB = Platform.OS === "web";
+const WEB_KEY_PREFIX = "@ajkmart_ws_";
+
 async function secureSet(key: string, value: string) {
-  await SecureStore.setItemAsync(key, value);
+  if (IS_WEB) {
+    await AsyncStorage.setItem(WEB_KEY_PREFIX + key, value);
+  } else {
+    await SecureStore.setItemAsync(key, value);
+  }
 }
 async function secureGet(key: string): Promise<string | null> {
+  if (IS_WEB) {
+    return AsyncStorage.getItem(WEB_KEY_PREFIX + key);
+  }
   return SecureStore.getItemAsync(key);
 }
 async function secureDelete(key: string) {
-  try { await SecureStore.deleteItemAsync(key); } catch {}
+  if (IS_WEB) {
+    try { await AsyncStorage.removeItem(WEB_KEY_PREFIX + key); } catch {}
+  } else {
+    try { await SecureStore.deleteItemAsync(key); } catch {}
+  }
   try { await AsyncStorage.removeItem(key); } catch {}
 }
 
-/* Migrate legacy AsyncStorage tokens to SecureStore and remove the unencrypted copies.
-   Using a versioned SecureStore key ensures we only migrate once per device.
-   Returns true if legacy tokens were found and migrated (or already migrated). */
+/* Migrate legacy AsyncStorage tokens to SecureStore (native) or AsyncStorage with
+   the web-key prefix (web). This ensures old unencrypted tokens are moved to the
+   correct storage backend on both platforms. */
 const MIGRATED_KEY = "ajkmart_legacy_migration_v1";
 async function migrateLegacyInsecureTokens(): Promise<boolean> {
   try {
-    /* Check if already migrated on this device */
-    const alreadyMigrated = await SecureStore.getItemAsync(MIGRATED_KEY).catch(() => null);
+    const alreadyMigrated = await secureGet(MIGRATED_KEY);
     if (alreadyMigrated === "1") return false;
 
     const [[, legacyToken], [, legacyRefresh]] = await AsyncStorage.multiGet([LEGACY_TOKEN_KEY, LEGACY_REFRESH_KEY]);
     const hadLegacy = !!(legacyToken || legacyRefresh);
 
     if (hadLegacy) {
-      /* Migrate tokens to SecureStore if not already present */
-      const existingToken = await SecureStore.getItemAsync(TOKEN_KEY).catch(() => null);
-      const existingRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY).catch(() => null);
+      const existingToken = await secureGet(TOKEN_KEY);
+      const existingRefresh = await secureGet(REFRESH_TOKEN_KEY);
       if (!existingToken && legacyToken) {
-        await SecureStore.setItemAsync(TOKEN_KEY, legacyToken).catch(() => {});
+        await secureSet(TOKEN_KEY, legacyToken).catch(() => {});
       }
       if (!existingRefresh && legacyRefresh) {
-        await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, legacyRefresh).catch(() => {});
+        await secureSet(REFRESH_TOKEN_KEY, legacyRefresh).catch(() => {});
       }
-      /* Remove the insecure copies */
       await AsyncStorage.multiRemove([LEGACY_TOKEN_KEY, LEGACY_REFRESH_KEY]).catch(() => {});
     }
 
-    /* Mark migration as complete for this device */
-    await SecureStore.setItemAsync(MIGRATED_KEY, "1").catch(() => {});
+    await secureSet(MIGRATED_KEY, "1").catch(() => {});
     return hadLegacy;
   } catch {
     return false;

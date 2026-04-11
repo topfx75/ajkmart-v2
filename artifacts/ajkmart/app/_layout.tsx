@@ -28,6 +28,20 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 const _domain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
 if (_domain) setBaseUrl(API_BASE);
 
+if (typeof window !== "undefined" && __DEV__) {
+  const _h = window.location.hash;
+  if (_h.startsWith("#_da=")) {
+    try {
+      const [_tok, _ref, _usr] = _h.slice(5).split("|");
+      const _P = "@ajkmart_ws_";
+      if (_tok) localStorage.setItem(_P + "ajkmart_token", decodeURIComponent(_tok));
+      if (_ref) localStorage.setItem(_P + "ajkmart_refresh_token", decodeURIComponent(_ref));
+      if (_usr) localStorage.setItem("@ajkmart_user", decodeURIComponent(_usr));
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    } catch {}
+  }
+}
+
 SplashScreen.preventAutoHideAsync();
 
 function WebShell({ children }: { children: React.ReactNode }) {

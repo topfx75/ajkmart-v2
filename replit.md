@@ -81,3 +81,9 @@ The project is a pnpm monorepo built with TypeScript. Frontend applications use 
 5. **`verify-otp` cross-role guard blocks rider/vendor registration:** Guard was firing before `pending_otps` check, blocking any non-customer role from creating new users via `verify-otp`. Fixed to check `pending_otps.payload._source === "register"` first — if the OTP came from `/auth/register` flow, allow the role through; only block non-customers arriving via raw `send-otp` without registration payload.
 6. **Rider photo uploads mandatory in UI:** Made optional (`Documents recommended but not required`) — backend was already not enforcing them.
 7. **DB:** Added missing `cod_photo_url` and `cod_verified` columns to `orders` table (were causing 500 errors on `/api/admin/stats`).
+8. **Web Session Persistence (`AuthContext.tsx`):** `expo-secure-store` on web is a no-op stub — all reads return `null`, clearing sessions on every reload. Fixed by platform-branching to `AsyncStorage` with a `@ajkmart_ws_` prefix on web; native SecureStore unchanged.
+
+### Development Notes
+
+**Dev-only Hash Auth (`_layout.tsx`):**  
+`_layout.tsx` includes a URL hash token injection block gated with `if (typeof window !== "undefined" && __DEV__)`. It reads `#_da=TOKEN|REFRESH|USER_JSON` from the URL on first load, writes the auth credentials to `localStorage`, and clears the hash — enabling developer tools (screenshots, E2E runners) to pre-seed auth state without a login UI interaction. This block compiles out entirely in production Expo builds (`__DEV__ = false`). It should remain strictly for local/dev usage and never be used as a production auth bypass.
