@@ -800,8 +800,10 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
       return;
     }
 
-    /* Verify OTP from pending_otps */
-    const otpValid = pending.otpHash === hashOtp(otp) && new Date() < pending.otpExpiry;
+    /* Verify OTP from pending_otps — bypass in dev when security_otp_bypass is on */
+    const isDev_pendingPath = process.env.NODE_ENV !== "production";
+    const bypassOtp_pending = isDev_pendingPath && settings["security_otp_bypass"] === "on";
+    const otpValid = bypassOtp_pending || (pending.otpHash === hashOtp(otp) && new Date() < pending.otpExpiry);
     if (!otpValid) {
       /* Increment failed attempts */
       const newAttempts = (pending.attempts ?? 0) + 1;
@@ -968,21 +970,28 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
   const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
   const now = new Date();
 
+  /* OTP Bypass: dev-only shortcut when security_otp_bypass is "on" in admin */
+  const isDev_existingPath = process.env.NODE_ENV !== "production";
+  const bypassOtp_existing = isDev_existingPath && settings["security_otp_bypass"] === "on";
+
   let isActualFirstLogin = false;
 
   {
     const consumed = await db.transaction(async (tx) => {
       /* Single atomic UPDATE: marks OTP as used ONLY if code matches, unused, and unexpired.
-         Returns the row if consumed, empty if already used / wrong code / expired. */
+         In bypass mode (dev only) skip the OTP hash + expiry checks. */
+      const whereConditions = bypassOtp_existing
+        ? and(eq(usersTable.phone, phone))
+        : and(
+            eq(usersTable.phone, phone),
+            eq(usersTable.otpCode, hashOtp(otp)),
+            eq(usersTable.otpUsed, false),
+            sql`otp_expiry > now()`,
+          );
       const rows = await tx
         .update(usersTable)
         .set({ otpCode: null, otpExpiry: null, otpUsed: true, phoneVerified: true, lastLoginAt: now })
-        .where(and(
-          eq(usersTable.phone, phone),
-          eq(usersTable.otpCode, hashOtp(otp)),
-          eq(usersTable.otpUsed, false),
-          sql`otp_expiry > now()`,
-        ))
+        .where(whereConditions)
         .returning({ id: usersTable.id, lastLoginAt: usersTable.lastLoginAt });
 
       if (rows.length === 0) return null;
@@ -1698,7 +1707,9 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
     res.status(401).json({ error: t("apiErrOtpExpired", lang) }); return;
   }
 
-  if (user.emailOtpCode !== hashOtp(otp)) {
+  const isDev_emailOtp = process.env.NODE_ENV !== "production";
+  const bypassOtp_email = isDev_emailOtp && settings["security_otp_bypass"] === "on";
+  if (!bypassOtp_email && user.emailOtpCode !== hashOtp(otp)) {
     const updated = await recordFailedAttempt(normalized, maxAttempts, lockoutMinutes);
     const remaining = maxAttempts - updated.attempts;
     addAuditEntry({ action: "email_otp_failed", ip, details: `Wrong email OTP for: ${normalized}`, result: "fail" });
@@ -2635,13 +2646,18 @@ router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPassword
 
   const forgotLang = await getUserLanguage(user.id);
 
+  const isDev_forgot = process.env.NODE_ENV !== "production";
+  const globalDevOtp_forgot = settings["security_global_dev_otp"] === "on";
+  let forgotChannel = "sms";
+
   if (phone) {
     await db.update(usersTable)
       .set({ otpCode: hashOtp(otp), otpExpiry, otpUsed: false, updatedAt: new Date() })
       .where(eq(usersTable.id, user.id));
 
     const targetPhone = canonicalizePhone(phone)!;
-    await sendOtpSMS(targetPhone, otp, settings, forgotLang);
+    const smsResult = await sendOtpSMS(targetPhone, otp, settings, forgotLang);
+    forgotChannel = smsResult.provider;
     if (settings["integration_whatsapp"] === "on") {
       sendWhatsAppOTP(targetPhone, otp, settings, forgotLang).catch(() => {});
     }
@@ -2651,12 +2667,15 @@ router.post("/forgot-password", verifyCaptcha, sharedValidateBody(forgotPassword
       .where(eq(usersTable.id, user.id));
 
     await sendPasswordResetEmail(email!, otp, user.name ?? undefined, forgotLang);
+    forgotChannel = "email";
   }
 
   writeAuthAuditLog("forgot_password", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
 
+  const forgotDevOtp = isDev_forgot && (forgotChannel === "console" || globalDevOtp_forgot);
   res.json({
     message: "If an account exists, a reset code has been sent.",
+    ...(forgotDevOtp ? { otp, devMode: true } : {}),
   });
 });
 
@@ -2701,27 +2720,32 @@ router.post("/verify-reset-otp", verifyCaptcha, async (req, res) => {
   const now = new Date();
   const verifyResetUserLang = await getRequestLocale(req, user.id);
 
-  if (phone) {
-    if (!user.otpCode || user.otpCode !== hashed) {
-      res.status(422).json({ error: t("apiErrInvalidVerificationCode", verifyResetUserLang) });
-      return;
-    }
-    if (!user.otpExpiry || user.otpExpiry < now) {
-      res.status(422).json({ error: t("apiErrCodeExpired", verifyResetUserLang) });
-      return;
-    }
-    if (user.otpUsed) {
-      res.status(422).json({ error: t("apiErrCodeAlreadyUsed", verifyResetUserLang) });
-      return;
-    }
-  } else {
-    if (!user.emailOtpCode || user.emailOtpCode !== hashed) {
-      res.status(422).json({ error: t("apiErrInvalidVerificationCode", verifyResetUserLang) });
-      return;
-    }
-    if (!user.emailOtpExpiry || user.emailOtpExpiry < now) {
-      res.status(422).json({ error: t("apiErrCodeExpired", verifyResetUserLang) });
-      return;
+  const isDev_resetVerify = process.env.NODE_ENV !== "production";
+  const bypassOtp_resetVerify = isDev_resetVerify && settings["security_otp_bypass"] === "on";
+
+  if (!bypassOtp_resetVerify) {
+    if (phone) {
+      if (!user.otpCode || user.otpCode !== hashed) {
+        res.status(422).json({ error: t("apiErrInvalidVerificationCode", verifyResetUserLang) });
+        return;
+      }
+      if (!user.otpExpiry || user.otpExpiry < now) {
+        res.status(422).json({ error: t("apiErrCodeExpired", verifyResetUserLang) });
+        return;
+      }
+      if (user.otpUsed) {
+        res.status(422).json({ error: t("apiErrCodeAlreadyUsed", verifyResetUserLang) });
+        return;
+      }
+    } else {
+      if (!user.emailOtpCode || user.emailOtpCode !== hashed) {
+        res.status(422).json({ error: t("apiErrInvalidVerificationCode", verifyResetUserLang) });
+        return;
+      }
+      if (!user.emailOtpExpiry || user.emailOtpExpiry < now) {
+        res.status(422).json({ error: t("apiErrCodeExpired", verifyResetUserLang) });
+        return;
+      }
     }
   }
 
@@ -2808,11 +2832,15 @@ router.post("/reset-password", verifyCaptcha, async (req, res) => {
     return;
   }
 
-  let otpValid = false;
-  if (phone) {
-    otpValid = user.otpCode === hashOtp(otp) && !user.otpUsed && user.otpExpiry != null && new Date() < user.otpExpiry;
-  } else {
-    otpValid = user.emailOtpCode === hashOtp(otp) && user.emailOtpExpiry != null && new Date() < user.emailOtpExpiry;
+  const isDev_resetPwd = process.env.NODE_ENV !== "production";
+  const bypassOtp_resetPwd = isDev_resetPwd && settings["security_otp_bypass"] === "on";
+  let otpValid = bypassOtp_resetPwd;
+  if (!otpValid) {
+    if (phone) {
+      otpValid = user.otpCode === hashOtp(otp) && !user.otpUsed && user.otpExpiry != null && new Date() < user.otpExpiry;
+    } else {
+      otpValid = user.emailOtpCode === hashOtp(otp) && user.emailOtpExpiry != null && new Date() < user.emailOtpExpiry;
+    }
   }
 
   if (!otpValid) {

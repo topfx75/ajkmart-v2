@@ -15,6 +15,7 @@ import { z } from "zod";
 import { sendSuccess, sendCreated, sendAccepted, sendError, sendNotFound, sendForbidden, sendValidationError, sendErrorWithData } from "../lib/response.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { sendOtpSMS } from "../services/sms.js";
 
 /* ── DB-backed idempotency store (shared table with orders) ─────────────────
    Namespaced by route prefix to avoid key collisions:
@@ -1247,14 +1248,23 @@ router.post("/pin/forgot", customerAuth, async (req, res) => {
       updatedAt: new Date(),
     }).where(eq(usersTable.id, userId));
 
-    logger.info(`[wallet /pin/forgot] OTP for ${user.phone}: ${otp}`);
+    /* Send OTP via SMS service (logs to console in dev when provider is "console") */
+    const walletSettings = await getPlatformSettings();
+    const userLang = await getUserLanguage(userId);
+    const smsResult = await sendOtpSMS(user.phone, otp, walletSettings, userLang);
+
+    logger.info(`[wallet /pin/forgot] OTP dispatched via ${smsResult.provider} for ${user.phone}`);
+
+    const isDev_walletPin = process.env.NODE_ENV !== "production";
+    const globalDevOtp_wallet = walletSettings["security_global_dev_otp"] === "on";
+    const showDevOtp = isDev_walletPin && (user.devOtpEnabled || globalDevOtp_wallet || smsResult.provider === "console");
 
     const responseData: Record<string, unknown> = {
       message: "OTP sent to your phone number",
       phone: user.phone.replace(/^(\d{2})\d+(\d{2})$/, "$1****$2"),
     };
 
-    if (user.devOtpEnabled) {
+    if (showDevOtp) {
       responseData["_dev_otp"] = otp;
     }
 
@@ -1286,10 +1296,16 @@ router.post("/pin/reset-confirm", customerAuth, async (req, res) => {
       return;
     }
 
-    const otpHash = await import("crypto").then(c => c.createHash("sha256").update(otp).digest("hex"));
-    if (otpHash !== user.otpCode) {
-      sendError(res, "Invalid OTP", 401);
-      return;
+    const resetSettings = await getPlatformSettings();
+    const isDev_pinReset = process.env.NODE_ENV !== "production";
+    const bypassOtp_pinReset = isDev_pinReset && resetSettings["security_otp_bypass"] === "on";
+
+    if (!bypassOtp_pinReset) {
+      const otpHash = await import("crypto").then(c => c.createHash("sha256").update(otp).digest("hex"));
+      if (otpHash !== user.otpCode) {
+        sendError(res, "Invalid OTP", 401);
+        return;
+      }
     }
 
     const hash = await bcrypt.hash(newParsed.data, MPIN_BCRYPT_ROUNDS);
