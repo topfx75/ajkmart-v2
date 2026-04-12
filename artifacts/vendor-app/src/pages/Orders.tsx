@@ -76,7 +76,7 @@ export default function Orders() {
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(""), 3000); };
   const [pendingOrderIds, setPendingOrderIds] = useState<Set<string>>(new Set());
   const [acceptDialog, setAcceptDialog] = useState<{ id: string; total: number } | null>(null);
-  const [rejectDialog, setRejectDialog] = useState<{ id: string } | null>(null);
+  const [rejectDialog, setRejectDialog] = useState<{ id: string; reason: string } | null>(null);
   const [assignModal, setAssignModal] = useState<{ orderId: string } | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
@@ -261,9 +261,9 @@ export default function Orders() {
   const newCount = tab === "new" ? orders.length : (countQ.data?.orders?.length || 0);
 
   const updateMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => {
+    mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) => {
       setPendingOrderIds(s => new Set(s).add(id));
-      return api.updateOrder(id, status);
+      return api.updateOrder(id, status, reason);
     },
     onSuccess: (_, { id, status }) => {
       setPendingOrderIds(s => { const n = new Set(s); n.delete(id); return n; });
@@ -408,7 +408,7 @@ export default function Orders() {
                     <div className="px-4 pb-3 flex gap-2">
                       <button onClick={() => setAcceptDialog({ id: o.id, total: o.total })} disabled={isOrderPending}
                         className="flex-1 h-10 bg-green-500 text-white font-bold rounded-xl text-sm android-press disabled:opacity-60">✓ Accept</button>
-                      <button onClick={() => setRejectDialog({ id: o.id })} disabled={isOrderPending}
+                      <button onClick={() => setRejectDialog({ id: o.id, reason: "" })} disabled={isOrderPending}
                         className="h-10 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press disabled:opacity-60">✕ Reject</button>
                     </div>
                   )}
@@ -489,7 +489,7 @@ export default function Orders() {
                             {T(next.labelKey)}
                           </button>
                           {o.status === "pending" && (
-                            <button onClick={() => setRejectDialog({ id: o.id })} disabled={isOrderPending}
+                            <button onClick={() => setRejectDialog({ id: o.id, reason: "" })} disabled={isOrderPending}
                               className="h-11 px-4 bg-red-50 text-red-600 font-bold rounded-xl text-sm android-press disabled:opacity-60">✕ {T("rejectOrder")}</button>
                           )}
                         </div>
@@ -539,12 +539,19 @@ export default function Orders() {
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setRejectDialog(null)}>
           <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-extrabold text-gray-800 mb-1">Reject Order?</h3>
-            <p className="text-sm text-gray-500 mb-4">Kya aap yeh order reject karna chahtay hain? / Are you sure you want to reject this order? This cannot be undone.</p>
+            <p className="text-sm text-gray-500 mb-3">Kya aap yeh order reject karna chahtay hain? / Are you sure you want to reject this order? This cannot be undone.</p>
+            <textarea
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 mb-4 resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+              rows={2}
+              placeholder="Reason for rejection (optional)"
+              value={rejectDialog.reason}
+              onChange={e => setRejectDialog(d => d ? { ...d, reason: e.target.value } : d)}
+            />
             <div className="flex gap-3">
               <button onClick={() => setRejectDialog(null)} className="flex-1 h-11 border-2 border-gray-200 text-gray-600 font-bold rounded-xl text-sm">← Back</button>
               <button
                 onClick={() => {
-                  updateMut.mutate({ id: rejectDialog.id, status: "cancelled" });
+                  updateMut.mutate({ id: rejectDialog.id, status: "cancelled", reason: rejectDialog.reason || undefined });
                   setRejectDialog(null);
                 }}
                 className="flex-1 h-11 bg-red-500 text-white font-bold rounded-xl text-sm">

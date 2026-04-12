@@ -670,20 +670,24 @@ router.patch("/withdrawal-requests/batch-reject", validateBody(batchWithdrawalSc
   const rejReason = (reason || "Admin batch rejected").trim();
   const results: unknown[] = [];
   for (const txId of ids) {
-    const [tx] = await db.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
-    if (!tx || (tx.reference && tx.reference !== "pending")) continue;
-    await db.update(walletTransactionsTable).set({ reference: `rejected:${rejReason}` }).where(eq(walletTransactionsTable.id, txId));
-    const amt = parseFloat(String(tx.amount));
-    await db.update(usersTable).set({ walletBalance: sql`wallet_balance + ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, tx.userId));
-    await db.insert(walletTransactionsTable).values({
-      id: generateId(), userId: tx.userId, type: "credit", amount: amt.toFixed(2),
-      description: `Withdrawal Refunded — ${rejReason}`, reference: `refund:${txId}`, paymentMethod: null,
+    const processed = await db.transaction(async (trx) => {
+      const [tx] = await trx.select().from(walletTransactionsTable).where(eq(walletTransactionsTable.id, txId)).limit(1);
+      if (!tx || (tx.reference && tx.reference !== "pending")) return false;
+      await trx.update(walletTransactionsTable).set({ reference: `rejected:${rejReason}` }).where(eq(walletTransactionsTable.id, txId));
+      const amt = parseFloat(String(tx.amount));
+      await trx.update(usersTable).set({ walletBalance: sql`wallet_balance + ${amt}`, updatedAt: new Date() }).where(eq(usersTable.id, tx.userId));
+      await trx.insert(walletTransactionsTable).values({
+        id: generateId(), userId: tx.userId, type: "credit", amount: amt.toFixed(2),
+        description: `Withdrawal Refunded — ${rejReason}`, reference: `refund:${txId}`, paymentMethod: null,
+      });
+      return { userId: tx.userId, amt };
     });
-    const batchRejLang = await getUserLanguage(tx.userId);
+    if (!processed) continue;
+    const batchRejLang = await getUserLanguage(processed.userId);
     await db.insert(notificationsTable).values({
-      id: generateId(), userId: tx.userId,
+      id: generateId(), userId: processed.userId,
       title: t("notifWithdrawalRejected" as TranslationKey, batchRejLang),
-      body: t("notifWithdrawalRejectedBody" as TranslationKey, batchRejLang).replace("{amount}", amt.toFixed(0)).replace("{reason}", rejReason),
+      body: t("notifWithdrawalRejectedBody" as TranslationKey, batchRejLang).replace("{amount}", processed.amt.toFixed(0)).replace("{reason}", rejReason),
       type: "wallet", icon: "close-circle-outline",
     }).catch(() => {});
     results.push(txId);
