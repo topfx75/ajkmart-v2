@@ -418,18 +418,18 @@ function ProfileScreenInner() {
         const pharmacy = phD.orders  || phD.pharmacyOrders  || [];
         const parcels  = parD.bookings || parD.parcelBookings || [];
 
-        const CANCELLED = "cancelled";
-        const activeOrders   = orders.filter((o: any)   => o.status   !== CANCELLED);
-        const activeRides    = rides.filter((r: any)    => r.status   !== CANCELLED);
-        const activePharmacy = pharmacy.filter((p: any) => p.status   !== CANCELLED);
-        const activeParcels  = parcels.filter((p: any)  => p.status   !== CANCELLED);
+        const DONE = ["delivered", "completed"];
+        const doneOrders   = orders.filter((o: any)   => DONE.includes(o.status));
+        const doneRides    = rides.filter((r: any)    => DONE.includes(r.status));
+        const donePharmacy = pharmacy.filter((p: any) => DONE.includes(p.status));
+        const doneParcels  = parcels.filter((p: any)  => DONE.includes(p.status));
 
-        const spent = activeOrders.reduce((s: number, o: any)   => s + (parseFloat(o.total) || 0), 0)
-                    + activeRides.reduce((s: number,  r: any)   => s + (parseFloat(r.fare)  || 0), 0)
-                    + activePharmacy.reduce((s: number, p: any) => s + (parseFloat(p.total) || 0), 0)
-                    + activeParcels.reduce((s: number,  p: any) => s + (parseFloat(p.price || p.fare || p.total) || 0), 0);
+        const spent = doneOrders.reduce((s: number, o: any)   => s + (parseFloat(o.total) || 0), 0)
+                    + doneRides.reduce((s: number,  r: any)   => s + (parseFloat(r.fare)  || 0), 0)
+                    + donePharmacy.reduce((s: number, p: any) => s + (parseFloat(p.total) || 0), 0)
+                    + doneParcels.reduce((s: number,  p: any) => s + (parseFloat(p.price || p.fare || p.total) || 0), 0);
 
-        setStats({ orders: activeOrders.length + activePharmacy.length + activeParcels.length, rides: activeRides.length, spent: Math.round(spent) });
+        setStats({ orders: doneOrders.length + donePharmacy.length + doneParcels.length, rides: doneRides.length, spent: Math.round(spent) });
         setUnread(nD.unreadCount || 0);
         setStatsError(false);
         break;
