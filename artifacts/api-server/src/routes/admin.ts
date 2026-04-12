@@ -37,6 +37,7 @@ export {
   ensureDefaultLocations,
   ensureDefaultServiceZones,
   ensureDefaultPaymentMethods,
+  ensureLocationHierarchyTable,
   type AdminRequest,
 } from "./admin-shared.js";
 

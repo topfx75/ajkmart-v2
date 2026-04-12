@@ -10,6 +10,7 @@ import {
   refreshTokensTable,
   serviceZonesTable,
   supportedPaymentMethodsTable,
+  locationHierarchyTable,
 } from "@workspace/db/schema";
 import { eq, count, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
@@ -1228,4 +1229,210 @@ export async function ensureOrdersItemsNullable() {
 
   logger.info("[migration] ordersItemsNullable: migration complete");
   _ordersItemsNullableMigrated = true;
+}
+
+/* ── Location Hierarchy: create table + seed default cities ── */
+let _locationHierarchyMigrated = false;
+
+const DEFAULT_CITIES = [
+  { name: "Rawalakot",     lat: 33.8573,  lng: 73.7643,  radiusKm: 25, sortOrder: 0 },
+  { name: "Muzaffarabad",  lat: 34.3700,  lng: 73.4710,  radiusKm: 30, sortOrder: 1 },
+  { name: "Mirpur",        lat: 33.1479,  lng: 73.7516,  radiusKm: 20, sortOrder: 2 },
+];
+
+type SubCityDef = { name: string; lat: number; lng: number; radiusKm: number; sortOrder: number };
+type AreaDef = { name: string; lat: number; lng: number; radiusKm: number; sortOrder: number; mohallaList?: MohallaDef[] };
+type MohallaDef = { name: string; lat: number; lng: number; radiusKm: number; sortOrder: number };
+
+const DEFAULT_SUB_CITIES: Record<string, Array<SubCityDef & { areas?: AreaDef[] }>> = {
+  Rawalakot: [
+    {
+      name: "Hajira", lat: 33.7583, lng: 73.8014, radiusKm: 10, sortOrder: 0,
+      areas: [
+        { name: "Hajira Bazar", lat: 33.7583, lng: 73.8014, radiusKm: 2, sortOrder: 0, mohallaList: [
+          { name: "Main Bazar Hajira", lat: 33.7590, lng: 73.8020, radiusKm: 0.5, sortOrder: 0 },
+          { name: "Hajira Bus Stand", lat: 33.7575, lng: 73.8010, radiusKm: 0.5, sortOrder: 1 },
+        ]},
+        { name: "Tarar Khal", lat: 33.7650, lng: 73.8100, radiusKm: 2, sortOrder: 1, mohallaList: [] },
+      ],
+    },
+    { name: "Banjosa",  lat: 33.8200, lng: 73.7200, radiusKm: 8,  sortOrder: 1, areas: [] },
+    {
+      name: "City",    lat: 33.8573, lng: 73.7643, radiusKm: 5,  sortOrder: 2,
+      areas: [
+        { name: "Rawalakot Colony", lat: 33.8580, lng: 73.7650, radiusKm: 1.5, sortOrder: 0, mohallaList: [
+          { name: "Main Chowk",        lat: 33.8573, lng: 73.7643, radiusKm: 0.4, sortOrder: 0 },
+          { name: "Rawalakot GPO",     lat: 33.8560, lng: 73.7630, radiusKm: 0.4, sortOrder: 1 },
+          { name: "Mong Road",         lat: 33.8590, lng: 73.7660, radiusKm: 0.4, sortOrder: 2 },
+        ]},
+        { name: "New Rawalakot",    lat: 33.8500, lng: 73.7700, radiusKm: 1.5, sortOrder: 1, mohallaList: [
+          { name: "New Town",          lat: 33.8500, lng: 73.7700, radiusKm: 0.5, sortOrder: 0 },
+          { name: "City Hospital Area",lat: 33.8490, lng: 73.7720, radiusKm: 0.4, sortOrder: 1 },
+        ]},
+      ],
+    },
+  ],
+  Muzaffarabad: [
+    {
+      name: "New City", lat: 34.3900, lng: 73.4500, radiusKm: 10, sortOrder: 0,
+      areas: [
+        { name: "Chattar Plaza", lat: 34.3900, lng: 73.4500, radiusKm: 2, sortOrder: 0, mohallaList: [
+          { name: "Chattar Main Market", lat: 34.3910, lng: 73.4510, radiusKm: 0.5, sortOrder: 0 },
+          { name: "Katchery Road",       lat: 34.3890, lng: 73.4490, radiusKm: 0.5, sortOrder: 1 },
+        ]},
+      ],
+    },
+    { name: "Old City",  lat: 34.3600, lng: 73.4700, radiusKm: 8, sortOrder: 1, areas: [] },
+    { name: "Chattar",   lat: 34.3500, lng: 73.5000, radiusKm: 8, sortOrder: 2, areas: [] },
+  ],
+  Mirpur: [
+    {
+      name: "Allama Iqbal Town", lat: 33.1479, lng: 73.7516, radiusKm: 8, sortOrder: 0,
+      areas: [
+        { name: "Mirpur Bazar", lat: 33.1479, lng: 73.7516, radiusKm: 2, sortOrder: 0, mohallaList: [
+          { name: "Mirpur Chowk",    lat: 33.1479, lng: 73.7516, radiusKm: 0.5, sortOrder: 0 },
+          { name: "Mirpur Bus Stand",lat: 33.1460, lng: 73.7500, radiusKm: 0.5, sortOrder: 1 },
+        ]},
+      ],
+    },
+    { name: "New Mirpur", lat: 33.1600, lng: 73.7600, radiusKm: 8, sortOrder: 1, areas: [] },
+  ],
+};
+
+export async function ensureLocationHierarchyTable() {
+  if (_locationHierarchyMigrated) return;
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS location_hierarchy (
+        id          SERIAL PRIMARY KEY,
+        name        TEXT NOT NULL,
+        level       TEXT NOT NULL,
+        parent_id   INTEGER REFERENCES location_hierarchy(id) ON DELETE CASCADE,
+        lat         NUMERIC(10,6),
+        lng         NUMERIC(10,6),
+        radius_km   NUMERIC(8,2) DEFAULT 5,
+        is_active   BOOLEAN NOT NULL DEFAULT true,
+        sort_order  INTEGER NOT NULL DEFAULT 0,
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS location_hierarchy_level_idx ON location_hierarchy(level)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS location_hierarchy_parent_id_idx ON location_hierarchy(parent_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS location_hierarchy_is_active_idx ON location_hierarchy(is_active)`);
+
+    /* Seed if empty */
+    const existing = await db.select({ c: count() }).from(locationHierarchyTable);
+    if ((existing[0]?.c ?? 0) === 0) {
+      for (const city of DEFAULT_CITIES) {
+        const [cityRow] = await db.insert(locationHierarchyTable).values({
+          name:      city.name,
+          level:     "city",
+          parentId:  null,
+          lat:       city.lat.toFixed(6),
+          lng:       city.lng.toFixed(6),
+          radiusKm:  city.radiusKm.toFixed(2),
+          isActive:  true,
+          sortOrder: city.sortOrder,
+        }).returning({ id: locationHierarchyTable.id });
+
+        const subCities = DEFAULT_SUB_CITIES[city.name] ?? [];
+        for (const sc of subCities) {
+          const [scRow] = await db.insert(locationHierarchyTable).values({
+            name:      sc.name,
+            level:     "sub_city",
+            parentId:  cityRow.id,
+            lat:       sc.lat.toFixed(6),
+            lng:       sc.lng.toFixed(6),
+            radiusKm:  sc.radiusKm.toFixed(2),
+            isActive:  true,
+            sortOrder: sc.sortOrder,
+          }).returning({ id: locationHierarchyTable.id });
+
+          for (const area of sc.areas ?? []) {
+            const [areaRow] = await db.insert(locationHierarchyTable).values({
+              name:      area.name,
+              level:     "area",
+              parentId:  scRow.id,
+              lat:       area.lat.toFixed(6),
+              lng:       area.lng.toFixed(6),
+              radiusKm:  area.radiusKm.toFixed(2),
+              isActive:  true,
+              sortOrder: area.sortOrder,
+            }).returning({ id: locationHierarchyTable.id });
+
+            for (const mohalla of area.mohallaList ?? []) {
+              await db.insert(locationHierarchyTable).values({
+                name:      mohalla.name,
+                level:     "mohalla",
+                parentId:  areaRow.id,
+                lat:       mohalla.lat.toFixed(6),
+                lng:       mohalla.lng.toFixed(6),
+                radiusKm:  mohalla.radiusKm.toFixed(2),
+                isActive:  true,
+                sortOrder: mohalla.sortOrder,
+              });
+            }
+          }
+        }
+      }
+      logger.info("[migration] locationHierarchy: seeded default cities");
+    } else {
+      /* Table already has data — back-fill area/mohalla rows for sub-cities that have none */
+      const allAreas = await db
+        .select({ c: count() })
+        .from(locationHierarchyTable)
+        .where(eq(locationHierarchyTable.level, "area"));
+
+      if ((allAreas[0]?.c ?? 0) === 0) {
+        /* Find existing sub-cities by name and add their areas */
+        const existingSubCities = await db
+          .select()
+          .from(locationHierarchyTable)
+          .where(eq(locationHierarchyTable.level, "sub_city"));
+
+        for (const scRow of existingSubCities) {
+          /* Identify which city this sub-city belongs to */
+          const cityRow = scRow.parentId
+            ? await db.select().from(locationHierarchyTable).where(eq(locationHierarchyTable.id, scRow.parentId)).limit(1)
+            : [];
+          if (!cityRow[0]) continue;
+
+          const cityName = cityRow[0].name;
+          const scDefs = DEFAULT_SUB_CITIES[cityName] ?? [];
+          const scDef = scDefs.find(s => s.name === scRow.name);
+          if (!scDef?.areas?.length) continue;
+
+          for (const area of scDef.areas) {
+            const [areaRow] = await db.insert(locationHierarchyTable).values({
+              name:      area.name,
+              level:     "area",
+              parentId:  scRow.id,
+              lat:       area.lat.toFixed(6),
+              lng:       area.lng.toFixed(6),
+              radiusKm:  area.radiusKm.toFixed(2),
+              isActive:  true,
+              sortOrder: area.sortOrder,
+            }).returning({ id: locationHierarchyTable.id });
+
+            for (const mohalla of area.mohallaList ?? []) {
+              await db.insert(locationHierarchyTable).values({
+                name:      mohalla.name,
+                level:     "mohalla",
+                parentId:  areaRow.id,
+                lat:       mohalla.lat.toFixed(6),
+                lng:       mohalla.lng.toFixed(6),
+                radiusKm:  mohalla.radiusKm.toFixed(2),
+                isActive:  true,
+                sortOrder: mohalla.sortOrder,
+              });
+            }
+          }
+        }
+        logger.info("[migration] locationHierarchy: back-filled areas and mohallaList");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "[migration] locationHierarchy: non-fatal error");
+  }
+  _locationHierarchyMigrated = true;
 }

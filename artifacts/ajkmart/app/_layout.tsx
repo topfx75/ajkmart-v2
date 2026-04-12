@@ -22,6 +22,7 @@ import { CartProvider } from "@/context/CartContext";
 import { API_BASE } from "@/utils/api";
 import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
 import { PlatformConfigProvider, usePlatformConfig } from "@/context/PlatformConfigContext";
+import { LocationProvider } from "@/context/LocationContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { slowNetworkQueryDefaults } from "@/lib/queryConfig";
@@ -410,12 +411,14 @@ export default function RootLayout() {
                 <PlatformConfigProvider>
                   <LanguageProvider>
                     <AuthProvider>
+                      <LocationProvider>
                       <CartProvider>
                         <ToastProvider>
                           <RootLayoutNav />
                           <PwaInstallBanner />
                         </ToastProvider>
                       </CartProvider>
+                      </LocationProvider>
                     </AuthProvider>
                   </LanguageProvider>
                 </PlatformConfigProvider>

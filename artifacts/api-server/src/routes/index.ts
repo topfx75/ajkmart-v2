@@ -35,6 +35,7 @@ import vanRouter from "./van.js";
 import webhooksRouter from "./webhooks.js";
 import deliveryEligibilityRouter from "./delivery-eligibility.js";
 import appConfigRouter from "./app-config.js";
+import areaLocationsRouter from "./area-locations.js";
 
 const router: IRouter = Router();
 
@@ -78,5 +79,6 @@ router.use("/wishlist", wishlistRouter);
 router.use("/van", vanRouter);
 router.use("/webhooks", webhooksRouter);
 router.use("/delivery/eligibility", deliveryEligibilityRouter);
+router.use("/area-locations", areaLocationsRouter);
 
 export default router;

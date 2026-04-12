@@ -45,6 +45,7 @@ import {
   Star,
   Megaphone,
   Bell,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -135,6 +136,7 @@ const NAV_GROUPS: NavGroup[] = [
       { nameKey: "navBanners",         href: "/banners",         icon: Layers },
       { nameKey: "navBroadcast" as TranslationKey,       href: "/broadcast",       icon: Megaphone },
       { nameKey: "navNotifications" as TranslationKey,   href: "/notifications",   icon: Bell },
+      { nameKey: "navLocations" as TranslationKey,       href: "/locations",        icon: MapPin },
     ],
   },
 ];

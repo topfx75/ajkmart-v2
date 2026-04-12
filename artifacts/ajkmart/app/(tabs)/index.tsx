@@ -7,12 +7,10 @@ import {
   Dimensions,
   useWindowDimensions,
   InteractionManager,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   FlatList,
@@ -44,6 +42,8 @@ import {
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { ProgressiveImage } from "@/components/ui/ProgressiveImage";
 import { NotificationsModal } from "@/components/profile/NotificationsModal";
+import { LocationBrowserSheet } from "@/components/LocationBrowserSheet";
+import { useLocation, type LocationNode } from "@/context/LocationContext";
 import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
 
 import { unwrapApiResponse } from "@/utils/api";
@@ -1236,26 +1236,22 @@ export default function HomeScreen() {
   }, [activeServices]);
 
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
-  const [locationInput, setLocationInput] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-
-  const PRESET_AREAS = [
-    "Muzaffarabad", "Mirpur", "Rawalakot", "Bagh", "Plandri",
-    "Kotli", "Bhimber", "Pallandri", "Hattian Bala", "Haveli",
-  ];
-
-  const filteredAreas = locationInput.trim()
-    ? PRESET_AREAS.filter(a => a.toLowerCase().includes(locationInput.toLowerCase()))
-    : PRESET_AREAS;
+  const { selectedNode, displayName: locationDisplayName, setLocation: setLocationCtx } = useLocation();
 
   const handleLocationPress = () => {
     setLocationPickerVisible(true);
   };
 
-  const handleSelectArea = (area: string) => {
-    setSelectedLocation(area);
+  const handleLocationSelect = (node: LocationNode, ancestry: LocationNode[]) => {
+    setLocationCtx(node, ancestry);
     setLocationPickerVisible(false);
-    setLocationInput("");
+  };
+
+  /* Persists auto-resolved location without closing the sheet, allowing the user
+     to optionally refine to a more precise level (area/mohalla). */
+  const handleLocationPreselect = (node: LocationNode, ancestry: LocationNode[]) => {
+    setLocationCtx(node, ancestry);
+    /* Sheet remains open — no setLocationPickerVisible(false) here */
   };
 
   return (
@@ -1325,8 +1321,8 @@ export default function HomeScreen() {
           </View>
 
           <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={handleLocationPress} accessibilityRole="button" accessibilityLabel="Location selector">
-            <Ionicons name="location" size={14} color="rgba(255,255,255,0.85)" />
-            <Text style={s.locTxt} numberOfLines={1}>{selectedLocation || platformConfig.platform.businessAddress || "AJK, Pakistan"}</Text>
+            <Ionicons name={selectedNode ? "location" : "location-outline"} size={14} color="rgba(255,255,255,0.85)" />
+            <Text style={s.locTxt} numberOfLines={1}>{locationDisplayName !== "Select Location" ? locationDisplayName : (platformConfig.platform.businessAddress || "AJK, Pakistan")}</Text>
             <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.55)" />
           </TouchableOpacity>
 
@@ -1452,74 +1448,13 @@ export default function HomeScreen() {
         </Animated.View>
       )}
 
-      <Modal
+      <LocationBrowserSheet
         visible={locationPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { setLocationPickerVisible(false); setLocationInput(""); }}
-      >
-        <TouchableOpacity
-          style={lp.overlay}
-          activeOpacity={1}
-          onPress={() => { setLocationPickerVisible(false); setLocationInput(""); }}
-        />
-        <View style={lp.sheet}>
-          <View style={lp.handle} />
-          <View style={lp.header}>
-            <Text style={lp.title}>Select Your Area</Text>
-            <TouchableOpacity
-              onPress={() => { setLocationPickerVisible(false); setLocationInput(""); }}
-              style={lp.closeBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Close location picker"
-            >
-              <Ionicons name="close" size={20} color={C.textSecondary} />
-            </TouchableOpacity>
-          </View>
-          <View style={lp.searchRow}>
-            <Ionicons name="search" size={16} color={C.textMuted} />
-            <TextInput
-              style={lp.searchInput}
-              placeholder="Search area..."
-              placeholderTextColor={C.textMuted}
-              value={locationInput}
-              onChangeText={setLocationInput}
-              autoCapitalize="words"
-              returnKeyType="search"
-            />
-            {locationInput.length > 0 && (
-              <TouchableOpacity onPress={() => setLocationInput("")} accessibilityRole="button" accessibilityLabel="Clear search">
-                <Ionicons name="close-circle" size={16} color={C.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-          <ScrollView style={lp.list} keyboardShouldPersistTaps="handled">
-            {filteredAreas.map(area => (
-              <TouchableOpacity
-                key={area}
-                style={[lp.areaRow, selectedLocation === area && lp.areaRowSelected]}
-                onPress={() => handleSelectArea(area)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={area}
-              >
-                <Ionicons
-                  name="location-outline"
-                  size={18}
-                  color={selectedLocation === area ? C.primary : C.textMuted}
-                />
-                <Text style={[lp.areaTxt, selectedLocation === area && lp.areaTxtSelected]}>{area}</Text>
-                {selectedLocation === area && <Ionicons name="checkmark" size={18} color={C.primary} />}
-              </TouchableOpacity>
-            ))}
-            {filteredAreas.length === 0 && (
-              <View style={lp.emptyRow}>
-                <Text style={lp.emptyTxt}>No areas found for "{locationInput}"</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
+        onClose={() => setLocationPickerVisible(false)}
+        onSelect={handleLocationSelect}
+        onPreselect={handleLocationPreselect}
+        currentNode={selectedNode}
+      />
 
       {user?.id && (
         <NotificationsModal
@@ -1613,54 +1548,3 @@ const s = StyleSheet.create({
   scroll: { paddingBottom: 0 },
 });
 
-const lp = StyleSheet.create({
-  overlay: {
-    position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  sheet: {
-    position: "absolute",
-    bottom: 0, left: 0, right: 0,
-    backgroundColor: C.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 32,
-    maxHeight: "70%",
-    ...shadows.xl,
-  },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: C.borderLight,
-    alignSelf: "center", marginTop: 10, marginBottom: 4,
-  },
-  header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: C.borderLight,
-  },
-  title: { fontFamily: Font.semiBold, fontSize: 16, color: C.text },
-  closeBtn: { padding: 4 },
-  searchRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    marginHorizontal: 16, marginVertical: 10,
-    backgroundColor: C.surfaceSecondary,
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-    borderWidth: 1, borderColor: C.borderLight,
-  },
-  searchInput: {
-    flex: 1, fontFamily: Font.regular, fontSize: 14, color: C.text,
-    paddingVertical: 0,
-  },
-  list: { flex: 1 },
-  areaRow: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    paddingHorizontal: 16, paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.borderLight,
-  },
-  areaRowSelected: { backgroundColor: C.primarySoft },
-  areaTxt: { flex: 1, fontFamily: Font.regular, fontSize: 15, color: C.text },
-  areaTxtSelected: { fontFamily: Font.semiBold, color: C.primary },
-  emptyRow: { padding: 24, alignItems: "center" },
-  emptyTxt: { fontFamily: Font.regular, fontSize: 14, color: C.textMuted },
-});

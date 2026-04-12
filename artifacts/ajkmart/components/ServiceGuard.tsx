@@ -4,13 +4,22 @@ import React from "react";
 import { Platform, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useLocation } from "@/context/LocationContext";
 import { SERVICE_REGISTRY, type ServiceKey } from "@/constants/serviceRegistry";
 
 export type { ServiceKey };
 
 export function useServiceEnabled(serviceKey: ServiceKey): boolean {
   const { config } = usePlatformConfig();
-  return config.features[serviceKey];
+  const { selectedNode } = useLocation();
+
+  /* Feature flag must be on */
+  if (!config.features[serviceKey]) return false;
+
+  /* If a location has been selected, it must be active */
+  if (selectedNode != null && !selectedNode.isActive) return false;
+
+  return true;
 }
 
 function ServiceUnavailableScreen({ serviceKey }: { serviceKey: ServiceKey }) {

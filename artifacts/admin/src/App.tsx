@@ -48,6 +48,7 @@ import GpsAlerts from "@/pages/gps-alerts";
 import VanBoardingMonitor from "@/pages/van-boarding";
 import CodVerifications from "@/pages/cod-verifications";
 import SilenceModeAdmin from "@/pages/silence-mode";
+import LocationsPage from "@/pages/locations";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -151,6 +152,7 @@ function Router() {
       <Route path="/van-boarding"><ProtectedRoute component={VanBoardingMonitor} /></Route>
       <Route path="/cod-verifications"><ProtectedRoute component={CodVerifications} /></Route>
       <Route path="/silence-mode"><ProtectedRoute component={SilenceModeAdmin} /></Route>
+      <Route path="/locations"><ProtectedRoute component={LocationsPage} /></Route>
 
       <Route component={NotFound} />
     </Switch>
