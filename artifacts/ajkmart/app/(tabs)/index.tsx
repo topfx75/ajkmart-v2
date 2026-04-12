@@ -6,6 +6,7 @@ import {
   Animated,
   Dimensions,
   useWindowDimensions,
+  InteractionManager,
   Modal,
   Platform,
   ScrollView,
@@ -14,10 +15,10 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Image,
   FlatList,
   Linking,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,11 +38,8 @@ import {
   type ServiceDefinition,
 } from "@/constants/serviceRegistry";
 import {
-  AnimatedPressable,
-  SectionHeader,
   SkeletonBlock,
   EmptyState,
-  CountdownTimer,
 } from "@/components/user-shared";
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { ProgressiveImage } from "@/components/ui/ProgressiveImage";
@@ -73,154 +71,82 @@ function safeNavigate(route: string, showToast?: (msg: string, type?: "success" 
   }
 }
 
-type ViewMode = "grid" | "list";
-const SVC_VIEW_KEY = "svc_view_mode";
-
 const shortLabel: Record<string, string> = {
   mart: "Mart", food: "Food", rides: "Ride", pharmacy: "Pharma", parcel: "Parcel",
 };
 
-function ServiceGridView({ services, isGuest }: { services: ServiceDefinition[]; isGuest: boolean }) {
+const SERVICE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
+  mart: { label: "20 min", color: "#005C44", bg: "#99ECCC" },
+  food: { label: "30 min", color: "#7A5A00", bg: "#FFE6B3" },
+  rides: { label: "Instant", color: "#005C44", bg: "#99ECCC" },
+  pharmacy: { label: "25-40m", color: "#5A1D8C", bg: "#DDB8FF" },
+  parcel: { label: "Rs.150+", color: "#8C3300", bg: "#FFBFA3" },
+};
+
+const ServiceSection = React.memo(function ServiceSection({ services }: {
+  services: ServiceDefinition[];
+}) {
   const { width: winW } = useWindowDimensions();
   const effectiveW = Math.min(winW, Platform.OS === "web" ? 430 : winW);
-  const itemW = (effectiveW - H_PAD * 2) / 5;
-  return (
-    <View style={sg.grid}>
-      {services.map((svc) => {
-        const label = shortLabel[svc.key] ?? svc.label;
-        const href = String(svc.route) as Href;
-        return (
-          <TouchableOpacity
-            key={svc.key}
-            activeOpacity={0.75}
-            onPress={() => router.push(href)}
-            style={[sg.item, { width: itemW }]}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-          >
-            <LinearGradient colors={svc.iconGradient} style={sg.circle}>
-              <Ionicons name={svc.iconFocused} size={26} color="#fff" />
-            </LinearGradient>
-            <Text style={sg.label} numberOfLines={1}>{label}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
+  const itemW = (effectiveW - H_PAD * 2) / Math.min(services.length, 5);
 
-function ServiceListView({ services, isGuest }: { services: ServiceDefinition[]; isGuest: boolean }) {
-  return (
-    <View style={sl.list}>
-      {services.map((svc) => {
-        const label = shortLabel[svc.key] ?? svc.label;
-        const href = String(svc.route) as Href;
-        return (
-          <TouchableOpacity
-            key={svc.key}
-            activeOpacity={0.7}
-            onPress={() => router.push(href)}
-            style={sl.row}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-          >
-            <LinearGradient colors={svc.iconGradient} style={sl.circle}>
-              <Ionicons name={svc.iconFocused} size={20} color="#fff" />
-            </LinearGradient>
-            <View style={sl.textWrap}>
-              <Text style={sl.name}>{label}</Text>
-              <Text style={sl.desc} numberOfLines={1}>{svc.description}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
-const ServiceSection = React.memo(function ServiceSection({ services, isGuest, viewMode, onToggle }: {
-  services: ServiceDefinition[];
-  isGuest: boolean;
-  viewMode: ViewMode;
-  onToggle: (m: ViewMode) => void;
-}) {
   return (
     <View style={sg.wrap}>
-      <View style={sg.header}>
-        <Text style={sg.headerTitle}>Our Services</Text>
-        <View style={sg.toggleRow}>
-          <TouchableOpacity activeOpacity={0.7}
-            onPress={() => onToggle("grid")}
-            style={[sg.toggleBtn, viewMode === "grid" && sg.toggleBtnActive]}
-            accessibilityRole="button"
-            accessibilityLabel="Grid view"
-          >
-            <Ionicons name="grid" size={14} color={viewMode === "grid" ? "#fff" : C.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.7}
-            onPress={() => onToggle("list")}
-            style={[sg.toggleBtn, viewMode === "list" && sg.toggleBtnActive]}
-            accessibilityRole="button"
-            accessibilityLabel="List view"
-          >
-            <Ionicons name="list" size={16} color={viewMode === "list" ? "#fff" : C.textMuted} />
-          </TouchableOpacity>
-        </View>
+      <Text style={sg.headerTitle}>Our Services</Text>
+      <View style={sg.grid}>
+        {services.map((svc) => {
+          const label = shortLabel[svc.key] ?? svc.label;
+          const href = String(svc.route) as Href;
+          const badge = SERVICE_BADGE[svc.key];
+          return (
+            <TouchableOpacity
+              key={svc.key}
+              activeOpacity={0.75}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                router.push(href);
+              }}
+              style={[sg.item, { width: itemW }]}
+              accessibilityRole="button"
+              accessibilityLabel={label}
+            >
+              <LinearGradient colors={svc.iconGradient} style={sg.circle}>
+                <Ionicons name={svc.iconFocused} size={30} color="#fff" />
+              </LinearGradient>
+              <Text style={sg.label} numberOfLines={1}>{label}</Text>
+              {badge && (
+                <View style={[sg.badge, { backgroundColor: badge.bg }]}>
+                  <Text style={[sg.badgeTxt, { color: badge.color }]}>{badge.label}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
-      {viewMode === "grid"
-        ? <ServiceGridView services={services} isGuest={isGuest} />
-        : <ServiceListView services={services} isGuest={isGuest} />
-      }
     </View>
   );
 });
 
 const sg = StyleSheet.create({
   wrap: { paddingHorizontal: H_PAD, paddingTop: 14, paddingBottom: 6 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  headerTitle: { fontFamily: Font.bold, fontSize: 15, color: C.text },
-  toggleRow: { flexDirection: "row", gap: 4, backgroundColor: C.surfaceSecondary, borderRadius: 8, padding: 2 },
-  toggleBtn: { width: 28, height: 28, borderRadius: 6, alignItems: "center", justifyContent: "center" },
-  toggleBtnActive: { backgroundColor: C.primary },
+  headerTitle: { fontFamily: Font.bold, fontSize: 15, color: C.text, marginBottom: 12 },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", gap: 0 },
   item: {
-    alignItems: "center", gap: 7,
-    width: (W - H_PAD * 2) / 5,
+    alignItems: "center", gap: 5,
     paddingVertical: 10,
   },
   circle: {
-    width: 58, height: 58, borderRadius: 20,
+    width: 64, height: 64, borderRadius: 22,
     alignItems: "center", justifyContent: "center",
-    ...shadows.md,
-  },
-  lockBadge: {
-    position: "absolute", bottom: -2, right: -2,
-    width: 16, height: 16, borderRadius: 8,
-    backgroundColor: C.textMuted,
-    alignItems: "center", justifyContent: "center",
-    borderWidth: 2, borderColor: C.surface,
+    ...shadows.lg,
   },
   label: { fontFamily: Font.semiBold, color: C.text, fontSize: 12, textAlign: "center" },
-});
-
-const sl = StyleSheet.create({
-  list: { gap: 6 },
-  row: {
-    flexDirection: "row", alignItems: "center", gap: 14,
-    backgroundColor: C.surface, borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: C.borderLight,
-    ...shadows.sm,
+  badge: {
+    borderRadius: 8,
+    paddingHorizontal: 5, paddingVertical: 2,
+    alignItems: "center",
   },
-  circle: {
-    width: 44, height: 44, borderRadius: 14,
-    alignItems: "center", justifyContent: "center",
-    flexShrink: 0,
-  },
-  textWrap: { flex: 1 },
-  name: { fontFamily: Font.semiBold, fontSize: 14, color: C.text, marginBottom: 2 },
-  desc: { fontFamily: Font.regular, fontSize: 11, color: C.textMuted },
+  badgeTxt: { fontFamily: Font.semiBold, fontSize: 9, lineHeight: 12 },
 });
 
 function GuestSignInStrip() {
@@ -419,9 +345,10 @@ const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
   const { data: banners, isLoading: bannersLoading, isError: bannersError, refetch: refetchBanners } = useQuery({
     queryKey: ["dynamic-banners", "home"],
     queryFn: () => getBanners({ placement: "home" }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
-  const scrollRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   const [active, setActive] = useState(0);
   const { width: windowWidth } = useWindowDimensions();
   const BANNER_W = windowWidth - H_PAD * 2;
@@ -430,17 +357,26 @@ const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
 
   const items = banners ?? [];
 
-  useEffect(() => {
-    if (items.length <= 1) return;
+  const startAutoScroll = useCallback((len: number) => {
+    if (autoScrollTimer.current) { clearInterval(autoScrollTimer.current); autoScrollTimer.current = null; }
+    if (len <= 1) return;
     autoScrollTimer.current = setInterval(() => {
       setActive(prev => {
-        const next = (prev + 1) % items.length;
-        scrollRef.current?.scrollTo({ x: next * BANNER_W, animated: true });
+        const next = (prev + 1) % len;
+        try { flatListRef.current?.scrollToIndex({ index: next, animated: true }); } catch {}
         return next;
       });
     }, 4000);
-    return () => { if (autoScrollTimer.current) clearInterval(autoScrollTimer.current); };
-  }, [items.length, BANNER_W]);
+  }, []);
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollTimer.current) { clearInterval(autoScrollTimer.current); autoScrollTimer.current = null; }
+  }, []);
+
+  useEffect(() => {
+    startAutoScroll(items.length);
+    return () => stopAutoScroll();
+  }, [items.length, startAutoScroll, stopAutoScroll]);
 
   const bannerThrottleRef = useRef<number | null>(null);
 
@@ -505,6 +441,61 @@ const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
     }
   };
 
+  const bannerGetItemLayout = useCallback((_data: ArrayLike<Banner> | null | undefined, index: number) => ({
+    length: BANNER_W,
+    offset: BANNER_W * index,
+    index,
+  }), [BANNER_W]);
+
+  const renderBannerItem = useCallback(({ item: b }: { item: Banner }) => (
+    <TouchableOpacity activeOpacity={0.7}
+      onPress={() => handleBannerPress(b)}
+      style={{ width: BANNER_W }}
+    >
+      {b.imageUrl ? (
+        <View style={ban.card}>
+          <ProgressiveImage source={b.imageUrl} style={ban.bgImage} containerStyle={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} borderRadius={0} />
+          <LinearGradient
+            colors={[`${b.gradient1 || C.primary}cc`, `${b.gradient2 || C.primaryDark}bb`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={ban.overlay}
+          />
+          <View style={ban.contentWrap}>
+            <View style={{ flex: 1 }}>
+              <Text style={ban.title}>{b.title}</Text>
+              {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
+              <View style={ban.cta}>
+                <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
+                <Ionicons name="arrow-forward" size={13} color="#fff" />
+              </View>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <LinearGradient
+          colors={[b.gradient1 || C.primary, b.gradient2 || C.primaryDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={ban.card}
+        >
+          <View style={[ban.blob, { width: 130, height: 130, top: -30, right: 60 }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={ban.title}>{b.title}</Text>
+            {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
+            <View style={ban.cta}>
+              <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
+              <Ionicons name="arrow-forward" size={13} color="#fff" />
+            </View>
+          </View>
+          <View style={ban.iconWrap}>
+            <Ionicons name={(b.icon as any) || "pricetag"} size={48} color="rgba(255,255,255,0.15)" />
+          </View>
+        </LinearGradient>
+      )}
+    </TouchableOpacity>
+  ), [BANNER_W, getBannerCtaText, handleBannerPress]);
+
   if (bannersLoading && !banners) {
     return (
       <View style={{ marginTop: 16 }}>
@@ -545,81 +536,28 @@ const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
         <Text style={ban.headerSub}>Promotions & offers</Text>
       </View>
       <View style={{ paddingHorizontal: H_PAD }}>
-        <ScrollView
-          ref={scrollRef}
+        <FlatList
+          ref={flatListRef}
+          data={items}
           horizontal
-          pagingEnabled={false}
+          pagingEnabled
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
           snapToInterval={BANNER_W}
           snapToAlignment="start"
           style={{ width: BANNER_W }}
-          onScrollBeginDrag={() => {
-            if (autoScrollTimer.current) clearInterval(autoScrollTimer.current);
-          }}
-          onScrollEndDrag={() => {
-            if (items.length <= 1) return;
-            autoScrollTimer.current = setInterval(() => {
-              setActive(prev => {
-                const next = (prev + 1) % items.length;
-                scrollRef.current?.scrollTo({ x: next * BANNER_W, animated: true });
-                return next;
-              });
-            }, 4000);
-          }}
+          keyExtractor={(item) => item.id}
+          renderItem={renderBannerItem}
+          getItemLayout={bannerGetItemLayout}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          windowSize={3}
+          removeClippedSubviews
+          onScrollBeginDrag={stopAutoScroll}
+          onScrollEndDrag={() => startAutoScroll(items.length)}
           onScroll={(e) => setActive(Math.round(e.nativeEvent.contentOffset.x / BANNER_W))}
           scrollEventThrottle={16}
-        >
-          {items.map((b) => (
-            <TouchableOpacity activeOpacity={0.7}
-              key={b.id}
-              onPress={() => handleBannerPress(b)}
-              style={{ width: BANNER_W }}
-            >
-              {b.imageUrl ? (
-                <View style={ban.card}>
-                  <ProgressiveImage source={b.imageUrl} style={ban.bgImage} containerStyle={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} borderRadius={0} />
-                  <LinearGradient
-                    colors={[`${b.gradient1 || C.primary}cc`, `${b.gradient2 || C.primaryDark}bb`]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={ban.overlay}
-                  />
-                  <View style={ban.contentWrap}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={ban.title}>{b.title}</Text>
-                      {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
-                      <View style={ban.cta}>
-                        <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
-                        <Ionicons name="arrow-forward" size={13} color="#fff" />
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              ) : (
-                <LinearGradient
-                  colors={[b.gradient1 || C.primary, b.gradient2 || C.primaryDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={ban.card}
-                >
-                  <View style={[ban.blob, { width: 130, height: 130, top: -30, right: 60 }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={ban.title}>{b.title}</Text>
-                    {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
-                    <View style={ban.cta}>
-                      <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
-                      <Ionicons name="arrow-forward" size={13} color="#fff" />
-                    </View>
-                  </View>
-                  <View style={ban.iconWrap}>
-                    <Ionicons name={(b.icon as any) || "pricetag"} size={48} color="rgba(255,255,255,0.15)" />
-                  </View>
-                </LinearGradient>
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        />
         {items.length > 1 && (
           <View style={ban.dotsRow}>
             {items.map((_, i) => (
@@ -716,7 +654,8 @@ const FlashDealsSection = React.memo(function FlashDealsSection({ T }: { T: (key
   const { data: deals, isLoading, isError, refetch } = useQuery({
     queryKey: ["flash-deals"],
     queryFn: () => getFlashDeals({ limit: 10 }),
-    staleTime: 3 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
   const items = deals ?? [];
@@ -789,6 +728,9 @@ const FlashDealsSection = React.memo(function FlashDealsSection({ T }: { T: (key
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={fd.row}
         keyExtractor={(item) => item.id}
+        removeClippedSubviews
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
         renderItem={({ item }) => {
           const soldPct = item.dealStock && item.dealStock > 0
             ? Math.min(Math.round((item.soldCount / item.dealStock) * 100), 99)
@@ -805,7 +747,7 @@ const FlashDealsSection = React.memo(function FlashDealsSection({ T }: { T: (key
               </View>
               <View style={fd.imgWrap}>
                 {item.image ? (
-                  <ProgressiveImage source={item.image} containerStyle={{ width: "100%", height: "100%" }} style={{ width: "100%", height: "100%" }} borderRadius={0} />
+                  <ProgressiveImage source={item.image} containerStyle={{ width: 140, height: 110 }} style={{ width: 140, height: 110 }} borderRadius={0} />
                 ) : (
                   <View style={[fd.productImg, { backgroundColor: "#FFF5F5", alignItems: "center", justifyContent: "center" }]}>
                     <Ionicons name="flash" size={28} color="#FF4444" />
@@ -876,7 +818,8 @@ const TrendingSection = React.memo(function TrendingSection() {
   const { data: trending, isError, refetch } = useQuery({
     queryKey: ["trending-products"],
     queryFn: () => getTrending({ limit: 8 }),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
   const items = trending ?? [];
@@ -916,6 +859,9 @@ const TrendingSection = React.memo(function TrendingSection() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: H_PAD, gap: 12 }}
         keyExtractor={(item) => item.id}
+        removeClippedSubviews
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
         renderItem={({ item }) => (
           <TouchableOpacity activeOpacity={0.7}
             onPress={() => router.push(`/product/${item.id}` as Href)}
@@ -995,13 +941,22 @@ const SAVED_CITY_KEY = "weather_manual_city";
 interface WeatherWidgetProps { userLat?: number; userLng?: number; cityLabel?: string }
 const WeatherWidget = React.memo(function WeatherWidget({ userLat, userLng, cityLabel }: WeatherWidgetProps) {
   const [weather, setWeather] = useState<{ temp: number; code: number; windSpeed: number; humidity: number; feelsLike?: number } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [deferred, setDeferred] = useState(false);
   const [locationLabel, setLocationLabel] = useState(cityLabel || "");
   const [isGps, setIsGps] = useState(false);
   const [geocodingUnavailable, setGeocodingUnavailable] = useState(false);
 
   useEffect(() => {
+    const deferTimer = setTimeout(() => setDeferred(true), 2000);
+    return () => clearTimeout(deferTimer);
+  }, []);
+
+  useEffect(() => {
+    if (!deferred) return;
     let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+    setLoading(true);
     setGeocodingUnavailable(false);
     (async () => {
       try {
@@ -1087,8 +1042,9 @@ const WeatherWidget = React.memo(function WeatherWidget({ userLat, userLng, city
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [userLat, userLng, cityLabel]);
+    }); // InteractionManager.runAfterInteractions
+    return () => { cancelled = true; task.cancel(); };
+  }, [deferred, userLat, userLng, cityLabel]);
 
   if (!loading && !weather) return null;
 
@@ -1164,19 +1120,34 @@ const wS = StyleSheet.create({
 });
 
 function HomeSkeleton() {
+  const { width: winW } = useWindowDimensions();
+  const itemW = (Math.min(winW, Platform.OS === "web" ? 430 : winW) - H_PAD * 2) / 5;
   return (
     <View style={{ paddingHorizontal: H_PAD, gap: spacing.sm, marginTop: spacing.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4, marginTop: 14 }}>
+        <SkeletonBlock w={120} h={14} r={6} />
+      </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 0 }}>
         {Array.from({ length: 5 }, (_, i) => (
-          <View key={i} style={{ alignItems: "center", gap: 6, width: (W - H_PAD * 2) / 5, paddingVertical: 8 }}>
-            <SkeletonBlock w={48} h={48} r={16} />
+          <View key={i} style={{ alignItems: "center", gap: 5, width: itemW, paddingVertical: 10 }}>
+            <SkeletonBlock w={64} h={64} r={22} />
             <SkeletonBlock w={40} h={10} r={4} />
+            <SkeletonBlock w={36} h={10} r={8} />
           </View>
         ))}
       </View>
-      <SkeletonBlock w="100%" h={52} r={14} />
-      <SkeletonBlock w="100%" h={120} r={16} />
-      <SkeletonBlock w="100%" h={100} r={16} />
+      <SkeletonBlock w="100%" h={72} r={16} />
+      <SkeletonBlock w="100%" h={144} r={16} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {Array.from({ length: 3 }, (_, i) => (
+          <SkeletonBlock key={i} w={140} h={180} r={12} />
+        ))}
+      </View>
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        {Array.from({ length: 3 }, (_, i) => (
+          <SkeletonBlock key={i} w={145} h={170} r={16} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -1251,25 +1222,18 @@ export default function HomeScreen() {
     Animated.timing(hdOp, { toValue: 1, duration: 400, useNativeDriver: Platform.OS !== "web" }).start();
   }, []);
 
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
-
   useEffect(() => {
-    AsyncStorage.getItem(SVC_VIEW_KEY).then((v) => {
-      if (v === "list" || v === "grid") setViewMode(v);
-    }).catch(() => {});
-  }, []);
-
-  const handleToggleView = useCallback(async (mode: ViewMode) => {
-    setViewMode(mode);
-    try {
-      await AsyncStorage.setItem(SVC_VIEW_KEY, mode);
-    } catch (err) {
-      if (__DEV__) console.warn("[HomeScreen] Failed to persist view mode:", err);
-    }
-  }, []);
+    queryClient.prefetchQuery({ queryKey: ["dynamic-banners", "home"], queryFn: () => getBanners({ placement: "home" }), staleTime: 10 * 60 * 1000, gcTime: 30 * 60 * 1000 });
+    queryClient.prefetchQuery({ queryKey: ["flash-deals"], queryFn: () => getFlashDeals({ limit: 10 }), staleTime: 10 * 60 * 1000, gcTime: 30 * 60 * 1000 });
+    queryClient.prefetchQuery({ queryKey: ["trending-products"], queryFn: () => getTrending({ limit: 8 }), staleTime: 10 * 60 * 1000, gcTime: 30 * 60 * 1000 });
+  }, [queryClient]);
 
   const activeServices = useMemo(() => getActiveServices(features), [features]);
   const noServicesActive = activeServices.length === 0;
+
+  useEffect(() => {
+    activeServices.forEach(svc => { try { router.prefetch(svc.route); } catch {} });
+  }, [activeServices]);
 
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [locationInput, setLocationInput] = useState("");
@@ -1411,9 +1375,6 @@ export default function HomeScreen() {
 
             <ServiceSection
               services={activeServices}
-              isGuest={isGuest}
-              viewMode={viewMode}
-              onToggle={handleToggleView}
             />
 
             {isGuest && <GuestSignInStrip />}

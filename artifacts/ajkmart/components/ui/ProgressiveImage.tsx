@@ -14,6 +14,7 @@ interface ProgressiveImageProps {
   blurhash?: string;
   borderRadius?: number;
   contentFit?: "cover" | "contain" | "fill" | "none" | "scale-down";
+  fadeDuration?: number;
 }
 
 export function ProgressiveImage({
@@ -23,6 +24,7 @@ export function ProgressiveImage({
   blurhash = SHIMMER_BLURHASH,
   borderRadius = radii.md,
   contentFit = "cover",
+  fadeDuration = 0,
 }: ProgressiveImageProps) {
   const resolvedSource =
     typeof source === "string" ? { uri: source } : (source ?? undefined);
@@ -34,7 +36,7 @@ export function ProgressiveImage({
         style={[{ width: "100%", height: "100%" }, style]}
         contentFit={contentFit}
         placeholder={{ blurhash }}
-        transition={300}
+        transition={fadeDuration}
         cachePolicy="memory-disk"
       />
     </View>
