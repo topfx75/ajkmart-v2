@@ -1,0 +1,235 @@
+Maps Management
+● ACTIVE
+Multi-provider map configuration, routing engine, fare settings, usage analytics & geocoding cache
+
+
+💡
+Recommended Setup for AJK / Pakistan
+For AJK & Pakistan: use LocationIQ (free tier, 5,000 requests/day, excellent Pakistan coverage) for map tiles, search & geocoding, and OSRM (open-source, free) for routing. This gives the best coverage at the lowest cost.
+
+🗺️ Map Tiles
+LocationIQ (Primary)
+Free · OSM-based · AJK coverage
+🔍 Search & Geocoding
+LocationIQ
+Free tier · Pakistan-friendly
+🛣️ Routing Engine
+OSRM (Open-Source)
+100% free · No API key needed
+Why not Google Maps? Google charges $5–$10 per 1,000 requests. For a regional AJK platform, LocationIQ's free 5,000 daily requests is more than enough to start — upgrade only when you exceed that.
+API Health Dashboard
+
+OpenStreetMap
+? Unknown
+Not yet tested
+
+● Primary
+
+Mapbox GL JS
+? Unknown
+Not yet tested
+
+Not active
+
+Google Maps
+? Unknown
+Not yet tested
+
+Not active
+
+LocationIQ
+? Unknown
+Not yet tested
+
+Not active
+
+
+
+
+Map Providers
+
+Register at locationiq.com → Dashboard → Access Tokens. Provides geocoding, autocomplete & map tiles. Free tier includes 5,000 requests/day.Setup Guide
+API Key / Access Token
+•••••••••••••••••••••••••••••••••••
+
+Provider Role
+
+● Primary
+◎ Secondary
+✦ Both
+○ Disabled
+Primary: default provider for all apps. Secondary: auto-failover target. Both: used by all apps with built-in failover.
+
+Search & Geocoding Provider
+
+This provider handles address search, autocomplete suggestions, and reverse geocoding across all apps.
+
+
+LocationIQ
+Free tier, Pakistan-friendly
+
+Google Maps
+Best accuracy, paid
+
+Nominatim (OSM)
+Free, no key needed
+Active Provider Assignment
+
+Primary Provider
+
+OpenStreetMap
+Secondary (Failover)
+
+OpenStreetMap
+Per-App Provider Override
+
+Override the map provider for specific apps. "Inherit Primary" uses the global primary provider.
+
+Customer App
+
+Inherit Primary
+Rider App
+
+Inherit Primary
+Vendor App
+
+Inherit Primary
+Admin Fleet Map
+
+Inherit Primary
+Routing Engine
+
+Used for fare calculation, ETA estimates, and turn-by-turn directions.
+
+
+Mapbox Directions
+
+Google Directions
+
+OSRM (Open-Source)
+Rate Settings for OSRM Engine
+
+Per KM Rate
+25
+Rs
+Base Fare
+50
+Rs
+Surge Mult
+1.5
+×
+Max Radius
+15
+km
+Fare & Rate Settings
+
+🏍️ Rides
+
+Per KM Rate
+25
+Rs
+Base Fare
+50
+Rs
+Surge Mult
+1.5
+×
+Max Radius
+30
+km
+📦 Delivery
+
+Per KM Rate
+20
+Rs
+Base Fare
+40
+Rs
+Surge Mult
+1.2
+×
+Max Radius
+15
+km
+🎁 Parcel
+
+Per KM Rate
+30
+Rs
+Base Fare
+60
+Rs
+Surge Mult
+1.3
+×
+Max Radius
+20
+km
+API Usage Dashboard
+
+Refresh
+OpenStreetMap
+
+$0.00
+
+Est. this month
+
+51 calls
+
+Mapbox
+
+$0.00
+
+Est. this month
+
+0 calls
+
+Google Maps
+
+$0.00
+
+Est. this month
+
+0 calls
+
+LocationIQ
+
+$0.00
+
+Est. this month
+
+0 calls
+
+Daily API Calls (last 30 days)
+
+04-10
+04-11
+04-12
+0
+9
+18
+27
+36
+OSMMapboxGoogleLocationIQ
+
+Geocoding Cache Configuration
+
+Server-side LRU cache for reverse-geocode results. Reduces redundant API calls on minor coordinate drift. Current cache size: 0 entries.
+
+Cache TTL (minutes)
+10
+min
+How long geocode results are cached. 0 = no cache.
+
+Max Cache Size (entries)
+200
+entries
+Maximum number of reverse-geocode results to keep in memory.
+
+Clear Cache Now
+Test Geocoding
+
+Geocode "Muzaffarabad, Azad Kashmir"
+✗ FAILED
+Test Geocoding
+Unexpected token '<', "<!DOCTYPE "... is not valid JSON
