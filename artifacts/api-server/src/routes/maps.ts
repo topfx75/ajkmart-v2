@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { popularLocationsTable, mapApiUsageLogTable, platformSettingsTable, serviceZonesTable } from "@workspace/db/schema";
-import { eq, asc, and, sql } from "drizzle-orm";
+import { eq, asc, and, sql, desc } from "drizzle-orm";
 import { getPlatformSettings, adminAuth } from "./admin.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
+import { generateId } from "../lib/id.js";
 
 const router: IRouter = Router();
 
@@ -1465,7 +1466,7 @@ router.get("/live-track", (req, res) => {
         setStatus('waiting', '${t.waiting}', '');
         return;
       }
-      setStatus('status-dot', '${t.onWay}', data.accuracy ? '±' + Math.round(data.accuracy) + 'm' : '');
+      setStatus('', '${t.onWay}', data.accuracy ? '±' + Math.round(data.accuracy) + 'm' : '');
       if (!riderMarker) {
         riderMarker = L.marker([lat, lng], { icon: riderIcon }).addTo(map);
         if (!hasFirstFix) {
@@ -1505,7 +1506,7 @@ router.get("/live-track", (req, res) => {
         } else {
           animateMarkerTo(riderMarker, msg.lat, msg.lng, 30);
         }
-        setStatus('status-dot', '${t.onWay}', '');
+        setStatus('', '${t.onWay}', '');
         try { window.dispatchEvent(new CustomEvent('riderUpdateForPolyline', { detail: { lat: msg.lat, lng: msg.lng } })); } catch {}
       }
     } catch {}
@@ -1667,11 +1668,19 @@ async function handleMapsTest(req: import("express").Request, res: import("expre
 
   const latencyMs = Date.now() - start;
 
-  /* Persist test result to platform_settings */
+  /* Persist test result to platform_settings — use upsert so the row is created
+     if it doesn't exist yet (UPDATE alone would silently no-op on missing keys) */
   const now = new Date().toISOString();
   try {
-    await db.update(platformSettingsTable).set({ value: now,                updatedAt: new Date() }).where(eq(platformSettingsTable.key, `map_last_tested_${provider}`));
-    await db.update(platformSettingsTable).set({ value: ok ? "ok" : "fail", updatedAt: new Date() }).where(eq(platformSettingsTable.key, `map_test_status_${provider}`));
+    const lastTestedKey  = `map_last_tested_${provider}`;
+    const testStatusKey  = `map_test_status_${provider}`;
+    const statusValue    = ok ? "ok" : "fail";
+    await db.insert(platformSettingsTable)
+      .values({ key: lastTestedKey, value: now, label: lastTestedKey, category: "maps", updatedAt: new Date() })
+      .onConflictDoUpdate({ target: platformSettingsTable.key, set: { value: now, updatedAt: new Date() } });
+    await db.insert(platformSettingsTable)
+      .values({ key: testStatusKey, value: statusValue, label: testStatusKey, category: "maps", updatedAt: new Date() })
+      .onConflictDoUpdate({ target: platformSettingsTable.key, set: { value: statusValue, updatedAt: new Date() } });
   } catch { /* ignore persistence errors */ }
 
   sendSuccess(res, { ok, latencyMs, provider, error, testedAt: now });
