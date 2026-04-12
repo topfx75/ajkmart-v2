@@ -1,0 +1,120 @@
+2026-04-12 11:33:55.56
+a413d098
+System
+forwarding local port 0 to external port 80 (mapped as 1104)
+2026-04-12 11:33:55.56
+a413d098
+System
+registered static handler for artifact publicDir=artifacts/rider-app/dist/public path=/rider/
+2026-04-12 11:33:55.56
+a413d098
+System
+waiting for runnable artifact ports ports=[20716 8080]
+2026-04-12 11:33:55.56
+a413d098
+System
+starting artifact processes count=2
+2026-04-12 11:33:55.56
+a413d098
+System
+starting artifact process args=[node --enable-source-maps artifacts/api-server/dist/index.mjs] port=8080 artifact=artifacts/api-server
+2026-04-12 11:33:55.56
+a413d098
+System
+starting artifact process artifact=artifacts/ajkmart args=[pnpm --filter @workspace/ajkmart run serve] port=20716
+2026-04-12 11:33:55.57
+a413d098
+System
+artifact process started artifact=artifacts/ajkmart pid=20
+2026-04-12 11:33:55.58
+a413d098
+System
+artifact process started artifact=artifacts/api-server pid=19
+2026-04-12 11:33:56.90
+a413d098
+User
+> node server/serve.js
+2026-04-12 11:33:56.90
+a413d098
+User
+> @workspace/ajkmart@0.0.0 serve /home/runner/workspace/artifacts/ajkmart
+2026-04-12 11:33:57.09
+a413d098
+System
+artifact port detected detected=1 expected=2 port=20716
+2026-04-12 11:33:57.09
+a413d098
+User
+Serving static Expo build on port 20716
+2026-04-12 11:33:59.30
+a413d098
+User
+{"level":30,"time":1775975639304,"pid":19,"hostname":"localhost","msg":"Socket.io initialized"}
+2026-04-12 11:33:59.38
+a413d098
+User
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+2026-04-12 11:34:00.96
+a413d098
+User
+{"level":30,"time":1775975640967,"pid":19,"hostname":"localhost","msg":"[migration] wallet normalizedTxId: migration complete"}
+2026-04-12 11:34:00.99
+a413d098
+User
+{"level":30,"time":1775975640990,"pid":19,"hostname":"localhost","msg":"[migration] twoFactorEnforcedAt: migration complete"}
+2026-04-12 11:34:01.05
+a413d098
+User
+{"level":30,"time":1775975641052,"pid":19,"hostname":"localhost","msg":"[migration] silenceMode: migration complete"}
+2026-04-12 11:34:01.10
+a413d098
+User
+{"level":30,"time":1775975641108,"pid":19,"hostname":"localhost","msg":"[migration] profileComplete: migration complete"}
+2026-04-12 11:34:01.17
+a413d098
+User
+{"level":30,"time":1775975641169,"pid":19,"hostname":"localhost","msg":"[migration] ordersItemsNullable: migration complete"}
+2026-04-12 11:34:01.18
+a413d098
+User
+{"level":30,"time":1775975641185,"pid":19,"hostname":"localhost","msg":"[migration] vendorAutoConfirm: migration complete"}
+2026-04-12 11:34:01.81
+a413d098
+User
+{"level":30,"time":1775975641811,"pid":19,"hostname":"localhost","msg":"[migration] locationHierarchy: seeded default cities"}
+2026-04-12 11:34:01.81
+a413d098
+System
+all artifact ports detected
+2026-04-12 11:34:01.81
+a413d098
+System
+artifact port detected port=8080 detected=2 expected=2
+2026-04-12 11:34:01.81
+a413d098
+System
+artifact processes running, waiting for signal or process exit
+2026-04-12 11:34:01.81
+a413d098
+User
+{"level":30,"time":1775975641814,"pid":19,"hostname":"localhost","msg":"[dispatch-engine] started (every 10s, watchdog every 30s)"}
+2026-04-12 11:34:01.81
+a413d098
+User
+{"level":30,"time":1775975641814,"pid":19,"hostname":"localhost","port":8080,"msg":"Server listening"}
+2026-04-12 11:34:01.91
+a413d098
+User
+{"level":30,"time":1775975641917,"pid":19,"hostname":"localhost","req":{"id":1,"method":"GET","url":"/api/healthz"},"res":{"statusCode":200},"responseTime":70,"msg":"request completed"}
+2026-04-12 11:35:01.09
+a413d098
+User
+[2026-04-12T06:35:01.098Z] [PID: 19] [NODE-CRON] [WARN] missed execution at Sun Apr 12 2026 06:35:00 GMT+0000 (Coordinated Universal Time)! Possible blocking IO or high CPU user at the same process used by node-cron.
+
+Collapse
+
+Wrap
+
+Colors
+
+Live
