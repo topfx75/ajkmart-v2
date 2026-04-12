@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#111827" />
+    <title>AJKMart Rider App — Driver Dashboard</title>
+    <meta name="description" content="AJKMart Rider Portal — manage deliveries, accept ride requests, track earnings, and stay connected with real-time GPS tracking." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/rider/manifest.json" />
+    <meta name="application-name" content="AJKMart Rider" />
+    <meta name="apple-mobile-web-app-title" content="AJKMart Rider" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      [dir="rtl"], .urdu-text {
+        font-family: 'Noto Nastaliq Urdu', serif;
+        line-height: 2.0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/rider/sw.js', { scope: '/rider/' }).catch(() => {});
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+Rider App & Admin Panel Hardening
+1. Dynamic Pricing Engine (Fix for Bug #15)
+Objective: Ride fares ko code se nikaal kar Admin Control mein dena.
+Developer Task: dashboard/helpers.ts se hardcoded objects khatam karein.
+Logic: App start hote waqt (ya Splash Screen par) GET /api/v1/config/pricing call karein jo Database se current rates (Base Fare, Per KM, Per Minute) fetch kare.
+Fallback: Agar API fail ho jaye, toh sirf tabhi local "Default" values use hon.
+2. Background GPS & Foreground Service (Fix for Bug #17) - Critical
+Objective: Rider ki location har waqt update hoti rahe, bhale hi app background mein ho.
+Technical Task: Capacitor/Cordova use kar rahe hain toh "Foreground Service" plugin implement karein.
+User Experience: Rider ko notification bar mein ek permanent message nazar aana chahiye: "Rider App is tracking your location for rides."
+Battery Optimization: Android/iOS par "Ignore Battery Optimization" ka prompt setup karein taake OS app ko kill na kare.
+3. Van Module Completion (Fix for Bug #16)
+Objective: Van service ko Bike/Car ke barabar feature-rich banana.
+Task: Rides module ke components (Earnings, Status Toggle, History) ko Van module ke liye reuse (Refactor) karein.
+UI Sync: Van Driver ka dashboard bhi "Live" hona chahiye jaise baaki categories ka hai.
+4. Admin Panel & KYC Transparency (Fix for Bugs #18, #19)
+Objective: Admin ko real data dikhana aur confusion khatam karna.
+KYC Viewer: Admin panel mein image thumbnails par click karne se Full-Screen Modal khulna chahiye (Zoom aur Rotate features ke saath) taake CNIC ya License sahi se check ho sake.
+Settings UI: Placeholders ko clean karein. Input fields ke neeche "Help Text" add karein (e.g., "Enter your Twilio API Key here").
+📋 Updated Developer Checklist (Add-on)
+Rider App: Pricing API integrate ho gayi hai? (Hardcoded fares removed).
+GPS: Kya background tracking 10-15 mins baad bhi kaam kar rahi hai? (Foreground Service check).
+Van Module: Kya Van driver apni earnings aur ride status dekh sakta hai?

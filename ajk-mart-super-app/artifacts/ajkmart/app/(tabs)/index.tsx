@@ -1,0 +1,1550 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { Link, router, type Href } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Animated,
+  Dimensions,
+  useWindowDimensions,
+  InteractionManager,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  FlatList,
+  Linking,
+} from "react-native";
+import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+import Colors, { spacing, radii, shadows, typography, getFontFamily } from "@/constants/colors";
+import { T as Typ, Font } from "@/constants/typography";
+import { SmartRefresh } from "@/components/ui/SmartRefresh";
+import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { usePlatformConfig } from "@/context/PlatformConfigContext";
+import { useToast } from "@/context/ToastContext";
+import { tDual } from "@workspace/i18n";
+import {
+  SERVICE_REGISTRY,
+  getActiveServices,
+  type ServiceDefinition,
+} from "@/constants/serviceRegistry";
+import {
+  SkeletonBlock,
+  EmptyState,
+} from "@/components/user-shared";
+import { WishlistHeart } from "@/components/WishlistHeart";
+import { ProgressiveImage } from "@/components/ui/ProgressiveImage";
+import { NotificationsModal } from "@/components/profile/NotificationsModal";
+import { LocationBrowserSheet } from "@/components/LocationBrowserSheet";
+import { useLocation, type LocationNode } from "@/context/LocationContext";
+import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
+
+import { unwrapApiResponse } from "@/utils/api";
+import { AjkLogo } from "@/components/ui/AjkLogo";
+import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
+const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+
+const C = Colors.light;
+const W = Dimensions.get("window").width;
+const H_PAD = spacing.lg;
+
+function safeNavigate(route: string, showToast?: (msg: string, type?: "success" | "error" | "info" | "warning") => void) {
+  if (!route) return;
+  if (!route.startsWith("/") && !route.startsWith("./") && !route.startsWith("../")) {
+    if (__DEV__) console.warn("[Home] safeNavigate: invalid route format:", route);
+    if (showToast) showToast("Page not found", "info");
+    return;
+  }
+  try {
+    router.push(route as Href);
+  } catch (err) {
+    if (__DEV__) console.warn("[Home] safeNavigate: route not found:", route, err);
+    if (showToast) showToast("Page not found", "info");
+    else router.push("/(tabs)" as Href);
+  }
+}
+
+const shortLabel: Record<string, string> = {
+  mart: "Mart", food: "Food", rides: "Ride", pharmacy: "Pharma", parcel: "Parcel",
+};
+
+const SERVICE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
+  mart: { label: "20 min", color: "#005C44", bg: "#99ECCC" },
+  food: { label: "30 min", color: "#7A5A00", bg: "#FFE6B3" },
+  rides: { label: "Instant", color: "#005C44", bg: "#99ECCC" },
+  pharmacy: { label: "25-40m", color: "#5A1D8C", bg: "#DDB8FF" },
+  parcel: { label: "Rs.150+", color: "#8C3300", bg: "#FFBFA3" },
+};
+
+const ServiceSection = React.memo(function ServiceSection({ services }: {
+  services: ServiceDefinition[];
+}) {
+  const { width: winW } = useWindowDimensions();
+  const effectiveW = Math.min(winW, Platform.OS === "web" ? 430 : winW);
+  const itemW = (effectiveW - H_PAD * 2) / Math.min(services.length, 5);
+
+  return (
+    <View style={sg.wrap}>
+      <Text style={sg.headerTitle}>Our Services</Text>
+      <View style={sg.grid}>
+        {services.map((svc) => {
+          const label = shortLabel[svc.key] ?? svc.label;
+          const href = String(svc.route) as Href;
+          const badge = SERVICE_BADGE[svc.key];
+          return (
+            <TouchableOpacity
+              key={svc.key}
+              activeOpacity={0.75}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                router.push(href);
+              }}
+              style={[sg.item, { width: itemW }]}
+              accessibilityRole="button"
+              accessibilityLabel={label}
+            >
+              <LinearGradient colors={svc.iconGradient} style={sg.circle}>
+                <Ionicons name={svc.iconFocused} size={30} color="#fff" />
+              </LinearGradient>
+              <Text style={sg.label} numberOfLines={1}>{label}</Text>
+              {badge && (
+                <View style={[sg.badge, { backgroundColor: badge.bg }]}>
+                  <Text style={[sg.badgeTxt, { color: badge.color }]}>{badge.label}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+});
+
+const sg = StyleSheet.create({
+  wrap: { paddingHorizontal: H_PAD, paddingTop: 14, paddingBottom: 6 },
+  headerTitle: { fontFamily: Font.bold, fontSize: 15, color: C.text, marginBottom: 12 },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", gap: 0 },
+  item: {
+    alignItems: "center", gap: 5,
+    paddingVertical: 10,
+  },
+  circle: {
+    width: 64, height: 64, borderRadius: 22,
+    alignItems: "center", justifyContent: "center",
+    ...shadows.lg,
+  },
+  label: { fontFamily: Font.semiBold, color: C.text, fontSize: 12, textAlign: "center" },
+  badge: {
+    borderRadius: 8,
+    paddingHorizontal: 5, paddingVertical: 2,
+    alignItems: "center",
+  },
+  badgeTxt: { fontFamily: Font.semiBold, fontSize: 9, lineHeight: 12 },
+});
+
+function GuestSignInStrip() {
+  const BENEFITS = [
+    { icon: "bicycle-outline" as const, text: "Fast Delivery" },
+    { icon: "shield-checkmark-outline" as const, text: "Secure Payments" },
+    { icon: "pricetag-outline" as const, text: "Exclusive Deals" },
+  ];
+  return (
+    <View style={gi.outerWrap}>
+      <LinearGradient
+        colors={["#003A99", "#0052CC", "#1A6FFF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={gi.card}
+      >
+        <View style={gi.topRow}>
+          <View style={gi.avatarCircle}>
+            <Ionicons name="person-outline" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={gi.title}>Welcome to AJKMart!</Text>
+            <Text style={gi.sub}>Sign in to unlock all features</Text>
+          </View>
+          <Link href={"/auth" as Href} asChild>
+            <TouchableOpacity activeOpacity={0.85} style={gi.signInBtn} accessibilityRole="button" accessibilityLabel="Sign in">
+              <Text style={gi.signInTxt}>Sign In</Text>
+              <Ionicons name="arrow-forward" size={13} color="#0052CC" />
+            </TouchableOpacity>
+          </Link>
+        </View>
+        <View style={gi.divider} />
+        <View style={gi.benefitsRow}>
+          {BENEFITS.map((b) => (
+            <View key={b.text} style={gi.benefitItem}>
+              <View style={gi.benefitIcon}>
+                <Ionicons name={b.icon} size={14} color="#FFD700" />
+              </View>
+              <Text style={gi.benefitTxt}>{b.text}</Text>
+            </View>
+          ))}
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
+const gi = StyleSheet.create({
+  outerWrap: { marginHorizontal: H_PAD, marginTop: 10, borderRadius: 18, overflow: "hidden", ...shadows.md },
+  card: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 18 },
+  topRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatarCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+  title: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
+  sub: { fontFamily: Font.regular, fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 2 },
+  signInBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#fff", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  signInTxt: { fontFamily: Font.bold, fontSize: 12, color: "#0052CC" },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 12 },
+  benefitsRow: { flexDirection: "row", justifyContent: "space-around" },
+  benefitItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  benefitIcon: { width: 24, height: 24, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" },
+  benefitTxt: { fontFamily: Font.medium, fontSize: 11, color: "rgba(255,255,255,0.9)" },
+});
+
+function UserGreetingRow({ user }: { user: { name?: string | null; username?: string | null; wallet_balance?: string | null } }) {
+  const greeting = React.useMemo(() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 17) return "Good afternoon";
+    return "Good evening";
+  }, []);
+  const displayName = user.name?.split(" ")[0] || user.username || "there";
+  const balance = parseFloat(user.wallet_balance || "0");
+
+  return (
+    <View style={ug.wrap}>
+      <View style={{ flex: 1 }}>
+        <Text style={ug.greet}>{greeting}, <Text style={ug.name}>{displayName}!</Text></Text>
+        <Text style={ug.sub}>What would you like today?</Text>
+      </View>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => router.push("/(tabs)/wallet" as Href)}
+        style={ug.walletChip}
+        accessibilityRole="button"
+        accessibilityLabel={`Wallet balance Rs. ${Math.round(balance)}`}
+      >
+        <Ionicons name="wallet-outline" size={14} color={C.primary} />
+        <Text style={ug.walletTxt}>Rs. {Math.round(balance).toLocaleString()}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const ug = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", marginHorizontal: H_PAD, marginTop: 14, marginBottom: 4 },
+  greet: { fontFamily: Font.regular, fontSize: 14, color: C.textSecondary },
+  name: { fontFamily: Font.bold, fontSize: 14, color: C.text },
+  sub: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted, marginTop: 1 },
+  walletChip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.primarySoft, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: C.blueLightBorder },
+  walletTxt: { fontFamily: Font.bold, fontSize: 12, color: C.primary },
+});
+
+const ActiveTrackerStrip = React.memo(function ActiveTrackerStrip({ userId, tabBarHeight = 0 }: { userId: string; tabBarHeight?: number }) {
+  const { token } = useAuth();
+  const { config: pCfg } = usePlatformConfig();
+  const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const { data: ordersData, isLoading: ordersLoading, isError: ordersError } = useQuery({
+    queryKey: ["home-active-orders", userId],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/orders?status=active`, { headers: authHdrs });
+      if (!r.ok) throw new Error("orders fetch failed");
+      return r.json().then(unwrapApiResponse);
+    },
+    enabled: !!userId && !!token,
+    refetchInterval: 30000,
+    staleTime: 25000,
+  });
+
+  const { data: ridesData, isLoading: ridesLoading, isError: ridesError } = useQuery({
+    queryKey: ["home-active-rides", userId],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/rides?status=active`, { headers: authHdrs });
+      if (!r.ok) throw new Error("rides fetch failed");
+      return r.json().then(unwrapApiResponse);
+    },
+    enabled: !!userId && !!token,
+    refetchInterval: 30000,
+    staleTime: 25000,
+  });
+
+  if (!pCfg.content.trackerBannerEnabled) return null;
+  if (ordersLoading || ridesLoading) return null;
+  if (ordersError || ridesError) return null;
+
+  const activeOrders = (Array.isArray(ordersData) ? ordersData : (ordersData?.orders ?? [])).filter((o: any) => !["delivered", "cancelled"].includes(o.status));
+  const activeRides = (Array.isArray(ridesData) ? ridesData : (ridesData?.rides ?? [])).filter((r: any) => !["completed", "cancelled"].includes(r.status));
+  const total = activeOrders.length + activeRides.length;
+  if (total === 0) return null;
+
+  const items: { label: string; sublabel: string; route: string; c1: string; c2: string; icon: keyof typeof Ionicons.glyphMap }[] = [];
+  if (activeOrders.length > 0) {
+    items.push({
+      label: `${activeOrders.length} Active Order${activeOrders.length > 1 ? "s" : ""}`,
+      sublabel: "Tap to track",
+      route: activeOrders[0]?.id ? `/orders/${activeOrders[0].id}` : "/(tabs)/orders",
+      c1: "#F59E0B", c2: "#D97706",
+      icon: "bag-outline",
+    });
+  }
+  if (activeRides.length > 0) {
+    items.push({
+      label: `${activeRides.length} Active Ride${activeRides.length > 1 ? "s" : ""}`,
+      sublabel: "Tap to track",
+      route: activeRides[0]?.id ? `/ride?rideId=${activeRides[0].id}` : "/(tabs)/orders",
+      c1: "#10B981", c2: "#059669",
+      icon: "car-outline",
+    });
+  }
+
+  return (
+    <View style={tr.wrap}>
+      {items.map((item, i) => (
+        <TouchableOpacity activeOpacity={0.7} key={i} onPress={() => router.push(item.route as Href)} accessibilityRole="button" accessibilityLabel={`${item.label}. Tap to track`}>
+          <LinearGradient colors={[item.c1, item.c2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={tr.card}>
+            <View style={tr.iconWrap}>
+              <Ionicons name={item.icon} size={18} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={tr.label}>{item.label}</Text>
+              <Text style={tr.sub}>{item.sublabel}</Text>
+            </View>
+            <View style={tr.ctaWrap}>
+              <Text style={tr.ctaTxt}>Track</Text>
+              <Ionicons name="arrow-forward" size={12} color={item.c1} />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+});
+
+const tr = StyleSheet.create({
+  wrap: { marginHorizontal: H_PAD, marginTop: 10, gap: 8 },
+  card: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14 },
+  iconWrap: { width: 36, height: 36, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  label: { fontFamily: Font.bold, fontSize: 14, color: "#fff" },
+  sub: { fontFamily: Font.regular, fontSize: 11, color: "rgba(255,255,255,0.8)", marginTop: 1 },
+  ctaWrap: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  ctaTxt: { fontFamily: Font.semiBold, fontSize: 12, color: "#000" },
+});
+
+
+const DynamicBannerCarousel = React.memo(function DynamicBannerCarousel() {
+  const { data: banners, isLoading: bannersLoading, isError: bannersError, refetch: refetchBanners } = useQuery({
+    queryKey: ["dynamic-banners", "home"],
+    queryFn: () => getBanners({ placement: "home" }),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+  const flatListRef = useRef<FlatList>(null);
+  const [active, setActive] = useState(0);
+  const { width: windowWidth } = useWindowDimensions();
+  const BANNER_W = windowWidth - H_PAD * 2;
+  const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { showToast } = useToast();
+
+  const items = banners ?? [];
+
+  const startAutoScroll = useCallback((len: number) => {
+    if (autoScrollTimer.current) { clearInterval(autoScrollTimer.current); autoScrollTimer.current = null; }
+    if (len <= 1) return;
+    autoScrollTimer.current = setInterval(() => {
+      setActive(prev => {
+        const next = (prev + 1) % len;
+        try { flatListRef.current?.scrollToIndex({ index: next, animated: true }); } catch {}
+        return next;
+      });
+    }, 4000);
+  }, []);
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollTimer.current) { clearInterval(autoScrollTimer.current); autoScrollTimer.current = null; }
+  }, []);
+
+  useEffect(() => {
+    startAutoScroll(items.length);
+    return () => stopAutoScroll();
+  }, [items.length, startAutoScroll, stopAutoScroll]);
+
+  const bannerThrottleRef = useRef<number | null>(null);
+
+  const getBannerCtaText = (b: Banner): string => {
+    if (b.linkType === "service" && b.linkValue) {
+      const svc = SERVICE_REGISTRY[b.linkValue as keyof typeof SERVICE_REGISTRY];
+      return svc?.heroConfig?.cta ?? "Book Now";
+    }
+    if (b.linkType === "url") return "Learn More";
+    if (b.linkType === "route") return "View Details";
+    return "Shop Now";
+  };
+
+  const handleBannerPress = (b: Banner) => {
+    const now = Date.now();
+    if (bannerThrottleRef.current !== null && now - bannerThrottleRef.current < 300) {
+      return;
+    }
+    bannerThrottleRef.current = now;
+
+    if (b.linkType === "product") {
+      if (b.linkValue) {
+        router.push({ pathname: "/product/[id]", params: { id: b.linkValue } } as Href);
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else if (b.linkType === "category") {
+      if (b.linkValue) {
+        router.push({ pathname: "/search", params: { category: b.linkValue } } as Href);
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else if (b.linkType === "service") {
+      if (b.linkValue) {
+        const svc = Object.values(SERVICE_REGISTRY).find((s) => s.key === b.linkValue);
+        if (svc) safeNavigate(String(svc.route), showToast);
+        else showToast("This link isn't available", "info");
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else if (b.linkType === "route") {
+      if (b.linkValue) {
+        safeNavigate(b.linkValue, showToast);
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else if (b.linkType === "url") {
+      if (b.linkValue) {
+        /* Only https:// URLs are opened externally. All other schemes are discarded. */
+        if (b.linkValue.startsWith("https://")) {
+          Linking.openURL(b.linkValue);
+        } else if (b.linkValue.startsWith("/") || b.linkValue.startsWith("/(")) {
+          router.push(b.linkValue as Href);
+        } else {
+          showToast("This link isn't available", "info");
+        }
+      } else {
+        showToast("This link isn't available", "info");
+      }
+    } else {
+      showToast("This link isn't supported", "info");
+    }
+  };
+
+  const bannerGetItemLayout = useCallback((_data: ArrayLike<Banner> | null | undefined, index: number) => ({
+    length: BANNER_W,
+    offset: BANNER_W * index,
+    index,
+  }), [BANNER_W]);
+
+  const renderBannerItem = useCallback(({ item: b }: { item: Banner }) => (
+    <TouchableOpacity activeOpacity={0.7}
+      onPress={() => handleBannerPress(b)}
+      style={{ width: BANNER_W }}
+    >
+      {b.imageUrl ? (
+        <View style={ban.card}>
+          <ProgressiveImage source={b.imageUrl} style={ban.bgImage} containerStyle={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} borderRadius={0} />
+          <LinearGradient
+            colors={[`${b.gradient1 || C.primary}cc`, `${b.gradient2 || C.primaryDark}bb`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={ban.overlay}
+          />
+          <View style={ban.contentWrap}>
+            <View style={{ flex: 1 }}>
+              <Text style={ban.title}>{b.title}</Text>
+              {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
+              <View style={ban.cta}>
+                <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
+                <Ionicons name="arrow-forward" size={13} color="#fff" />
+              </View>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <LinearGradient
+          colors={[b.gradient1 || C.primary, b.gradient2 || C.primaryDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={ban.card}
+        >
+          <View style={[ban.blob, { width: 130, height: 130, top: -30, right: 60 }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={ban.title}>{b.title}</Text>
+            {b.subtitle ? <Text style={ban.desc}>{b.subtitle}</Text> : null}
+            <View style={ban.cta}>
+              <Text style={ban.ctaTxt}>{getBannerCtaText(b)}</Text>
+              <Ionicons name="arrow-forward" size={13} color="#fff" />
+            </View>
+          </View>
+          <View style={ban.iconWrap}>
+            <Ionicons name={(b.icon as any) || "pricetag"} size={48} color="rgba(255,255,255,0.15)" />
+          </View>
+        </LinearGradient>
+      )}
+    </TouchableOpacity>
+  ), [BANNER_W, getBannerCtaText, handleBannerPress]);
+
+  if (bannersLoading && !banners) {
+    return (
+      <View style={{ marginTop: 16 }}>
+        <View style={ban.headerRow}>
+          <Text style={ban.headerTitle}>Featured</Text>
+          <Text style={ban.headerSub}>Promotions & offers</Text>
+        </View>
+        <View style={{ paddingHorizontal: H_PAD }}>
+          <SkeletonBlock w="100%" h={140} r={16} />
+        </View>
+      </View>
+    );
+  }
+
+  if (bannersError) {
+    return (
+      <View style={{ marginTop: 16 }}>
+        <View style={ban.headerRow}>
+          <Text style={ban.headerTitle}>Featured</Text>
+          <Text style={ban.headerSub}>Promotions & offers</Text>
+        </View>
+        <View style={{ paddingHorizontal: H_PAD }}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => refetchBanners()} style={ban.errorCard}>
+            <Ionicons name="refresh-outline" size={18} color={C.textMuted} />
+            <Text style={ban.errorTxt}>Couldn't load banners. Tap to retry.</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <View style={{ marginTop: 16 }}>
+      <View style={ban.headerRow}>
+        <Text style={ban.headerTitle}>Featured</Text>
+        <Text style={ban.headerSub}>Promotions & offers</Text>
+      </View>
+      <View style={{ paddingHorizontal: H_PAD }}>
+        <FlatList
+          ref={flatListRef}
+          data={items}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={BANNER_W}
+          snapToAlignment="start"
+          style={{ width: BANNER_W }}
+          keyExtractor={(item) => item.id}
+          renderItem={renderBannerItem}
+          getItemLayout={bannerGetItemLayout}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          windowSize={3}
+          removeClippedSubviews
+          onScrollBeginDrag={stopAutoScroll}
+          onScrollEndDrag={() => startAutoScroll(items.length)}
+          onScroll={(e) => setActive(Math.round(e.nativeEvent.contentOffset.x / BANNER_W))}
+          scrollEventThrottle={16}
+        />
+        {items.length > 1 && (
+          <View style={ban.dotsRow}>
+            {items.map((_, i) => (
+              <View key={i} style={[ban.dot, { width: active === i ? 24 : 6, backgroundColor: active === i ? C.primary : C.border }]} />
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+});
+
+const ban = StyleSheet.create({
+  headerRow: { flexDirection: "row", alignItems: "baseline", gap: 8, paddingHorizontal: H_PAD, marginBottom: 10 },
+  headerTitle: { fontFamily: Font.bold, fontSize: 16, color: C.text },
+  headerSub: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
+  card: { borderRadius: 16, minHeight: 140, overflow: "hidden", position: "relative" as const },
+  bgImage: { position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", borderRadius: 16 },
+  overlay: { position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16 },
+  contentWrap: { flexDirection: "row" as const, alignItems: "center" as const, padding: 18, zIndex: 2 },
+  blob: { position: "absolute" as const, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.1)" },
+  title: { fontFamily: Font.bold, fontSize: 17, color: "#fff", marginBottom: 4, ...Platform.select({ native: { textShadowColor: "rgba(0,0,0,0.3)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }, web: { textShadow: "0px 1px 3px rgba(0,0,0,0.3)" } as any }) },
+  desc: { fontFamily: Font.regular, fontSize: 12, color: "rgba(255,255,255,0.9)", lineHeight: 17, marginBottom: 10, ...Platform.select({ native: { textShadowColor: "rgba(0,0,0,0.2)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }, web: { textShadow: "0px 1px 2px rgba(0,0,0,0.2)" } as any }) },
+  cta: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, backgroundColor: "rgba(255,255,255,0.25)", alignSelf: "flex-start" as const, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
+  ctaTxt: { fontFamily: Font.semiBold, fontSize: 12, color: "#fff" },
+  iconWrap: { marginLeft: 10 },
+  dotsRow: { flexDirection: "row" as const, justifyContent: "center" as const, gap: 6, marginTop: 10 },
+  dot: { height: 5, borderRadius: 3 },
+  errorCard: { height: 80, borderRadius: 16, backgroundColor: C.surfaceSecondary, borderWidth: 1, borderColor: C.borderLight, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  errorTxt: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
+});
+
+function FlashCountdownTimer({ targetTime }: { targetTime: Date }) {
+  const [timeLeft, setTimeLeft] = React.useState({ d: 0, h: 0, m: 0, s: 0 });
+
+  React.useEffect(() => {
+    const update = () => {
+      const diff = Math.max(0, targetTime.getTime() - Date.now());
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft({ d, h, m, s });
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [targetTime]);
+
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const totalHours = timeLeft.d * 24 + timeLeft.h;
+  const isUrgent = totalHours < 2;
+
+  const boxBg = isUrgent ? "#DC2626" : "#1F2937";
+
+  return (
+    <View style={fct.wrap}>
+      {timeLeft.d > 0 && (
+        <>
+          <View style={[fct.box, { backgroundColor: boxBg }]}>
+            <Text style={fct.digit}>{pad(timeLeft.d)}</Text>
+            <Text style={fct.unit}>DAY</Text>
+          </View>
+          <Text style={[fct.sep, isUrgent && { color: "#DC2626" }]}>:</Text>
+        </>
+      )}
+      <View style={[fct.box, { backgroundColor: boxBg }]}>
+        <Text style={fct.digit}>{pad(timeLeft.h)}</Text>
+        <Text style={fct.unit}>HR</Text>
+      </View>
+      <Text style={[fct.sep, isUrgent && { color: "#DC2626" }]}>:</Text>
+      <View style={[fct.box, { backgroundColor: boxBg }]}>
+        <Text style={fct.digit}>{pad(timeLeft.m)}</Text>
+        <Text style={fct.unit}>MIN</Text>
+      </View>
+      <Text style={[fct.sep, isUrgent && { color: "#DC2626" }]}>:</Text>
+      <View style={[fct.box, { backgroundColor: boxBg }]}>
+        <Text style={fct.digit}>{pad(timeLeft.s)}</Text>
+        <Text style={fct.unit}>SEC</Text>
+      </View>
+    </View>
+  );
+}
+
+const fct = StyleSheet.create({
+  wrap: { flexDirection: "row", alignItems: "center", gap: 3 },
+  box: { borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, alignItems: "center", minWidth: 28 },
+  digit: { fontFamily: Font.bold, fontSize: 12, color: "#fff", lineHeight: 16 },
+  unit: { fontFamily: Font.bold, fontSize: 6, color: "rgba(255,255,255,0.7)", letterSpacing: 0.5 },
+  sep: { fontFamily: Font.bold, fontSize: 12, color: "#1F2937", marginTop: -4 },
+});
+
+const FlashDealsSection = React.memo(function FlashDealsSection({ T }: { T: (key: Parameters<typeof tDual>[0]) => string }) {
+  const { data: deals, isLoading, isError, refetch } = useQuery({
+    queryKey: ["flash-deals"],
+    queryFn: () => getFlashDeals({ limit: 10 }),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+
+  const items = deals ?? [];
+  const earliestExpiry = useMemo(() => {
+    if (items.length === 0) return null;
+    const times = items.map(d => new Date(d.dealExpiresAt).getTime()).filter(t => !isNaN(t));
+    if (times.length === 0) return null;
+    return new Date(Math.min(...times));
+  }, [items]);
+
+  if (isLoading && !deals) {
+    return (
+      <View style={fd.section}>
+        <LinearGradient colors={["#FF4444", "#FF6B35"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={fd.headerGrad}>
+          <View style={fd.headerInner}>
+            <Ionicons name="flash" size={16} color="#FFD700" />
+            <Text style={fd.headerTitle}>{T("todaysDeals")}</Text>
+          </View>
+        </LinearGradient>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={fd.row}>
+          {[0,1,2,3].map(i => (
+            <View key={i} style={fd.card}>
+              <SkeletonBlock w={100} h={100} r={8} />
+              <SkeletonBlock w={80} h={12} r={4} />
+              <SkeletonBlock w={60} h={14} r={4} />
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={fd.section}>
+        <LinearGradient colors={["#FF4444", "#FF6B35"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={fd.headerGrad}>
+          <View style={fd.headerInner}>
+            <Ionicons name="flash" size={16} color="#FFD700" />
+            <Text style={fd.headerTitle}>{T("todaysDeals")}</Text>
+          </View>
+        </LinearGradient>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={fd.errorRow} accessibilityRole="button" accessibilityLabel="Retry flash deals">
+          <Ionicons name="refresh-outline" size={16} color={C.textMuted} />
+          <Text style={fd.errorTxt}>Couldn't load deals. Tap to retry.</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <View style={fd.section}>
+      <LinearGradient colors={["#FF4444", "#FF6B35"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={fd.headerGrad}>
+        <View style={fd.headerInner}>
+          <Ionicons name="flash" size={16} color="#FFD700" />
+          <Text style={fd.headerTitle}>{T("todaysDeals")}</Text>
+          <Ionicons name="flash" size={12} color="#FFD700" style={{ opacity: 0.6 }} />
+        </View>
+        {earliestExpiry !== null && (
+          <View style={fd.timerWrap}>
+            <Text style={fd.endsLabel}>Ends in</Text>
+            <FlashCountdownTimer targetTime={earliestExpiry} />
+          </View>
+        )}
+      </LinearGradient>
+      <FlatList
+        horizontal
+        data={items}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={fd.row}
+        keyExtractor={(item) => item.id}
+        removeClippedSubviews
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        renderItem={({ item }) => {
+          const soldPct = item.dealStock && item.dealStock > 0
+            ? Math.min(Math.round((item.soldCount / item.dealStock) * 100), 99)
+            : 0;
+          return (
+            <TouchableOpacity activeOpacity={0.7}
+              onPress={() => router.push({ pathname: "/product/[id]", params: { id: item.id } })}
+              style={fd.card}
+              accessibilityLabel={`${item.name} ${item.discountPercent}% OFF`}
+            >
+              <View style={fd.discBadgeCorner}>
+                <Text style={fd.discBadgeText}>{item.discountPercent}%</Text>
+                <Text style={fd.discBadgeOff}>OFF</Text>
+              </View>
+              <View style={fd.imgWrap}>
+                {item.image ? (
+                  <ProgressiveImage source={item.image} containerStyle={{ width: 140, height: 110 }} style={{ width: 140, height: 110 }} borderRadius={0} />
+                ) : (
+                  <View style={[fd.productImg, { backgroundColor: "#FFF5F5", alignItems: "center", justifyContent: "center" }]}>
+                    <Ionicons name="flash" size={28} color="#FF4444" />
+                  </View>
+                )}
+              </View>
+              <View style={fd.cardInfo}>
+                <Text style={fd.name} numberOfLines={2}>{item.name}</Text>
+                <View style={fd.priceRow}>
+                  <Text style={fd.dealPrice}>Rs.{Math.round(item.price).toLocaleString()}</Text>
+                  {item.originalPrice > item.price && (
+                    <Text style={fd.origPrice}>Rs.{Math.round(item.originalPrice).toLocaleString()}</Text>
+                  )}
+                </View>
+                {soldPct > 0 && (
+                <View style={fd.progressWrap}>
+                  <View style={fd.progressBg}>
+                    <LinearGradient
+                      colors={soldPct >= 70 ? ["#FF4444", "#FF6B35"] : ["#FF8C00", "#FFB347"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[fd.progressFill, { width: `${soldPct}%` }]}
+                    />
+                    <Text style={fd.progressText}>
+                      {soldPct >= 70 ? "Almost Gone!" : `${soldPct}% claimed`}
+                    </Text>
+                  </View>
+                </View>
+                )}
+                <WishlistHeart productId={item.id} size={14} style={{ position: "absolute", top: 4, right: 4, zIndex: 10 }} />
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
+    </View>
+  );
+});
+
+const fd = StyleSheet.create({
+  section: { marginHorizontal: H_PAD, marginTop: 16, backgroundColor: C.surface, borderRadius: 16, overflow: "hidden", ...shadows.sm },
+  headerGrad: { paddingHorizontal: 14, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerInner: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerTitle: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
+  timerWrap: { flexDirection: "row", alignItems: "center", gap: 6 },
+  endsLabel: { fontFamily: Font.medium, fontSize: 10, color: "rgba(255,255,255,0.8)" },
+  row: { gap: 8, paddingHorizontal: 10, paddingVertical: 12 },
+  card: { width: 140, backgroundColor: C.background, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: C.borderLight, position: "relative" as const, ...shadows.sm },
+  discBadgeCorner: { position: "absolute" as const, top: 4, left: 4, zIndex: 5, backgroundColor: "#FF4444", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, alignItems: "center" },
+  discBadgeText: { fontFamily: Font.bold, fontSize: 11, color: "#fff", lineHeight: 14 },
+  discBadgeOff: { fontFamily: Font.bold, fontSize: 7, color: "rgba(255,255,255,0.85)", letterSpacing: 0.5 },
+  imgWrap: { width: 140, height: 110, backgroundColor: "#FAFAFA" },
+  productImg: { width: 140, height: 110 },
+  cardInfo: { padding: 8, gap: 4 },
+  name: { fontFamily: Font.medium, fontSize: 11, color: C.text, lineHeight: 15 },
+  priceRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  dealPrice: { fontFamily: Font.bold, fontSize: 13, color: "#FF4444" },
+  origPrice: { fontFamily: Font.regular, fontSize: 10, color: C.textMuted, textDecorationLine: "line-through" },
+  progressWrap: { marginTop: 2 },
+  progressBg: { height: 14, backgroundColor: "#FFE4E1", borderRadius: 7, overflow: "hidden", position: "relative" as const, justifyContent: "center" },
+  progressFill: { position: "absolute" as const, left: 0, top: 0, bottom: 0, borderRadius: 7 },
+  progressText: { fontFamily: Font.bold, fontSize: 8, color: "#fff", textAlign: "center", zIndex: 1 },
+  errorRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 20 },
+  errorTxt: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
+});
+
+const TrendingSection = React.memo(function TrendingSection() {
+  const { data: trending, isError, refetch } = useQuery({
+    queryKey: ["trending-products"],
+    queryFn: () => getTrending({ limit: 8 }),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+
+  const items = trending ?? [];
+
+  if (isError) {
+    return (
+      <View style={{ marginTop: 16 }}>
+        <View style={tr2.headerRow}>
+          <Text style={tr2.title}>Trending Now</Text>
+          <Text style={tr2.sub}>Popular products</Text>
+        </View>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => refetch()} style={tr2.errorRow} accessibilityRole="button" accessibilityLabel="Retry trending">
+          <Ionicons name="refresh-outline" size={16} color={C.textMuted} />
+          <Text style={tr2.errorTxt}>Couldn't load trending. Tap to retry.</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <View style={{ marginTop: 16 }}>
+      <View style={tr2.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={tr2.title}>Trending Now 🔥</Text>
+          <Text style={tr2.sub}>Most popular in your area</Text>
+        </View>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => router.push("/mart" as Href)} style={tr2.seeAllBtn} accessibilityRole="button" accessibilityLabel="See all products">
+          <Text style={tr2.seeAllTxt}>See All</Text>
+          <Ionicons name="chevron-forward" size={12} color={C.primary} />
+        </TouchableOpacity>
+      </View>
+      <FlatList
+        horizontal
+        data={items}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: H_PAD, gap: 12 }}
+        keyExtractor={(item) => item.id}
+        removeClippedSubviews
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        renderItem={({ item }) => (
+          <TouchableOpacity activeOpacity={0.7}
+            onPress={() => router.push(`/product/${item.id}` as Href)}
+            style={tr2.card}
+          >
+            <View style={{ position: "relative" }}>
+              {item.image ? (
+                <ProgressiveImage source={item.image} style={tr2.img} containerStyle={tr2.img} borderRadius={12} />
+              ) : (
+                <View style={[tr2.img, { backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center" }]}>
+                  <Ionicons name="cube-outline" size={28} color={C.textMuted} />
+                </View>
+              )}
+              <WishlistHeart productId={item.id} size={14} style={{ position: "absolute", top: 6, right: 6 }} />
+              {item.rating && Number(item.rating) >= 4 && (
+                <View style={tr2.topBadge}>
+                  <Ionicons name="star" size={9} color="#FFD700" />
+                  <Text style={tr2.topBadgeTxt}>{Number(item.rating).toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
+            <View style={tr2.info}>
+              <Text style={tr2.name} numberOfLines={2}>{item.name}</Text>
+              <Text style={tr2.price}>Rs. {Number(item.price).toLocaleString()}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      />
+    </View>
+  );
+});
+
+const tr2 = StyleSheet.create({
+  headerRow: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: H_PAD, marginBottom: 12 },
+  title: { fontFamily: Font.bold, fontSize: 17, color: C.text },
+  sub: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted, marginTop: 2 },
+  seeAllBtn: { flexDirection: "row", alignItems: "center", gap: 3, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: C.primarySoft, borderRadius: 12 },
+  seeAllTxt: { fontFamily: Font.semiBold, fontSize: 12, color: C.primary },
+  card: { width: 145, backgroundColor: C.surface, borderRadius: 16, overflow: "hidden", ...shadows.sm },
+  img: { width: 145, height: 110 },
+  topBadge: { position: "absolute", bottom: 6, left: 6, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
+  topBadgeTxt: { fontFamily: Font.bold, fontSize: 10, color: "#fff" },
+  info: { padding: 10, gap: 4 },
+  name: { fontFamily: Font.medium, fontSize: 12, color: C.text, lineHeight: 16 },
+  price: { fontFamily: Font.bold, fontSize: 13, color: C.primary },
+  errorRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: H_PAD, paddingVertical: 12 },
+  errorTxt: { fontFamily: Font.regular, fontSize: 12, color: C.textMuted },
+});
+
+const WMO_ICONS: Record<number, { icon: string; label: string }> = {
+  0: { icon: "sunny-outline", label: "Clear" },
+  1: { icon: "partly-sunny-outline", label: "Mostly Clear" },
+  2: { icon: "partly-sunny-outline", label: "Partly Cloudy" },
+  3: { icon: "cloudy-outline", label: "Overcast" },
+  45: { icon: "cloud-outline", label: "Foggy" },
+  48: { icon: "cloud-outline", label: "Icy Fog" },
+  51: { icon: "rainy-outline", label: "Light Drizzle" },
+  53: { icon: "rainy-outline", label: "Drizzle" },
+  55: { icon: "rainy-outline", label: "Heavy Drizzle" },
+  61: { icon: "rainy-outline", label: "Light Rain" },
+  63: { icon: "rainy-outline", label: "Rain" },
+  65: { icon: "rainy-outline", label: "Heavy Rain" },
+  71: { icon: "snow-outline", label: "Light Snow" },
+  73: { icon: "snow-outline", label: "Snow" },
+  75: { icon: "snow-outline", label: "Heavy Snow" },
+  80: { icon: "rainy-outline", label: "Showers" },
+  81: { icon: "rainy-outline", label: "Moderate Showers" },
+  82: { icon: "thunderstorm-outline", label: "Heavy Showers" },
+  95: { icon: "thunderstorm-outline", label: "Thunderstorm" },
+  96: { icon: "thunderstorm-outline", label: "Thunderstorm + Hail" },
+  99: { icon: "thunderstorm-outline", label: "Severe Thunderstorm" },
+};
+
+const WEATHER_CACHE_TTL = 30 * 60_000;
+const SAVED_CITY_KEY = "weather_manual_city";
+
+interface WeatherWidgetProps { userLat?: number; userLng?: number; cityLabel?: string }
+const WeatherWidget = React.memo(function WeatherWidget({ userLat, userLng, cityLabel }: WeatherWidgetProps) {
+  const [weather, setWeather] = useState<{ temp: number; code: number; windSpeed: number; humidity: number; feelsLike?: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [deferred, setDeferred] = useState(false);
+  const [locationLabel, setLocationLabel] = useState(cityLabel || "");
+  const [isGps, setIsGps] = useState(false);
+  const [geocodingUnavailable, setGeocodingUnavailable] = useState(false);
+
+  useEffect(() => {
+    const deferTimer = setTimeout(() => setDeferred(true), 2000);
+    return () => clearTimeout(deferTimer);
+  }, []);
+
+  useEffect(() => {
+    if (!deferred) return;
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+    setLoading(true);
+    setGeocodingUnavailable(false);
+    (async () => {
+      try {
+        let lat: number | undefined;
+        let lng: number | undefined;
+        let locName = cityLabel || "";
+        let gps = false;
+
+        try {
+          const { status } = await (await import("expo-location")).requestForegroundPermissionsAsync();
+          if (status === "granted") {
+            const loc = await (await import("expo-location")).getCurrentPositionAsync({ accuracy: 3 });
+            lat = Math.round(loc.coords.latitude * 10) / 10;
+            lng = Math.round(loc.coords.longitude * 10) / 10;
+            gps = true;
+            try {
+              const rev = await (await import("expo-location")).reverseGeocodeAsync({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+              if (rev.length > 0) {
+                locName = [rev[0].city || rev[0].subregion, rev[0].region].filter(Boolean).join(", ") || locName;
+              }
+            } catch (geoErr: unknown) {
+              if (!locName) locName = "Current Location";
+              if (isGeocodingUnsupportedOnWeb(geoErr)) {
+                if (!cancelled) setGeocodingUnavailable(true);
+              } else if (__DEV__) {
+                console.warn("[WeatherWidget] Geocoding failed:", geoErr instanceof Error ? geoErr.message : String(geoErr));
+              }
+            }
+          }
+        } catch {}
+
+        if (lat == null || lng == null) {
+          const saved = await AsyncStorage.getItem(SAVED_CITY_KEY).catch(() => null);
+          if (saved) {
+            try {
+              const p = JSON.parse(saved);
+              lat = p.lat; lng = p.lng; locName = p.name || locName;
+            } catch {}
+          }
+        }
+
+        if (lat == null || lng == null) {
+          if (userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng)) {
+            lat = Math.round(userLat * 10) / 10;
+            lng = Math.round(userLng * 10) / 10;
+          } else {
+            if (!cancelled) setLoading(false);
+            return;
+          }
+        }
+
+        if (!cancelled) { setLocationLabel(locName); setIsGps(gps); }
+
+        const cacheKey = `weather_cache_${lat}_${lng}`;
+        const cached = await AsyncStorage.getItem(cacheKey).catch(() => null);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Date.now() - parsed._ts < WEATHER_CACHE_TTL) {
+              if (!cancelled) { setWeather(parsed); setLoading(false); }
+              return;
+            }
+          } catch {}
+        }
+
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m,apparent_temperature&timezone=auto`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error("weather fetch failed");
+        const data = await resp.json();
+        const cur = data?.current;
+        if (!cur) throw new Error("no current weather data");
+        const w = {
+          temp: Math.round(cur.temperature_2m),
+          code: cur.weather_code ?? 0,
+          windSpeed: Math.round(cur.wind_speed_10m ?? 0),
+          humidity: Math.round(cur.relative_humidity_2m ?? 0),
+          feelsLike: Math.round(cur.apparent_temperature ?? cur.temperature_2m),
+          _ts: Date.now(),
+        };
+        AsyncStorage.setItem(cacheKey, JSON.stringify(w)).catch(() => {});
+        if (!cancelled) { setWeather(w); setLoading(false); }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    }); // InteractionManager.runAfterInteractions
+    return () => { cancelled = true; task.cancel(); };
+  }, [deferred, userLat, userLng, cityLabel]);
+
+  if (!loading && !weather) return null;
+
+  const wmo = weather ? (WMO_ICONS[weather.code] ?? WMO_ICONS[0]) : WMO_ICONS[0];
+
+  if (loading) {
+    return (
+      <View style={wS.wrap}>
+        <View style={wS.skRow}>
+          <SkeletonBlock w={36} h={36} r={18} />
+          <View style={{ gap: 4, flex: 1 }}>
+            <SkeletonBlock w={80} h={12} r={4} />
+            <SkeletonBlock w={50} h={10} r={4} />
+          </View>
+          <SkeletonBlock w={40} h={24} r={6} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push("/weather" as Href)}
+      activeOpacity={0.7}
+      style={wS.wrap}
+    >
+      <View style={wS.row}>
+        <View style={wS.iconWrap}>
+          <Ionicons name={wmo.icon as keyof typeof Ionicons.glyphMap} size={22} color={C.primary} />
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={wS.label}>{wmo.label}{locationLabel ? ` · ${locationLabel}` : ""}</Text>
+          <View style={wS.detailRow}>
+            <Text style={wS.detail}>💧 {weather!.humidity}%</Text>
+            <Text style={wS.detail}>💨 {weather!.windSpeed} km/h</Text>
+            {weather!.feelsLike != null && <Text style={wS.detail}>🌡 Feels {weather!.feelsLike}°</Text>}
+          </View>
+          {geocodingUnavailable && (
+            <Text style={{ fontFamily: Font.regular, fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+              Address lookup unavailable on web — add a city in the forecast view
+            </Text>
+          )}
+        </View>
+        <View style={{ alignItems: "flex-end", gap: 2 }}>
+          <Text style={wS.temp}>{weather!.temp}°C</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            {isGps && <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: "#4ade80" }} />}
+            <Text style={{ fontFamily: Font.regular, fontSize: 9, color: C.textMuted }}>Tap for forecast</Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const wS = StyleSheet.create({
+  wrap: {
+    marginHorizontal: H_PAD, marginTop: 10,
+    backgroundColor: C.surface, borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 12,
+    ...shadows.sm,
+  },
+  row: { flexDirection: "row", alignItems: "center", gap: 10 },
+  skRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  iconWrap: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: C.primarySoft, alignItems: "center", justifyContent: "center",
+  },
+  label: { fontFamily: Font.semiBold, fontSize: 13, color: C.text },
+  detailRow: { flexDirection: "row", gap: 8 },
+  detail: { fontFamily: Font.regular, fontSize: 11, color: C.textMuted },
+  temp: { fontFamily: Font.bold, fontSize: 22, color: C.primary },
+});
+
+function HomeSkeleton() {
+  const { width: winW } = useWindowDimensions();
+  const itemW = (Math.min(winW, Platform.OS === "web" ? 430 : winW) - H_PAD * 2) / 5;
+  return (
+    <View style={{ paddingHorizontal: H_PAD, gap: spacing.sm, marginTop: spacing.sm }}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4, marginTop: 14 }}>
+        <SkeletonBlock w={120} h={14} r={6} />
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 0 }}>
+        {Array.from({ length: 5 }, (_, i) => (
+          <View key={i} style={{ alignItems: "center", gap: 5, width: itemW, paddingVertical: 10 }}>
+            <SkeletonBlock w={64} h={64} r={22} />
+            <SkeletonBlock w={40} h={10} r={4} />
+            <SkeletonBlock w={36} h={10} r={8} />
+          </View>
+        ))}
+      </View>
+      <SkeletonBlock w="100%" h={72} r={16} />
+      <SkeletonBlock w="100%" h={144} r={16} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {Array.from({ length: 3 }, (_, i) => (
+          <SkeletonBlock key={i} w={140} h={180} r={12} />
+        ))}
+      </View>
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        {Array.from({ length: 3 }, (_, i) => (
+          <SkeletonBlock key={i} w={145} h={170} r={16} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
+  const { user, token, isLoading: authLoading } = useAuth();
+  const { itemCount, total: cartTotal } = useCart();
+  const queryClient = useQueryClient();
+  const topPad = Math.max(insets.top, 12);
+  const TAB_H = Platform.OS === "web" ? 72 : 49;
+  const hdOp = useRef(new Animated.Value(0)).current;
+  const cartBarAnim = useRef(new Animated.Value(itemCount > 0 ? 1 : 0)).current;
+  const prevItemCount = useRef(itemCount);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
+  const { config: platformConfig, loading: configLoading, refresh: refreshConfig } = usePlatformConfig();
+
+  const authHdrs: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const isGuest = !user?.id;
+
+  const handleHomeRefresh = useCallback(async () => {
+    try { await refreshConfig(); } catch (err) { if (__DEV__) console.warn("[Home] Config refresh failed:", err instanceof Error ? err.message : String(err)); }
+    queryClient.invalidateQueries({ queryKey: ["dynamic-banners"] });
+    queryClient.invalidateQueries({ queryKey: ["flash-deals"] });
+    queryClient.invalidateQueries({ queryKey: ["trending-products"] });
+    if (!isGuest) {
+      queryClient.invalidateQueries({ queryKey: ["home-active-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["home-active-rides"] });
+    }
+    setLastRefreshed(new Date());
+  }, [refreshConfig, queryClient, isGuest]);
+
+  useEffect(() => {
+    const hasItems = itemCount > 0;
+    const hadItems = prevItemCount.current > 0;
+    prevItemCount.current = itemCount;
+    if (hasItems !== hadItems) {
+      Animated.spring(cartBarAnim, {
+        toValue: hasItems ? 1 : 0,
+        useNativeDriver: true,
+        tension: 60,
+        friction: 10,
+      }).start();
+    }
+  }, [itemCount, cartBarAnim]);
+
+  const features = platformConfig.features;
+  const appName = platformConfig.platform.appName;
+  const contentBanner = platformConfig.content.banner;
+  const announcement = platformConfig.content.announcement;
+  const showBanner = platformConfig.content.showBanner;
+  const [announceDismissed, setAnnounceDismissed] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+
+  const announceKey = React.useMemo(() => {
+    if (!announcement) return "";
+    const hash = Array.from(announcement).reduce((h, c) => (((h * 31) | 0) + c.charCodeAt(0)) >>> 0, 0).toString(36);
+    return `announce_dismissed_${hash}`;
+  }, [announcement]);
+
+  useEffect(() => {
+    if (!announcement) { setAnnounceDismissed(false); return; }
+    AsyncStorage.getItem(announceKey).then(val => { setAnnounceDismissed(val === "1"); }).catch(() => { setAnnounceDismissed(false); });
+  }, [announcement, announceKey]);
+
+  const { language } = useLanguage();
+  const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
+
+  useEffect(() => {
+    Animated.timing(hdOp, { toValue: 1, duration: 400, useNativeDriver: Platform.OS !== "web" }).start();
+  }, []);
+
+  useEffect(() => {
+    queryClient.prefetchQuery({ queryKey: ["dynamic-banners", "home"], queryFn: () => getBanners({ placement: "home" }), staleTime: 10 * 60 * 1000, gcTime: 30 * 60 * 1000 });
+    queryClient.prefetchQuery({ queryKey: ["flash-deals"], queryFn: () => getFlashDeals({ limit: 10 }), staleTime: 10 * 60 * 1000, gcTime: 30 * 60 * 1000 });
+    queryClient.prefetchQuery({ queryKey: ["trending-products"], queryFn: () => getTrending({ limit: 8 }), staleTime: 10 * 60 * 1000, gcTime: 30 * 60 * 1000 });
+  }, [queryClient]);
+
+  const activeServices = useMemo(() => getActiveServices(features), [features]);
+  const noServicesActive = activeServices.length === 0;
+
+  useEffect(() => {
+    activeServices.forEach(svc => { try { router.prefetch(svc.route); } catch {} });
+  }, [activeServices]);
+
+  const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const { selectedNode, displayName: locationDisplayName, setLocation: setLocationCtx } = useLocation();
+
+  const handleLocationPress = () => {
+    setLocationPickerVisible(true);
+  };
+
+  const handleLocationSelect = (node: LocationNode, ancestry: LocationNode[]) => {
+    setLocationCtx(node, ancestry);
+    setLocationPickerVisible(false);
+  };
+
+  /* Persists auto-resolved location without closing the sheet, allowing the user
+     to optionally refine to a more precise level (area/mohalla). */
+  const handleLocationPreselect = (node: LocationNode, ancestry: LocationNode[]) => {
+    setLocationCtx(node, ancestry);
+    /* Sheet remains open — no setLocationPickerVisible(false) here */
+  };
+
+  return (
+    <View style={s.root}>
+      {!!announcement && !announceDismissed && (
+        <View style={[s.announceBar, { paddingTop: topPad }]} accessibilityRole="alert">
+          <View style={s.announceIcon}>
+            <Ionicons name="megaphone" size={11} color="#fff" />
+          </View>
+          <Text style={s.announceTxt} numberOfLines={1}>{announcement}</Text>
+          <TouchableOpacity activeOpacity={0.7}
+            onPress={() => {
+              setAnnounceDismissed(true);
+              if (announceKey) AsyncStorage.setItem(announceKey, "1").catch(() => {});
+            }}
+            style={s.announceClose}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss announcement"
+          >
+            <Ionicons name="close" size={16} color="rgba(255,255,255,0.8)" />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <Animated.View style={{ opacity: hdOp }}>
+        <LinearGradient
+          colors={["#0047B3", "#0066FF", "#2E80FF"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[s.header, { paddingTop: (announcement && !announceDismissed) ? 8 : topPad + 8 }]}
+        >
+          <View style={s.hdrRow}>
+            <AjkLogo variant="compact-white" width={110} height={38} />
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {!isGuest && (
+                <TouchableOpacity activeOpacity={0.7}
+                  onPress={() => setShowNotifs(true)}
+                  style={s.iconBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Notifications${unreadNotifs > 0 ? `, ${unreadNotifs} unread` : ""}`}
+                >
+                  <Ionicons name="notifications-outline" size={20} color="#fff" />
+                  {unreadNotifs > 0 && (
+                    <View style={s.cartBadge}>
+                      <Text style={s.cartBadgeTxt}>{unreadNotifs > 9 ? "9+" : unreadNotifs}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity activeOpacity={0.7}
+                onPress={() => {
+                  if (!user?.id) { router.push("/auth/login" as Href); return; }
+                  router.push("/cart" as Href);
+                }}
+                style={itemCount > 0 ? s.cartPill : s.iconBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Cart${itemCount > 0 ? `, ${itemCount} items` : ""}`}
+              >
+                <Ionicons name={itemCount > 0 ? "cart" : "cart-outline"} size={20} color="#fff" />
+                {itemCount > 0 && (
+                  <>
+                    <Text style={s.cartPillTxt}>{itemCount > 99 ? "99+" : itemCount} items</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity activeOpacity={0.7} style={s.locBtn} onPress={handleLocationPress} accessibilityRole="button" accessibilityLabel="Location selector">
+            <Ionicons name={selectedNode ? "location" : "location-outline"} size={14} color="rgba(255,255,255,0.85)" />
+            <Text style={s.locTxt} numberOfLines={1}>{locationDisplayName !== "Select Location" ? locationDisplayName : (platformConfig.platform.businessAddress || "AJK, Pakistan")}</Text>
+            <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.55)" />
+          </TouchableOpacity>
+
+          <TouchableOpacity activeOpacity={0.7}
+            onPress={() => router.push("/search")}
+            style={s.searchBar}
+            accessibilityRole="search"
+            accessibilityLabel={T("search")}
+          >
+            <Ionicons name="search" size={16} color={C.textMuted} />
+            <Text style={s.searchText}>{T("search")}</Text>
+            <View style={s.searchDivider} />
+            <Ionicons name="camera-outline" size={16} color={C.textMuted} />
+          </TouchableOpacity>
+        </LinearGradient>
+      </Animated.View>
+
+      <SmartRefresh
+        onRefresh={handleHomeRefresh}
+        lastUpdated={lastRefreshed}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.scroll}
+      >
+        {contentBanner ? (
+          <View style={s.promoBanner}>
+            <Ionicons name="gift-outline" size={14} color={C.primary} />
+            <Text style={s.promoBannerTxt} numberOfLines={1}>{contentBanner}</Text>
+          </View>
+        ) : null}
+
+        {(configLoading || authLoading) ? (
+          <HomeSkeleton />
+        ) : noServicesActive ? (
+          <EmptyState
+            icon="storefront-outline"
+            title="No Services Available"
+            subtitle={"No services are currently available.\nPlease check back later!"}
+            actionLabel="Refresh"
+            onAction={refreshConfig}
+          />
+        ) : (
+          <>
+            {!isGuest && user && (
+              <UserGreetingRow user={user} />
+            )}
+
+            <ServiceSection
+              services={activeServices}
+            />
+
+            {isGuest && <GuestSignInStrip />}
+
+            {!isGuest && !!user?.id && (
+              <ActiveTrackerStrip userId={user.id} />
+            )}
+
+            {showBanner && <DynamicBannerCarousel />}
+
+            <FlashDealsSection T={T} />
+
+            <TrendingSection />
+
+            {features.weather !== false && (
+              <WeatherWidget
+                userLat={user?.latitude ? parseFloat(String(user.latitude)) : undefined}
+                userLng={user?.longitude ? parseFloat(String(user.longitude)) : undefined}
+                cityLabel={(user as any)?.city || (user as any)?.area || undefined}
+              />
+            )}
+
+            <View style={{ height: 12 }} />
+          </>
+        )}
+
+        <View style={{ height: TAB_H + insets.bottom + (itemCount > 0 ? 80 : 20) }} />
+      </SmartRefresh>
+
+      {itemCount > 0 && (
+        <Animated.View
+          style={[
+            s.checkoutBar,
+            { bottom: TAB_H + insets.bottom },
+            {
+              opacity: cartBarAnim,
+              transform: [{ translateY: cartBarAnim.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }],
+            },
+          ]}
+          pointerEvents={itemCount > 0 ? "auto" : "none"}
+        >
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              if (!user?.id) { router.push("/auth/login" as Href); return; }
+              router.push("/cart" as Href);
+            }}
+            style={s.checkoutBarInner}
+            accessibilityRole="button"
+            accessibilityLabel={`View cart — ${itemCount} item${itemCount > 1 ? "s" : ""}, Rs. ${cartTotal}`}
+          >
+            <LinearGradient
+              colors={["#0052CC", "#0066FF"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={s.checkoutBarGrad}
+            >
+              <View style={s.checkoutBarLeft}>
+                <View style={s.checkoutBarBadge}>
+                  <Text style={s.checkoutBarBadgeTxt}>{itemCount > 99 ? "99+" : itemCount}</Text>
+                </View>
+                <View>
+                  <Text style={s.checkoutBarItemsTxt}>
+                    {itemCount} {itemCount === 1 ? "item" : "items"} in cart
+                  </Text>
+                  <Text style={s.checkoutBarPriceTxt}>Rs. {cartTotal.toLocaleString()}</Text>
+                </View>
+              </View>
+              <View style={s.checkoutBarRight}>
+                <Text style={s.checkoutBarCta}>View Cart</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      <LocationBrowserSheet
+        visible={locationPickerVisible}
+        onClose={() => setLocationPickerVisible(false)}
+        onSelect={handleLocationSelect}
+        onPreselect={handleLocationPreselect}
+        currentNode={selectedNode}
+      />
+
+      {user?.id && (
+        <NotificationsModal
+          visible={showNotifs}
+          userId={user.id}
+          token={token ?? undefined}
+          onClose={(unread) => { setUnreadNotifs(unread); setShowNotifs(false); }}
+        />
+      )}
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.background },
+
+  header: { paddingHorizontal: H_PAD, paddingBottom: 12 },
+  hdrRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  locBtn: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 },
+  locTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "#fff", flexShrink: 1 },
+
+  iconBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center",
+  },
+  cartBadge: {
+    position: "absolute", top: -4, right: -4,
+    backgroundColor: "#FF3B30", borderRadius: 8,
+    minWidth: 16, height: 16,
+    alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 3, borderWidth: 1.5, borderColor: "#0066FF",
+  },
+  cartBadgeTxt: { fontFamily: Font.bold, fontSize: 9, color: "#fff" },
+  cartPill: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderRadius: 22, paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1.5, borderColor: "rgba(255,255,255,0.35)",
+  },
+  cartPillTxt: { fontFamily: Font.bold, fontSize: 12, color: "#fff" },
+
+  searchBar: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: "#fff", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  searchText: { flex: 1, fontFamily: Font.regular, fontSize: 13, color: C.textMuted },
+  searchDivider: { width: 1, height: 18, backgroundColor: C.borderLight },
+
+  checkoutBar: {
+    position: "absolute", left: 0, right: 0,
+    paddingHorizontal: H_PAD, paddingBottom: 8,
+    zIndex: 99,
+  },
+  checkoutBarInner: { borderRadius: 16, overflow: "hidden", ...shadows.xl },
+  checkoutBarGrad: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  checkoutBarLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  checkoutBarBadge: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1.5, borderColor: "rgba(255,255,255,0.35)",
+  },
+  checkoutBarBadgeTxt: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
+  checkoutBarItemsTxt: { fontFamily: Font.semiBold, fontSize: 13, color: "rgba(255,255,255,0.9)" },
+  checkoutBarPriceTxt: { fontFamily: Font.bold, fontSize: 16, color: "#fff", marginTop: 1 },
+  checkoutBarRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+  checkoutBarCta: { fontFamily: Font.bold, fontSize: 15, color: "#fff" },
+
+  announceBar: {
+    backgroundColor: C.primary, flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 14, paddingBottom: 6, gap: 8, zIndex: 10,
+  },
+  announceIcon: { width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  announceTxt: { flex: 1, fontFamily: Font.medium, fontSize: 12, color: "#fff" },
+  announceClose: { padding: 4 },
+
+  promoBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    marginHorizontal: H_PAD, marginTop: 10, marginBottom: 2,
+    backgroundColor: C.primarySoft, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: C.blueLightBorder,
+  },
+  promoBannerTxt: { flex: 1, fontFamily: Font.medium, fontSize: 12, color: C.primary },
+
+  scroll: { paddingBottom: 0 },
+});
+

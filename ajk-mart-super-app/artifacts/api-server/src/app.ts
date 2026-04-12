@@ -1,0 +1,126 @@
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
+import cors from "cors";
+import compression from "compression";
+import pinoHttp from "pino-http";
+import path from "path";
+import router from "./routes";
+import { logger } from "./lib/logger";
+import { rateLimitMiddleware, securityHeadersMiddleware } from "./middleware/security.js";
+import { adminAuth } from "./routes/admin-shared.js";
+
+const app: Express = express();
+
+app.use(
+  pinoHttp({
+    logger,
+    serializers: {
+      req(req) {
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url?.split("?")[0],
+        };
+      },
+      res(res) {
+        return {
+          statusCode: res.statusCode,
+        };
+      },
+    },
+  }),
+);
+
+app.use(securityHeadersMiddleware);
+
+app.use(cors());
+
+/* Compress all JSON/text API responses (gzip).
+   Placed after CORS/security headers but before body parsers and routing.
+   Binary upload routes are excluded — their responses are small or binary. */
+app.use(
+  compression({
+    filter: (req, res) => {
+      const ct = res.getHeader("Content-Type");
+      if (typeof ct === "string" && /^image\//.test(ct)) return false;
+      return compression.filter(req, res);
+    },
+    threshold: 1024,
+  }),
+);
+
+/* Large JSON parser for upload-capable routes (base64 image payloads).
+   Must be registered BEFORE the tight global parser so these paths are
+   matched first and the 256kb global limit is never applied to them. */
+const UPLOAD_PATHS = ["/api/uploads", "/api/users/avatar", "/api/admin/uploads/admin"];
+app.use(UPLOAD_PATHS, express.json({ limit: "10mb" }));
+
+app.use("/api/webhooks", express.json({
+  limit: "256kb",
+  verify: (req, _res, buf) => {
+    (req as unknown as { rawBody?: Buffer }).rawBody = buf;
+  },
+}));
+
+/* Tight global JSON limit for all other API routes (mitigates oversized-body DoS). */
+app.use(express.json({ limit: "256kb" }));
+app.use(express.urlencoded({ extended: true, limit: "256kb" }));
+
+app.use(rateLimitMiddleware);
+
+app.use("/api/uploads/kyc", adminAuth, express.static(path.resolve(process.cwd(), "uploads/kyc")));
+app.use("/api/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+app.use("/api", router);
+
+interface AppError { status?: number; statusCode?: number; code?: string; message?: string }
+function isAppError(e: unknown): e is AppError {
+  return typeof e === "object" && e !== null;
+}
+
+const ERROR_MESSAGES: Record<string, { en: string; ur: string }> = {
+  NOT_FOUND:       { en: "Resource not found.",                                    ur: "وسیلہ نہیں ملا۔" },
+  FORBIDDEN:       { en: "Access denied.",                                          ur: "رسائی سے انکار۔" },
+  UNAUTHORIZED:    { en: "Authentication required. Please log in.",                ur: "تصدیق ضروری ہے۔ براہ کرم لاگ ان کریں۔" },
+  BAD_REQUEST:     { en: "Bad request.",                                            ur: "غلط درخواست۔" },
+  VALIDATION:      { en: "Validation error. Please check your input.",             ur: "توثیق کی خرابی۔ اپنا ان پٹ چیک کریں۔" },
+  RATE_LIMITED:    { en: "Too many requests. Please slow down.",                   ur: "بہت زیادہ درخواستیں۔ براہ کرم آہستہ کریں۔" },
+  INTERNAL_ERROR:  { en: "An unexpected error occurred. Please try again later.",  ur: "ایک غیر متوقع خرابی ہوئی۔ براہ کرم بعد میں دوبارہ کوشش کریں۔" },
+};
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+  const appErr     = isAppError(err) ? err : {};
+  const statusCode = appErr.status ?? appErr.statusCode ?? 500;
+  const code       = appErr.code ?? (
+    statusCode === 401 ? "UNAUTHORIZED" :
+    statusCode === 404 ? "NOT_FOUND" :
+    statusCode === 403 ? "FORBIDDEN" :
+    statusCode === 429 ? "RATE_LIMITED" :
+    statusCode < 500   ? "BAD_REQUEST" :
+    "INTERNAL_ERROR"
+  );
+
+  const msgs = ERROR_MESSAGES[code] ?? ERROR_MESSAGES["INTERNAL_ERROR"];
+  const message = statusCode < 500
+    ? (appErr.message ?? msgs.en)
+    : msgs.en;
+
+  logger.error({
+    err,
+    method: req.method,
+    url: req.url?.split("?")[0],
+    statusCode,
+    code,
+    ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket?.remoteAddress,
+  }, "Unhandled route error");
+
+  if (!res.headersSent) {
+    res.status(statusCode).json({
+      success: false,
+      error: message,
+      message: msgs.ur,
+      code,
+    });
+  }
+});
+
+export default app;
