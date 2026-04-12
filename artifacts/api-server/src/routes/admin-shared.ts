@@ -517,6 +517,7 @@ export const DEFAULT_PLATFORM_SETTINGS = [
   { key: "google_maps_enabled",             value: "off",      label: "Google Maps Enabled",                                category: "map" },
   { key: "osm_enabled",                     value: "on",       label: "OpenStreetMap Enabled",                              category: "map" },
   { key: "routing_engine",                  value: "osrm",     label: "Routing Engine (mapbox|google|osrm)",                category: "map" },
+  { key: "osrm_base_url",                   value: "",         label: "OSRM Base URL (leave blank for public demo server)",  category: "map" },
   { key: "map_app_override_customer",       value: "primary",  label: "Customer App Map Provider Override",                 category: "map" },
   { key: "map_app_override_rider",          value: "primary",  label: "Rider App Map Provider Override",                    category: "map" },
   { key: "map_app_override_vendor",         value: "primary",  label: "Vendor App Map Provider Override",                   category: "map" },

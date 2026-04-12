@@ -512,9 +512,10 @@ router.post("/test-integration/fcm", async (req, res) => {
 router.post("/test-integration/maps", async (req, res) => {
   try {
     const settings = await getCachedSettings();
-    const mapsProvider = settings["maps_provider"] ?? "google";
-    const googleKey  = settings["google_maps_api_key"]?.trim() || settings["maps_api_key"]?.trim();
-    const mapboxKey  = settings["mapbox_api_key"]?.trim();
+    /* Use the correct key names that match the Maps Management UI and whitelist */
+    const mapsProvider = settings["map_search_provider"] ?? settings["map_provider_primary"] ?? settings["maps_provider"] ?? "osm";
+    const googleKey     = settings["google_maps_api_key"]?.trim() || settings["maps_api_key"]?.trim();
+    const mapboxKey     = settings["mapbox_api_key"]?.trim();
     const locationIqKey = settings["locationiq_api_key"]?.trim();
 
     const testQuery = "Muzaffarabad, Azad Kashmir";
@@ -522,15 +523,24 @@ router.post("/test-integration/maps", async (req, res) => {
     let provider = mapsProvider;
     let result: unknown = null;
 
-    if (mapsProvider === "google" || (!mapsProvider && googleKey)) {
+    async function safeJson(resp: Response): Promise<unknown> {
+      const ct = resp.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(`Unexpected non-JSON response (HTTP ${resp.status}): ${text.slice(0, 200).replace(/<[^>]*>/g, "").trim() || "No details"}`);
+      }
+      return resp.json();
+    }
+
+    if (mapsProvider === "google") {
       if (!googleKey) {
         sendError(res, "Google Maps API key is not configured. Set google_maps_api_key in Integrations → Maps.", 400);
         return;
       }
       provider = "google";
       const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(testQuery)}&key=${googleKey}`;
-      const resp = await fetch(url);
-      const body = await resp.json() as { status?: string; error_message?: string; results?: Array<{ geometry?: { location?: unknown } }> };
+      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const body = await safeJson(resp) as { status?: string; error_message?: string; results?: Array<{ geometry?: { location?: unknown } }> };
       if (body?.status !== "OK") {
         sendError(res, `Google Maps geocoding failed: ${body?.status} — ${body?.error_message ?? ""}`, 400);
         return;
@@ -543,8 +553,8 @@ router.post("/test-integration/maps", async (req, res) => {
       }
       provider = "mapbox";
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(testQuery)}.json?access_token=${mapboxKey}`;
-      const resp = await fetch(url);
-      const body = await resp.json() as { message?: string; features?: Array<{ center?: unknown }> };
+      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const body = await safeJson(resp) as { message?: string; features?: Array<{ center?: unknown }> };
       if (!resp.ok || !body?.features?.length) {
         sendError(res, `Mapbox geocoding failed: ${body?.message ?? `HTTP ${resp.status}`}`, 400);
         return;
@@ -556,23 +566,33 @@ router.post("/test-integration/maps", async (req, res) => {
         return;
       }
       provider = "locationiq";
-      const url = `https://us1.locationiq.com/v1/search.php?key=${locationIqKey}&q=${encodeURIComponent(testQuery)}&format=json&limit=1`;
-      const resp = await fetch(url);
-      const body = await resp.json() as Array<{ lat?: unknown; lon?: unknown; error?: string }> | { error?: string };
+      const url = `https://us1.locationiq.com/v1/search?key=${locationIqKey}&q=${encodeURIComponent(testQuery)}&format=json&limit=1`;
+      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      type LiqResult = Array<{ lat?: unknown; lon?: unknown; error?: string }>;
+      type LiqError  = { error?: string };
+      const body = await safeJson(resp) as LiqResult | LiqError;
       if (!resp.ok || (Array.isArray(body) && body.length === 0)) {
-        const errMsg = Array.isArray(body) ? undefined : body?.error;
+        const errMsg = !Array.isArray(body) ? (body as LiqError).error : undefined;
         sendError(res, `LocationIQ geocoding failed: ${errMsg ?? `HTTP ${resp.status}`}`, 400);
         return;
       }
-      const bodyArr = Array.isArray(body) ? body : [];
+      const bodyArr = Array.isArray(body) ? (body as LiqResult) : [];
       result = { lat: bodyArr[0]?.lat, lon: bodyArr[0]?.lon };
     } else {
-      sendError(res, "No maps provider is configured. Set up an API key in Integrations → Maps.", 400);
-      return;
+      /* OSM / Nominatim — free, no key required */
+      provider = "osm";
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(testQuery)}&format=json&limit=1`;
+      const resp = await fetch(url, { headers: { "User-Agent": "AJKMart-Admin-Test/1.0" }, signal: AbortSignal.timeout(8000) });
+      const body = await safeJson(resp) as Array<{ lat?: unknown; lon?: unknown; display_name?: string }>;
+      if (!resp.ok || !Array.isArray(body) || body.length === 0) {
+        sendError(res, `Nominatim geocoding failed: HTTP ${resp.status}`, 400);
+        return;
+      }
+      result = { lat: body[0]?.lat, lon: body[0]?.lon, display_name: body[0]?.display_name };
     }
 
     const latencyMs = Date.now() - start;
-    sendSuccess(res, { sent: true, provider, latencyMs, result, query: testQuery });
+    sendSuccess(res, { sent: true, message: `Geocoding test passed via ${provider} — found location for "${testQuery}"`, provider, latencyMs, result, query: testQuery });
   } catch (err: unknown) {
     sendError(res, (err instanceof Error ? err.message : null) ?? "Maps test failed unexpectedly", 502);
   }

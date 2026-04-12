@@ -46,6 +46,18 @@ export const fetcher = async (endpoint: string, options: RequestInit = {}) => {
     },
   });
 
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    if (res.status === 401 && token) {
+      const currentToken = getToken();
+      if (currentToken === token) {
+        localStorage.removeItem("ajkmart_admin_token");
+      }
+    }
+    const text = await res.text().catch(() => "");
+    throw new Error(`Server error (HTTP ${res.status}): ${text.slice(0, 200).replace(/<[^>]*>/g, "").trim() || "Unexpected non-JSON response"}`);
+  }
+
   const json = await res.json();
 
   if (!res.ok) {

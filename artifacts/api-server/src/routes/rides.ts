@@ -441,7 +441,7 @@ function generateOtp(): string {
  * The haversine fallback is plain straight-line distance with no multiplier —
  * it is only used as a last resort when no routing API is configured or reachable.
  */
-async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): Promise<{ distanceKm: number; durationSeconds: number; source: "locationiq" | "google" | "mapbox" | "haversine" }> {
+async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): Promise<{ distanceKm: number; durationSeconds: number; source: "locationiq" | "google" | "mapbox" | "osrm" | "haversine" }> {
   const haversine = calcDistance(lat1, lng1, lat2, lng2);
 
   let s: Record<string, string>;
@@ -451,7 +451,7 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
     s = {};
   }
 
-  const routingProvider = s["routing_api_provider"] ?? "google";
+  const routingProvider = s["routing_engine"] ?? s["routing_api_provider"] ?? "osrm";
 
   try {
     if (routingProvider === "locationiq") {
@@ -471,7 +471,7 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
     }
 
     if (routingProvider === "google") {
-      const googleKey = s["maps_api_key"];
+      const googleKey = s["google_maps_api_key"] ?? s["maps_api_key"];
       if (!googleKey) return buildHaversineFallback(haversine);
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat1},${lng1}&destination=${lat2},${lng2}&mode=driving&key=${googleKey}`;
       const raw  = await fetch(url, { signal: AbortSignal.timeout(4000) });
@@ -503,6 +503,24 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
       return buildHaversineFallback(haversine);
     }
 
+    if (routingProvider === "osrm") {
+      /* OSRM — open-source routing engine, no API key required.
+       * Uses the configurable base URL (defaults to public demo server).
+       * Format: /route/v1/driving/{lng1},{lat1};{lng2},{lat2} */
+      const osrmBase = (s["osrm_base_url"]?.trim() || "https://router.project-osrm.org").replace(/\/$/, "");
+      const url = `${osrmBase}/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=false&steps=false`;
+      const raw  = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      const data = await raw.json() as { code?: string; routes?: Array<{ distance: number; duration: number }> };
+      if (data.code === "Ok" && data.routes?.length) {
+        return {
+          distanceKm:      Math.round(data.routes[0]!.distance / 100) / 10,
+          durationSeconds: Math.round(data.routes[0]!.duration),
+          source: "osrm",
+        };
+      }
+      return buildHaversineFallback(haversine);
+    }
+
     return buildHaversineFallback(haversine);
   } catch {
     return buildHaversineFallback(haversine);
@@ -515,8 +533,27 @@ async function getRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2:
  */
 function buildHaversineFallback(
   haversineKm: number,
-): { distanceKm: number; durationSeconds: number; source: "haversine" } {
+): { distanceKm: number; durationSeconds: number; source: "osrm" | "haversine" } {
   return { distanceKm: haversineKm, durationSeconds: Math.round((haversineKm / 45) * 3600), source: "haversine" };
+}
+
+/**
+ * Maps a runtime ride service key (e.g. "bike", "car", "rickshaw", "daba") to
+ * the Maps Management fare category key (e.g. "ride", "delivery", "parcel").
+ *
+ * The Maps Management admin UI exposes three coarse-grained categories:
+ *   - "ride"     → all passenger/transport service types (bike, car, rickshaw, daba, …)
+ *   - "delivery" → food delivery, mart, package delivery service types
+ *   - "parcel"   → parcel/courier service types
+ *
+ * Service keys that match an exact category name ("delivery", "parcel") map to
+ * themselves. All others default to "ride".
+ */
+function mapServiceTypeToFareCategory(type: string): string {
+  const t = type.toLowerCase();
+  if (t === "delivery" || t.startsWith("delivery_")) return "delivery";
+  if (t === "parcel"   || t.startsWith("parcel_"))   return "parcel";
+  return "ride";
 }
 
 async function calcFare(distance: number, type: string, durationMinutes = 0): Promise<{ baseFare: number; gstAmount: number; total: number; minFare: number }> {
@@ -530,17 +567,33 @@ async function calcFare(distance: number, type: string, durationMinutes = 0): Pr
   const s = await getPlatformSettings();
 
   let baseRate: number, perKm: number, minFare: number, perMinuteRate: number;
-  const psBase      = s[`ride_${type}_base_fare`];
-  const psKm        = s[`ride_${type}_per_km`];
-  const psMin       = s[`ride_${type}_min_fare`];
+
+  /* Maps Management fare keys take priority over legacy keys and the DB table.
+   * The Maps Management UI uses coarse-grained category keys (fare_ride_*, fare_delivery_*,
+   * fare_parcel_*) that cover groups of runtime service types (bike/car → "ride", etc.).
+   * We check the category key first, then an exact-match key, then legacy keys. */
+  const fareCategory = mapServiceTypeToFareCategory(type);
+  const mapsBase = s[`fare_${fareCategory}_base_fare`];
+  const mapsKm   = s[`fare_${fareCategory}_per_km_rate`];
+  const psBase   = s[`ride_${type}_base_fare`];
+  const psKm     = s[`ride_${type}_per_km`];
+  const psMin    = s[`ride_${type}_min_fare`];
   const psPerMinute = s[`ride_${type}_per_minute_rate`];
 
-  if (psBase !== undefined && psKm !== undefined && psMin !== undefined) {
+  if (mapsBase !== undefined && mapsKm !== undefined) {
+    /* Maps Management section values — preferred */
+    baseRate      = parseFloat(mapsBase);
+    perKm         = parseFloat(mapsKm);
+    minFare       = psMin !== undefined ? parseFloat(psMin) : Math.round(parseFloat(mapsBase) * 0.8);
+    perMinuteRate = psPerMinute !== undefined ? parseFloat(psPerMinute) : 0;
+  } else if (psBase !== undefined && psKm !== undefined && psMin !== undefined) {
+    /* Legacy platform-settings ride_{type}_* keys */
     baseRate      = parseFloat(psBase);
     perKm         = parseFloat(psKm);
     minFare       = parseFloat(psMin);
     perMinuteRate = psPerMinute !== undefined ? parseFloat(psPerMinute) : 0;
   } else {
+    /* Fall back to the per-service-type DB record */
     const [svc] = await db.select().from(rideServiceTypesTable).where(eq(rideServiceTypesTable.key, type)).limit(1);
     if (!svc) {
       throw new RideApiError(`Unknown ride service type: '${type}'`, "UNKNOWN_SERVICE_TYPE", 422);
@@ -558,8 +611,17 @@ async function calcFare(distance: number, type: string, durationMinutes = 0): Pr
   const safeDuration    = isFinite(durationMinutes) && durationMinutes >= 0 ? durationMinutes : 0;
   const safePerMin      = isFinite(perMinuteRate) && perMinuteRate >= 0 ? perMinuteRate : 0;
 
-  const surgeEnabled    = (s["ride_surge_enabled"] ?? "off") === "on";
-  const surgeMultiplier = surgeEnabled ? parseFloat(s["ride_surge_multiplier"] ?? "1.5") : 1;
+  /* Maps Management also exposes per-category surge multipliers (fare_{category}_surge_mult).
+   * When set, those take precedence over the global ride_surge_enabled/ride_surge_multiplier. */
+  const mapsSurgeMult = s[`fare_${fareCategory}_surge_mult`];
+  let surgeMultiplier: number;
+  if (mapsSurgeMult !== undefined) {
+    const parsed = parseFloat(mapsSurgeMult);
+    surgeMultiplier = isFinite(parsed) && parsed > 0 ? parsed : 1;
+  } else {
+    const surgeEnabled = (s["ride_surge_enabled"] ?? "off") === "on";
+    surgeMultiplier = surgeEnabled ? parseFloat(s["ride_surge_multiplier"] ?? "1.5") : 1;
+  }
 
   /* New formula: Base + (Actual_KM × PerKM) + (Total_Minutes × PerMinuteRate) */
   const raw      = Math.round(baseRate + distance * perKm + safeDuration * safePerMin);
@@ -655,6 +717,19 @@ router.post("/estimate", estimateLimiter, async (req, res) => {
     const serviceType = type || "bike";
     const { distanceKm, durationSeconds, source } = await getRoadDistanceKm(pickupLat, pickupLng, dropLat, dropLng);
     const s = await getPlatformSettings();
+
+    /* Enforce max-radius in the estimate response as well, so the client gets
+     * early feedback before attempting a full booking.
+     * Use the Maps Management category key (fare_ride_*, etc.) via the category mapping. */
+    const estimateFareCategory = mapServiceTypeToFareCategory(serviceType);
+    const maxRadiusSetting = s[`fare_${estimateFareCategory}_max_radius_km`] ?? s["ride_max_radius_km"];
+    if (maxRadiusSetting !== undefined) {
+      const maxRadius = parseFloat(maxRadiusSetting);
+      if (isFinite(maxRadius) && maxRadius > 0 && distanceKm > maxRadius) {
+        sendErrorWithData(res, `This ride exceeds the maximum allowed distance of ${maxRadius} km for this service type`, { code: "DISTANCE_EXCEEDS_MAX_RADIUS", distanceKm, maxRadiusKm: maxRadius }, 422); return;
+      }
+    }
+
     const durationMin = Math.round(durationSeconds / 60);
     const { baseFare, gstAmount, total } = await calcFare(distanceKm, serviceType, durationMin);
     const duration = `${durationMin} min`;
@@ -756,6 +831,19 @@ router.post("/", customerAuth, bookRideLimiter, async (req, res) => {
   try {
     const routeResult = await getRoadDistanceKm(pickupLat, pickupLng, dropLat, dropLng);
     distance = routeResult.distanceKm;
+
+    /* Enforce max-radius from Maps Management (fare_{category}_max_radius_km).
+     * Prevents bookings where the road distance exceeds the configured service area limit.
+     * Uses the Maps Management category key via mapServiceTypeToFareCategory. */
+    const bookingFareCategory = mapServiceTypeToFareCategory(type);
+    const maxRadiusSetting = s[`fare_${bookingFareCategory}_max_radius_km`] ?? s["ride_max_radius_km"];
+    if (maxRadiusSetting !== undefined) {
+      const maxRadius = parseFloat(maxRadiusSetting);
+      if (isFinite(maxRadius) && maxRadius > 0 && distance > maxRadius) {
+        sendErrorWithData(res, `This ride exceeds the maximum allowed distance of ${maxRadius} km for this service type`, { code: "DISTANCE_EXCEEDS_MAX_RADIUS", distanceKm: distance, maxRadiusKm: maxRadius }, 422); return;
+      }
+    }
+
     const durationMin = Math.round(routeResult.durationSeconds / 60);
     const fareResult = await calcFare(distance, type, durationMin);
     baseFare = fareResult.baseFare;

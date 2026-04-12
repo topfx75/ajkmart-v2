@@ -25,6 +25,11 @@ async function mapsApiFetch(path: string, options: RequestInit = {}) {
       ...options.headers,
     },
   });
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text().catch(() => "");
+    throw new Error(res.ok ? "Unexpected non-JSON response from server" : `Server error (HTTP ${res.status}): ${text.slice(0, 200).replace(/<[^>]*>/g, "").trim() || "No details"}`);
+  }
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || "Request failed");
   return json.data !== undefined ? json.data : json;

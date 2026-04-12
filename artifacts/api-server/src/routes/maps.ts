@@ -172,7 +172,9 @@ async function getKey(): Promise<{
 }> {
   const s = await getPlatformSettings();
   const enabled = (s["integration_maps"] ?? "off") === "on";
-  const provider = s["map_provider_primary"] ?? s["map_provider"] ?? "osm";
+  /* map_search_provider is the Maps Management key for the search/geocoding provider.
+   * Fall back to map_provider_primary (tile/render provider) and then to legacy keys. */
+  const provider = s["map_search_provider"] ?? s["map_provider_primary"] ?? s["map_provider"] ?? "osm";
   /* Read new multi-provider key first, fall back to legacy key for backward compatibility */
   const key = s["google_maps_api_key"] ?? s["maps_api_key"] ?? "";
   const liqKey = s["locationiq_api_key"] ?? "";
@@ -1656,8 +1658,13 @@ async function handleMapsTest(req: import("express").Request, res: import("expre
       );
       ok = r.ok;
       if (!r.ok) {
-        const body = await r.json().catch(() => ({})) as Record<string, unknown>;
-        error = String(body?.message ?? `HTTP ${r.status}`);
+        const ct = r.headers.get("content-type") ?? "";
+        if (ct.includes("application/json")) {
+          const body = await r.json().catch(() => ({})) as Record<string, unknown>;
+          error = String(body?.message ?? `HTTP ${r.status}`);
+        } else {
+          error = `HTTP ${r.status}`;
+        }
       }
 
     } else if (provider === "google") {
@@ -1667,9 +1674,15 @@ async function handleMapsTest(req: import("express").Request, res: import("expre
         `https://maps.googleapis.com/maps/api/geocode/json?address=Muzaffarabad&key=${googleKey}`,
         { signal: AbortSignal.timeout(8000) }
       );
-      const data = await r.json() as Record<string, unknown>;
-      ok = data?.status === "OK" || data?.status === "ZERO_RESULTS";
-      if (!ok) error = String(data?.error_message ?? data?.status ?? `HTTP ${r.status}`);
+      const ct = r.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        ok = false;
+        error = `Unexpected response from Google Maps API (HTTP ${r.status}, content-type: ${ct.split(";")[0]?.trim() ?? "unknown"})`;
+      } else {
+        const data = await r.json() as Record<string, unknown>;
+        ok = data?.status === "OK" || data?.status === "ZERO_RESULTS";
+        if (!ok) error = String(data?.error_message ?? data?.status ?? `HTTP ${r.status}`);
+      }
 
     } else if (provider === "locationiq") {
       if (!locationiqKey) { sendError(res, "LocationIQ API key is not configured", 422); return; }
@@ -1679,8 +1692,13 @@ async function handleMapsTest(req: import("express").Request, res: import("expre
       );
       ok = r.ok;
       if (!r.ok) {
-        const body = await r.json().catch(() => ({})) as Record<string, unknown>;
-        error = String(body?.error ?? `HTTP ${r.status}`);
+        const ct = r.headers.get("content-type") ?? "";
+        if (ct.includes("application/json")) {
+          const body = await r.json().catch(() => ({})) as Record<string, unknown>;
+          error = String(body?.error ?? `HTTP ${r.status}`);
+        } else {
+          error = `HTTP ${r.status}`;
+        }
       }
     }
   } catch (e: unknown) {
