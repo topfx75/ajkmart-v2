@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { popularLocationsTable, mapApiUsageLogTable, platformSettingsTable, serviceZonesTable } from "@workspace/db/schema";
 import { eq, asc, and, sql, desc } from "drizzle-orm";
 import { getPlatformSettings, adminAuth } from "./admin.js";
+import { invalidatePlatformSettingsCache } from "./admin-shared.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
 import { generateId } from "../lib/id.js";
 
@@ -377,6 +378,27 @@ router.get("/geocode", async (req, res) => {
         res.json({
           lat: parseFloat(String(row.lat)), lng: parseFloat(String(row.lng)),
           formattedAddress: row.name, source: "fallback",
+        });
+        return;
+      }
+    } catch { /* fall through */ }
+  }
+
+  /* Resolve service zone by placeId (zone_{id}) — returned by autocomplete fallback */
+  if (placeId.startsWith("zone_")) {
+    const id = placeId.slice(5);
+    try {
+      const [row] = await db
+        .select({ name: serviceZonesTable.name, city: serviceZonesTable.city, lat: serviceZonesTable.lat, lng: serviceZonesTable.lng })
+        .from(serviceZonesTable)
+        .where(and(eq(serviceZonesTable.id, id), eq(serviceZonesTable.isActive, true)))
+        .limit(1);
+      if (row) {
+        res.json({
+          lat:              parseFloat(String(row.lat)),
+          lng:              parseFloat(String(row.lng)),
+          formattedAddress: `${row.name}, ${row.city}`,
+          source:           "fallback",
         });
         return;
       }
@@ -1681,6 +1703,8 @@ async function handleMapsTest(req: import("express").Request, res: import("expre
     await db.insert(platformSettingsTable)
       .values({ key: testStatusKey, value: statusValue, label: testStatusKey, category: "maps", updatedAt: new Date() })
       .onConflictDoUpdate({ target: platformSettingsTable.key, set: { value: statusValue, updatedAt: new Date() } });
+    /* Bust the settings cache so the next /api/maps/config call returns fresh test status */
+    invalidatePlatformSettingsCache();
   } catch { /* ignore persistence errors */ }
 
   sendSuccess(res, { ok, latencyMs, provider, error, testedAt: now });
