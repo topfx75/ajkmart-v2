@@ -628,6 +628,36 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
     return;
   }
 
+  /* ── OTP Bypass Mode — skip SMS, store "1234" as OTP ──────────────────────
+     When otp_bypass_mode is "on" in admin settings, no real OTP is sent.
+     The bypass OTP "1234" is stored so verify-otp can accept it.
+     For existing users (login): returns { otpRequired: false, bypassed: true }.
+     For new users (register):   same — frontend auto-calls verify-otp("1234").
+  ────────────────────────────────────────────────────────────────────────────── */
+  const isBypassMode = settings["otp_bypass_mode"] === "on";
+  if (isBypassMode) {
+    const bypassOtp    = "1234";
+    const bypassExpiry = new Date(Date.now() + AUTH_OTP_TTL_MS);
+    if (isNewUser) {
+      const bypassPayload = mode === "register"
+        ? JSON.stringify({ _source: "register", role: req.body.role ?? "customer" })
+        : null;
+      await db.insert(pendingOtpsTable).values({
+        id: generateId(), phone, otpHash: hashOtp(bypassOtp), otpExpiry: bypassExpiry, payload: bypassPayload,
+      }).onConflictDoUpdate({
+        target: pendingOtpsTable.phone,
+        set: { otpHash: hashOtp(bypassOtp), otpExpiry: bypassExpiry, attempts: 0, payload: bypassPayload },
+      });
+    } else {
+      await db.update(usersTable)
+        .set({ otpCode: hashOtp(bypassOtp), otpExpiry: bypassExpiry, otpUsed: false, updatedAt: new Date() })
+        .where(eq(usersTable.phone, phone));
+    }
+    writeAuthAuditLog("otp_bypass_used", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
+    res.json({ otpRequired: false, bypassed: true, message: "OTP bypass mode is active" });
+    return;
+  }
+
   const otp       = generateSecureOtp();
   const otpExpiry = new Date(Date.now() + AUTH_OTP_TTL_MS);
 
@@ -803,9 +833,8 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
       return;
     }
 
-    /* Verify OTP from pending_otps — bypass in dev when security_otp_bypass is on */
-    const isDev_pendingPath = process.env.NODE_ENV !== "production";
-    const bypassOtp_pending = isDev_pendingPath && settings["security_otp_bypass"] === "on";
+    /* Verify OTP from pending_otps — bypass when otp_bypass_mode is "on" */
+    const bypassOtp_pending = settings["otp_bypass_mode"] === "on";
     const otpValid = bypassOtp_pending || (pending.otpHash === hashOtp(otp) && new Date() < pending.otpExpiry);
     if (!otpValid) {
       /* Increment failed attempts */
@@ -998,9 +1027,8 @@ router.post("/verify-otp", verifyOtpIpLimiter, verifyCaptcha, sharedValidateBody
   const signupBonus = parseFloat(settings["customer_signup_bonus"] ?? "0");
   const now = new Date();
 
-  /* OTP Bypass: dev-only shortcut when security_otp_bypass is "on" in admin */
-  const isDev_existingPath = process.env.NODE_ENV !== "production";
-  const bypassOtp_existing = isDev_existingPath && settings["security_otp_bypass"] === "on";
+  /* OTP Bypass: skip hash check when otp_bypass_mode is "on" in admin */
+  const bypassOtp_existing = settings["otp_bypass_mode"] === "on";
 
   let isActualFirstLogin = false;
 

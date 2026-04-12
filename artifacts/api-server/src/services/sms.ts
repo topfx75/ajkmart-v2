@@ -1,13 +1,12 @@
 /**
- * SMS Service — supports Twilio, MSG91, and console (dev) modes.
+ * SMS Service — supports Twilio, MSG91, and Zong (CM.com) providers.
  * Provider is selected via the `sms_provider` platform setting.
  *
  * Phone numbers are assumed to be Pakistani (03xxxxxxxxx format).
  * They are converted to E.164 (+92xxxxxxxxx) before sending.
  *
  * Security: raw message content (which may include OTP codes) is NEVER
- * written to logs in production. The console provider is treated as a
- * dev-only path; in production the caller must configure a real provider.
+ * written to logs in production. Only real SMS providers are supported.
  */
 
 import { t } from "@workspace/i18n";
@@ -42,15 +41,12 @@ async function dispatchSMS(phone: string, message: string, settings: Record<stri
   const integrationOn = settings["integration_sms"] === "on";
   const provider      = settings["sms_provider"] ?? "console";
 
-  /* Console/dev logging: always log in non-production when provider is "console",
-     or when otp_debug_mode is explicitly enabled (even for real providers). */
-  const otpDebugMode  = !isProd && settings["otp_debug_mode"] === "on";
+  if (!integrationOn) {
+    return { sent: false, provider: provider || "none", error: "SMS integration is disabled. Enable it in Admin → Integrations → SMS." };
+  }
 
-  if (!integrationOn || provider === "console") {
-    if (!isProd) {
-      console.log(`[SMS:console] To: ${phone} | ${message}`);
-    }
-    return { sent: !isProd, provider: "console" };
+  if (provider === "console") {
+    return { sent: false, provider: "console", error: "Console SMS provider is not supported. Please configure Twilio, MSG91, or Zong in Admin → Integrations → SMS." };
   }
 
   const e164 = toE164Pakistan(phone);

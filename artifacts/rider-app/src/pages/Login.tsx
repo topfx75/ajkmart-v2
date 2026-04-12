@@ -189,6 +189,13 @@ export default function Login() {
             await doLogin(r as AuthResponse);
             setLoading(false); return;
           }
+          if (r.bypassed) {
+            try {
+              const vRes = await api.verifyOtp(formatPhoneForApi(normalized), "1234", getDeviceFingerprint());
+              await doLogin(vRes);
+            } catch (e: unknown) { setError(e instanceof Error ? e.message : "Bypass verification failed"); setStep("input"); }
+            setLoading(false); return;
+          }
           if (r.otp || r.devMode) setDevOtp(r.otp || "");
           setOtpChannel(r.channel || "sms");
           setFallbackChannels(r.fallbackChannels || []);

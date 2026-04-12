@@ -273,6 +273,27 @@ export default function RegisterScreen() {
         setLoading(false);
         return;
       }
+      if (sendOtpData.bypassed) {
+        const vRes = await fetch(`${API}/auth/verify-otp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: normalizedPhone, otp: "1234" }),
+        });
+        const vData = await vRes.json();
+        if (!vRes.ok) { setError(vData.error || "Bypass verification failed"); setLoading(false); return; }
+        if (vData.token) {
+          setAuthToken(vData.token);
+          try {
+            const SecureStore = await import("expo-secure-store");
+            await SecureStore.setItemAsync("ajkmart_reg_token", vData.token);
+          } catch {}
+        }
+        if (vData.refreshToken) setAuthRefreshToken(vData.refreshToken);
+        if (vData.user) setAuthUser(vData.user);
+        setStep(2);
+        setLoading(false);
+        return;
+      }
       if (sendOtpData.otp) setDevOtp(sendOtpData.otp);
       setResendCooldown(60);
       setOtpSent(true);

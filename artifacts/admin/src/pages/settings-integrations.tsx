@@ -309,9 +309,8 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
             {/* Provider selector */}
             <div>
               <SLabel icon={Puzzle}>SMS Provider</SLabel>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
                 {[
-                  { id: "console", label: "Console (Dev)", emoji: "🖥️", desc: "Logs to terminal only" },
                   { id: "twilio",  label: "Twilio",        emoji: "📞", desc: "International & PK" },
                   { id: "msg91",   label: "MSG91",          emoji: "🇮🇳", desc: "India & Pakistan" },
                   { id: "zong",    label: "Zong/CM.com",   emoji: "🇵🇰", desc: "AJK / Pakistan" },
@@ -324,13 +323,13 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
                   </button>
                 ))}
               </div>
+              {smsProvider === "console" && (
+                <div className="bg-red-50 border border-red-300 rounded-xl p-3 text-xs text-red-800 flex gap-2 mt-3">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span><strong>Action Required:</strong> Console provider is no longer supported. Please select Twilio, MSG91, or Zong above to send real SMS messages.</span>
+                </div>
+              )}
             </div>
-            {smsProvider === "console" && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span><strong>Dev Mode:</strong> SMS messages are logged to the server console only. Choose a real provider above to send actual SMS.</span>
-              </div>
-            )}
             {smsProvider === "twilio" && (
               <div className="space-y-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex gap-2">

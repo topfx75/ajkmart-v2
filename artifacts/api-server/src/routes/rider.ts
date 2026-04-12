@@ -1436,7 +1436,11 @@ router.post("/rides/:id/verify-otp", otpLimiter, async (req, res) => {
   if (!ride.tripOtp) {
     sendValidationError(res, t("apiErrOtpNotFound", otpLang)); return;
   }
-  if (ride.tripOtp.trim() !== otp.trim()) {
+  /* OTP Bypass Mode — accept any OTP when enabled in admin settings */
+  const tripSettings = await getCachedSettings();
+  const isTripBypassed = tripSettings["otp_bypass_mode"] === "on";
+
+  if (!isTripBypassed && ride.tripOtp.trim() !== otp.trim()) {
     /* Track failed attempt */
     const entry = rideOtpAttempts.get(rideId) ?? { count: 0, firstAt: Date.now() };
     entry.count += 1;

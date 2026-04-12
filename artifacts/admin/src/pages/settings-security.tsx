@@ -213,9 +213,15 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
           <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-5 space-y-3">
             <div className="flex items-center gap-2 text-red-700 mb-1">
               <AlertTriangle className="w-4 h-4" />
-              <span className="text-sm font-bold">DANGER ZONE — Development Only</span>
+              <span className="text-sm font-bold">DANGER ZONE — Handle With Care</span>
             </div>
-            <T k="security_otp_bypass" label="OTP Bypass Mode" sub="All OTPs auto-accept (NEVER enable in production)" danger />
+            <T k="otp_bypass_mode" label="OTP Bypass Mode" sub="Users skip OTP verification and login directly — disable in production" danger />
+            {(localValues["otp_bypass_mode"] ?? "off") === "on" && (
+              <div className="bg-red-100 border border-red-400 rounded-xl p-3 text-xs text-red-800 flex gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span><strong>Active:</strong> OTP verification is fully bypassed. All logins, registrations, and ride starts will skip OTP. Default bypass OTP is <code className="bg-white/70 px-1 rounded font-mono">1234</code>. Disable before going to production.</span>
+              </div>
+            )}
           </div>
 
           <SecPanel title="Multi-Factor Authentication" icon={Shield} color="text-indigo-700">

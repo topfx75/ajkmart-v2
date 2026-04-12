@@ -318,6 +318,14 @@ export default function AuthScreen() {
             setLoading(false);
             return;
           }
+          if (r.bypassed) {
+            try {
+              const vRes = await authPost("/auth/verify-otp", { phone: canonicalized, otp: "1234", role: "customer" });
+              await handleLoginResult(vRes);
+            } catch (e: any) { setError(e.message || "Bypass verification failed"); }
+            setLoading(false);
+            return;
+          }
           if (r.otp) setDevOtp(r.otp);
           setOtpChannel(r.channel || "sms");
           setFallbackChannels(r.fallbackChannels || []);
@@ -384,6 +392,14 @@ export default function AuthScreen() {
       const res = await authPost("/auth/send-otp", body);
       if (res.otpRequired === false && res.token) {
         await handleLoginResult(res);
+        setLoading(false);
+        return;
+      }
+      if (res.bypassed) {
+        try {
+          const vRes = await authPost("/auth/verify-otp", { phone: normalizedPhone, otp: "1234", role: "customer" });
+          await handleLoginResult(vRes);
+        } catch (e: any) { setError(e.message || "Bypass verification failed"); }
         setLoading(false);
         return;
       }

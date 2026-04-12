@@ -298,6 +298,13 @@ export default function Login() {
         await doLogin(res as AuthResponse);
         setLoading(false); return;
       }
+      if (res.bypassed) {
+        try {
+          const vRes = await api.verifyOtp(ph, "1234");
+          await doLogin(vRes as AuthResponse);
+        } catch (e) { setError(e instanceof Error ? e.message : "Bypass verification failed"); }
+        setLoading(false); return;
+      }
       setDevOtp(res.otp || "");
       setOtpChannel(res.channel || "sms");
       setFallbackChannels(res.fallbackChannels || []);
@@ -519,6 +526,14 @@ export default function Login() {
       if (res.otpRequired === false && res.token) {
         api.storeTokens(res.token, res.refreshToken);
         setStep("register-info");
+        setLoading(false); return;
+      }
+      if (res.bypassed) {
+        try {
+          const vRes = await api.verifyOtp(regPhone, "1234", getDeviceFingerprint());
+          if (vRes.token) api.storeTokens(vRes.token, vRes.refreshToken);
+          setStep("register-info");
+        } catch (e) { setError(e instanceof Error ? e.message : "Bypass verification failed"); }
         setLoading(false); return;
       }
       setRegDevOtp(res.otp || "");
