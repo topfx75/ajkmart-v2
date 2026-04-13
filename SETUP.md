@@ -6,8 +6,8 @@
 
 **Step 1: Project download karein**
 ```bash
-git clone https://github.com/your-username/ajkmart.git
-cd ajkmart
+git clone https://github.com/topfx75/ajk-mart-super-app.git
+cd ajk-mart-super-app
 ```
 
 **Step 2: Setup script chalayein**
@@ -47,7 +47,7 @@ Phir open karein:
 
 ### Option 3: Google Project IDX
 
-[![Open in IDX](https://cdn.idx.dev/btn/open_dark_32.svg)](https://idx.google.com/import?url=https://github.com/your-username/ajkmart)
+[![Open in IDX](https://cdn.idx.dev/btn/open_dark_32.svg)](https://idx.google.com/import?url=https://github.com/topfx75/ajk-mart-super-app)
 
 IDX automatically:
 - Environment setup karega
@@ -108,8 +108,8 @@ postgresql://postgres:yourpassword@localhost:5432/ajkmart
 sudo apt update && sudo apt install -y git curl
 
 # Project clone
-git clone https://github.com/your-username/ajkmart.git
-cd ajkmart
+git clone https://github.com/topfx75/ajk-mart-super-app.git
+cd ajk-mart-super-app
 
 # Setup
 bash setup.sh
