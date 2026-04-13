@@ -1,5 +1,14 @@
 # AJKMart Super App
 
+### Deployment Files
+- `.env.example` — All environment variables template (copy to `.env`)
+- `setup.sh` — One-click setup script for Linux/macOS servers
+- `docker-compose.yml` — Full stack Docker deployment (includes PostgreSQL)
+- `Dockerfile` — Multi-stage Docker build for all apps
+- `nginx.conf` — Nginx config for serving frontend apps
+- `.idx/dev.nix` — Google Project IDX configuration
+- `SETUP.md` — Complete setup guide (English + Urdu)
+
 ### Overview
 AJKMart is a full-stack "Super App" for Azad Jammu & Kashmir (AJK), Pakistan, integrating diverse services like Grocery Shopping, Food Delivery, Taxi/Bike Booking, Pharmacy, and Parcel Delivery. It aims to provide a comprehensive, localized service platform unified by a digital wallet, enhancing daily life and commerce in the region.
 

@@ -1,0 +1,107 @@
+# ============================================================
+#  AJKMart - Docker Compose
+#  Usage:
+#    docker compose up -d          (start everything)
+#    docker compose down           (stop everything)
+#    docker compose logs -f        (view logs)
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # PostgreSQL Database
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: ajkmart-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ajkmart
+      POSTGRES_USER: ajkmart
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ajkmart_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ajkmart -d ajkmart"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # API Server
+  # ----------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: ajkmart-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ajkmart:${DB_PASSWORD:-ajkmart_secret}@postgres:5432/ajkmart
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-production}
+      ADMIN_SECRET: ${ADMIN_SECRET:-change_this_secret}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://localhost:5175}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads_data:/app/artifacts/api-server/uploads
+
+  # ----------------------------------------------------------
+  # Admin Panel
+  # ----------------------------------------------------------
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: admin
+    container_name: ajkmart-admin
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    ports:
+      - "5173:80"
+
+  # ----------------------------------------------------------
+  # Vendor App
+  # ----------------------------------------------------------
+  vendor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: vendor
+    container_name: ajkmart-vendor
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    ports:
+      - "5174:80"
+
+  # ----------------------------------------------------------
+  # Rider App
+  # ----------------------------------------------------------
+  rider:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: rider
+    container_name: ajkmart-rider
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    ports:
+      - "5175:80"
+
+volumes:
+  postgres_data:
+  uploads_data:
