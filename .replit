@@ -30,16 +30,25 @@ args = "artifacts/admin: web"
 task = "workflow.run"
 args = "artifacts/ajkmart: expo"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/rider-app: web"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/vendor-app: web"
+
 [[workflows.workflow]]
 name = "artifacts/admin: web"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/admin run dev"
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3000 pnpm --filter @workspace/admin run dev"
+waitForPort = 3000
 
 [[workflows.workflow]]
 name = "artifacts/ajkmart: expo"
@@ -48,6 +57,30 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/ajkmart run dev:web"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "artifacts/rider-app: web"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3002 pnpm --filter @workspace/rider-app run dev"
+waitForPort = 3002
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "artifacts/vendor-app: web"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3001 pnpm --filter @workspace/vendor-app run dev"
+waitForPort = 3001
 
 [workflows.workflow.metadata]
 outputType = "webview"
