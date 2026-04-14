@@ -5,6 +5,7 @@
 # Base image with Node.js + pnpm
 FROM node:20-alpine AS base
 RUN npm install -g pnpm
+RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY tsconfig.base.json tsconfig.json ./
