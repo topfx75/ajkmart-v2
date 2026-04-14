@@ -10,9 +10,10 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Colors from "@/constants/colors";
 import { Font } from "@/constants/typography";
+import { EXPO_ORIGIN } from "@/utils/api";
 const C = Colors.light;
 
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/maps`;
+const API = EXPO_ORIGIN ? `${EXPO_ORIGIN}/api/maps` : "";
 
 export type MapPickerResult = {
   lat: number;

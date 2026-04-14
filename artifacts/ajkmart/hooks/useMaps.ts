@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, EXPO_ORIGIN } from "@/utils/api";
 
-const domain = process.env.EXPO_PUBLIC_DOMAIN;
-const API = domain ? `https://${domain}/api/maps` : `${API_BASE}/maps`;
+const API = EXPO_ORIGIN ? `${EXPO_ORIGIN}/api/maps` : `${API_BASE}/maps`;
 
 export interface MapPrediction {
   placeId:       string;
@@ -154,5 +153,6 @@ export function staticMapUrl(
     const color = m.color ?? (i === 0 ? "green" : "red");
     return `markers=color:${color}%7C${m.lat},${m.lng}`;
   }).join("&");
-  return `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/maps/static?center=${center}&zoom=${zoom}&size=${width}x${height}&${markerParams}`;
+  const origin = EXPO_ORIGIN || API_BASE.replace(/\/api$/, "");
+  return `${origin}/api/maps/static?center=${center}&zoom=${zoom}&size=${width}x${height}&${markerParams}`;
 }

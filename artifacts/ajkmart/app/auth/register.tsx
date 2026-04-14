@@ -18,6 +18,7 @@ import { spacing, radii, shadows, typography } from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
+import { API_BASE } from "@/utils/api";
 import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
 
 import {
@@ -33,7 +34,7 @@ import {
 } from "@/components/auth-shared";
 import { MapPickerModal, type MapPickerResult } from "@/components/ride/MapPickerModal";
 
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+const API = API_BASE;
 
 type RegStep = 1 | 2 | 3 | 4 | 5;
 

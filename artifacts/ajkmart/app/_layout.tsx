@@ -28,7 +28,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { slowNetworkQueryDefaults } from "@/lib/queryConfig";
 
 const _domain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-if (_domain) setBaseUrl(API_BASE);
+if (API_BASE) setBaseUrl(API_BASE);
 
 if (typeof window !== "undefined" && __DEV__) {
   const _h = window.location.hash;

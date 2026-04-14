@@ -24,7 +24,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { CancelModal } from "@/components/CancelModal";
 import type { CancelTarget } from "@/components/CancelModal";
-import { API_BASE, unwrapApiResponse } from "@/utils/api";
+import { API_BASE, API_ORIGIN, unwrapApiResponse } from "@/utils/api";
 import { LiveTrackMap } from "@/components/ride/LiveTrackMap";
 import {
   ORDER_STATUS_MAP,
@@ -149,8 +149,7 @@ export default function OrderDetailScreen() {
 
     const effectiveType = order.type ?? (isRide ? "ride" : isParcel ? "parcel" : "mart");
     const room = getSocketRoom(orderId, effectiveType);
-    const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
-    const socketUrl = `https://${domain}`;
+    const socketUrl = API_ORIGIN;
 
     let socket: Socket | null = null;
     let isCancelled = false;

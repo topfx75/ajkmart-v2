@@ -23,6 +23,7 @@ import { usePlatformConfig, isMethodEnabled } from "@/context/PlatformConfigCont
 import { useToast } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
+import { API_BASE } from "@/utils/api";
 import { webFeatureSupport } from "@/utils/webFeatureSupport";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -40,7 +41,7 @@ import {
   authColors as C,
 } from "@/components/auth-shared";
 
-const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+const API = API_BASE;
 
 if (typeof __DEV__ === "undefined") {
   throw new Error("__DEV__ is not defined — Metro bundler misconfiguration");

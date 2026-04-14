@@ -1169,15 +1169,15 @@ function OrdersScreenInner() {
   const listSocketRef = useRef<Socket | null>(null);
   useEffect(() => {
     if (!user?.id || !token) return;
-    const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
-    if (!domain) return;
+    const socketOrigin = API_ORIGIN;
+    if (!socketOrigin) return;
 
     let socket: Socket | null = null;
     let unmounted = false;
 
     import("socket.io-client").then(({ io }) => {
       if (unmounted) return;
-      socket = io(`https://${domain}`, {
+      socket = io(socketOrigin, {
         path: "/api/socket.io",
         auth: { token },
         extraHeaders: { Authorization: `Bearer ${token}` },

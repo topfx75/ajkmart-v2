@@ -11,8 +11,9 @@ import Colors from "@/constants/colors";
 import { Font } from "@/constants/typography";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import { EXPO_ORIGIN } from "@/utils/api";
 
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = EXPO_ORIGIN ? `${EXPO_ORIGIN}/api` : "";
 const C = Colors.light;
 
 interface VanBooking {

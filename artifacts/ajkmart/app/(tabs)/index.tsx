@@ -46,10 +46,10 @@ import { LocationBrowserSheet } from "@/components/LocationBrowserSheet";
 import { useLocation, type LocationNode } from "@/context/LocationContext";
 import { getBanners, getTrending, getFlashDeals, type Banner } from "@workspace/api-client-react";
 
-import { unwrapApiResponse } from "@/utils/api";
+import { EXPO_ORIGIN, unwrapApiResponse } from "@/utils/api";
 import { AjkLogo } from "@/components/ui/AjkLogo";
 import { isGeocodingUnsupportedOnWeb } from "@/utils/webFeatureSupport";
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = EXPO_ORIGIN ? `${EXPO_ORIGIN}/api` : "";
 
 const C = Colors.light;
 const W = Dimensions.get("window").width;

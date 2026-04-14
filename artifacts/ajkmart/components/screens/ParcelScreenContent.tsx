@@ -31,6 +31,7 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { estimateParcel, createParcelBooking } from "@workspace/api-client-react";
 import type { CreateParcelBookingRequest } from "@workspace/api-client-react";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
+import { API_BASE } from "@/utils/api";
 import { AuthGateSheet, useAuthGate } from "@/components/AuthGateSheet";
 
 
@@ -203,7 +204,6 @@ function ParcelScreenInner() {
           const { latitude: lat, longitude: lng } = pos.coords;
           let address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
           try {
-            const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
             const geoRes = await fetch(`${API_BASE}/maps/geocode?address=${lat},${lng}`);
             if (geoRes.ok) {
               const geoData = await geoRes.json() as { formattedAddress?: string };
@@ -244,7 +244,6 @@ function ParcelScreenInner() {
 
   useEffect(() => {
     /* Fetch payment methods filtered to parcel service */
-    const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
     fetch(`${API_BASE}/payments/methods?serviceType=parcel`)
       .then(r => r.json())
       .then((json: any) => {
@@ -310,7 +309,7 @@ function ParcelScreenInner() {
       let finalDropLat   = dropLat;
       let finalDropLng   = dropLng;
 
-      const GEOCODE_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+      const GEOCODE_BASE = API_BASE;
       /* Try to resolve coordinates for manually-typed addresses */
       let pickupGeoFailed = false;
       let dropGeoFailed = false;
@@ -523,8 +522,7 @@ function ParcelScreenInner() {
               onBlur={async () => {
                 if (!pickupAddress.trim() || pickupLat !== undefined) return;
                 try {
-                  const GEOCODE_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
-                  const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(pickupAddress)}`);
+                  const geoRes = await fetch(`${API_BASE}/maps/geocode?address=${encodeURIComponent(pickupAddress)}`);
                   if (!geoRes.ok) { setGeoError("pickup"); showToast("Could not validate pickup address. Please check it and try again.", "error"); return; }
                   const geo = await geoRes.json();
                   if (geo?.lat && geo?.lng) { setPickupLat(geo.lat); setPickupLng(geo.lng); setGeoError(null); }
@@ -567,8 +565,7 @@ function ParcelScreenInner() {
               onBlur={async () => {
                 if (!dropAddress.trim() || dropLat !== undefined) return;
                 try {
-                  const GEOCODE_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
-                  const geoRes = await fetch(`${GEOCODE_BASE}/maps/geocode?address=${encodeURIComponent(dropAddress)}`);
+                  const geoRes = await fetch(`${API_BASE}/maps/geocode?address=${encodeURIComponent(dropAddress)}`);
                   if (!geoRes.ok) { setGeoError("drop"); showToast("Could not validate drop address. Please check it and try again.", "error"); return; }
                   const geo = await geoRes.json();
                   if (geo?.lat && geo?.lng) { setDropLat(geo.lat); setDropLng(geo.lng); setGeoError(null); }

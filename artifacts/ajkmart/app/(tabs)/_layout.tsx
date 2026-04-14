@@ -14,6 +14,7 @@ import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useCartCount } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { API_BASE } from "@/utils/api";
 import { tDual } from "@workspace/i18n";
 import { getActiveServices } from "@/constants/serviceRegistry";
 import { getGetOrdersQueryKey } from "@workspace/api-client-react";
@@ -115,7 +116,7 @@ function TabDataPrefetcher() {
 
   useEffect(() => {
     if (!user?.id || !token) return;
-    const API = `https://${process.env.EXPO_PUBLIC_DOMAIN ?? ""}/api`;
+    const API = API_BASE;
     const headers = { Authorization: `Bearer ${token}` };
 
     queryClient.prefetchQuery({

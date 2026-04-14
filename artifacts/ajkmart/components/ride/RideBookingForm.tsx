@@ -35,7 +35,7 @@ import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useApiCall } from "@/hooks/useApiCall";
-import { API_BASE, unwrapApiResponse } from "@/utils/api";
+import { API_BASE, EXPO_ORIGIN, unwrapApiResponse } from "@/utils/api";
 import type { Address } from "@/components/profile/shared";
 import { normalizePhone, isValidPakistaniPhone } from "@/utils/phone";
 import { ServiceListSkeleton, FareEstimateSkeleton, HistoryRowSkeleton } from "@/components/ride/Skeletons";
@@ -1404,7 +1404,7 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
           <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
             <WebView
               source={{
-                uri: `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/maps/picker?lat=${
+                uri: `${API_BASE}/maps/picker?lat=${
                   mapPickerTarget === "pickup" ? (pickupObj?.lat ?? 33.7294) : (dropObj?.lat ?? 33.7294)
                 }&lng=${
                   mapPickerTarget === "pickup" ? (pickupObj?.lng ?? 73.3872) : (dropObj?.lng ?? 73.3872)

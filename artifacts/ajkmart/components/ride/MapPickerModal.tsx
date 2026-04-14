@@ -12,6 +12,7 @@ import { WebView } from "react-native-webview";
 import Colors from "@/constants/colors";
 import { Font } from "@/constants/typography";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { EXPO_ORIGIN } from "@/utils/api";
 
 const C = Colors.light;
 
@@ -30,7 +31,7 @@ type Props = {
   onClose: () => void;
 };
 
-const PICKER_ORIGIN = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+const PICKER_ORIGIN = EXPO_ORIGIN;
 
 export function MapPickerModal({
   visible,

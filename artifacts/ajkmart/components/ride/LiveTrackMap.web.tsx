@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
+import { API_ORIGIN } from "@/utils/api";
 
-const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
-const ORIGIN = `https://${DOMAIN}`;
+const ORIGIN = API_ORIGIN;
 
 export type LiveTrackMapProps = {
   orderId: string;

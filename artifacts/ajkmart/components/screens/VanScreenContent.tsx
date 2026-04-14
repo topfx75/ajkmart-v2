@@ -13,8 +13,9 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual } from "@workspace/i18n";
+import { EXPO_ORIGIN } from "@/utils/api";
 
-const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+const API_BASE = EXPO_ORIGIN ? `${EXPO_ORIGIN}/api` : "";
 const C = Colors.light;
 
 const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];

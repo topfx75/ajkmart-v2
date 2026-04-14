@@ -32,7 +32,7 @@ import { NegotiationScreen } from "@/components/ride/NegotiationScreen";
 import { RideStatusSkeleton } from "@/components/ride/Skeletons";
 import { LiveTrackMap } from "@/components/ride/LiveTrackMap";
 import { VehicleIcon } from "@/components/ride/VehicleIcons";
-import { API_BASE } from "@/utils/api";
+import { API_BASE, API_ORIGIN } from "@/utils/api";
 import {
   getDispatchStatus,
   retryRideDispatch,
@@ -132,21 +132,19 @@ export function RideTracker({
 
   const isSocketActive = ["accepted", "arrived", "in_transit"].includes(ride?.status ?? "");
 
-  const expoDomain = process.env.EXPO_PUBLIC_DOMAIN;
-  const rideApiBase = expoDomain ? `https://${expoDomain}/api` : API_BASE;
+  const rideApiBase = API_BASE;
   const warnedNoDomainRef = useRef(false);
 
   useEffect(() => {
-    if (__DEV__ && !expoDomain && !warnedNoDomainRef.current) {
+    if (__DEV__ && !API_ORIGIN && !warnedNoDomainRef.current) {
       warnedNoDomainRef.current = true;
       console.warn("[RideTracker] EXPO_PUBLIC_DOMAIN is undefined — SOS and cancel requests will use API_BASE fallback. Set EXPO_PUBLIC_DOMAIN in your environment.");
     }
-  }, [expoDomain]);
+  }, [API_ORIGIN]);
 
   useEffect(() => {
     if (!isSocketActive || !rideId) return;
-    const domain = process.env.EXPO_PUBLIC_DOMAIN ?? "";
-    const socketUrl = `https://${domain}`;
+    const socketUrl = API_ORIGIN;
     const socketIoPath = "/api/socket.io";
     let unmounted = false;
     const CONNECTION_TIMEOUT_MS = 15000;

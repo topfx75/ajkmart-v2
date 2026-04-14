@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { API_ORIGIN } from "@/utils/api";
 
-const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
+const ORIGIN = API_ORIGIN;
 
 export type LiveTrackMapProps = {
   orderId: string;
@@ -43,7 +44,7 @@ export function LiveTrackMap({
     ...(destLng != null ? { destLng: String(destLng) } : {}),
     destLabel,
   });
-  const src = `https://${DOMAIN}/api/maps/live-track?${params.toString()}`;
+  const src = `${ORIGIN}/api/maps/live-track?${params.toString()}`;
 
   const sendRiderUpdate = (lat: number, lng: number) => {
     const msg = JSON.stringify({ type: "RIDER_UPDATE", lat, lng });

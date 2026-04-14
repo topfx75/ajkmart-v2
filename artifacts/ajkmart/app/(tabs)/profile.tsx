@@ -25,6 +25,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useToast } from "@/context/ToastContext";
+import { EXPO_ORIGIN, API_BASE as API, unwrapApiResponse } from "@/utils/api";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { SmartRefresh } from "@/components/ui/SmartRefresh";
 import Accordion from "@/components/Accordion";
@@ -804,9 +805,9 @@ function ProfileScreenInner() {
 
         {user?.role === "vendor" && (
           <SectionCard title="VENDOR DASHBOARD">
-            <Row icon="storefront-outline" label="My Products"     sub="Manage products"       onPress={() => Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/vendor/`)} iconColor={C.mart} iconBg={C.martLight} />
-            <Row icon="analytics-outline"  label="Sales Analytics" sub="Revenue & sales"     onPress={() => Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/vendor/`)}           iconColor={C.primary} iconBg={C.primarySoft} />
-            <Row icon="receipt-outline"    label="Incoming Orders" sub="View new orders"     onPress={() => Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/vendor/`)}    iconColor={C.accent} iconBg={C.accentSoft} />
+            <Row icon="storefront-outline" label="My Products"     sub="Manage products"       onPress={() => EXPO_ORIGIN && Linking.openURL(`${EXPO_ORIGIN}/vendor/`)} iconColor={C.mart} iconBg={C.martLight} />
+            <Row icon="analytics-outline"  label="Sales Analytics" sub="Revenue & sales"     onPress={() => EXPO_ORIGIN && Linking.openURL(`${EXPO_ORIGIN}/vendor/`)}           iconColor={C.primary} iconBg={C.primarySoft} />
+            <Row icon="receipt-outline"    label="Incoming Orders" sub="View new orders"     onPress={() => EXPO_ORIGIN && Linking.openURL(`${EXPO_ORIGIN}/vendor/`)}    iconColor={C.accent} iconBg={C.accentSoft} />
           </SectionCard>
         )}
 

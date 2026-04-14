@@ -1,0 +1,9 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd /workspaces/ajkmart-v2 && python3 - <<'PY'\nimport secrets\njwt = secrets\\.token_hex\\(32\\)\nadmin_jwt = secrets\\.token_hex\\(32\\)\nadmin_secret = secrets\\.token_hex\\(32\\)\nprint\\(f\"JWT_SECRET=\\{jwt\\}\\\\nADMIN_JWT_SECRET=\\{admin_jwt\\}\\\\nADMIN_SECRET=\\{admin_secret\\}\"\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "pnpm": true
+    }
+}
