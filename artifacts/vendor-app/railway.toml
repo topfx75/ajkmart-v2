@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+buildCommand = "cd ../.. && pnpm install && pnpm --filter @workspace/vendor-app run build"
+
+[deploy]
+startCommand = "npx serve artifacts/vendor-app/dist -s -l $PORT"
+healthcheckPath = "/"

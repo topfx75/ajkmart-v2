@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+buildCommand = "cd ../.. && pnpm install && pnpm --filter @workspace/rider-app run build"
+
+[deploy]
+startCommand = "npx serve artifacts/rider-app/dist -s -l $PORT"
+healthcheckPath = "/"
