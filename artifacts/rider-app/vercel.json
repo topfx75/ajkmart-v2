@@ -1,0 +1,6 @@
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @workspace/rider-app run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install -g pnpm"
+}

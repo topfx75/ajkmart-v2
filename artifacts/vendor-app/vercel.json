@@ -1,0 +1,6 @@
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @workspace/vendor-app run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install -g pnpm"
+}

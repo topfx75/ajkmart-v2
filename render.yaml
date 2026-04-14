@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: ajkmart-api
+    env: node
+    region: oregon
+    plan: free
+    rootDir: .
+    buildCommand: npm install -g pnpm && pnpm install && pnpm --filter @workspace/api-server run build
+    startCommand: node --enable-source-maps artifacts/api-server/dist/index.mjs
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: ALLOWED_ORIGINS
+        sync: false
