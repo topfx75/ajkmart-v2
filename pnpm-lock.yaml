@@ -399,6 +399,13 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+    optionalDependencies:
+      '@rollup/rollup-linux-x64-gnu':
+        specifier: ^4.0.0
+        version: 4.59.0
+      '@rollup/rollup-linux-x64-musl':
+        specifier: ^4.0.0
+        version: 4.60.1
 
   artifacts/ajkmart:
     dependencies:
@@ -1131,6 +1138,13 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+    optionalDependencies:
+      '@rollup/rollup-linux-x64-gnu':
+        specifier: ^4.0.0
+        version: 4.59.0
+      '@rollup/rollup-linux-x64-musl':
+        specifier: ^4.0.0
+        version: 4.60.1
 
   artifacts/vendor-app:
     dependencies:
@@ -1360,6 +1374,13 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+    optionalDependencies:
+      '@rollup/rollup-linux-x64-gnu':
+        specifier: ^4.0.0
+        version: 4.59.0
+      '@rollup/rollup-linux-x64-musl':
+        specifier: ^4.0.0
+        version: 4.60.1
 
   lib/api-client-react:
     dependencies:
@@ -3290,6 +3311,12 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@rollup/rollup-linux-x64-musl@4.60.1':
+    resolution: {integrity: sha512-5cIATbk5vynAjqqmyBjlciMJl1+R/CwX9oLk/EyiFXDWd95KpHdrOJT//rnUl4cUcskrd0jCCw3wpZnhIHdD9w==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
 
   '@scalar/helpers@0.2.18':
     resolution: {integrity: sha512-w1d4tpNEVZ293oB2BAgLrS0kVPUtG3eByNmOCJA5eK9vcT4D3cmsGtWjUaaqit0BQCsBFHK51rasGvSWnApYTw==}
@@ -10075,6 +10102,9 @@ snapshots:
   '@rolldown/pluginutils@1.0.0-rc.3': {}
 
   '@rollup/rollup-linux-x64-gnu@4.59.0':
+    optional: true
+
+  '@rollup/rollup-linux-x64-musl@4.60.1':
     optional: true
 
   '@scalar/helpers@0.2.18': {}
